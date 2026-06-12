@@ -44,9 +44,9 @@ playwright-report/
 test-results/
 .playwright/
 
-# Application data and database volumes
-storage/
-backend/storage/
+# Application data and database volumes — anchor to root to avoid matching test directories
+/storage/
+/backend/storage/
 postgres_data/
 redis_data/
 *.sqlite

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import jwt
 from pwdlib import PasswordHash
@@ -31,6 +31,7 @@ def _create_token(
     payload: dict[str, Any] = {
         "sub": subject,
         "type": token_type,
+        "jti": str(uuid4()),
         "iat": now,
         "exp": now + expire_delta,
     }

@@ -13,16 +13,16 @@
 
 - [x] [Project Setup 與開發環境](./project-setup.md)
 - [x] [Database 與 Migration](./database.md)
-- [ ] [API Contract 與共用 Schema](./api-contract.md)
+- [x] [API Contract 與共用 Schema](./api-contract.md)
 
 ## 後端模組
 
 - [x] [Backend Core](./backend-core.md)
-- [ ] [Backend Auth](./backend-auth.md)
+- [x] [Backend Auth](./backend-auth.md)
 - [ ] [Backend User 與 Quota](./backend-user-quota.md)
 - [ ] [Backend Permission](./backend-permission.md)
 - [ ] [Backend DriveItem](./backend-drive-item.md)
-- [ ] [Backend Storage](./backend-storage.md)
+- [x] [Backend Storage](./backend-storage.md)
 - [ ] [Backend Upload](./backend-upload.md)
 - [ ] [Backend Download](./backend-download.md)
 - [ ] [Backend Preview](./backend-preview.md)
@@ -52,20 +52,21 @@
 ## 建議執行順序
 
 - [x] 第一階段：Project Setup、Backend Core、Database。
-- [ ] 第二階段：Backend Auth、Frontend API Client、Frontend Auth、Frontend Routing。
-- [ ] 第三階段：Backend DriveItem、Permission、Storage、FileVersion。
-- [ ] 第四階段：Backend Upload、Download、Trash、ActivityLog。
-- [ ] 第五階段：Frontend Layout、Drive、Upload、Trash。
-- [ ] 第六階段：Backend Search、Preview、Share。
-- [ ] 第七階段：Frontend Search、Preview、Share。
-- [ ] 第八階段：Integration、E2E 與驗收。
+- [x] 第二階段：API Contract、Backend Auth、Backend Storage。
+- [ ] 第三階段：Backend DriveItem、Permission、FileVersion、ActivityLog、User Quota。
+- [ ] 第四階段：Backend Upload、Download、Preview、Trash、Search、Share。
+- [ ] 第五階段：Frontend API Client、Frontend Layout。
+- [ ] 第六階段：Frontend Auth、Frontend Drive。
+- [ ] 第七階段：Frontend Routing、Upload、Preview。
+- [ ] 第八階段：Frontend Trash、Search、Share。
+- [ ] 第九階段：Integration、E2E 與驗收。
 
 ## 進度統計
 
 | 類別 | 完成 | 總數 |
 | --- | ---: | ---: |
-| 專案基礎 | 2 | 3 |
-| 後端模組 | 1 | 14 |
+| 專案基礎 | 3 | 3 |
+| 後端模組 | 3 | 14 |
 | 前端模組 | 0 | 10 |
 | 整合與驗收 | 0 | 1 |
-| 合計 | 3 | 28 |
+| 合計 | 6 | 28 |

@@ -45,6 +45,33 @@
 - 理由：符合已確認的產品行為，且不污染 DriveItem 的核心中繼資料。
 - 影響範圍：ActivityLog、DriveItem recent query、前端 RecentPage。
 
+## DEC-007：JWT Refresh Token 加入 jti claim
+
+- 日期：2026-06-13
+- 狀態：Accepted
+- 背景：若兩個 refresh token 在同一秒內發行給同一使用者，JWT payload 相同（iat/exp 相同），導致 token hash 衝突，無法在資料庫中同時存在。
+- 決策：在 `_create_token` 加入 `jti`（UUID4），確保每個 token 唯一。
+- 理由：符合 RFC 7519 標準，且避免 hash 衝突導致的輪替失敗。
+- 影響範圍：`app/core/security.py`、refresh_tokens 資料表中的 token_hash 唯一性。
+
+## DEC-008：StorageProvider 使用 Protocol 而非 ABC
+
+- 日期：2026-06-13
+- 狀態：Accepted
+- 背景：prompt.md 要求定義 StorageProvider 抽象介面，Protocol 與 ABC 均可。
+- 決策：使用 `typing.Protocol`（加上 `@runtime_checkable`）定義介面，LocalStorageProvider 不繼承 Protocol，但滿足其結構。
+- 理由：Protocol 是結構型子型別，不需要顯式繼承，更符合 Python duck typing 風格，且 runtime_checkable 允許 isinstance 驗證。
+- 影響範圍：`app/storage/base.py`、`app/storage/local.py`、factory 測試。
+
+## DEC-009：Refresh Token 輪替使用 JWT + DB Hash 雙重驗證
+
+- 日期：2026-06-13
+- 狀態：Accepted
+- 背景：refresh token 需要支援撤銷（logout），且 prompt.md 要求只在 DB 儲存 hash。
+- 決策：refresh token 為 JWT（含 jti），每次發行時將 SHA-256 hash 存入 refresh_tokens 表；refresh 時先驗證 JWT 合法性，再查 DB 確認未撤銷，發行新 token 後撤銷舊 token。
+- 理由：JWT 提供無需 DB 查詢的快速過期檢查；DB hash 提供真正的撤銷能力。login/logout 路徑 refresh token 不出現在 JSON body（只在 cookie 中）。
+- 影響範圍：auth service、router、security.py。
+
 ## DEC-006：本機容器執行環境
 
 - 日期：2026-06-13
