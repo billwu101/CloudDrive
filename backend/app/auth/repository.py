@@ -34,7 +34,7 @@ class AbstractUserRepository(ABC):
     ) -> User: ...
 
 
-class SQLUserRepository(AbstractUserRepository):
+class SQLUserRepository(AbstractUserRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
@@ -89,7 +89,7 @@ class AbstractRefreshTokenRepository(ABC):
     async def revoke(self, token_id: UUID) -> None: ...
 
 
-class SQLRefreshTokenRepository(AbstractRefreshTokenRepository):
+class SQLRefreshTokenRepository(AbstractRefreshTokenRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 

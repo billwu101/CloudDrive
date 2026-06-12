@@ -72,6 +72,33 @@
 - 理由：JWT 提供無需 DB 查詢的快速過期檢查；DB hash 提供真正的撤銷能力。login/logout 路徑 refresh token 不出現在 JSON body（只在 cookie 中）。
 - 影響範圍：auth service、router、security.py。
 
+## DEC-010：ActivityLogService 失敗靜默吞噬
+
+- 日期：2026-06-13
+- 狀態：Accepted
+- 背景：活動記錄是輔助功能，不應因記錄失敗而影響主要業務流程（建立資料夾、重命名等）。
+- 決策：`ActivityLogService.log()` 捕捉所有例外，失敗時記錄 warning 並回傳 `None`，不重新拋出。
+- 理由：活動記錄缺失不構成核心功能失敗；可以在事後透過稽核補救。
+- 影響範圍：ActivityLog service、DriveService._log()、所有呼叫 log() 的服務。
+
+## DEC-011：SQL Repository 使用 `# pragma: no cover`
+
+- 日期：2026-06-13
+- 狀態：Accepted
+- 背景：SQL repository 實作需要真實的 PostgreSQL 連線，無法在單元測試中覆蓋；每個模組的 Abstract repository 由假實作（MemRepo/MockRepo）覆蓋測試。
+- 決策：所有 `SQL*Repository` 類別加上 `# pragma: no cover`，排除在覆蓋率計算之外；並分別建立 Integration Test 套件在真實 DB 上驗證。
+- 理由：避免因無法單元測試的 DB 層程式碼拖累整體覆蓋率門檻，同時維持邏輯層（service/router）的高覆蓋率。
+- 影響範圍：所有後端模組的 repository.py。
+
+## DEC-012：DriveService 依賴注入 ActivityLogService（可選）
+
+- 日期：2026-06-13
+- 狀態：Accepted
+- 背景：DriveService 需要寫入活動記錄，但測試時不需要 activity service。
+- 決策：`DriveService.__init__` 中 `activity_svc` 為可選（`ActivityLogService | None = None`），`_log()` 先檢查 `self._activity is not None`。
+- 理由：測試可用簡單 in-memory fake repo 建立 DriveService，不需要帶入 activity service 依賴；生產路徑由 router 的 `_drive_service` 工廠注入完整依賴。
+- 影響範圍：drive/service.py、drive/router.py、drive 測試。
+
 ## DEC-006：本機容器執行環境
 
 - 日期：2026-06-13

@@ -26,7 +26,9 @@ class TestSave:
         await storage.save("myfile.txt", io.BytesIO(data))
         assert (tmp_path / "myfile.txt").exists()
 
-    async def test_save_with_subdirectory(self, storage: LocalStorageProvider, tmp_path: Path) -> None:
+    async def test_save_with_subdirectory(
+        self, storage: LocalStorageProvider, tmp_path: Path
+    ) -> None:
         data = b"nested content"
         await storage.save("a/b/file.bin", io.BytesIO(data))
         assert (tmp_path / "a" / "b" / "file.bin").exists()
@@ -80,7 +82,9 @@ class TestDelete:
     async def test_delete_nonexistent_is_noop(self, storage: LocalStorageProvider) -> None:
         await storage.delete("ghost.txt")  # must not raise
 
-    async def test_delete_cleans_empty_parent(self, storage: LocalStorageProvider, tmp_path: Path) -> None:
+    async def test_delete_cleans_empty_parent(
+        self, storage: LocalStorageProvider, tmp_path: Path
+    ) -> None:
         await storage.save("sub/dir/file.bin", io.BytesIO(b"data"))
         await storage.delete("sub/dir/file.bin")
         assert not (tmp_path / "sub" / "dir").exists()
@@ -106,7 +110,9 @@ class TestPathTraversal:
 
 
 class TestAtomicWrite:
-    async def test_no_partial_file_on_failure(self, storage: LocalStorageProvider, tmp_path: Path) -> None:
+    async def test_no_partial_file_on_failure(
+        self, storage: LocalStorageProvider, tmp_path: Path
+    ) -> None:
         """A stream that raises mid-read must not leave a final file."""
         dest = tmp_path / "partial.txt"
 
