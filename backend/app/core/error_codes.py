@@ -21,9 +21,10 @@ class ErrorCode(StrEnum):
     # Validation
     VALIDATION_ERROR = "VALIDATION_ERROR"
 
-    # Drive
+    # Drive / Storage
     NAME_CONFLICT = "NAME_CONFLICT"
     INVALID_OPERATION = "INVALID_OPERATION"
+    ITEM_CONTENT_NOT_FOUND = "ITEM_CONTENT_NOT_FOUND"
 
     # Generic
     INTERNAL_ERROR = "INTERNAL_ERROR"
