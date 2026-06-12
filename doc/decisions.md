@@ -99,6 +99,24 @@
 - 理由：測試可用簡單 in-memory fake repo 建立 DriveService，不需要帶入 activity service 依賴；生產路徑由 router 的 `_drive_service` 工廠注入完整依賴。
 - 影響範圍：drive/service.py、drive/router.py、drive 測試。
 
+## DEC-013：PermissionService 走訪父鏈繼承權限
+
+- 日期：2026-06-13
+- 狀態：Accepted
+- 背景：分享時可以分享資料夾，子項目應自動繼承父資料夾的分享權限。
+- 決策：`PermissionService.get_permission()` 從當前 item 開始，沿 parent_id 鏈向上走訪。每層先檢查 owner（立即回傳 OWNER），再查 shares 表；取所有層最高權限（most permissive）作為有效權限。
+- 理由：一次性迭代走訪，避免遞迴深度問題；seen set 防止 parent 環路。
+- 影響範圍：PermissionService、所有需要權限判斷的 service（FileVersion、Upload、Download、Share）。
+
+## DEC-014：FileVersionService 不儲存 storage_key 在 Response
+
+- 日期：2026-06-13
+- 狀態：Accepted
+- 背景：storage_key 是內部路徑，不應暴露給前端。
+- 決策：`FileVersionResponse` 不包含 `storage_key` 欄位，僅包含 version_no、size_bytes、checksum_sha256 等前端需要的欄位。
+- 理由：避免洩漏儲存層實作細節（S3 key 前綴、路徑結構等）。
+- 影響範圍：FileVersionResponse schema、list versions endpoint。
+
 ## DEC-006：本機容器執行環境
 
 - 日期：2026-06-13

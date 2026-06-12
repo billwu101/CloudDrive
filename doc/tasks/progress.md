@@ -20,7 +20,7 @@
 - [x] [Backend Core](./backend-core.md)
 - [x] [Backend Auth](./backend-auth.md)
 - [x] [Backend User 與 Quota](./backend-user-quota.md)
-- [ ] [Backend Permission](./backend-permission.md)
+- [x] [Backend Permission](./backend-permission.md)
 - [x] [Backend DriveItem](./backend-drive-item.md)
 - [x] [Backend Storage](./backend-storage.md)
 - [ ] [Backend Upload](./backend-upload.md)
@@ -29,7 +29,7 @@
 - [ ] [Backend Trash](./backend-trash.md)
 - [ ] [Backend Search](./backend-search.md)
 - [ ] [Backend Share](./backend-share.md)
-- [ ] [Backend FileVersion](./backend-file-version.md)
+- [x] [Backend FileVersion](./backend-file-version.md)
 - [x] [Backend ActivityLog](./backend-activity-log.md)
 
 ## 前端模組
@@ -66,7 +66,7 @@
 | 類別 | 完成 | 總數 |
 | --- | ---: | ---: |
 | 專案基礎 | 3 | 3 |
-| 後端模組 | 6 | 14 |
+| 後端模組 | 8 | 14 |
 | 前端模組 | 0 | 10 |
 | 整合與驗收 | 0 | 1 |
-| 合計 | 9 | 28 |
+| 合計 | 11 | 28 |

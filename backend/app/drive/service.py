@@ -101,6 +101,10 @@ class DriveService:
 
     # ── Public API ──────────────────────────────────────────────────────────
 
+    async def get_raw_item(self, user_id: UUID, item_id: UUID) -> DriveItem:
+        """Return the raw DriveItem model (ownership-checked). Used by downstream services."""
+        return await self._get_owned(item_id, user_id)
+
     async def get_item(self, user_id: UUID, item_id: UUID) -> DriveItemResponse:
         item = await self._get_owned(item_id, user_id)
         starred = await self._starred(user_id, [item])
