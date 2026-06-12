@@ -12,12 +12,12 @@
 ## 專案基礎
 
 - [x] [Project Setup 與開發環境](./project-setup.md)
-- [ ] [Database 與 Migration](./database.md)
+- [x] [Database 與 Migration](./database.md)
 - [ ] [API Contract 與共用 Schema](./api-contract.md)
 
 ## 後端模組
 
-- [ ] [Backend Core](./backend-core.md)
+- [x] [Backend Core](./backend-core.md)
 - [ ] [Backend Auth](./backend-auth.md)
 - [ ] [Backend User 與 Quota](./backend-user-quota.md)
 - [ ] [Backend Permission](./backend-permission.md)
@@ -51,7 +51,7 @@
 
 ## 建議執行順序
 
-- [ ] 第一階段：Project Setup、Backend Core、Database。
+- [x] 第一階段：Project Setup、Backend Core、Database。
 - [ ] 第二階段：Backend Auth、Frontend API Client、Frontend Auth、Frontend Routing。
 - [ ] 第三階段：Backend DriveItem、Permission、Storage、FileVersion。
 - [ ] 第四階段：Backend Upload、Download、Trash、ActivityLog。
@@ -64,8 +64,8 @@
 
 | 類別 | 完成 | 總數 |
 | --- | ---: | ---: |
-| 專案基礎 | 1 | 3 |
-| 後端模組 | 0 | 14 |
+| 專案基礎 | 2 | 3 |
+| 後端模組 | 1 | 14 |
 | 前端模組 | 0 | 10 |
 | 整合與驗收 | 0 | 1 |
-| 合計 | 1 | 28 |
+| 合計 | 3 | 28 |
