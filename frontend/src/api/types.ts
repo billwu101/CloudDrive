@@ -26,7 +26,7 @@ export interface DriveItemResponse {
   id: string
   owner_id: string
   parent_id: string | null
-  item_type: 'file' | 'folder'
+  item_type: 'FILE' | 'FOLDER'
   name: string
   mime_type: string | null
   extension: string | null
