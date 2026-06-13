@@ -94,7 +94,7 @@ class SQLDriveItemRepository(AbstractDriveItemRepository):  # pragma: no cover
             else DriveItem.parent_id.is_(None),
         )
         sort_col = self._SORT_COLUMNS.get(sort_by, DriveItem.name)
-        folder_first = case((DriveItem.item_type == "folder", 0), else_=1)
+        folder_first = case((DriveItem.item_type == "FOLDER", 0), else_=1)
         direction = asc if order == SortOrder.ASC else desc
         stmt = base.order_by(folder_first, direction(sort_col)).offset(offset).limit(limit)
         count_stmt = select(DriveItem.id).where(

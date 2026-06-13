@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 
 
 class ItemType(StrEnum):
-    FILE = "file"
-    FOLDER = "folder"
+    FILE = "FILE"
+    FOLDER = "FOLDER"
 
 
 class DriveItemSortField(StrEnum):

@@ -268,7 +268,7 @@ def upgrade() -> None:
         sa.Column(
             "metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="{}"
         ),
-        sa.Column("ip_address", postgresql.INET(), nullable=True),
+        sa.Column("ip_address", sa.String(45), nullable=True),
         sa.Column("user_agent", sa.Text, nullable=True),
         sa.Column(
             "created_at",
