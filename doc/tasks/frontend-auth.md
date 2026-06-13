@@ -41,4 +41,6 @@
 - [x] 測試登入成功寫入 store。
 - [x] 測試登入失敗顯示錯誤。
 - [x] 測試登出清除 store。
+- [x] 測試 authStore 安全不變式：access token 不寫入 localStorage/sessionStorage。
+- [x] 測試頁面重載後 token 不自動復原（無 persist middleware）。
 

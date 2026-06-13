@@ -1450,15 +1450,37 @@ ON activity_logs(item_id, created_at DESC);
 
 受保護頁面需透過 `RequireAuth` 包裝。
 
-### 9.2.1 RequireAuth
+### 9.2.1 AuthInitializer
+
+App 啟動時（`App.tsx` 最外層）執行一次 silent refresh，解決頁面重載後 access token 因 in-memory 儲存而消失的問題。
 
 責任：
 
-1. 檢查 authStore 是否有 token。
-2. 若無 token，導向 `/login`。
-3. 若有 token，載入 `/auth/me`。
-4. 若 token 失效，嘗試 refresh。
-5. refresh 失敗時清除登入狀態並導向 login。
+1. 掛載時呼叫 `POST /auth/refresh`（使用無攔截器的 `refreshClient`，防止無窮重試）。
+2. 成功 → 將 access token 寫入 `authStore`，繼續渲染 router。
+3. 失敗（cookie 不存在或過期）→ 不做任何事，讓 `RequireAuth` 導向 `/login`。
+4. 等待期間回傳 `null`，阻止 router 在結果未定前搶先重導。
+
+```tsx
+// src/app/AuthInitializer.tsx
+export function AuthInitializer({ children }) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    authApi.refresh().then(res => setToken(res.data.access_token)).catch(() => {}).finally(() => setReady(true))
+  }, [])
+  if (!ready) return null
+  return <>{children}</>
+}
+```
+
+### 9.2.2 RequireAuth
+
+責任：
+
+1. 檢查 authStore 是否有 token（`AuthInitializer` 已確保此時結果已定）。
+2. 若無 token，導向 `/login`（保留原始 location 供登入後還原）。
+3. 若有 token，渲染子路由。
+4. 若後續 API 請求收到 401，攔截器自動嘗試 refresh；refresh 失敗則 `clearToken` 並觸發下次路由守衛重導。
 
 ### 9.3 API Client 模組
 

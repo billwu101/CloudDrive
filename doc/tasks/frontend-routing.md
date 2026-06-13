@@ -26,6 +26,15 @@
 - [x] 路由切換時關閉 context menu。
 - [x] 路由切換時更新頁面標題。
 
+## Silent Refresh（頁面重載保持登入）
+
+- [x] 建立 `src/app/AuthInitializer.tsx`。
+- [x] App 啟動時呼叫 `POST /auth/refresh`，refresh token cookie 有效則恢復 access token。
+- [x] refresh 期間回傳 `null`（空白），避免 `RequireAuth` 搶先重導至 `/login`。
+- [x] refresh 失敗（cookie 不存在或過期）→ 正常走 `/login` 流程。
+- [x] 使用無攔截器的 `refreshClient` 防止無窮重試。
+- [x] `<AuthInitializer>` 包住 `<RouterProvider>`（在 `<QueryClientProvider>` 內）。
+
 ## 測試任務
 
 - [x] 測試未登入不能進入 `/drive`。

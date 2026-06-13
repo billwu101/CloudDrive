@@ -401,6 +401,7 @@ chore: complete cloud drive implementation
 - Axios 使用 `withCredentials: true`。
 - Access token 只存在記憶體。
 - 401 refresh 流程使用 HttpOnly cookie。
+- 建立 `src/app/AuthInitializer.tsx`：App 啟動時執行 silent refresh，refresh token cookie 有效時不需重新登入。使用無攔截器的 `refreshClient`；等待期間回傳 `null` 阻擋 router。
 
 完成後執行前端 lint、typecheck、test 與 build，提交 Stage 7。
 
@@ -503,7 +504,7 @@ chore: complete cloud drive implementation
 | frontend-layout | app shell、sidebar、topbar、uiStore |
 | frontend-auth | auth pages/store/hooks/API binding/tests |
 | frontend-drive | drive pages/components/hooks/API binding/tests |
-| frontend-routing | router、route guards、404/tests |
+| frontend-routing | router、route guards、AuthInitializer、404/tests |
 | frontend-upload | upload store/components/hooks/API binding/tests |
 | frontend-preview | preview components/hooks/API binding/tests |
 | frontend-trash | trash page/components/hooks/API binding/tests |
