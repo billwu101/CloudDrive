@@ -13,7 +13,6 @@ import { FileTable } from '@/components/drive/FileTable'
 import { MoveDialog } from '@/components/drive/MoveDialog'
 import { RenameDialog } from '@/components/drive/RenameDialog'
 import { PreviewDialog } from '@/components/preview/PreviewDialog'
-import { UploadButton } from '@/components/upload/UploadButton'
 import { UploadDropzone } from '@/components/upload/UploadDropzone'
 import { UploadQueue } from '@/components/upload/UploadQueue'
 import { useCreateFolder, useDriveItems, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
@@ -98,11 +97,9 @@ export function DrivePage() {
           <div className="flex items-center gap-2">
             <DriveToolbar
               selectedCount={selectedIds.size}
-              onUpload={() => {}}
               onNewFolder={() => setShowCreateFolder(true)}
               onTrashSelected={handleTrashSelected}
             />
-            <UploadButton onFiles={upload} />
           </div>
         </div>
 

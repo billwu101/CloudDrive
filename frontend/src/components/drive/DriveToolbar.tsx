@@ -1,23 +1,14 @@
-import { FolderPlus, Trash2, Upload } from 'lucide-react'
+import { FolderPlus, Trash2 } from 'lucide-react'
 
 interface DriveToolbarProps {
   selectedCount: number
-  onUpload: () => void
   onNewFolder: () => void
   onTrashSelected: () => void
 }
 
-export function DriveToolbar({ selectedCount, onUpload, onNewFolder, onTrashSelected }: DriveToolbarProps) {
+export function DriveToolbar({ selectedCount, onNewFolder, onTrashSelected }: DriveToolbarProps) {
   return (
     <div className="flex items-center gap-2">
-      <button
-        onClick={onUpload}
-        className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Upload className="size-4" aria-hidden="true" />
-        Upload
-      </button>
-
       <button
         onClick={onNewFolder}
         className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
