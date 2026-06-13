@@ -35,9 +35,9 @@
 ## 前端模組
 
 - [ ] [Frontend Routing](./frontend-routing.md)
-- [ ] [Frontend API Client](./frontend-api-client.md)
+- [x] [Frontend API Client](./frontend-api-client.md)
 - [ ] [Frontend Auth](./frontend-auth.md)
-- [ ] [Frontend Layout](./frontend-layout.md)
+- [x] [Frontend Layout](./frontend-layout.md)
 - [ ] [Frontend Drive](./frontend-drive.md)
 - [ ] [Frontend Upload](./frontend-upload.md)
 - [ ] [Frontend Preview](./frontend-preview.md)
@@ -55,7 +55,7 @@
 - [x] 第二階段：API Contract、Backend Auth、Backend Storage。
 - [x] 第三階段：Backend DriveItem、ActivityLog、User Quota。（Permission、FileVersion 移至第四階段）
 - [x] 第四階段：Backend Upload、Download、Preview、Trash、Search、Share。
-- [ ] 第五階段：Frontend API Client、Frontend Layout。
+- [x] 第五階段：Frontend API Client、Frontend Layout。
 - [ ] 第六階段：Frontend Auth、Frontend Drive。
 - [ ] 第七階段：Frontend Routing、Upload、Preview。
 - [ ] 第八階段：Frontend Trash、Search、Share。
@@ -67,6 +67,6 @@
 | --- | ---: | ---: |
 | 專案基礎 | 3 | 3 |
 | 後端模組 | 14 | 14 |
-| 前端模組 | 0 | 10 |
+| 前端模組 | 2 | 10 |
 | 整合與驗收 | 0 | 1 |
-| 合計 | 17 | 28 |
+| 合計 | 19 | 28 |
