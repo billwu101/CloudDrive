@@ -1294,6 +1294,64 @@ volumes:
 6. 另一位使用者開啟分享檔案。
 7. 刪除檔案並從垃圾桶還原。
 
+### 24.4 回歸防護測試（補充，2026-06-14）
+
+根據測試空白分析，以下三個區域缺乏保護，新增功能時容易造成無聲回歸，已補充對應測試：
+
+#### 後端 Router 層 HTTP 狀態碼轉換
+
+Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Service 拋出的例外轉換為正確 HTTP 狀態碼。若 Router 漏接例外或錯誤使用 `status_code`，單元測試不會捕捉到。
+
+補充項目：
+
+| 檔案 | 端點覆蓋 |
+| --- | --- |
+| `tests/upload/test_router.py` | POST /upload/simple 201、未驗證 403、parent 不存在 404、quota 超出 413、parent_id 傳遞 |
+| `tests/trash/test_router.py` | 移到垃圾桶 200、列表 200、還原 200、永久刪除 204、清空 204，各端點未驗證 403 |
+| `tests/search/test_router.py` | 搜尋成功 200、空結果 200、未驗證 403、缺少 q 422、過濾參數傳遞 |
+| `tests/share/test_router.py` | 分享 201/403/404、移除分享 204/403、shared-with-me 200/403、建立連結 201/403、驗證連結 200/404、停用連結 204/403 |
+
+#### 後端整合：版本紀錄不變式
+
+每次上傳必須自動建立版本記錄（`file_versions.version_no = 1`）。若 upload service 的版本建立邏輯被重構，整合測試才能抓到回歸。
+
+補充項目：
+
+| 檔案 | 覆蓋內容 |
+| --- | --- |
+| `tests/integration/test_file_version_flow.py` | 上傳自動產生 v1、size_bytes 正確記錄、未驗證 403、非擁有者無分享不能列版本、viewer 可列版本、兩次上傳同名各自有獨立 v1 |
+
+#### 前端 Store 安全不變式
+
+`authStore` 持有 access token，但沒有測試確保 token 只在記憶體中。若未來有人誤加了 `localStorage.setItem`，現有測試不會報錯。
+
+補充項目：
+
+| 檔案 | 覆蓋內容 |
+| --- | --- |
+| `src/stores/authStore.test.ts` | 初始狀態 null、setToken/clearToken/clearAuth/setUser 狀態轉換、setToken 不寫入 localStorage 或 sessionStorage |
+
+#### 前端元件行為
+
+DriveToolbar 與 FileTable 是核心互動元件，但沒有對應元件測試。若 props 介面變更或條件渲染邏輯改變，目前沒有任何測試能捕捉。
+
+補充項目：
+
+| 檔案 | 覆蓋內容 |
+| --- | --- |
+| `src/components/drive/DriveToolbar.test.tsx` | New Folder 永遠可見、Trash 按鈕僅在 selectedCount > 0 時出現、顯示正確數量、click handler 呼叫 |
+| `src/components/drive/FileTable.test.tsx` | 渲染所有項目名稱、空陣列不渲染資料列、onItemClick/onItemDoubleClick 傳入正確項目 |
+
+#### 前端 E2E 分享完整流程
+
+目前 E2E 完全沒有覆蓋分享功能。分享涉及兩個使用者帳號、跨頁面操作，是最容易在前後端整合時出問題的流程。
+
+補充項目：
+
+| 檔案 | 覆蓋內容 |
+| --- | --- |
+| `e2e/share.spec.ts` | 分享後對方在 shared-with-me 看到、移除分享後對方看不到、建立公開連結後連結出現在對話框 |
+
 ## 25. 開發里程碑
 
 ### 25.1 第一週：專案基礎
