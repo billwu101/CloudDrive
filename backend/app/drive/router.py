@@ -138,6 +138,19 @@ async def star_item(
 
 
 @router.get(
+    "/items/{item_id}/ancestors",
+    response_model=list[DriveItemResponse],
+    summary="Get ancestor folders for a drive item (ordered root → direct parent)",
+)
+async def get_ancestors(
+    item_id: UUID,
+    current_user_id: CurrentUserId,
+    service: DriveServiceDep,
+) -> list[DriveItemResponse]:
+    return await service.get_ancestors(current_user_id, item_id)
+
+
+@router.get(
     "/recent",
     response_model=list[DriveItemResponse],
     summary="Get recently accessed drive items",

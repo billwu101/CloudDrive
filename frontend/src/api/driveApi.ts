@@ -17,6 +17,12 @@ export const driveApi = {
   listItems: ({ signal, ...params }: ListItemsParams = {}) =>
     api.get<Page<DriveItemResponse>>('/drive/items', { params, signal }),
 
+  getItem: (item_id: string, signal?: AbortSignal) =>
+    api.get<DriveItemResponse>(`/drive/items/${item_id}`, { signal }),
+
+  getAncestors: (item_id: string, signal?: AbortSignal) =>
+    api.get<DriveItemResponse[]>(`/drive/items/${item_id}/ancestors`, { signal }),
+
   createFolder: (name: string, parent_id?: string) =>
     api.post<DriveItemResponse>('/drive/folders', { name, parent_id }),
 

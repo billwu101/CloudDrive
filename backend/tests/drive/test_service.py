@@ -478,3 +478,50 @@ class TestGetRecent:
         svc = _svc()
         results = await svc.get_recent(user)
         assert results == []
+
+
+# ── get_ancestors ─────────────────────────────────────────────────────────────
+
+
+class TestGetAncestors:
+    async def test_root_item_returns_empty(self) -> None:
+        user = uuid4()
+        item = _item(owner_id=user, name="docs", parent_id=None)
+        svc = _svc([item])
+        result = await svc.get_ancestors(user, item.id)
+        assert result == []
+
+    async def test_one_level_deep_returns_parent(self) -> None:
+        user = uuid4()
+        root = _item(owner_id=user, name="Root")
+        child = _item(owner_id=user, name="Child", parent_id=root.id)
+        svc = _svc([root, child])
+        result = await svc.get_ancestors(user, child.id)
+        assert len(result) == 1
+        assert result[0].id == root.id
+        assert result[0].name == "Root"
+
+    async def test_two_levels_deep_ordered_root_first(self) -> None:
+        user = uuid4()
+        root = _item(owner_id=user, name="A")
+        mid = _item(owner_id=user, name="B", parent_id=root.id)
+        leaf = _item(owner_id=user, name="C", parent_id=mid.id)
+        svc = _svc([root, mid, leaf])
+        result = await svc.get_ancestors(user, leaf.id)
+        assert len(result) == 2
+        assert result[0].name == "A"
+        assert result[1].name == "B"
+
+    async def test_not_owned_raises_forbidden(self) -> None:
+        owner = uuid4()
+        other = uuid4()
+        item = _item(owner_id=owner, name="secret")
+        svc = _svc([item])
+        with pytest.raises(ForbiddenError):
+            await svc.get_ancestors(other, item.id)
+
+    async def test_not_found_raises(self) -> None:
+        user = uuid4()
+        svc = _svc()
+        with pytest.raises(NotFoundError):
+            await svc.get_ancestors(user, uuid4())

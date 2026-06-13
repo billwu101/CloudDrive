@@ -203,3 +203,40 @@ async def test_get_recent(user_id: UUID, headers: dict[str, str]) -> None:
         resp = await c.get("/drive/recent", headers=headers)
     assert resp.status_code == 200
     assert len(resp.json()) == 3
+
+
+# ── GET /drive/items/{id}/ancestors ──────────────────────────────────────────
+
+
+async def test_get_ancestors_returns_list(user_id: UUID, headers: dict[str, str]) -> None:
+    ancestors = [_resp(owner_id=user_id, name="Root"), _resp(owner_id=user_id, name="Sub")]
+    svc = AsyncMock(spec=DriveService)
+    svc.get_ancestors.return_value = ancestors
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get(f"/drive/items/{uuid4()}/ancestors", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 2
+    assert body[0]["name"] == "Root"
+    assert body[1]["name"] == "Sub"
+
+
+async def test_get_ancestors_requires_auth() -> None:
+    svc = AsyncMock(spec=DriveService)
+    app = _make_app(svc, uuid4())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get(f"/drive/items/{uuid4()}/ancestors")
+    assert resp.status_code in (401, 403)
+
+
+async def test_get_ancestors_root_item_returns_empty(
+    user_id: UUID, headers: dict[str, str]
+) -> None:
+    svc = AsyncMock(spec=DriveService)
+    svc.get_ancestors.return_value = []
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get(f"/drive/items/{uuid4()}/ancestors", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == []

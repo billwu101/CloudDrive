@@ -1,4 +1,4 @@
-import { FolderOpen } from 'lucide-react'
+import { ArrowLeft, FolderOpen } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -16,7 +16,7 @@ import { PreviewDialog } from '@/components/preview/PreviewDialog'
 import { UploadButton } from '@/components/upload/UploadButton'
 import { UploadDropzone } from '@/components/upload/UploadDropzone'
 import { UploadQueue } from '@/components/upload/UploadQueue'
-import { useCreateFolder, useDriveItems, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
+import { useCreateFolder, useDriveItems, useFolderAncestors, useFolderItem, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
 import { useUploadFiles } from '@/hooks/useUpload'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -35,6 +35,8 @@ export function DrivePage() {
   const clearSelection = useUIStore((s) => s.clearSelection)
 
   const { data, isLoading } = useDriveItems(folderId)
+  const { data: folderItem } = useFolderItem(folderId)
+  const { data: ancestorsData } = useFolderAncestors(folderId)
   const createFolder = useCreateFolder(folderId)
   const rename = useRenameItem(folderId)
   const move = useMoveItem()
@@ -50,7 +52,18 @@ export function DrivePage() {
   const [previewItemId, setPreviewItemId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
-  const ancestors: BreadcrumbItem[] = []
+  const ancestors: BreadcrumbItem[] = (ancestorsData ?? []).map((a) => ({ id: a.id, name: a.name }))
+  const currentFolderName = folderItem?.name
+
+  const handleBack = useCallback(() => {
+    if (!folderId) return
+    const parentId = folderItem?.parent_id
+    if (parentId) {
+      navigate(`/drive/folder/${parentId}`)
+    } else {
+      navigate('/drive')
+    }
+  }, [folderId, folderItem?.parent_id, navigate])
 
   const handleDoubleClick = useCallback(
     (item: DriveItemResponse) => {
@@ -94,7 +107,18 @@ export function DrivePage() {
     <UploadDropzone onFiles={upload}>
       <div className="flex h-full flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Breadcrumbs ancestors={ancestors} current={undefined} />
+          <div className="flex min-w-0 items-center gap-2">
+            {folderId && (
+              <button
+                onClick={handleBack}
+                aria-label="Go to parent folder"
+                className="flex shrink-0 items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <ArrowLeft className="size-4" aria-hidden="true" />
+              </button>
+            )}
+            <Breadcrumbs ancestors={ancestors} current={currentFolderName} />
+          </div>
           <div className="flex items-center gap-2">
             <UploadButton onFiles={upload} />
             <DriveToolbar

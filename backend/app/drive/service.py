@@ -227,6 +227,25 @@ class DriveService:
         await self._log(actor_id=user_id, action=ActivityAction.STAR, item_id=item_id)
         return _to_response(item, is_starred=is_starred)
 
+    async def get_ancestors(self, user_id: UUID, item_id: UUID) -> list[DriveItemResponse]:
+        """Return [root_folder, ..., direct_parent] for item_id. Current item excluded."""
+        item = await self._get_owned(item_id, user_id)
+        chain: list[DriveItem] = []
+        current_parent_id = item.parent_id
+        seen: set[UUID] = set()
+        while current_parent_id is not None:
+            if current_parent_id in seen:
+                break
+            seen.add(current_parent_id)
+            parent = await self._items.get_by_id(current_parent_id)
+            if parent is None:
+                break
+            chain.append(parent)
+            current_parent_id = parent.parent_id
+        chain.reverse()
+        starred = await self._starred(user_id, chain) if chain else set()
+        return [_to_response(a, is_starred=a.id in starred) for a in chain]
+
     async def get_recent(
         self,
         user_id: UUID,

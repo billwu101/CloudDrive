@@ -8,8 +8,26 @@ export { type SortField, type SortOrder }
 
 export const driveKeys = {
   items: (parentId?: string) => ['drive', 'items', parentId ?? 'root'] as const,
+  item: (id: string) => ['drive', 'item', id] as const,
+  ancestors: (id: string) => ['drive', 'ancestors', id] as const,
   recent: () => ['drive', 'recent'] as const,
   starred: () => ['drive', 'starred'] as const,
+}
+
+export function useFolderItem(folderId?: string) {
+  return useQuery({
+    queryKey: driveKeys.item(folderId ?? ''),
+    queryFn: ({ signal }) => driveApi.getItem(folderId!, signal).then((r) => r.data),
+    enabled: !!folderId,
+  })
+}
+
+export function useFolderAncestors(folderId?: string) {
+  return useQuery({
+    queryKey: driveKeys.ancestors(folderId ?? ''),
+    queryFn: ({ signal }) => driveApi.getAncestors(folderId!, signal).then((r) => r.data),
+    enabled: !!folderId,
+  })
 }
 
 export function useDriveItems(parentId?: string, sortBy?: SortField, order?: SortOrder) {

@@ -1,5 +1,4 @@
-import { render, screen } from '@testing-library/react'
-import { cleanup } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { useAuthStore } from '@/stores/authStore'
@@ -12,8 +11,13 @@ afterEach(() => {
 })
 
 describe('App routing', () => {
-  it('redirects unauthenticated users to /login', () => {
+  // AuthInitializer attempts POST /auth/refresh on mount before rendering the
+  // router. The MSW default handler returns 401, so we must wait for the
+  // refresh to settle before the login page becomes visible.
+  it('redirects unauthenticated users to /login', async () => {
     render(<App />)
-    expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    })
   })
 })
