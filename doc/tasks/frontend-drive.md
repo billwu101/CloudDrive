@@ -1,5 +1,12 @@
 # Frontend Drive 模組任務
 
+## Breadcrumb 路徑導覽與返回按鈕
+
+- [x] 新增 `driveApi.getItem(item_id)` 及 `driveApi.getAncestors(item_id)`。
+- [x] 新增 `useFolderItem(folderId)` 和 `useFolderAncestors(folderId)` hooks。
+- [x] DrivePage 用以上 hooks 讓 `Breadcrumbs` 顯示真實 pwd 路徑，各層名稱可點擊跳轉。
+- [x] 進入子資料夾時顯示 ArrowLeft 返回按鈕，點擊返回直接父層（或根目錄）。
+
 ## 完成定義
 
 - 可瀏覽根目錄與子資料夾。

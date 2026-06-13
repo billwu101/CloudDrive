@@ -453,6 +453,15 @@ class DriveService:
         page: int,
         page_size: int,
     ) -> Page[DriveItem]
+
+    async def get_ancestors(
+        self,
+        user_id: UUID,
+        item_id: UUID,
+    ) -> list[DriveItemResponse]
+    # Returns ordered [root_folder, ..., direct_parent]; current item excluded.
+    # Walks parent_id chain upward; cycle-safe via seen-set guard.
+    # Endpoint: GET /api/v1/drive/items/{item_id}/ancestors
 ```
 
 ### 6.4.3 Repository 介面
@@ -1626,6 +1635,8 @@ ConfirmTrashDialog
 
 ```ts
 useDriveItems(parentId, sort, order, page, pageSize)
+useFolderItem(folderId)      // GET /drive/items/{id} — current folder's metadata
+useFolderAncestors(folderId) // GET /drive/items/{id}/ancestors — ordered [root → parent]
 useCreateFolder()
 useRenameItem()
 useMoveItem()
@@ -1634,14 +1645,16 @@ useMoveToTrash()
 useRecentItems()
 ```
 
+`useFolderItem` + `useFolderAncestors` 一起驅動 DrivePage 的 Breadcrumbs 元件，並提供 ArrowLeft 返回按鈕所需的 `parent_id`。
+
 ### 9.6.4 Query Key 設計
 
 ```ts
-["drive-items", parentId, sort, order, page, pageSize]
-["recent-items", page, pageSize]
-["starred-items", page, pageSize]
-["trash-items", page, pageSize]
-["shared-with-me", page, pageSize]
+["drive", "items", parentId]         // folder contents
+["drive", "item", id]                // single item metadata
+["drive", "ancestors", id]           // ancestor chain for breadcrumbs
+["drive", "recent"]
+["drive", "starred"]
 ```
 
 ### 9.6.5 更新策略
