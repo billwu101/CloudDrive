@@ -34,13 +34,13 @@
 
 ## 前端模組
 
-- [ ] [Frontend Routing](./frontend-routing.md)
+- [x] [Frontend Routing](./frontend-routing.md)
 - [x] [Frontend API Client](./frontend-api-client.md)
 - [x] [Frontend Auth](./frontend-auth.md)
 - [x] [Frontend Layout](./frontend-layout.md)
 - [x] [Frontend Drive](./frontend-drive.md)
-- [ ] [Frontend Upload](./frontend-upload.md)
-- [ ] [Frontend Preview](./frontend-preview.md)
+- [x] [Frontend Upload](./frontend-upload.md)
+- [x] [Frontend Preview](./frontend-preview.md)
 - [ ] [Frontend Share](./frontend-share.md)
 - [ ] [Frontend Trash](./frontend-trash.md)
 - [ ] [Frontend Search](./frontend-search.md)
@@ -57,7 +57,7 @@
 - [x] 第四階段：Backend Upload、Download、Preview、Trash、Search、Share。
 - [x] 第五階段：Frontend API Client、Frontend Layout。
 - [x] 第六階段：Frontend Auth、Frontend Drive。
-- [ ] 第七階段：Frontend Routing、Upload、Preview。
+- [x] 第七階段：Frontend Routing、Upload、Preview。
 - [ ] 第八階段：Frontend Trash、Search、Share。
 - [ ] 第九階段：Integration、E2E 與驗收。
 
@@ -67,6 +67,6 @@
 | --- | ---: | ---: |
 | 專案基礎 | 3 | 3 |
 | 後端模組 | 14 | 14 |
-| 前端模組 | 4 | 10 |
+| 前端模組 | 7 | 10 |
 | 整合與驗收 | 0 | 1 |
-| 合計 | 21 | 28 |
+| 合計 | 24 | 28 |
