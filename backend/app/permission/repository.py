@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.share import Share
@@ -12,6 +12,9 @@ from app.models.share import Share
 class AbstractShareRepository(ABC):
     @abstractmethod
     async def get_by_item_and_user(self, item_id: UUID, user_id: UUID) -> Share | None: ...
+
+    @abstractmethod
+    async def delete_by_item(self, item_id: UUID) -> None: ...
 
 
 class SQLShareRepository(AbstractShareRepository):  # pragma: no cover
@@ -26,3 +29,7 @@ class SQLShareRepository(AbstractShareRepository):  # pragma: no cover
             )
         )
         return result.scalar_one_or_none()
+
+    async def delete_by_item(self, item_id: UUID) -> None:
+        await self._session.execute(delete(Share).where(Share.item_id == item_id))
+        await self._session.flush()

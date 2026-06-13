@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import IO

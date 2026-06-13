@@ -26,9 +26,9 @@
 - [x] [Backend Upload](./backend-upload.md)
 - [x] [Backend Download](./backend-download.md)
 - [x] [Backend Preview](./backend-preview.md)
-- [ ] [Backend Trash](./backend-trash.md)
-- [ ] [Backend Search](./backend-search.md)
-- [ ] [Backend Share](./backend-share.md)
+- [x] [Backend Trash](./backend-trash.md)
+- [x] [Backend Search](./backend-search.md)
+- [x] [Backend Share](./backend-share.md)
 - [x] [Backend FileVersion](./backend-file-version.md)
 - [x] [Backend ActivityLog](./backend-activity-log.md)
 
@@ -54,7 +54,7 @@
 - [x] 第一階段：Project Setup、Backend Core、Database。
 - [x] 第二階段：API Contract、Backend Auth、Backend Storage。
 - [x] 第三階段：Backend DriveItem、ActivityLog、User Quota。（Permission、FileVersion 移至第四階段）
-- [ ] 第四階段：Backend Upload、Download、Preview、Trash、Search、Share。
+- [x] 第四階段：Backend Upload、Download、Preview、Trash、Search、Share。
 - [ ] 第五階段：Frontend API Client、Frontend Layout。
 - [ ] 第六階段：Frontend Auth、Frontend Drive。
 - [ ] 第七階段：Frontend Routing、Upload、Preview。
@@ -66,7 +66,7 @@
 | 類別 | 完成 | 總數 |
 | --- | ---: | ---: |
 | 專案基礎 | 3 | 3 |
-| 後端模組 | 11 | 14 |
+| 後端模組 | 14 | 14 |
 | 前端模組 | 0 | 10 |
 | 整合與驗收 | 0 | 1 |
-| 合計 | 14 | 28 |
+| 合計 | 17 | 28 |

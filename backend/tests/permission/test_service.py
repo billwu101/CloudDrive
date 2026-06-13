@@ -61,13 +61,16 @@ def _share(item_id: UUID, target_user_id: UUID, permission: Permission) -> Share
 
 class MemShareRepo(AbstractShareRepository):
     def __init__(self, shares: list[Share] | None = None) -> None:
-        self._shares = shares or []
+        self._shares: list[Share] = shares or []
 
     async def get_by_item_and_user(self, item_id: UUID, user_id: UUID) -> Share | None:
         return next(
             (s for s in self._shares if s.item_id == item_id and s.target_user_id == user_id),
             None,
         )
+
+    async def delete_by_item(self, item_id: UUID) -> None:
+        self._shares = [s for s in self._shares if s.item_id != item_id]
 
 
 class MemItemRepo(AbstractDriveItemRepository):
