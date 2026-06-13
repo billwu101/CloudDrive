@@ -18,7 +18,7 @@ export const api = axios.create({
 })
 
 /** Separate client for refresh calls — no interceptors, prevents infinite loops. */
-const refreshClient = axios.create({
+export const refreshClient = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
   adapter: 'fetch',

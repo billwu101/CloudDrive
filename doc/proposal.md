@@ -1594,7 +1594,45 @@ class DriveItemResponse(BaseModel):
 16. 分片上傳。
 17. 測試與部署。
 
-## 32. 結論
+## 32. 頁面重新整理後維持登入狀態（Silent Refresh）
+
+### 32.1 問題背景
+
+Access token 依安全規範只存在前端記憶體（Zustand store），不寫入 localStorage 或 sessionStorage。使用者重新整理瀏覽器後，Zustand 狀態歸零，`RequireAuth` 發現 `accessToken === null` 就立刻重導至 `/login`，即使 refresh token cookie 仍然有效。
+
+### 32.2 解法：App 啟動時執行 Silent Refresh
+
+在 React tree 的最頂層加入 `AuthInitializer` 元件，app 掛載時呼叫 `POST /auth/refresh` 一次：
+
+- 成功 → 將新 access token 寫入 Zustand store → router 看到已認證狀態 → 直接渲染目標頁面
+- 失敗（cookie 不存在或已過期）→ 不做任何事 → router 將使用者導向 `/login`（正常登出或 session 過期行為）
+- 等待期間 → `AuthInitializer` 回傳 `null`（空白畫面），不讓 `RequireAuth` 在 refresh 結束前搶先重導
+
+### 32.3 實作要點
+
+| 項目 | 說明 |
+|---|---|
+| 使用 `refreshClient` | Silent refresh 必須使用不帶攔截器的獨立 Axios instance，避免 401 → refresh → 401 的無窮迴圈 |
+| 元件位置 | `<AuthInitializer>` 包住 `<RouterProvider>`，在 `<QueryClientProvider>` 內（可使用 React Query） |
+| 等待行為 | `ready` 狀態預設 `false`，`.finally()` 後設為 `true`，確保無論成功或失敗都解除阻擋 |
+| 安全不變式 | Access token 仍只存在記憶體，silent refresh 不改變 refresh token 的儲存位置（HttpOnly cookie） |
+
+### 32.4 登出與 Session 過期
+
+- 明確登出：呼叫 `POST /auth/logout` → 後端撤銷 refresh token 並清除 cookie → 下次 silent refresh 失敗 → 導向 `/login`
+- Session 過期（refresh token TTL 到期）：cookie 已失效 → silent refresh 返回 401 → 導向 `/login`
+- 這兩種情境均不需前端額外處理，已由現有流程覆蓋
+
+### 32.5 相關檔案
+
+| 檔案 | 變更 |
+|---|---|
+| `frontend/src/app/AuthInitializer.tsx` | 新增；執行 silent refresh，阻擋 router 至 refresh 完成 |
+| `frontend/src/App.tsx` | 用 `<AuthInitializer>` 包住 `<RouterProvider>` |
+| `frontend/src/api/authApi.ts` | 新增 `authApi.refresh()` 使用 `refreshClient` |
+| `frontend/src/api/client.ts` | 將 `refreshClient` 改為具名匯出（`export const`） |
+
+## 33. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 

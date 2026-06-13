@@ -1,9 +1,12 @@
 import type { CurrentUserResponse, QuotaResponse, TokenPairResponse } from './types'
-import { api } from './client'
+import { api, refreshClient } from './client'
 
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<TokenPairResponse>('/auth/login', { email, password }),
+
+  refresh: () =>
+    refreshClient.post<{ access_token: string }>('/auth/refresh'),
 
   register: (email: string, username: string, password: string) =>
     api.post<TokenPairResponse>('/auth/register', { email, username, password }),
