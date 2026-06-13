@@ -8,43 +8,43 @@
 
 ## 最小可執行任務
 
-- [ ] 建立 upload schemas。
-- [ ] 建立 `UploadService`。
-- [ ] 驗證 UploadFile 檔名。
-- [ ] 驗證 UploadFile 大小。
-- [ ] 驗證 parent folder 存在。
-- [ ] 驗證 parent item type 是 folder。
-- [ ] 呼叫 PermissionService 檢查寫入權限。
-- [ ] 呼叫 QuotaService 檢查容量。
-- [ ] 產生安全 storage key。
-- [ ] 實作同名檔案自動改名。
-- [ ] 呼叫 StorageProvider 儲存檔案。
-- [ ] 建立 file 類型 DriveItem。
-- [ ] 寫入 MIME type。
-- [ ] 寫入 extension。
-- [ ] 寫入 size bytes。
-- [ ] 計算並寫入 SHA-256 checksum。
-- [ ] 建立 FileVersion v1。
-- [ ] 增加使用者 used bytes。
-- [ ] 寫入 upload activity log。
-- [ ] 實作 DB 失敗時刪除已寫入檔案。
-- [ ] 建立 upload router。
-- [ ] 實作 `POST /upload/simple`。
-- [ ] 回傳 DriveItemResponse。
-- [ ] 定義 UploadSessionService interface。
-- [ ] 不啟用分片上傳 endpoint。
+- [x] 建立 upload schemas。
+- [x] 建立 `UploadService`。
+- [x] 驗證 UploadFile 檔名。
+- [x] 驗證 UploadFile 大小。
+- [x] 驗證 parent folder 存在。
+- [x] 驗證 parent item type 是 folder。
+- [x] 呼叫 PermissionService 檢查寫入權限。
+- [x] 呼叫 QuotaService 檢查容量。
+- [x] 產生安全 storage key。
+- [x] 實作同名檔案自動改名。
+- [x] 呼叫 StorageProvider 儲存檔案。
+- [x] 建立 file 類型 DriveItem。
+- [x] 寫入 MIME type。
+- [x] 寫入 extension。
+- [x] 寫入 size bytes。
+- [x] 計算並寫入 SHA-256 checksum。
+- [x] 建立 FileVersion v1。
+- [x] 增加使用者 used bytes。
+- [x] 寫入 upload activity log。
+- [x] 實作 DB 失敗時刪除已寫入檔案。
+- [x] 建立 upload router。
+- [x] 實作 `POST /upload/simple`。
+- [x] 回傳 DriveItemResponse。
+- [x] 定義 UploadSessionService interface。
+- [x] 不啟用分片上傳 endpoint。
 
 ## 測試任務
 
-- [ ] 測試上傳成功。
-- [ ] 測試建立 DriveItem。
-- [ ] 測試建立 FileVersion v1。
-- [ ] 測試增加容量。
-- [ ] 測試容量不足。
-- [ ] 測試 parent 不存在。
-- [ ] 測試 parent 不是 folder。
-- [ ] 測試無權限上傳。
-- [ ] 測試同名檔案自動改名。
-- [ ] 測試 storage 失敗不建立 DB 資料。
-- [ ] 測試 DB 失敗清除 storage 檔案。
+- [x] 測試上傳成功。
+- [x] 測試建立 DriveItem。
+- [x] 測試建立 FileVersion v1。
+- [x] 測試增加容量。
+- [x] 測試容量不足。
+- [x] 測試 parent 不存在。
+- [x] 測試 parent 不是 folder。
+- [x] 測試無權限上傳。
+- [x] 測試同名檔案自動改名。
+- [x] 測試 storage 失敗不建立 DB 資料。
+- [x] 測試 DB 失敗清除 storage 檔案。
 

@@ -8,37 +8,37 @@
 
 ## 最小可執行任務
 
-- [ ] 建立 Share TypeScript types。
-- [ ] 建立 SharedWithMePage。
-- [ ] 建立 `useSharedWithMe` query。
-- [ ] 建立 `useShareWithUser` mutation。
-- [ ] 建立 `useUpdateUserShare` mutation。
-- [ ] 建立 `useRemoveUserShare` mutation。
-- [ ] 建立 ShareDialog。
-- [ ] 建立 UserShareForm。
-- [ ] 建立 PermissionSelect。
-- [ ] 建立 ShareMemberList。
-- [ ] 使用 Zod 驗證 email。
-- [ ] 驗證 permission 值。
-- [ ] 顯示分享成功狀態。
-- [ ] 顯示分享錯誤。
-- [ ] 移除分享前顯示確認。
-- [ ] 建立 ShareLinkPanel。
-- [ ] 建立 `useCreateShareLink` mutation。
-- [ ] 加入可選密碼欄位。
-- [ ] 加入可選到期時間欄位。
-- [ ] 建立複製連結按鈕。
-- [ ] 顯示連結已複製狀態。
-- [ ] 建立停用連結操作。
+- [x] 建立 Share TypeScript types。
+- [x] 建立 SharedWithMePage。
+- [x] 建立 `useSharedWithMe` query。
+- [x] 建立 `useShareWithUser` mutation。
+- [x] 建立 `useUpdateUserShare` mutation。
+- [x] 建立 `useRemoveUserShare` mutation。
+- [x] 建立 ShareDialog。
+- [x] 建立 UserShareForm。
+- [x] 建立 PermissionSelect。
+- [x] 建立 ShareMemberList。
+- [x] 使用 Zod 驗證 email。
+- [x] 驗證 permission 值。
+- [x] 顯示分享成功狀態。
+- [x] 顯示分享錯誤。
+- [x] 移除分享前顯示確認。
+- [x] 建立 ShareLinkPanel。
+- [x] 建立 `useCreateShareLink` mutation。
+- [x] 加入可選密碼欄位。
+- [x] 加入可選到期時間欄位。
+- [x] 建立複製連結按鈕。
+- [x] 顯示連結已複製狀態。
+- [x] 建立停用連結操作。
 
 ## 測試任務
 
-- [ ] 測試 email 驗證。
-- [ ] 測試 permission 選擇。
-- [ ] 測試指定使用者分享。
-- [ ] 測試更新權限。
-- [ ] 測試移除分享。
-- [ ] 測試 shared-with-me 列表。
-- [ ] 測試建立公開連結。
-- [ ] 測試複製公開連結。
+- [x] 測試 email 驗證。
+- [x] 測試 permission 選擇。
+- [x] 測試指定使用者分享。
+- [x] 測試更新權限。
+- [x] 測試移除分享。
+- [x] 測試 shared-with-me 列表。
+- [x] 測試建立公開連結。
+- [x] 測試複製公開連結。
 

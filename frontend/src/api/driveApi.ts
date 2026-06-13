@@ -18,19 +18,19 @@ export const driveApi = {
     api.get<Page<DriveItemResponse>>('/drive/items', { params, signal }),
 
   createFolder: (name: string, parent_id?: string) =>
-    api.post<DriveItemResponse>('/drive/items/folders', { name, parent_id }),
+    api.post<DriveItemResponse>('/drive/folders', { name, parent_id }),
 
   rename: (item_id: string, name: string) =>
-    api.patch<DriveItemResponse>(`/drive/items/${item_id}/rename`, { name }),
+    api.patch<DriveItemResponse>(`/drive/items/${item_id}/name`, { name }),
 
   move: (item_id: string, parent_id: string | null) =>
-    api.patch<DriveItemResponse>(`/drive/items/${item_id}/move`, { parent_id }),
+    api.patch<DriveItemResponse>(`/drive/items/${item_id}/parent`, { parent_id }),
 
   star: (item_id: string, is_starred: boolean) =>
-    api.patch<DriveItemResponse>(`/drive/items/${item_id}/star`, { is_starred }),
+    api.put<DriveItemResponse>(`/drive/items/${item_id}/star`, { is_starred }),
 
   getRecent: (limit = 20, signal?: AbortSignal) =>
-    api.get<DriveItemResponse[]>('/drive/items/recent', { params: { limit }, signal }),
+    api.get<DriveItemResponse[]>('/drive/recent', { params: { limit }, signal }),
 
   listVersions: (item_id: string, signal?: AbortSignal) =>
     api.get<FileVersionResponse[]>(`/drive/items/${item_id}/versions`, { signal }),

@@ -28,14 +28,14 @@ const server = setupServer(
   http.get(`${BASE}/drive/items`, () =>
     HttpResponse.json({ items: ITEMS, total: 2, page: 1, page_size: 50, pages: 1 }),
   ),
-  http.post(`${BASE}/drive/items/folders`, () =>
+  http.post(`${BASE}/drive/folders`, () =>
     HttpResponse.json({ ...ITEMS[0], id: 'new-folder', name: 'New Folder' }),
   ),
-  http.patch(`${BASE}/drive/items/:id/rename`, () =>
+  http.patch(`${BASE}/drive/items/:id/name`, () =>
     HttpResponse.json({ ...ITEMS[1], name: 'renamed.txt' }),
   ),
   http.post(`${BASE}/trash/items/:id`, () => HttpResponse.json({})),
-  http.patch(`${BASE}/drive/items/:id/star`, () =>
+  http.put(`${BASE}/drive/items/:id/star`, () =>
     HttpResponse.json({ ...ITEMS[1], is_starred: false }),
   ),
   http.post(`${BASE}/auth/refresh`, () =>

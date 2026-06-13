@@ -47,7 +47,7 @@
 
 ## 整合與驗收
 
-- [ ] [Integration、E2E 與驗收](./integration-testing.md)
+- [x] [Integration、E2E 與驗收](./integration-testing.md)
 
 ## 建議執行順序
 
@@ -59,7 +59,7 @@
 - [x] 第六階段：Frontend Auth、Frontend Drive。
 - [x] 第七階段：Frontend Routing、Upload、Preview。
 - [x] 第八階段：Frontend Trash、Search、Share。
-- [ ] 第九階段：Integration、E2E 與驗收。
+- [x] 第九階段：Integration、E2E 與驗收。
 
 ## 進度統計
 
@@ -68,5 +68,5 @@
 | 專案基礎 | 3 | 3 |
 | 後端模組 | 14 | 14 |
 | 前端模組 | 10 | 10 |
-| 整合與驗收 | 0 | 1 |
-| 合計 | 27 | 28 |
+| 整合與驗收 | 1 | 1 |
+| 合計 | 28 | 28 |

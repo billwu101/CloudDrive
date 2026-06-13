@@ -8,34 +8,34 @@
 
 ## 最小可執行任務
 
-- [ ] 建立 `AppShell`。
-- [ ] 建立 `Sidebar`。
-- [ ] 建立 `TopBar`。
-- [ ] 建立 `TopSearchBar` 容器。
-- [ ] 建立 `UserMenu`。
-- [ ] 建立 `StorageUsageBar`。
-- [ ] 建立 `MainContent`。
-- [ ] 建立 details panel 擴充位置。
-- [ ] 建立 `uiStore.ts`。
-- [ ] 加入 sidebar collapsed state。
-- [ ] 加入 view mode state。
-- [ ] 加入 selected item ids state。
-- [ ] 加入 preview item id state。
-- [ ] 加入 share item id state。
-- [ ] 加入 context menu state。
-- [ ] 實作 Sidebar 導覽項目。
-- [ ] 標記目前 active route。
-- [ ] 加入 Tooltip。
-- [ ] 加入 keyboard focus 樣式。
-- [ ] 建立 loading layout。
-- [ ] 建立 responsive sidebar 行為。
+- [x] 建立 `AppShell`。
+- [x] 建立 `Sidebar`。
+- [x] 建立 `TopBar`。
+- [x] 建立 `TopSearchBar` 容器。
+- [x] 建立 `UserMenu`。
+- [x] 建立 `StorageUsageBar`。
+- [x] 建立 `MainContent`。
+- [x] 建立 details panel 擴充位置。
+- [x] 建立 `uiStore.ts`。
+- [x] 加入 sidebar collapsed state。
+- [x] 加入 view mode state。
+- [x] 加入 selected item ids state。
+- [x] 加入 preview item id state。
+- [x] 加入 share item id state。
+- [x] 加入 context menu state。
+- [x] 實作 Sidebar 導覽項目。
+- [x] 標記目前 active route。
+- [x] 加入 Tooltip。
+- [x] 加入 keyboard focus 樣式。
+- [x] 建立 loading layout。
+- [x] 建立 responsive sidebar 行為。
 
 ## 測試任務
 
-- [ ] 測試 Sidebar 收合。
-- [ ] 測試 active route。
-- [ ] 測試 view mode 切換。
-- [ ] 測試 selected item state。
-- [ ] 測試 preview dialog state。
-- [ ] 測試行動版 Sidebar 開關。
+- [x] 測試 Sidebar 收合。
+- [x] 測試 active route。
+- [x] 測試 view mode 切換。
+- [x] 測試 selected item state。
+- [x] 測試 preview dialog state。
+- [x] 測試行動版 Sidebar 開關。
 
