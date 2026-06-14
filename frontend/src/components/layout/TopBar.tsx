@@ -6,9 +6,10 @@ import { useUIStore } from '@/stores/uiStore'
 interface TopBarProps {
   title?: string
   onSearch?: (query: string) => void
+  searchValue?: string
 }
 
-export function TopBar({ title, onSearch }: TopBarProps) {
+export function TopBar({ title, onSearch, searchValue = '' }: TopBarProps) {
   const { viewMode, setViewMode } = useUIStore()
 
   return (
@@ -27,6 +28,7 @@ export function TopBar({ title, onSearch }: TopBarProps) {
           type="search"
           placeholder="Search in Drive"
           className="w-full rounded-md border border-input bg-muted py-1.5 pl-8 pr-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
+          value={searchValue}
           onChange={(e) => onSearch?.(e.target.value)}
           aria-label="Search drive"
         />

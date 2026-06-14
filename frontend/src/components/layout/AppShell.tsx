@@ -12,6 +12,7 @@ interface AppShellProps {
   quota?: QuotaResponse
   onLogout?: () => void
   onSearch?: (query: string) => void
+  searchValue?: string
 }
 
 export function AppShell({
@@ -21,12 +22,13 @@ export function AppShell({
   quota,
   onLogout,
   onSearch,
+  searchValue,
 }: AppShellProps) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar user={user} quota={quota} onLogout={onLogout} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar title={title} onSearch={onSearch} />
+        <TopBar title={title} onSearch={onSearch} searchValue={searchValue} />
         <MainContent>{children}</MainContent>
       </div>
     </div>
