@@ -53,8 +53,10 @@ export function useDragSelect(
       active.current = true
       moved.current = false
       lastKey.current = ''
-      // Block text selection immediately so no text highlights during the drag
-      document.body.style.userSelect = 'none'
+      // Apply to the root element so no child can override via inheritance,
+      // and clear any selection that the browser formed during this same tick.
+      document.documentElement.style.userSelect = 'none'
+      window.getSelection()?.removeAllRanges()
     }
 
     const onPointerMove = (e: PointerEvent) => {
@@ -69,6 +71,10 @@ export function useDragSelect(
       if (!moved.current) {
         moved.current = true
       }
+
+      // Keep clearing selection on every move — the browser can re-create
+      // it between ticks if the pointer passes over selectable text.
+      window.getSelection()?.removeAllRanges()
 
       const rect: DragRect = {
         x: Math.min(startPos.current.x, e.clientX),
@@ -100,7 +106,7 @@ export function useDragSelect(
     }
 
     const onPointerUp = () => {
-      document.body.style.userSelect = ''
+      document.documentElement.style.userSelect = ''
       if (!active.current) return
 
       active.current = false
@@ -124,7 +130,7 @@ export function useDragSelect(
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
-      document.body.style.userSelect = ''
+      document.documentElement.style.userSelect = ''
     }
   }, [containerRef])  // stable ref — runs once on mount
 
