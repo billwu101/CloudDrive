@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { authApi } from '@/api/authApi'
-import { useAuthStore } from '@/stores/authStore'
+import { refreshAccessToken } from '@/api/client'
 
 /**
  * Attempts a silent token refresh on startup so users aren't redirected
@@ -12,15 +11,18 @@ import { useAuthStore } from '@/stores/authStore'
  */
 export function AuthInitializer({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false)
-  const setToken = useAuthStore((s) => s.setToken)
 
   useEffect(() => {
-    authApi
-      .refresh()
-      .then((res) => setToken(res.data.access_token))
-      .catch(() => {})
-      .finally(() => setReady(true))
-  }, [setToken])
+    let active = true
+
+    void refreshAccessToken().finally(() => {
+      if (active) setReady(true)
+    })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   if (!ready) return null
 

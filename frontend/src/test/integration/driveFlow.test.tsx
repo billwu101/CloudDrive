@@ -13,7 +13,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 import { useAuthStore } from '@/stores/authStore'
 import { DrivePage } from '@/pages/DrivePage'
-import { MOCK_FILE, MOCK_FOLDER, MOCK_QUOTA, MOCK_USER, handlers } from '../handlers'
+import { MOCK_FILE, MOCK_FOLDER, MOCK_USER, handlers } from '../handlers'
 
 const NEW_FOLDER = {
   ...MOCK_FOLDER,

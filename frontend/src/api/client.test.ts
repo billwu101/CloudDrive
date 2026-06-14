@@ -75,6 +75,30 @@ describe('401 refresh flow', () => {
     expect(useAuthStore.getState().accessToken).toBe('refreshed-token')
   })
 
+  it('shares one refresh request across simultaneous 401 responses', async () => {
+    let refreshCount = 0
+    server.use(
+      http.get(`${BASE}/users/me`, ({ request }) => {
+        const auth = request.headers.get('Authorization')
+        if (auth === 'Bearer refreshed-token') {
+          return HttpResponse.json({ id: 'u1', email: 'a@test.com', username: 'alice' })
+        }
+        return HttpResponse.json({ code: 'UNAUTHORIZED' }, { status: 401 })
+      }),
+      http.post(`${BASE}/auth/refresh`, async () => {
+        refreshCount += 1
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        return HttpResponse.json({ access_token: 'refreshed-token', token_type: 'bearer' })
+      }),
+    )
+
+    const [first, second] = await Promise.all([api.get('/users/me'), api.get('/users/me')])
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(refreshCount).toBe(1)
+  })
+
   it('clears auth store when refresh fails', async () => {
     server.use(
       http.post(`${BASE}/auth/refresh`, () =>
@@ -98,6 +122,30 @@ describe('error conversion', () => {
       code: 'NOT_FOUND',
       message: 'User not found',
       status: 404,
+    })
+  })
+
+  it('converts the backend nested error envelope', async () => {
+    server.use(
+      http.get(`${BASE}/users/me`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: 'EMAIL_ALREADY_EXISTS',
+              message: 'Email already in use',
+              details: { field: 'email' },
+            },
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    useAuthStore.setState({ accessToken: 'valid-token' })
+    await expect(api.get('/users/me')).rejects.toMatchObject({
+      code: 'EMAIL_ALREADY_EXISTS',
+      message: 'Email already in use',
+      status: 409,
+      details: { field: 'email' },
     })
   })
 })

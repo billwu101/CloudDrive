@@ -41,13 +41,19 @@ def _make_user(
     )
 
 
-def _make_rt(user: User, *, token_str: str, revoked: bool = False) -> RefreshToken:
+def _make_rt(
+    user: User,
+    *,
+    token_str: str,
+    revoked: bool = False,
+    expired: bool = False,
+) -> RefreshToken:
     now = datetime.now(UTC)
     return RefreshToken(
         id=uuid4(),
         user_id=user.id,
         token_hash=hash_token(token_str),
-        expires_at=now + timedelta(days=30),
+        expires_at=now - timedelta(minutes=1) if expired else now + timedelta(days=30),
         revoked_at=now if revoked else None,
         created_at=now,
     )
@@ -216,6 +222,16 @@ class TestRefresh:
         with pytest.raises(AppError) as exc_info:
             await svc.refresh(refresh_token_str="not.a.jwt")
         assert exc_info.value.status_code == 401
+
+    async def test_refresh_expired_database_record_rejected(self) -> None:
+        user = _make_user()
+        rt_str = create_refresh_token(user.id)
+        rt = _make_rt(user, token_str=rt_str, expired=True)
+        svc = _make_service(user_repo=MockUserRepo([user]), rt_repo=MockRefreshTokenRepo([rt]))
+        with pytest.raises(AppError) as exc_info:
+            await svc.refresh(refresh_token_str=rt_str)
+        assert exc_info.value.code == ErrorCode.UNAUTHORIZED
+        assert exc_info.value.message == "Refresh token has expired"
 
 
 class TestLogout:

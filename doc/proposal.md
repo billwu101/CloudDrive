@@ -91,6 +91,7 @@ MVP 指第一版可展示與可使用的核心版本。
 14. 檔案基本預覽。
 15. 私人檔案權限檢查。
 16. 容量統計。
+17. 帳號設定：修改顯示名稱、登入 Email 與密碼。
 
 ### 5.2 第二階段功能
 
@@ -178,6 +179,14 @@ MVP 指第一版可展示與可使用的核心版本。
 3. 使用者可從垃圾桶還原。
 4. 使用者可永久刪除。
 5. 系統可定期清除超過保留期限的垃圾桶項目。
+
+### 7.5 管理帳號設定
+
+1. 使用者從個人選單進入帳號設定頁。
+2. 使用者可修改顯示名稱與登入 Email。
+3. Email 必須是有效格式且不可與其他帳號重複。
+4. 使用者輸入目前密碼後，可設定至少 8 個字元的新密碼。
+5. 更新成功後，頁面與個人選單立即顯示最新資料。
 
 ## 8. 系統架構
 
@@ -1613,9 +1622,11 @@ Access token 依安全規範只存在前端記憶體（Zustand store），不寫
 | 項目 | 說明 |
 |---|---|
 | 使用 `refreshClient` | Silent refresh 必須使用不帶攔截器的獨立 Axios instance，避免 401 → refresh → 401 的無窮迴圈 |
+| Refresh 單例化 | `AuthInitializer` 與 401 interceptor 共用同一個 pending refresh promise，避免 React StrictMode 或同時多個 401 重複輪替一次性 token |
 | 元件位置 | `<AuthInitializer>` 包住 `<RouterProvider>`，在 `<QueryClientProvider>` 內（可使用 React Query） |
 | 等待行為 | `ready` 狀態預設 `false`，`.finally()` 後設為 `true`，確保無論成功或失敗都解除阻擋 |
 | 安全不變式 | Access token 仍只存在記憶體，silent refresh 不改變 refresh token 的儲存位置（HttpOnly cookie） |
+| Cookie 環境 | development/test 可在本機 HTTP 使用 cookie；staging/production 強制 `Secure` |
 
 ### 32.4 登出與 Session 過期
 

@@ -44,4 +44,6 @@
 - [x] 測試停用帳號不可登入。
 - [x] 測試 refresh token 可取得新 token。
 - [x] 測試撤銷後 refresh token 不可使用。
+- [x] 測試資料庫 refresh token 到期後不可使用。
+- [x] 測試 development/test cookie 支援 HTTP，staging/production 強制 Secure。
 - [x] 測試 `/auth/me` 需要 access token。

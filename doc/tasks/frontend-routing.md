@@ -33,6 +33,8 @@
 - [x] refresh 期間回傳 `null`（空白），避免 `RequireAuth` 搶先重導至 `/login`。
 - [x] refresh 失敗（cookie 不存在或過期）→ 正常走 `/login` 流程。
 - [x] 使用無攔截器的 `refreshClient` 防止無窮重試。
+- [x] `AuthInitializer` 與 401 interceptor 共用單一 pending refresh request。
+- [x] React StrictMode 重複掛載時只輪替一次 refresh token。
 - [x] `<AuthInitializer>` 包住 `<RouterProvider>`（在 `<QueryClientProvider>` 內）。
 
 ## 測試任務
@@ -42,4 +44,5 @@
 - [x] 測試 folderId route param。
 - [x] 測試 404 頁面。
 - [x] 測試分享連結頁不要求一般登入。
-
+- [x] 測試重新整理可由 refresh cookie 恢復登入。
+- [x] 測試 refresh cookie 過期時回到登入流程。

@@ -8,7 +8,12 @@ declare module 'axios' {
   }
 }
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
+const DEFAULT_API_BASE_URL =
+  typeof window === 'undefined'
+    ? 'http://localhost:8000/api/v1'
+    : `${window.location.protocol}//${window.location.hostname}:8000/api/v1`
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL
 
 /** Main API client — includes auth + refresh interceptors. */
 export const api = axios.create({
@@ -47,13 +52,18 @@ function toApiError(error: unknown): ApiError {
     }
     if (error.response) {
       const d = error.response.data as Record<string, unknown>
+      const nestedError =
+        d['error'] != null && typeof d['error'] === 'object'
+          ? (d['error'] as Record<string, unknown>)
+          : d
       return {
-        code: typeof d['code'] === 'string' ? d['code'] : 'UNKNOWN',
-        message: typeof d['message'] === 'string' ? d['message'] : error.message,
+        code: typeof nestedError['code'] === 'string' ? nestedError['code'] : 'UNKNOWN',
+        message:
+          typeof nestedError['message'] === 'string' ? nestedError['message'] : error.message,
         status: error.response.status,
         details:
-          d['details'] != null && typeof d['details'] === 'object'
-            ? (d['details'] as Record<string, unknown>)
+          nestedError['details'] != null && typeof nestedError['details'] === 'object'
+            ? (nestedError['details'] as Record<string, unknown>)
             : undefined,
       }
     }
@@ -62,6 +72,32 @@ function toApiError(error: unknown): ApiError {
 }
 
 let pendingRefresh: Promise<string | null> | null = null
+
+/**
+ * Restores the in-memory access token from the HttpOnly refresh cookie.
+ * All callers share one request so StrictMode and simultaneous 401 responses
+ * cannot rotate the same refresh token more than once.
+ */
+export function refreshAccessToken(): Promise<string | null> {
+  if (!pendingRefresh) {
+    pendingRefresh = refreshClient
+      .post<{ access_token: string }>('/auth/refresh')
+      .then((res) => {
+        const token = res.data.access_token
+        useAuthStore.getState().setToken(token)
+        return token
+      })
+      .catch(() => {
+        useAuthStore.getState().clearToken()
+        return null
+      })
+      .finally(() => {
+        pendingRefresh = null
+      })
+  }
+
+  return pendingRefresh
+}
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken
@@ -78,24 +114,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && original && !original._retried) {
       original._retried = true
 
-      if (!pendingRefresh) {
-        pendingRefresh = refreshClient
-          .post<{ access_token: string }>('/auth/refresh')
-          .then((res) => {
-            const token = res.data.access_token
-            useAuthStore.getState().setToken(token)
-            return token
-          })
-          .catch(() => {
-            useAuthStore.getState().clearToken()
-            return null
-          })
-          .finally(() => {
-            pendingRefresh = null
-          })
-      }
-
-      const newToken = await pendingRefresh
+      const newToken = await refreshAccessToken()
       if (newToken) {
         original.headers.Authorization = `Bearer ${newToken}`
         return api(original)

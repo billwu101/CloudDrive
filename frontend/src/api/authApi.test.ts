@@ -6,6 +6,7 @@
  *   - 使用者登入 (POST /auth/login)
  *   - 使用者登出 (POST /auth/logout)
  *   - 取得目前使用者 (GET /users/me)
+ *   - 更新名稱、email 與密碼
  *   - 容量統計 (GET /users/me/quota)
  */
 import { http, HttpResponse } from 'msw'
@@ -66,6 +67,18 @@ const server = setupServer(
   ),
 
   http.get(`${BASE}/users/me`, () => HttpResponse.json(MOCK_USER)),
+
+  http.patch(`${BASE}/users/me`, async ({ request }) => {
+    const body = await request.json() as { username: string }
+    return HttpResponse.json({ ...MOCK_USER, username: body.username })
+  }),
+
+  http.patch(`${BASE}/users/me/email`, async ({ request }) => {
+    const body = await request.json() as { email: string }
+    return HttpResponse.json({ ...MOCK_USER, email: body.email })
+  }),
+
+  http.patch(`${BASE}/users/me/password`, () => new HttpResponse(null, { status: 204 })),
 
   http.get(`${BASE}/users/me/quota`, () => HttpResponse.json(MOCK_QUOTA)),
 )
@@ -140,6 +153,27 @@ describe('me (GET /users/me)', () => {
     expect(res.data).not.toHaveProperty('password')
     expect(res.data).not.toHaveProperty('password_hash')
     expect(res.data).not.toHaveProperty('access_token')
+  })
+})
+
+// ── 帳號設定 ──────────────────────────────────────────────────────────────────
+
+describe('account settings', () => {
+  it('updates the username', async () => {
+    const res = await authApi.updateUsername('new-name')
+    expect(res.status).toBe(200)
+    expect(res.data.username).toBe('new-name')
+  })
+
+  it('updates the email', async () => {
+    const res = await authApi.updateEmail('new@example.com')
+    expect(res.status).toBe(200)
+    expect(res.data.email).toBe('new@example.com')
+  })
+
+  it('changes the password', async () => {
+    const res = await authApi.changePassword('old-password', 'new-password')
+    expect(res.status).toBe(204)
   })
 })
 

@@ -23,7 +23,7 @@
 - 日期：2026-06-13
 - 狀態：Accepted
 - 背景：需求確認 refresh token 必須使用 HttpOnly、Secure、SameSite cookie。
-- 決策：登入與 refresh API 只在 JSON 回傳 access token；refresh token 透過 cookie 設定。登出撤銷 token 並清除 cookie。
+- 決策：登入與 refresh API 只在 JSON 回傳 access token；refresh token 透過 HttpOnly、SameSite=Lax cookie 設定。staging/production 必須加上 Secure；本機 development/test 的 HTTP 環境不加 Secure。登出撤銷 token 並清除 cookie。
 - 理由：避免 JavaScript 直接存取 refresh token，降低 XSS 造成的憑證外洩風險。
 - 影響範圍：Auth API、CORS、Axios client、前端登入狀態。
 

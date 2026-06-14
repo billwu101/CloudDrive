@@ -88,6 +88,12 @@ class AuthService:
                 "Refresh token has been revoked",
                 status_code=401,
             )
+        if rt.expires_at <= datetime.now(UTC):
+            raise AppError(
+                ErrorCode.UNAUTHORIZED,
+                "Refresh token has expired",
+                status_code=401,
+            )
 
         await self._rt_repo.revoke(rt.id)
 
