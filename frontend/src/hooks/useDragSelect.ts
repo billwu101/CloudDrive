@@ -42,8 +42,9 @@ export function useDragSelect(
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
-      // Only left button; allow drag to start from anywhere on the page
+      // Only left button; only inside the main content area (not sidebar / topbar)
       if (e.button !== 0) return
+      if (!(e.target as Element).closest('main')) return
       // Don't hijack clicks on file items or interactive controls
       if ((e.target as Element).closest('[data-item-id], input, button, a, label, [role="button"]')) return
       // Only start if the file list is rendered (items exist)
