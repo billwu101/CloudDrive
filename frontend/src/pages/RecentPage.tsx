@@ -12,6 +12,7 @@ export function RecentPage() {
   const viewMode = useUIStore((s) => s.viewMode)
   const selectedIds = useUIStore((s) => s.selectedItemIds)
   const selectItem = useUIStore((s) => s.selectItem)
+  const selectAll = useUIStore((s) => s.selectAll)
   const clearSelection = useUIStore((s) => s.clearSelection)
 
   const { data, isLoading } = useRecentItems()
@@ -26,6 +27,19 @@ export function RecentPage() {
   const handleStarClick = (item: DriveItemResponse, e: React.MouseEvent) => {
     e.stopPropagation()
     star.mutate({ id: item.id, starred: !item.is_starred })
+  }
+
+  const handleCheckboxClick = (item: DriveItemResponse, e: React.MouseEvent) => {
+    e.stopPropagation()
+    selectItem(item.id, true)
+  }
+
+  const handleSelectAll = () => {
+    if (items.every((i) => selectedIds.has(i.id))) {
+      clearSelection()
+    } else {
+      selectAll(items.map((i) => i.id))
+    }
   }
 
   return (
@@ -53,6 +67,8 @@ export function RecentPage() {
               onItemDoubleClick={handleDoubleClick}
               onItemContextMenu={(_, e) => e.preventDefault()}
               onStarClick={handleStarClick}
+              onCheckboxClick={handleCheckboxClick}
+              onSelectAll={handleSelectAll}
             />
           ) : (
             <FileGrid
@@ -62,6 +78,7 @@ export function RecentPage() {
               onItemDoubleClick={handleDoubleClick}
               onItemContextMenu={(_, e) => e.preventDefault()}
               onStarClick={handleStarClick}
+              onCheckboxClick={handleCheckboxClick}
             />
           )}
         </div>

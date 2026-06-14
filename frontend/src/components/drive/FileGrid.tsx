@@ -9,6 +9,7 @@ interface FileGridProps {
   onItemDoubleClick: (item: DriveItemResponse) => void
   onItemContextMenu: (item: DriveItemResponse, e: React.MouseEvent) => void
   onStarClick: (item: DriveItemResponse, e: React.MouseEvent) => void
+  onCheckboxClick: (item: DriveItemResponse, e: React.MouseEvent) => void
 }
 
 export function FileGrid({
@@ -18,6 +19,7 @@ export function FileGrid({
   onItemDoubleClick,
   onItemContextMenu,
   onStarClick,
+  onCheckboxClick,
 }: FileGridProps) {
   return (
     <div
@@ -35,6 +37,7 @@ export function FileGrid({
           onDoubleClick={() => onItemDoubleClick(item)}
           onContextMenu={(e) => onItemContextMenu(item, e)}
           onStarClick={(e) => onStarClick(item, e)}
+          onCheckboxClick={(e) => onCheckboxClick(item, e)}
         />
       ))}
     </div>

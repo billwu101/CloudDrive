@@ -11,6 +11,7 @@ import { FileContextMenu } from '@/components/drive/FileContextMenu'
 import { FileGrid } from '@/components/drive/FileGrid'
 import { FileTable } from '@/components/drive/FileTable'
 import { MoveDialog } from '@/components/drive/MoveDialog'
+import { MultiFileContextMenu } from '@/components/drive/MultiFileContextMenu'
 import { RenameDialog } from '@/components/drive/RenameDialog'
 import { PreviewDialog } from '@/components/preview/PreviewDialog'
 import { UploadButton } from '@/components/upload/UploadButton'
@@ -20,11 +21,20 @@ import { useCreateFolder, useDriveItems, useFolderAncestors, useFolderItem, useM
 import { useUploadFiles } from '@/hooks/useUpload'
 import { useUIStore } from '@/stores/uiStore'
 
-interface ContextMenuState {
+interface SingleContextMenuState {
+  kind: 'single'
   item: DriveItemResponse
   x: number
   y: number
 }
+
+interface MultiContextMenuState {
+  kind: 'multi'
+  x: number
+  y: number
+}
+
+type ContextMenuState = SingleContextMenuState | MultiContextMenuState | null
 
 export function DrivePage() {
   const { folderId } = useParams<{ folderId?: string }>()
@@ -32,6 +42,7 @@ export function DrivePage() {
   const viewMode = useUIStore((s) => s.viewMode)
   const selectedIds = useUIStore((s) => s.selectedItemIds)
   const selectItem = useUIStore((s) => s.selectItem)
+  const selectAll = useUIStore((s) => s.selectAll)
   const clearSelection = useUIStore((s) => s.clearSelection)
 
   const { data, isLoading } = useDriveItems(folderId)
@@ -50,10 +61,11 @@ export function DrivePage() {
   const [moveTarget, setMoveTarget] = useState<DriveItemResponse | null>(null)
   const [trashTargets, setTrashTargets] = useState<DriveItemResponse[]>([])
   const [previewItemId, setPreviewItemId] = useState<string | null>(null)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
 
   const ancestors: BreadcrumbItem[] = (ancestorsData ?? []).map((a) => ({ id: a.id, name: a.name }))
   const currentFolderName = folderItem?.name
+  const items = data?.items ?? []
 
   const handleBack = useCallback(() => {
     if (!folderId) return
@@ -76,10 +88,38 @@ export function DrivePage() {
     [navigate],
   )
 
-  const handleContextMenu = useCallback((item: DriveItemResponse, e: React.MouseEvent) => {
-    e.preventDefault()
-    setContextMenu({ item, x: e.clientX, y: e.clientY })
-  }, [])
+  const handleContextMenu = useCallback(
+    (item: DriveItemResponse, e: React.MouseEvent) => {
+      e.preventDefault()
+      // If the right-clicked item is part of a multi-selection → show multi-item menu
+      if (selectedIds.size > 1 && selectedIds.has(item.id)) {
+        setContextMenu({ kind: 'multi', x: e.clientX, y: e.clientY })
+      } else {
+        // Single item: if not already selected, replace selection
+        if (!selectedIds.has(item.id)) {
+          selectItem(item.id)
+        }
+        setContextMenu({ kind: 'single', item, x: e.clientX, y: e.clientY })
+      }
+    },
+    [selectedIds, selectItem],
+  )
+
+  const handleCheckboxClick = useCallback(
+    (item: DriveItemResponse, e: React.MouseEvent) => {
+      e.stopPropagation()
+      selectItem(item.id, true) // always multi-select mode
+    },
+    [selectItem],
+  )
+
+  const handleSelectAll = useCallback(() => {
+    if (items.every((i) => selectedIds.has(i.id))) {
+      clearSelection()
+    } else {
+      selectAll(items.map((i) => i.id))
+    }
+  }, [items, selectedIds, selectAll, clearSelection])
 
   const handleStarClick = useCallback(
     (item: DriveItemResponse, e: React.MouseEvent) => {
@@ -89,10 +129,10 @@ export function DrivePage() {
     [star],
   )
 
-  const handleTrashSelected = () => {
-    const targets = data?.items.filter((i) => selectedIds.has(i.id)) ?? []
+  const handleTrashSelected = useCallback(() => {
+    const targets = items.filter((i) => selectedIds.has(i.id))
     setTrashTargets(targets)
-  }
+  }, [items, selectedIds])
 
   const handleRetryUpload = useCallback(
     (task: { file: File }) => {
@@ -101,7 +141,18 @@ export function DrivePage() {
     [upload],
   )
 
-  const items = data?.items ?? []
+  const sharedProps = {
+    items,
+    selectedIds,
+    onItemClick: (item: DriveItemResponse, e: React.MouseEvent) => {
+      e.stopPropagation()
+      selectItem(item.id, e.metaKey || e.ctrlKey)
+    },
+    onItemDoubleClick: handleDoubleClick,
+    onItemContextMenu: handleContextMenu,
+    onStarClick: handleStarClick,
+    onCheckboxClick: handleCheckboxClick,
+  }
 
   return (
     <UploadDropzone onFiles={upload}>
@@ -145,34 +196,15 @@ export function DrivePage() {
         {!isLoading && items.length > 0 && (
           <div onClick={() => clearSelection()} className="flex-1 overflow-auto">
             {viewMode === 'list' ? (
-              <FileTable
-                items={items}
-                selectedIds={selectedIds}
-                onItemClick={(item, e) => {
-                  e.stopPropagation()
-                  selectItem(item.id, e.metaKey || e.ctrlKey)
-                }}
-                onItemDoubleClick={handleDoubleClick}
-                onItemContextMenu={handleContextMenu}
-                onStarClick={handleStarClick}
-              />
+              <FileTable {...sharedProps} onSelectAll={handleSelectAll} />
             ) : (
-              <FileGrid
-                items={items}
-                selectedIds={selectedIds}
-                onItemClick={(item, e) => {
-                  e.stopPropagation()
-                  selectItem(item.id, e.metaKey || e.ctrlKey)
-                }}
-                onItemDoubleClick={handleDoubleClick}
-                onItemContextMenu={handleContextMenu}
-                onStarClick={handleStarClick}
-              />
+              <FileGrid {...sharedProps} />
             )}
           </div>
         )}
 
-        {contextMenu && (
+        {/* Single-item context menu */}
+        {contextMenu?.kind === 'single' && (
           <FileContextMenu
             item={contextMenu.item}
             position={{ x: contextMenu.x, y: contextMenu.y }}
@@ -184,6 +216,16 @@ export function DrivePage() {
             onCopyLink={() => {}}
             onToggleStar={(item) => star.mutate({ id: item.id, starred: !item.is_starred })}
             onTrash={(item) => setTrashTargets([item])}
+          />
+        )}
+
+        {/* Multi-item context menu */}
+        {contextMenu?.kind === 'multi' && (
+          <MultiFileContextMenu
+            count={selectedIds.size}
+            position={{ x: contextMenu.x, y: contextMenu.y }}
+            onClose={() => setContextMenu(null)}
+            onTrash={handleTrashSelected}
           />
         )}
 

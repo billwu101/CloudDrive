@@ -20,6 +20,7 @@ interface UIState {
   setSidebarCollapsed: (collapsed: boolean) => void
   setViewMode: (mode: ViewMode) => void
   selectItem: (id: string, multi?: boolean) => void
+  selectAll: (ids: string[]) => void
   clearSelection: () => void
   setPreviewItem: (id: string | null) => void
   setShareItem: (id: string | null) => void
@@ -52,6 +53,8 @@ export const useUIStore = create<UIState>()((set) => ({
       }
       return { selectedItemIds: new Set([id]) }
     }),
+
+  selectAll: (ids) => set({ selectedItemIds: new Set(ids) }),
 
   clearSelection: () => set({ selectedItemIds: new Set<string>() }),
 
