@@ -53,6 +53,8 @@ export function useDragSelect(
       active.current = true
       moved.current = false
       lastKey.current = ''
+      // Block text selection immediately so no text highlights during the drag
+      document.body.style.userSelect = 'none'
     }
 
     const onPointerMove = (e: PointerEvent) => {
@@ -65,9 +67,7 @@ export function useDragSelect(
       if (!moved.current && Math.abs(dx) < 5 && Math.abs(dy) < 5) return
 
       if (!moved.current) {
-        // First real movement — prevent text selection for the rest of the drag
         moved.current = true
-        document.body.style.userSelect = 'none'
       }
 
       const rect: DragRect = {
