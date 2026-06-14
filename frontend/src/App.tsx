@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { RouterProvider } from 'react-router-dom'
 
 import { AuthInitializer } from './app/AuthInitializer'
@@ -12,6 +13,26 @@ const queryClient = new QueryClient({
 })
 
 export default function App() {
+  useEffect(() => {
+    const preventTextSelection = (event: Event) => {
+      const target = event.target
+      const element =
+        target instanceof Element
+          ? target
+          : target instanceof Node
+            ? target.parentElement
+            : null
+
+      if (element?.closest('input, textarea, [contenteditable="true"]')) return
+
+      event.preventDefault()
+      window.getSelection()?.removeAllRanges()
+    }
+
+    document.addEventListener('selectstart', preventTextSelection)
+    return () => document.removeEventListener('selectstart', preventTextSelection)
+  }, [])
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthInitializer>

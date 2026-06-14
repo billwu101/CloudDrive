@@ -20,4 +20,32 @@ describe('App routing', () => {
       expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
     })
   })
+
+  it('prevents native selection for UI text but allows editable controls', () => {
+    render(<App />)
+
+    const label = document.createElement('span')
+    label.textContent = 'Sidebar label'
+    document.body.appendChild(label)
+
+    const labelSelection = new Event('selectstart', {
+      bubbles: true,
+      cancelable: true,
+    })
+    label.dispatchEvent(labelSelection)
+    expect(labelSelection.defaultPrevented).toBe(true)
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+
+    const inputSelection = new Event('selectstart', {
+      bubbles: true,
+      cancelable: true,
+    })
+    input.dispatchEvent(inputSelection)
+    expect(inputSelection.defaultPrevented).toBe(false)
+
+    label.remove()
+    input.remove()
+  })
 })

@@ -1623,6 +1623,7 @@ interface UiState {
 2. viewMode 切換後 DrivePage 顯示列表或格狀。
 3. 選取檔案後 toolbar 顯示操作。
 4. 關閉 preview dialog 後 previewItemId 清空。
+5. App 根層攔截非表單控制項的 `selectstart`，避免任何 UI 文字出現原生藍色反白；input、textarea 與 contenteditable 仍可正常編輯。
 
 ### 9.6 Drive 前端模組
 
