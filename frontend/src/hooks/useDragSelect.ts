@@ -53,9 +53,6 @@ export function useDragSelect(
       active.current = true
       moved.current = false
       lastKey.current = ''
-      // Apply to the root element so no child can override via inheritance,
-      // and clear any selection that the browser formed during this same tick.
-      document.documentElement.style.userSelect = 'none'
       window.getSelection()?.removeAllRanges()
     }
 
@@ -106,7 +103,6 @@ export function useDragSelect(
     }
 
     const onPointerUp = () => {
-      document.documentElement.style.userSelect = ''
       if (!active.current) return
 
       active.current = false
@@ -130,7 +126,6 @@ export function useDragSelect(
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
-      document.documentElement.style.userSelect = ''
     }
   }, [containerRef])  // stable ref — runs once on mount
 
