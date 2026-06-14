@@ -1,5 +1,5 @@
 import { ArrowLeft, FolderOpen } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import type { DriveItemResponse } from '@/api/types'
@@ -18,6 +18,7 @@ import { UploadButton } from '@/components/upload/UploadButton'
 import { UploadDropzone } from '@/components/upload/UploadDropzone'
 import { UploadQueue } from '@/components/upload/UploadQueue'
 import { useCreateFolder, useDriveItems, useFolderAncestors, useFolderItem, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
+import { useDragSelect } from '@/hooks/useDragSelect'
 import { useUploadFiles } from '@/hooks/useUpload'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -56,6 +57,7 @@ export function DrivePage() {
 
   const { upload } = useUploadFiles(folderId)
 
+  const fileListRef = useRef<HTMLDivElement>(null)
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [renameTarget, setRenameTarget] = useState<DriveItemResponse | null>(null)
   const [moveTarget, setMoveTarget] = useState<DriveItemResponse | null>(null)
@@ -141,6 +143,9 @@ export function DrivePage() {
     [upload],
   )
 
+  const handleDragSelect = useCallback((ids: string[]) => selectAll(ids), [selectAll])
+  const { dragRect } = useDragSelect(fileListRef, handleDragSelect, clearSelection)
+
   const sharedProps = {
     items,
     selectedIds,
@@ -194,11 +199,19 @@ export function DrivePage() {
         )}
 
         {!isLoading && items.length > 0 && (
-          <div onClick={() => clearSelection()} className="flex-1 overflow-auto">
+          <div ref={fileListRef} className="relative flex-1 overflow-auto">
             {viewMode === 'list' ? (
               <FileTable {...sharedProps} onSelectAll={handleSelectAll} />
             ) : (
               <FileGrid {...sharedProps} />
+            )}
+            {/* Rubber-band selection overlay */}
+            {dragRect && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none fixed z-30 rounded-sm border border-primary/60 bg-primary/10"
+                style={{ top: dragRect.y, left: dragRect.x, width: dragRect.width, height: dragRect.height }}
+              />
             )}
           </div>
         )}

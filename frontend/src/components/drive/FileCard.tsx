@@ -21,6 +21,7 @@ export function FileCard({ item, selected, onClick, onDoubleClick, onContextMenu
     <div
       role="option"
       aria-selected={selected}
+      data-item-id={item.id}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}

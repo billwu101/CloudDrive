@@ -34,6 +34,7 @@ export function FileRow({ item, selected, onClick, onDoubleClick, onContextMenu,
     <tr
       role="row"
       aria-selected={selected}
+      data-item-id={item.id}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
