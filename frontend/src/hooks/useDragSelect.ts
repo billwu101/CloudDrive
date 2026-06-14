@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export interface DragRect {
   x: number
@@ -8,15 +8,19 @@ export interface DragRect {
 }
 
 /**
- * Rubber-band (lasso) selection.
+ * Rubber-band (lasso) selection — Windows-Explorer-style.
  *
- * - pointerdown on empty space starts a drag.
- * - During drag, calls onSelectIds with every [data-item-id] element whose
- *   bounding rect overlaps the selection rectangle.
- * - pointerup with no movement (< 5 px) is treated as a click → calls onClear.
- * - pointerup after drag keeps the selection and calls onSelectIds one final time.
+ * All listeners live on `window` so the hook works even when the container
+ * is rendered conditionally (e.g. only after data loads). The container ref
+ * is checked at event dispatch time, not at effect setup time.
  *
- * The caller is responsible for rendering the visual rectangle using dragRect.
+ * Behaviour:
+ * - pointerdown inside the container on empty space (not on a file item,
+ *   checkbox, button, or link) → starts the drag
+ * - pointermove > 5 px dead-zone → shows the selection rectangle and
+ *   selects every [data-item-id] element whose bounding rect overlaps it
+ * - pointerup after real movement → keeps the selection
+ * - pointerup with no movement → clears the selection (click-on-empty)
  */
 export function useDragSelect(
   containerRef: React.RefObject<HTMLElement | null>,
@@ -25,54 +29,45 @@ export function useDragSelect(
 ): { dragRect: DragRect | null } {
   const [dragRect, setDragRect] = useState<DragRect | null>(null)
 
-  const startPos = useRef<{ x: number; y: number } | null>(null)
-  const isDragging = useRef(false)
-  const hasMoved = useRef(false)
-  const lastKey = useRef('')
-
-  // Stable wrapper so the effect doesn't re-run when the component re-renders
+  // Keep callbacks in refs so the single effect never needs to re-register
   const selectRef = useRef(onSelectIds)
   const clearRef = useRef(onClear)
   useEffect(() => { selectRef.current = onSelectIds }, [onSelectIds])
   useEffect(() => { clearRef.current = onClear }, [onClear])
 
-  const getIntersecting = useCallback((rect: DragRect): string[] => {
-    const container = containerRef.current
-    if (!container) return []
-    const ids: string[] = []
-    container.querySelectorAll<HTMLElement>('[data-item-id]').forEach((el) => {
-      const r = el.getBoundingClientRect()
-      if (r.right > rect.x && r.left < rect.x + rect.width &&
-          r.bottom > rect.y && r.top < rect.y + rect.height) {
-        if (el.dataset.itemId) ids.push(el.dataset.itemId)
-      }
-    })
-    return ids
-  }, [containerRef])
+  const startPos = useRef<{ x: number; y: number } | null>(null)
+  const active = useRef(false)   // currently dragging
+  const moved = useRef(false)    // crossed dead-zone
+  const lastKey = useRef('')
 
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
     const onPointerDown = (e: PointerEvent) => {
-      if (e.button !== 0) return
-      // Only start drag on empty space, not on interactive items
-      if ((e.target as Element).closest('[data-item-id]')) return
+      const container = containerRef.current
+      // Only act on left button, inside our container
+      if (e.button !== 0 || !container || !container.contains(e.target as Node)) return
+      // Don't hijack clicks on file items or interactive controls
+      if ((e.target as Element).closest('[data-item-id], input, button, a, label, [role="button"]')) return
+
       startPos.current = { x: e.clientX, y: e.clientY }
-      isDragging.current = true
-      hasMoved.current = false
+      active.current = true
+      moved.current = false
       lastKey.current = ''
     }
 
     const onPointerMove = (e: PointerEvent) => {
-      if (!isDragging.current || !startPos.current) return
+      if (!active.current || !startPos.current) return
 
       const dx = e.clientX - startPos.current.x
       const dy = e.clientY - startPos.current.y
 
-      // Dead-zone to avoid triggering on accidental micro-movements
-      if (!hasMoved.current && Math.abs(dx) < 5 && Math.abs(dy) < 5) return
-      hasMoved.current = true
+      // Dead-zone: ignore tiny wobbles
+      if (!moved.current && Math.abs(dx) < 5 && Math.abs(dy) < 5) return
+
+      if (!moved.current) {
+        // First real movement — prevent text selection for the rest of the drag
+        moved.current = true
+        document.body.style.userSelect = 'none'
+      }
 
       const rect: DragRect = {
         x: Math.min(startPos.current.x, e.clientX),
@@ -82,7 +77,20 @@ export function useDragSelect(
       }
       setDragRect(rect)
 
-      const ids = getIntersecting(rect)
+      // Find items whose bounding box overlaps the selection rect
+      const container = containerRef.current
+      const ids: string[] = []
+      if (container) {
+        container.querySelectorAll<HTMLElement>('[data-item-id]').forEach((el) => {
+          const r = el.getBoundingClientRect()
+          if (r.right > rect.x && r.left < rect.x + rect.width &&
+              r.bottom > rect.y && r.top < rect.y + rect.height) {
+            if (el.dataset.itemId) ids.push(el.dataset.itemId)
+          }
+        })
+      }
+
+      // Avoid redundant store updates if selection hasn't changed
       const key = [...ids].sort().join(',')
       if (key !== lastKey.current) {
         lastKey.current = key
@@ -91,32 +99,33 @@ export function useDragSelect(
     }
 
     const onPointerUp = () => {
-      if (!isDragging.current) return
-      isDragging.current = false
+      document.body.style.userSelect = ''
+      if (!active.current) return
 
-      if (!hasMoved.current) {
-        // Treat as a click on empty space → clear selection
+      active.current = false
+      if (!moved.current) {
+        // Was just a click on empty space → clear selection
         clearRef.current()
       }
-
       startPos.current = null
-      hasMoved.current = false
+      moved.current = false
       lastKey.current = ''
       setDragRect(null)
     }
 
-    container.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
     window.addEventListener('pointercancel', onPointerUp)
 
     return () => {
-      container.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
+      document.body.style.userSelect = ''
     }
-  }, [containerRef, getIntersecting])
+  }, [containerRef])  // stable ref — runs once on mount
 
   return { dragRect }
 }
