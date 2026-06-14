@@ -15,6 +15,7 @@ from app.auth.repository import (
     AbstractUserRepository,
     hash_token,
 )
+from app.auth.router import _is_secure_cookie_environment
 from app.auth.router import router as auth_router
 from app.auth.service import AuthService
 from app.core.dependencies import get_db
@@ -164,9 +165,11 @@ async def test_register_success() -> None:
         )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["email"] == "new@example.com"
+    assert "access_token" in body
     assert "password_hash" not in body
     assert len(repo.created) == 1
+    # refresh token cookie must be set
+    assert "refresh_token" in resp.cookies
 
 
 async def test_register_duplicate_email_returns_409(existing_user: User) -> None:
@@ -187,6 +190,7 @@ async def test_register_email_normalized() -> None:
             json={"email": "  UPPER@Example.COM  ", "username": "u", "password": "password123"},
         )
     assert resp.status_code == 201
+    assert "access_token" in resp.json()
     assert repo.created[0].email == "upper@example.com"
 
 
@@ -204,6 +208,20 @@ async def test_login_success(existing_user: User) -> None:
     assert "access_token" in body
     assert "refresh_token" not in body  # must NOT appear in body
     assert "refresh_token" in resp.cookies
+    set_cookie = resp.headers["set-cookie"]
+    assert "HttpOnly" in set_cookie
+    assert "Path=/api/v1/auth" in set_cookie
+    assert "Secure" not in set_cookie
+
+
+@pytest.mark.parametrize("app_env", ["development", "test"])
+def test_local_environments_allow_http_refresh_cookie(app_env: str) -> None:
+    assert _is_secure_cookie_environment(app_env) is False
+
+
+@pytest.mark.parametrize("app_env", ["staging", "production", "PRODUCTION"])
+def test_deployed_environments_require_secure_refresh_cookie(app_env: str) -> None:
+    assert _is_secure_cookie_environment(app_env) is True
 
 
 async def test_login_wrong_password(existing_user: User) -> None:
@@ -275,6 +293,7 @@ async def test_logout_revokes_token(existing_user: User) -> None:
     rt = await rt_repo.get_by_hash(hash_token(rt_str))
     assert rt is not None
     assert rt.revoked_at is not None
+    assert "Path=/api/v1/auth" in logout_resp.headers["set-cookie"]
 
 
 # ── /me ───────────────────────────────────────────────────────────────────────

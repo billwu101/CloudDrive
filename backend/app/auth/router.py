@@ -25,39 +25,57 @@ AuthServiceDep = Annotated[AuthService, Depends(_make_service)]
 RefreshTokenCookie = Annotated[str | None, Cookie(alias="refresh_token")]
 
 
+def _is_secure_cookie_environment(app_env: str) -> bool:
+    return app_env.lower() in {"production", "staging"}
+
+
+def _refresh_cookie_secure() -> bool:
+    return _is_secure_cookie_environment(get_settings().app_env)
+
+
+def _refresh_cookie_path() -> str:
+    return f"{get_settings().api_v1_prefix}/auth"
+
+
 def _set_refresh_cookie(response: Response, token: str) -> None:
     settings = get_settings()
-    secure = settings.app_env != "test"
     response.set_cookie(
         key="refresh_token",
         value=token,
         httponly=True,
-        secure=secure,
+        secure=_refresh_cookie_secure(),
         samesite="lax",
         max_age=settings.refresh_token_expire_days * 86400,
-        path="/api/v1/auth",
+        path=_refresh_cookie_path(),
     )
 
 
 @router.post(
     "/register",
-    response_model=CurrentUserResponse,
+    response_model=TokenPairResponse,
     status_code=201,
-    summary="Register a new user",
+    summary="Register a new user and receive access token",
     responses={409: {"description": "Email already registered"}},
 )
 async def register(
     body: RegisterRequest,
+    response: Response,
     service: AuthServiceDep,
     session: DbSession,
-) -> CurrentUserResponse:
-    user = await service.register(
+) -> TokenPairResponse:
+    await service.register(
         email=body.email,
         username=body.username,
         password=body.password,
     )
+    await session.flush()
+    _, access_token, refresh_token = await service.login(
+        email=body.email,
+        password=body.password,
+    )
     await session.commit()
-    return CurrentUserResponse.model_validate(user)
+    _set_refresh_cookie(response, refresh_token)
+    return TokenPairResponse(access_token=access_token)
 
 
 @router.post(
@@ -120,7 +138,13 @@ async def logout(
     if refresh_token is not None:
         await service.logout(refresh_token_str=refresh_token)
         await session.commit()
-    response.delete_cookie(key="refresh_token", path="/api/v1/auth")
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=_refresh_cookie_secure(),
+        samesite="lax",
+        path=_refresh_cookie_path(),
+    )
 
 
 @router.get(

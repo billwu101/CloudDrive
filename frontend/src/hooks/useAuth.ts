@@ -44,7 +44,8 @@ export function useLoginMutation() {
 }
 
 export function useRegisterMutation() {
-  const { setToken } = useAuthStore()
+  const queryClient = useQueryClient()
+  const { setToken, setUser } = useAuthStore()
   return useMutation({
     mutationFn: ({
       email,
@@ -55,8 +56,11 @@ export function useRegisterMutation() {
       username: string
       password: string
     }) => authApi.register(email, username, password).then((r) => r.data),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setToken(data.access_token)
+      const me = await authApi.me().then((r) => r.data)
+      setUser(me)
+      await queryClient.invalidateQueries({ queryKey: authKeys.me() })
     },
   })
 }
