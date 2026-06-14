@@ -19,6 +19,12 @@ export const authApi = {
   updateUsername: (username: string) =>
     api.patch<CurrentUserResponse>('/users/me', { username }),
 
+  updateEmail: (email: string) =>
+    api.patch<CurrentUserResponse>('/users/me/email', { email }),
+
+  changePassword: (current_password: string, new_password: string) =>
+    api.patch<void>('/users/me/password', { current_password, new_password }),
+
   quota: (signal?: AbortSignal) =>
     api.get<QuotaResponse>('/users/me/quota', { signal }),
 }

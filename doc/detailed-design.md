@@ -358,8 +358,18 @@ User 模組負責使用者基本資料。Quota 模組負責容量檢查與統計
 class UserService:
     async def get_by_id(self, user_id: UUID) -> User
     async def get_by_email(self, email: str) -> User | None
-    async def update_profile(self, user_id: UUID, data: UserUpdate) -> User
+    async def update_username(self, user_id: UUID, username: str) -> User
+    async def update_email(self, user_id: UUID, email: str) -> User
+    async def change_password(self, user_id: UUID, current_password: str, new_password: str) -> None
 ```
+
+#### 帳號設定 API
+
+| Method | Path | 說明 |
+| --- | --- | --- |
+| PATCH | `/api/v1/users/me` | 更改 username |
+| PATCH | `/api/v1/users/me/email` | 更改 email（已被使用回 409）|
+| PATCH | `/api/v1/users/me/password` | 更改密碼（驗證舊密碼，成功回 204）|
 
 ### 6.3.3 QuotaService 介面
 
@@ -1465,17 +1475,23 @@ App 啟動時（`App.tsx` 最外層）執行一次 silent refresh，解決頁面
 
 責任：
 
-1. 掛載時呼叫 `POST /auth/refresh`（使用無攔截器的 `refreshClient`，防止無窮重試）。
+1. 掛載時透過共用的 `refreshAccessToken()` 呼叫 `POST /auth/refresh`。
 2. 成功 → 將 access token 寫入 `authStore`，繼續渲染 router。
 3. 失敗（cookie 不存在或過期）→ 不做任何事，讓 `RequireAuth` 導向 `/login`。
 4. 等待期間回傳 `null`，阻止 router 在結果未定前搶先重導。
+5. `AuthInitializer` 與 Axios 401 interceptor 共用 pending promise，避免 StrictMode 或同時請求重複輪替 refresh token。
+6. refresh cookie 在 development/test 不設定 `Secure` 以支援本機 HTTP；staging/production 必須設定 `Secure`。
 
 ```tsx
 // src/app/AuthInitializer.tsx
 export function AuthInitializer({ children }) {
   const [ready, setReady] = useState(false)
   useEffect(() => {
-    authApi.refresh().then(res => setToken(res.data.access_token)).catch(() => {}).finally(() => setReady(true))
+    let active = true
+    refreshAccessToken().finally(() => {
+      if (active) setReady(true)
+    })
+    return () => { active = false }
   }, [])
   if (!ready) return null
   return <>{children}</>

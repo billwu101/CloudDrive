@@ -330,6 +330,7 @@ chore: complete cloud drive implementation
 - `database` 或 `backend-drive-item` 必須依本 Prompt 新增 `user_item_preferences`。
 - DriveItem 的星號讀寫必須作用於目前使用者的 preference。
 - ActivityLog 必須支援「最近」查詢所需 action 與索引。
+- UserService 必須支援目前使用者更新顯示名稱、登入 Email 與密碼。
 
 完成後提交 Stage 3。
 
@@ -421,6 +422,7 @@ chore: complete cloud drive implementation
 額外要求：
 
 - Frontend Auth 不得將 token 寫入 localStorage 或 sessionStorage。
+- Frontend Auth 必須提供帳號設定頁，可修改顯示名稱、登入 Email 與密碼。
 - 星號 UI 使用目前使用者的 `user_item_preferences` 結果。
 - 最近頁使用後端 activity-based recent API。
 
@@ -502,7 +504,7 @@ chore: complete cloud drive implementation
 | backend-search | search router/repository/service/tests |
 | frontend-api-client | Axios base client、通用 API types、refresh machinery |
 | frontend-layout | app shell、sidebar、topbar、uiStore |
-| frontend-auth | auth pages/store/hooks/API binding/tests |
+| frontend-auth | auth pages/store/hooks/API binding/SettingsPage/tests |
 | frontend-drive | drive pages/components/hooks/API binding/tests |
 | frontend-routing | router、route guards、AuthInitializer、404/tests |
 | frontend-upload | upload store/components/hooks/API binding/tests |
@@ -728,4 +730,3 @@ npm run test:e2e
 9. 已知但不阻擋交付的限制。
 
 現在開始執行。先閱讀全部權威輸入、初始化 Git、建立 `doc/decisions.md`，然後從 Stage 0 開始。不要停在規劃階段。
-

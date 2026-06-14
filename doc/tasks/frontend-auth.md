@@ -23,6 +23,11 @@
 - [x] 建立 `useLogoutMutation`。
 - [x] 建立 LoginPage。
 - [x] 建立 RegisterPage。
+- [x] 建立 SettingsPage。
+- [x] 從使用者選單提供帳號設定入口。
+- [x] 實作顯示名稱與 email 更新表單。
+- [x] 實作目前密碼、新密碼與確認密碼表單。
+- [x] 更新成功後同步 current user query 與 auth store。
 - [x] 使用 React Hook Form。
 - [x] 使用 Zod 驗證 email。
 - [x] 使用 Zod 驗證密碼。
@@ -43,4 +48,5 @@
 - [x] 測試登出清除 store。
 - [x] 測試 authStore 安全不變式：access token 不寫入 localStorage/sessionStorage。
 - [x] 測試頁面重載後 token 不自動復原（無 persist middleware）。
-
+- [x] 測試帳號設定載入、更新成功與 API 錯誤。
+- [x] 測試新密碼確認與成功後清空欄位。

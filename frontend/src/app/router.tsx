@@ -6,6 +6,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RecentPage } from '@/pages/RecentPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { SearchPage } from '@/pages/SearchPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { SharedPage } from '@/pages/SharedPage'
 import { ShareTokenPage } from '@/pages/ShareTokenPage'
 import { StarredPage } from '@/pages/StarredPage'
@@ -43,6 +44,7 @@ export const router = createBrowserRouter([
           { path: '/shared', element: <SharedPage /> },
           { path: '/trash', element: <TrashPage /> },
           { path: '/search', element: <SearchPage /> },
+          { path: '/settings', element: <SettingsPage /> },
         ],
       },
     ],

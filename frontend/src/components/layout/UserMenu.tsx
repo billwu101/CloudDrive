@@ -1,5 +1,6 @@
-import { LogOut, User } from 'lucide-react'
+import { LogOut, Settings, User } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import type { CurrentUserResponse } from '@/api/types'
 import { useAuthStore } from '@/stores/authStore'
@@ -51,6 +52,15 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
                 <p className="truncate text-xs text-muted-foreground">{user.email}</p>
               </div>
             )}
+            <Link
+              to="/settings"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-foreground hover:bg-muted"
+              onClick={() => setOpen(false)}
+            >
+              <Settings className="size-4" aria-hidden="true" />
+              Account settings
+            </Link>
             <button
               type="button"
               role="menuitem"

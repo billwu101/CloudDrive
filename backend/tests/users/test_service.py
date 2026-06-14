@@ -5,7 +5,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.core.exceptions import NotFoundError, QuotaExceededError
+from app.core.exceptions import AppError, NotFoundError, QuotaExceededError
+from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.users.repository import AbstractUserRepository
 from app.users.service import QuotaService, UserService
@@ -39,6 +40,7 @@ class MockUserRepo(AbstractUserRepository):
         self._add_delta = 0
         self._subtract_delta = 0
         self._recalc_result = 0
+        self._email_conflicts: dict[str, User] = {}
 
     async def get_by_id(self, user_id: UUID) -> User | None:
         if self._user and self._user.id == user_id:
@@ -46,6 +48,8 @@ class MockUserRepo(AbstractUserRepository):
         return None
 
     async def get_by_email(self, email: str) -> User | None:
+        if email in self._email_conflicts:
+            return self._email_conflicts[email]
         if self._user and self._user.email == email:
             return self._user
         return None
@@ -53,6 +57,16 @@ class MockUserRepo(AbstractUserRepository):
     async def update_username(self, user_id: UUID, username: str) -> User:
         assert self._user is not None
         self._user.username = username
+        return self._user
+
+    async def update_email(self, user_id: UUID, email: str) -> User:
+        assert self._user is not None
+        self._user.email = email
+        return self._user
+
+    async def update_password(self, user_id: UUID, password_hash: str) -> User:
+        assert self._user is not None
+        self._user.password_hash = password_hash
         return self._user
 
     async def add_used_bytes(self, user_id: UUID, delta: int) -> None:
@@ -107,6 +121,55 @@ class TestUserService:
         svc = UserService(repo)
         result = await svc.update_username(u.id, "  trimmed  ")
         assert result.username == "trimmed"
+
+    async def test_update_email_success(self) -> None:
+        u = _user()
+        repo = MockUserRepo(u)
+        svc = UserService(repo)
+        result = await svc.update_email(u.id, "new@example.com")
+        assert result.email == "new@example.com"
+
+    async def test_update_email_normalizes_value(self) -> None:
+        u = _user()
+        repo = MockUserRepo(u)
+        svc = UserService(repo)
+        result = await svc.update_email(u.id, "  New@Example.COM  ")
+        assert result.email == "new@example.com"
+
+    async def test_update_email_conflict_raises(self) -> None:
+        u = _user()
+        repo = MockUserRepo(u)
+        other = _user()
+        repo._email_conflicts["taken@example.com"] = other
+        svc = UserService(repo)
+        with pytest.raises(AppError) as exc_info:
+            await svc.update_email(u.id, "taken@example.com")
+        assert exc_info.value.status_code == 409
+
+    async def test_update_email_same_user_no_conflict(self) -> None:
+        u = _user()
+        repo = MockUserRepo(u)
+        svc = UserService(repo)
+        result = await svc.update_email(u.id, u.email)
+        assert result.email == u.email
+
+    async def test_change_password_success(self) -> None:
+        u = _user()
+        u.password_hash = hash_password("correct_password")
+        repo = MockUserRepo(u)
+        svc = UserService(repo)
+        await svc.change_password(u.id, "correct_password", "new_secure_password")
+        assert verify_password("new_secure_password", u.password_hash)
+        assert not verify_password("correct_password", u.password_hash)
+
+    async def test_change_password_wrong_current_raises(self) -> None:
+        u = _user()
+        u.password_hash = hash_password("correct_password")
+        repo = MockUserRepo(u)
+        svc = UserService(repo)
+        with pytest.raises(AppError) as exc_info:
+            await svc.change_password(u.id, "wrong_password", "new_secure_password")
+        assert exc_info.value.status_code == 400
 
 
 class TestQuotaService:

@@ -23,6 +23,12 @@ class AbstractUserRepository(ABC):
     async def update_username(self, user_id: UUID, username: str) -> User: ...
 
     @abstractmethod
+    async def update_email(self, user_id: UUID, email: str) -> User: ...
+
+    @abstractmethod
+    async def update_password(self, user_id: UUID, password_hash: str) -> User: ...
+
+    @abstractmethod
     async def add_used_bytes(self, user_id: UUID, delta: int) -> None: ...
 
     @abstractmethod
@@ -48,6 +54,28 @@ class SQLUserRepository(AbstractUserRepository):  # pragma: no cover
         now = datetime.now(UTC)
         await self._session.execute(
             update(User).where(User.id == user_id).values(username=username, updated_at=now)
+        )
+        await self._session.flush()
+        user = await self.get_by_id(user_id)
+        assert user is not None
+        return user
+
+    async def update_email(self, user_id: UUID, email: str) -> User:
+        now = datetime.now(UTC)
+        await self._session.execute(
+            update(User).where(User.id == user_id).values(email=email, updated_at=now)
+        )
+        await self._session.flush()
+        user = await self.get_by_id(user_id)
+        assert user is not None
+        return user
+
+    async def update_password(self, user_id: UUID, password_hash: str) -> User:
+        now = datetime.now(UTC)
+        await self._session.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(password_hash=password_hash, updated_at=now)
         )
         await self._session.flush()
         user = await self.get_by_id(user_id)

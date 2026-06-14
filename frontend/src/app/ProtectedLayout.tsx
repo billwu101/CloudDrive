@@ -12,6 +12,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/shared': 'Shared with me',
   '/trash': 'Trash',
   '/search': 'Search',
+  '/settings': 'Account Settings',
 }
 
 function usePageTitle() {

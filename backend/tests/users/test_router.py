@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 
 from app.core.dependencies import get_db
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.core.security import create_access_token
 from app.models.user import User
@@ -94,6 +95,17 @@ async def test_update_me() -> None:
     assert resp.json()["username"] == "updated"
 
 
+async def test_update_me_rejects_blank_username() -> None:
+    uid = uuid4()
+    svc = AsyncMock(spec=UserService)
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uid)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch("/users/me", json={"username": "   "}, headers=_headers(uid))
+    assert resp.status_code == 422
+    svc.update_username.assert_not_awaited()
+
+
 async def test_get_my_quota() -> None:
     uid = uuid4()
     svc = AsyncMock(spec=UserService)
@@ -119,4 +131,126 @@ async def test_get_me_requires_auth() -> None:
     app = _make_app(svc, quota_svc, uuid4())
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.get("/users/me")
+    assert resp.status_code in (401, 403)
+
+
+async def test_update_email() -> None:
+    uid = uuid4()
+    user = _user(uid)
+    user.email = "new@example.com"
+    svc = AsyncMock(spec=UserService)
+    svc.update_email.return_value = user
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uid)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch(
+            "/users/me/email",
+            json={"email": "new@example.com"},
+            headers=_headers(uid),
+        )
+    assert resp.status_code == 200
+    assert resp.json()["email"] == "new@example.com"
+    svc.update_email.assert_awaited_once_with(uid, "new@example.com")
+
+
+async def test_update_email_normalizes_value() -> None:
+    uid = uuid4()
+    user = _user(uid)
+    user.email = "new@example.com"
+    svc = AsyncMock(spec=UserService)
+    svc.update_email.return_value = user
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uid)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch(
+            "/users/me/email",
+            json={"email": "  New@Example.COM  "},
+            headers=_headers(uid),
+        )
+    assert resp.status_code == 200
+    svc.update_email.assert_awaited_once_with(uid, "new@example.com")
+
+
+async def test_update_email_rejects_invalid_address() -> None:
+    uid = uuid4()
+    svc = AsyncMock(spec=UserService)
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uid)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch(
+            "/users/me/email",
+            json={"email": "not-an-email"},
+            headers=_headers(uid),
+        )
+    assert resp.status_code == 422
+    svc.update_email.assert_not_awaited()
+
+
+async def test_update_email_conflict_returns_409() -> None:
+    uid = uuid4()
+    svc = AsyncMock(spec=UserService)
+    svc.update_email.side_effect = AppError(
+        ErrorCode.EMAIL_ALREADY_EXISTS, "Email already in use", status_code=409
+    )
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uid)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch(
+            "/users/me/email",
+            json={"email": "taken@example.com"},
+            headers=_headers(uid),
+        )
+    assert resp.status_code == 409
+
+
+async def test_update_email_requires_auth() -> None:
+    svc = AsyncMock(spec=UserService)
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uuid4())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch("/users/me/email", json={"email": "x@example.com"})
+    assert resp.status_code in (401, 403)
+
+
+async def test_change_password() -> None:
+    uid = uuid4()
+    svc = AsyncMock(spec=UserService)
+    svc.change_password.return_value = None
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uid)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch(
+            "/users/me/password",
+            json={"current_password": "old_pass", "new_password": "new_secure_pass"},
+            headers=_headers(uid),
+        )
+    assert resp.status_code == 204
+
+
+async def test_change_password_wrong_current_returns_400() -> None:
+    uid = uuid4()
+    svc = AsyncMock(spec=UserService)
+    svc.change_password.side_effect = AppError(
+        ErrorCode.INVALID_CREDENTIALS, "Current password is incorrect", status_code=400
+    )
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uid)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch(
+            "/users/me/password",
+            json={"current_password": "wrong", "new_password": "new_secure_pass"},
+            headers=_headers(uid),
+        )
+    assert resp.status_code == 400
+
+
+async def test_change_password_requires_auth() -> None:
+    svc = AsyncMock(spec=UserService)
+    quota_svc = AsyncMock(spec=QuotaService)
+    app = _make_app(svc, quota_svc, uuid4())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.patch(
+            "/users/me/password",
+            json={"current_password": "x", "new_password": "newpassword123"},
+        )
     assert resp.status_code in (401, 403)

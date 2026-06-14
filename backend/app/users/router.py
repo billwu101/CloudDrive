@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends
 from app.core.dependencies import CurrentUserId, DbSession
 from app.schemas.common import CurrentUserResponse
 from app.users.repository import SQLUserRepository
-from app.users.schemas import QuotaResponse, UpdateProfileRequest
+from app.users.schemas import (
+    ChangePasswordRequest,
+    QuotaResponse,
+    UpdateEmailRequest,
+    UpdateProfileRequest,
+)
 from app.users.service import QuotaService, UserService
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -50,6 +55,39 @@ async def update_me(
     user = await service.update_username(current_user_id, body.username)
     await session.commit()
     return CurrentUserResponse.model_validate(user)
+
+
+@router.patch(
+    "/me/email",
+    response_model=CurrentUserResponse,
+    summary="Update current user email",
+    responses={409: {"description": "Email already in use"}},
+)
+async def update_email(
+    body: UpdateEmailRequest,
+    current_user_id: CurrentUserId,
+    service: UserServiceDep,
+    session: DbSession,
+) -> CurrentUserResponse:
+    user = await service.update_email(current_user_id, body.email)
+    await session.commit()
+    return CurrentUserResponse.model_validate(user)
+
+
+@router.patch(
+    "/me/password",
+    status_code=204,
+    summary="Change current user password",
+    responses={400: {"description": "Current password is incorrect"}},
+)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user_id: CurrentUserId,
+    service: UserServiceDep,
+    session: DbSession,
+) -> None:
+    await service.change_password(current_user_id, body.current_password, body.new_password)
+    await session.commit()
 
 
 @router.get(

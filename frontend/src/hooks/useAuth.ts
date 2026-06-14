@@ -61,6 +61,37 @@ export function useRegisterMutation() {
   })
 }
 
+export function useUpdateUsernameMutation() {
+  const queryClient = useQueryClient()
+  const setUser = useAuthStore((s) => s.setUser)
+  return useMutation({
+    mutationFn: (username: string) => authApi.updateUsername(username).then((r) => r.data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(authKeys.me(), data)
+      setUser(data)
+    },
+  })
+}
+
+export function useUpdateEmailMutation() {
+  const queryClient = useQueryClient()
+  const setUser = useAuthStore((s) => s.setUser)
+  return useMutation({
+    mutationFn: (email: string) => authApi.updateEmail(email).then((r) => r.data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(authKeys.me(), data)
+      setUser(data)
+    },
+  })
+}
+
+export function useChangePasswordMutation() {
+  return useMutation({
+    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) =>
+      authApi.changePassword(currentPassword, newPassword),
+  })
+}
+
 export function useLogoutMutation() {
   const queryClient = useQueryClient()
   const clearAuth = useAuthStore((s) => s.clearAuth)

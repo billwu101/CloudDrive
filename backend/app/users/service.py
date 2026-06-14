@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, NotFoundError, QuotaExceededError
+from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.users.repository import AbstractUserRepository
 from app.users.schemas import QuotaResponse
@@ -28,6 +29,26 @@ class UserService:
     async def update_username(self, user_id: UUID, username: str) -> User:
         await self.get_by_id(user_id)
         return await self._repo.update_username(user_id, username.strip())
+
+    async def update_email(self, user_id: UUID, email: str) -> User:
+        await self.get_by_id(user_id)
+        normalized_email = email.strip().lower()
+        existing = await self._repo.get_by_email(normalized_email)
+        if existing is not None and existing.id != user_id:
+            raise AppError(ErrorCode.EMAIL_ALREADY_EXISTS, "Email already in use", status_code=409)
+        return await self._repo.update_email(user_id, normalized_email)
+
+    async def change_password(
+        self, user_id: UUID, current_password: str, new_password: str
+    ) -> None:
+        user = await self.get_by_id(user_id)
+        if not verify_password(current_password, user.password_hash):
+            raise AppError(
+                ErrorCode.INVALID_CREDENTIALS,
+                "Current password is incorrect",
+                status_code=400,
+            )
+        await self._repo.update_password(user_id, hash_password(new_password))
 
 
 class QuotaService:
