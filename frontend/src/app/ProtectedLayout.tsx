@@ -44,14 +44,29 @@ export function ProtectedLayout() {
     navigate('/login')
   }
 
+  const searchQuery =
+    location.pathname === '/search'
+      ? (new URLSearchParams(location.search).get('q') ?? '')
+      : ''
+
   const handleSearch = (query: string) => {
     if (query.trim()) {
-      navigate(`/search?q=${encodeURIComponent(query.trim())}`)
+      navigate(`/search?q=${encodeURIComponent(query.trim())}`, {
+        // Replace when already on /search so back-button skips intermediate queries.
+        // Carry the { from } state forward so clearing always knows where to return.
+        replace: location.pathname === '/search',
+        state: location.pathname !== '/search'
+          ? { from: location.pathname + location.search }
+          : (location.state as object | null),
+      })
+    } else if (location.pathname === '/search') {
+      const from = (location.state as { from?: string } | null)?.from ?? '/drive'
+      navigate(from)
     }
   }
 
   return (
-    <AppShell user={user} quota={quota} onLogout={handleLogout} onSearch={handleSearch}>
+    <AppShell user={user} quota={quota} onLogout={handleLogout} onSearch={handleSearch} searchValue={searchQuery}>
       <Outlet />
     </AppShell>
   )
