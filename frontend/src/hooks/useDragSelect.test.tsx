@@ -40,6 +40,8 @@ function Harness({
 
   return (
     <>
+      <aside data-testid="sidebar">Sidebar</aside>
+      <header data-testid="toolbar">Toolbar</header>
       <div ref={containerRef} data-testid="container">
         <div
           data-item-id="folder-1"
@@ -177,6 +179,25 @@ describe('useDragSelect', () => {
     })
     fireEvent.pointerMove(window, { clientX: 210, clientY: 110 })
     expect(screen.queryByTestId('drag-overlay')).not.toBeInTheDocument()
+  })
+
+  it('does not start or change selection outside the file-list container', () => {
+    render(<Harness initialSelection={['folder-1']} />)
+    setItemRects()
+
+    for (const testId of ['sidebar', 'toolbar']) {
+      fireEvent.pointerDown(screen.getByTestId(testId), {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+      })
+      fireEvent.pointerMove(window, { clientX: 210, clientY: 110 })
+      fireEvent.pointerUp(window)
+
+      expect(screen.queryByTestId('drag-overlay')).not.toBeInTheDocument()
+      expect(screen.getByTestId('folder-1')).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByTestId('file-1')).toHaveAttribute('aria-selected', 'false')
+    }
   })
 
   it('ignores movement inside the five-pixel dead zone', () => {

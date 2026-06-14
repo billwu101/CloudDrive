@@ -15,8 +15,8 @@ export interface DragRect {
  * is checked at event dispatch time, not at effect setup time.
  *
  * Behaviour:
- * - pointerdown anywhere on the page on empty space (not on a file item,
- *   checkbox, button, or link) → starts the drag (global)
+ * - pointerdown on empty space inside the file-list container (not on a file
+ *   item, checkbox, button, or link) → starts the drag
  * - pointermove > 5 px dead-zone → shows the selection rectangle and
  *   selects every [data-item-id] element whose bounding rect overlaps it
  * - pointerup after real movement → keeps the selection
@@ -42,13 +42,12 @@ export function useDragSelect(
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
-      // Only left button; only inside the main content area (not sidebar / topbar)
+      const container = containerRef.current
+      // Only left button and only inside the file area, not sidebar/toolbars.
       if (e.button !== 0) return
-      if (!(e.target as Element).closest('main')) return
+      if (!container || !container.contains(e.target as Node)) return
       // Don't hijack clicks on file items or interactive controls
       if ((e.target as Element).closest('[data-item-id], input, button, a, label, [role="button"]')) return
-      // Only start if the file list is rendered (items exist)
-      if (!containerRef.current) return
 
       // Stop the browser's native text-selection gesture before it begins.
       e.preventDefault()

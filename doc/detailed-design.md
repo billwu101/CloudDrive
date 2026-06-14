@@ -1655,6 +1655,7 @@ ConfirmTrashDialog   — supports itemNames: string[] for bulk confirmation
 **多選行為：**
 - Checkbox 點擊 (`onCheckboxClick`) 永遠以累積模式加選，不取代已選範圍。
 - `useDragSelect` 監聽檔案區空白處的 Pointer Events，超過 5 px 移動門檻後顯示固定定位選取框。
+- 框選起點必須位於 DrivePage 的 `file-list` 容器；Sidebar、全域 TopBar、Breadcrumb 與檔案工具列均不會啟動選框。
 - 框選以 `[data-item-id]` 元素的 `getBoundingClientRect()` 判斷是否與選取框相交，因此格狀檔案卡與列表列都支援。
 - 框選只使用滑鼠左鍵；新的框選範圍取代既有選取，不要求搭配 Ctrl/Cmd 等鍵盤按鍵。
 - 有效框選開始時會取消原生 `pointerdown`／`pointermove` 預設行為，並在拖曳期間攔截 `selectstart`，避免側欄、Breadcrumb 或容量資訊出現文字反白。
