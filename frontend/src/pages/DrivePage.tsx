@@ -1,5 +1,5 @@
 import { ArrowLeft, FolderOpen } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import type { DriveItemResponse } from '@/api/types'
@@ -67,7 +67,7 @@ export function DrivePage() {
 
   const ancestors: BreadcrumbItem[] = (ancestorsData ?? []).map((a) => ({ id: a.id, name: a.name }))
   const currentFolderName = folderItem?.name
-  const items = data?.items ?? []
+  const items = useMemo(() => data?.items ?? [], [data?.items])
 
   const handleBack = useCallback(() => {
     if (!folderId) return
@@ -199,7 +199,7 @@ export function DrivePage() {
         )}
 
         {!isLoading && items.length > 0 && (
-          <div ref={fileListRef} className="relative flex-1 overflow-auto">
+          <div ref={fileListRef} data-testid="file-list" className="relative flex-1 overflow-auto">
             {viewMode === 'list' ? (
               <FileTable {...sharedProps} onSelectAll={handleSelectAll} />
             ) : (
@@ -208,6 +208,7 @@ export function DrivePage() {
             {/* Rubber-band selection overlay */}
             {dragRect && (
               <div
+                data-testid="drag-overlay"
                 aria-hidden="true"
                 className="pointer-events-none fixed z-30 rounded-sm border border-primary/60 bg-primary/10"
                 style={{ top: dragRect.y, left: dragRect.x, width: dragRect.width, height: dragRect.height }}

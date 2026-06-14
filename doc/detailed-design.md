@@ -1654,6 +1654,10 @@ ConfirmTrashDialog   — supports itemNames: string[] for bulk confirmation
 
 **多選行為：**
 - Checkbox 點擊 (`onCheckboxClick`) 永遠以累積模式加選，不取代已選範圍。
+- `useDragSelect` 監聽檔案區空白處的 Pointer Events，超過 5 px 移動門檻後顯示固定定位選取框。
+- 框選以 `[data-item-id]` 元素的 `getBoundingClientRect()` 判斷是否與選取框相交，因此格狀檔案卡與列表列都支援。
+- 框選只使用滑鼠左鍵；新的框選範圍取代既有選取，不要求搭配 Ctrl/Cmd 等鍵盤按鍵。
+- 空白處單擊清除選取；從檔案項目、checkbox、button、link 或其他互動控制開始拖曳時不啟動框選。
 - 右鍵點擊已選取的多個項目之一 → 顯示 `MultiFileContextMenu`（僅「移至垃圾桶」）。
 - 右鍵點擊未選或單選項目 → 顯示 `FileContextMenu`（完整單一操作）。
 - `uiStore.selectAll(ids)` 提供 header checkbox 全選功能。
@@ -1671,6 +1675,7 @@ useMoveItem()
 useSetStarred()
 useMoveToTrash()
 useRecentItems()
+useDragSelect(containerRef, onSelectIds, onClear)
 ```
 
 `useFolderItem` + `useFolderAncestors` 一起驅動 DrivePage 的 Breadcrumbs 元件，並提供 ArrowLeft 返回按鈕所需的 `parent_id`。

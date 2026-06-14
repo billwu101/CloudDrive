@@ -16,6 +16,9 @@
 - [x] Checkbox 點擊永遠以多選模式累積（不取代選取範圍）。
 - [x] DrivePage / RecentPage / StarredPage / SearchPage 均通過 onCheckboxClick 與 onSelectAll。
 - [x] 批次移至垃圾桶（逐一 mutate）後清除選取狀態。
+- [x] DrivePage 支援從空白處拖曳矩形框選檔案與資料夾。
+- [x] 框選只需按住滑鼠左鍵拖曳，不需要搭配鍵盤按鍵。
+- [x] 框選具有 5 px 移動門檻，且不會攔截檔案卡片與互動控制的拖曳起點。
 
 ## 完成定義
 
@@ -70,4 +73,4 @@
 - [x] 測試移至垃圾桶。
 - [x] 測試列表與格狀切換。
 - [x] 測試 loading/empty/error 狀態。
-
+- [x] 測試框選命中、取代選取、空白點擊清除及無效拖曳起點。
