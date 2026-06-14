@@ -80,13 +80,18 @@ describe('useDragSelect', () => {
     render(<Harness />)
     setItemRects()
 
-    fireEvent.pointerDown(screen.getByTestId('container'), {
+    const pointerDownAllowed = fireEvent.pointerDown(screen.getByTestId('container'), {
       button: 0,
       clientX: 10,
       clientY: 10,
     })
-    fireEvent.pointerMove(window, { clientX: 210, clientY: 110 })
+    const pointerMoveAllowed = fireEvent.pointerMove(window, {
+      clientX: 210,
+      clientY: 110,
+    })
 
+    expect(pointerDownAllowed).toBe(false)
+    expect(pointerMoveAllowed).toBe(false)
     expect(screen.getByTestId('drag-overlay')).toHaveStyle({
       left: '10px',
       top: '10px',
@@ -98,6 +103,30 @@ describe('useDragSelect', () => {
 
     fireEvent.pointerUp(window)
     expect(screen.queryByTestId('drag-overlay')).not.toBeInTheDocument()
+  })
+
+  it('prevents native text selection only while drag selection is active', () => {
+    render(<Harness />)
+
+    const beforeDrag = new Event('selectstart', { bubbles: true, cancelable: true })
+    document.dispatchEvent(beforeDrag)
+    expect(beforeDrag.defaultPrevented).toBe(false)
+
+    fireEvent.pointerDown(screen.getByTestId('container'), {
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    })
+
+    const duringDrag = new Event('selectstart', { bubbles: true, cancelable: true })
+    document.dispatchEvent(duringDrag)
+    expect(duringDrag.defaultPrevented).toBe(true)
+
+    fireEvent.pointerUp(window)
+
+    const afterDrag = new Event('selectstart', { bubbles: true, cancelable: true })
+    document.dispatchEvent(afterDrag)
+    expect(afterDrag.defaultPrevented).toBe(false)
   })
 
   it('replaces the previous selection during a regular drag', () => {

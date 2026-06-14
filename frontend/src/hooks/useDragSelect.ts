@@ -49,6 +49,8 @@ export function useDragSelect(
       // Only start if the file list is rendered (items exist)
       if (!containerRef.current) return
 
+      // Stop the browser's native text-selection gesture before it begins.
+      e.preventDefault()
       startPos.current = { x: e.clientX, y: e.clientY }
       active.current = true
       moved.current = false
@@ -59,6 +61,7 @@ export function useDragSelect(
     const onPointerMove = (e: PointerEvent) => {
       if (!active.current || !startPos.current) return
 
+      e.preventDefault()
       const dx = e.clientX - startPos.current.x
       const dy = e.clientY - startPos.current.y
 
@@ -102,6 +105,10 @@ export function useDragSelect(
       }
     }
 
+    const onSelectStart = (e: Event) => {
+      if (active.current) e.preventDefault()
+    }
+
     const onPointerUp = () => {
       if (!active.current) return
 
@@ -120,12 +127,14 @@ export function useDragSelect(
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
     window.addEventListener('pointercancel', onPointerUp)
+    document.addEventListener('selectstart', onSelectStart)
 
     return () => {
       window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
+      document.removeEventListener('selectstart', onSelectStart)
     }
   }, [containerRef])  // stable ref — runs once on mount
 

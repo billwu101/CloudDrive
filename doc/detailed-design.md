@@ -1657,6 +1657,7 @@ ConfirmTrashDialog   — supports itemNames: string[] for bulk confirmation
 - `useDragSelect` 監聽檔案區空白處的 Pointer Events，超過 5 px 移動門檻後顯示固定定位選取框。
 - 框選以 `[data-item-id]` 元素的 `getBoundingClientRect()` 判斷是否與選取框相交，因此格狀檔案卡與列表列都支援。
 - 框選只使用滑鼠左鍵；新的框選範圍取代既有選取，不要求搭配 Ctrl/Cmd 等鍵盤按鍵。
+- 有效框選開始時會取消原生 `pointerdown`／`pointermove` 預設行為，並在拖曳期間攔截 `selectstart`，避免側欄、Breadcrumb 或容量資訊出現文字反白。
 - 空白處單擊清除選取；從檔案項目、checkbox、button、link 或其他互動控制開始拖曳時不啟動框選。
 - 右鍵點擊已選取的多個項目之一 → 顯示 `MultiFileContextMenu`（僅「移至垃圾桶」）。
 - 右鍵點擊未選或單選項目 → 顯示 `FileContextMenu`（完整單一操作）。
