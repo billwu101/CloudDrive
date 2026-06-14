@@ -7,6 +7,16 @@
 - [x] DrivePage 用以上 hooks 讓 `Breadcrumbs` 顯示真實 pwd 路徑，各層名稱可點擊跳轉。
 - [x] 進入子資料夾時顯示 ArrowLeft 返回按鈕，點擊返回直接父層（或根目錄）。
 
+## 多選與批次操作
+
+- [x] FileRow / FileCard：滑鼠懸停顯示 checkbox（覆蓋 icon），已選取時 checkbox 常駐顯示。
+- [x] FileTable header checkbox 支援全選（indeterminate 半選狀態）。
+- [x] 右鍵多選項目 → 顯示 MultiFileContextMenu（僅「移至垃圾桶」）。
+- [x] 右鍵單選/未選項目 → 顯示既有 FileContextMenu。
+- [x] Checkbox 點擊永遠以多選模式累積（不取代選取範圍）。
+- [x] DrivePage / RecentPage / StarredPage / SearchPage 均通過 onCheckboxClick 與 onSelectAll。
+- [x] 批次移至垃圾桶（逐一 mutate）後清除選取狀態。
+
 ## 完成定義
 
 - 可瀏覽根目錄與子資料夾。

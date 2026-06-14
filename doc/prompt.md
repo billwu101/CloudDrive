@@ -425,6 +425,7 @@ chore: complete cloud drive implementation
 - Frontend Auth 必須提供帳號設定頁，可修改顯示名稱、登入 Email 與密碼。
 - 星號 UI 使用目前使用者的 `user_item_preferences` 結果。
 - 最近頁使用後端 activity-based recent API。
+- Drive UI 支援多選：FileRow / FileCard hover 顯示 checkbox（取代 icon），FileTable header checkbox 支援全選（indeterminate 半選態）。右鍵多選項目顯示 `MultiFileContextMenu`（僅批次移至垃圾桶），右鍵單選項目顯示既有 `FileContextMenu`。
 
 完成後提交 Stage 8。
 

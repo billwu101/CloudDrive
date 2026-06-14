@@ -1606,10 +1606,14 @@ StorageUsageBar
 interface UiState {
   sidebarCollapsed: boolean;
   viewMode: "list" | "grid";
-  selectedItemIds: string[];
+  selectedItemIds: Set<string>;   // uses Set for O(1) membership checks
   previewItemId: string | null;
   shareItemId: string | null;
   contextMenu: ContextMenuState | null;
+  // actions
+  selectItem(id: string, multi?: boolean): void;  // multi=true → toggle without clearing
+  selectAll(ids: string[]): void;
+  clearSelection(): void;
 }
 ```
 
@@ -1635,17 +1639,25 @@ StarredPage
 ```text
 DriveToolbar
 Breadcrumbs
-FileTable
+FileTable            — header checkbox (indeterminate) + onSelectAll
 FileGrid
-FileRow
-FileCard
+FileRow              — checkbox overlays icon on hover; always visible when selected
+FileCard             — absolute-positioned checkbox top-left
 FileIcon
-FileContextMenu
+FileContextMenu      — single-item right-click menu
+MultiFileContextMenu — multi-item right-click menu (count label + trash only)
 CreateFolderDialog
 RenameDialog
 MoveDialog
-ConfirmTrashDialog
+ConfirmTrashDialog   — supports itemNames: string[] for bulk confirmation
 ```
+
+**多選行為：**
+- Checkbox 點擊 (`onCheckboxClick`) 永遠以累積模式加選，不取代已選範圍。
+- 右鍵點擊已選取的多個項目之一 → 顯示 `MultiFileContextMenu`（僅「移至垃圾桶」）。
+- 右鍵點擊未選或單選項目 → 顯示 `FileContextMenu`（完整單一操作）。
+- `uiStore.selectAll(ids)` 提供 header checkbox 全選功能。
+- 批次移至垃圾桶後自動 `clearSelection()`。
 
 ### 9.6.3 Hooks
 
