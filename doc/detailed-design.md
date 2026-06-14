@@ -1623,7 +1623,7 @@ interface UiState {
 2. viewMode 切換後 DrivePage 顯示列表或格狀。
 3. 選取檔案後 toolbar 顯示操作。
 4. 關閉 preview dialog 後 previewItemId 清空。
-5. App 根層攔截非表單控制項的 `selectstart`，避免任何 UI 文字出現原生藍色反白；input、textarea 與 contenteditable 仍可正常編輯。
+5. 全域 CSS（`index.css`）對 `*` 設定 `user-select: none`，徹底禁止任何 UI 文字被滑鼠選取或複製；`input`、`textarea` 以 `user-select: text` 覆寫，保留表單欄位的正常選取能力。
 
 ### 9.6 Drive 前端模組
 
@@ -1655,11 +1655,11 @@ ConfirmTrashDialog   — supports itemNames: string[] for bulk confirmation
 
 **多選行為：**
 - Checkbox 點擊 (`onCheckboxClick`) 永遠以累積模式加選，不取代已選範圍。
-- `useDragSelect` 監聽檔案區空白處的 Pointer Events，超過 5 px 移動門檻後顯示固定定位選取框。
-- 框選起點必須位於 DrivePage 的 `file-list` 容器；Sidebar、全域 TopBar、Breadcrumb 與檔案工具列均不會啟動選框。
+- `useDragSelect` 監聽 `window` 上的 Pointer Events，超過 5 px 移動門檻後顯示 `position:fixed` 選取框。
+- 框選可從 `<main>` 內任意空白處啟動（含檔案列表外的 padding 區域）；Sidebar 與 TopBar 不在 `<main>` 內，從那裡開始拖曳不會啟動選框（以 `closest('main')` 判斷）。
 - 框選以 `[data-item-id]` 元素的 `getBoundingClientRect()` 判斷是否與選取框相交，因此格狀檔案卡與列表列都支援。
 - 框選只使用滑鼠左鍵；新的框選範圍取代既有選取，不要求搭配 Ctrl/Cmd 等鍵盤按鍵。
-- 有效框選開始時會取消原生 `pointerdown`／`pointermove` 預設行為，並在拖曳期間攔截 `selectstart`，避免側欄、Breadcrumb 或容量資訊出現文字反白。
+- `pointerdown` 時取消原生預設行為並呼叫 `removeAllRanges()`；拖曳期間攔截 `selectstart` 防止文字反白。
 - 空白處單擊清除選取；從檔案項目、checkbox、button、link 或其他互動控制開始拖曳時不啟動框選。
 - 右鍵點擊已選取的多個項目之一 → 顯示 `MultiFileContextMenu`（僅「移至垃圾桶」）。
 - 右鍵點擊未選或單選項目 → 顯示 `FileContextMenu`（完整單一操作）。
@@ -1754,7 +1754,7 @@ UploadTaskItem
 ### 9.7.4 可獨立測試項
 
 1. 選擇檔案後建立 UploadTask。
-2. 拖曳檔案到 DrivePage 會建立 UploadTask。
+2. 拖曳檔案到螢幕任意位置（包含 Sidebar、TopBar）均會建立 UploadTask；`UploadDropzone` 使用 `window` 全域 drag 事件並以 `position:fixed` overlay 覆蓋整個視窗。
 3. 上傳中顯示進度。
 4. 上傳成功後檔案列表刷新。
 5. 上傳失敗後顯示錯誤訊息。
@@ -1870,10 +1870,16 @@ useEmptyTrash()
 useSearchItems(query, filters, page, pageSize)
 ```
 
-### 9.11.3 可獨立測試項
+### 9.11.3 導覽行為
+
+- 從非 `/search` 頁進入搜尋時，將來源路徑存入 navigate state `{ from: pathname }`。
+- 後續 replace 導航（每次 keystroke）攜帶同一份 state 向前傳遞。
+- 清空搜尋欄時讀取 `state.from` 精準導回，避免 `navigate(-1)` 因中間 replace history 退到上一個搜尋狀態。
+
+### 9.11.4 可獨立測試項
 
 1. 輸入關鍵字後 debounce 呼叫 API。
-2. 清空關鍵字後不查詢。
+2. 清空關鍵字後不查詢，並導回搜尋前頁面。
 3. 搜尋結果可開啟 preview 或資料夾。
 4. 搜尋錯誤時顯示錯誤狀態。
 

@@ -13,7 +13,7 @@
 - [x] 建立 `useSearchItems` query。
 - [x] 建立 debounce hook。
 - [x] 將搜尋字串同步到 URL query。
-- [x] 清空搜尋字串時停止 query。
+- [x] 清空搜尋字串時停止 query，並導回搜尋前頁面（`state.from` 記錄來源路徑，fallback `/drive`）。
 - [x] 建立 item type 篩選。
 - [x] 建立 MIME type 篩選。
 - [x] 建立搜尋結果列表。
@@ -28,7 +28,7 @@
 ## 測試任務
 
 - [x] 測試 debounce。
-- [x] 測試空字串不查詢。
+- [x] 測試空字串不查詢，且導回搜尋前頁面（非歷史 -1）。
 - [x] 測試 type 篩選。
 - [x] 測試 MIME type 篩選。
 - [x] 測試搜尋結果開啟資料夾。

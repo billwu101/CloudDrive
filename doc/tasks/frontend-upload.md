@@ -17,7 +17,7 @@
 - [x] 實作 cancel task state。
 - [x] 實作 removeTask。
 - [x] 建立 `UploadButton`。
-- [x] 建立 `UploadDropzone`。
+- [x] 建立 `UploadDropzone`（全域：使用 `window` drag 事件，drop 螢幕任意位置均有效，overlay 為 `position:fixed`）。
 - [x] 建立 `UploadQueue`。
 - [x] 建立 `UploadTaskItem`。
 - [x] 建立 multipart/form-data request。

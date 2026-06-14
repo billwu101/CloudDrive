@@ -20,6 +20,7 @@
 - [x] 加入 sidebar collapsed state。
 - [x] 加入 view mode state。
 - [x] 加入 selected item ids state。
+- [x] 全域 CSS `user-select: none`（`index.css` `*` 規則），`input`/`textarea` 覆寫為 `user-select: text`。
 - [x] 加入 preview item id state。
 - [x] 加入 share item id state。
 - [x] 加入 context menu state。
