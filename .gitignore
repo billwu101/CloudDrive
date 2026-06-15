@@ -58,3 +58,6 @@ redis_data/
 tmp/
 temp/
 *.pid
+
+# Claude Code local/personal settings (not shared with team)
+.claude/settings.local.json
