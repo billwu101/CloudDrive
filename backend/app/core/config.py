@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     max_upload_size_bytes: int = 100 * 1024 * 1024  # 100 MB
     default_user_quota_bytes: int = 15 * 1024 * 1024 * 1024  # 15 GB
 
+    # Email / password-reset delivery
+    email_provider: str = "console"  # "console" (log only) | "smtp"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "Cloud Drive <no-reply@clouddrive.local>"
+    smtp_use_tls: bool = True  # STARTTLS
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -20,6 +20,7 @@ const MOCK_USER = {
   used_bytes: 128,
   is_active: true,
   is_admin: false,
+  must_change_password: false,
   created_at: '2024-01-01T00:00:00Z',
 }
 

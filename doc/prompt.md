@@ -309,6 +309,15 @@ chore: complete cloud drive implementation
 - `backend-core`
 - `database`
 
+額外要求（忘記密碼）：
+
+- `User` model 新增 `must_change_password` 欄位（Alembic `0004`，server_default false）。
+- 新增 email 寄送抽象層 `app/email/`（`EmailProvider` protocol + Console/SMTP 實作 + factory），仿照 `app/storage/` 的 `StorageProvider` 模式；`aiosmtplib` 為新依賴。
+- `core/security.py` 新增 `generate_random_password()`（預設 10 碼，含大小寫與數字，避開易混淆字元）。
+- `AuthService.forgot_password()` + `POST /auth/forgot-password`：防枚舉（查無/停用帳號靜默結束，端點恆回傳相同訊息），重設為隨機密碼、設定 `must_change_password=True` 並寄出 email。
+- `change_password` 更新密碼時清除 `must_change_password`；`CurrentUserResponse` 新增該欄位。
+- `.env.example` 補上 `EMAIL_PROVIDER` 與 `SMTP_*` 設定（Gmail 需 App Password）。
+
 完成後執行後端測試、Ruff、mypy 與 migration 驗證，提交 Stage 2。
 
 ### Stage 3：核心領域資料
@@ -426,6 +435,8 @@ chore: complete cloud drive implementation
 - 星號 UI 使用目前使用者的 `user_item_preferences` 結果。
 - 最近頁使用後端 activity-based recent API。
 - Drive UI 支援多選：FileRow / FileCard hover 顯示 checkbox（取代 icon），FileTable header checkbox 支援全選（indeterminate 半選態）。右鍵多選項目顯示 `MultiFileContextMenu`（僅批次移至垃圾桶），右鍵單選項目顯示既有 `FileContextMenu`。
+- 忘記密碼：LoginPage 加「Forgot password?」連結；新增公開頁 `ForgotPasswordPage`（`/forgot-password`）呼叫 `POST /auth/forgot-password`，送出後顯示防枚舉式確認訊息。`authApi.forgotPassword` + `useForgotPasswordMutation`。
+- 改密碼提醒：`CurrentUserResponse` 新增 `must_change_password`；`ChangePasswordReminder` banner 於登入後當該值為真時提醒（可關閉、連到 `/settings`、設定頁不顯示），由 `ProtectedLayout` 渲染。
 
 完成後提交 Stage 8。
 

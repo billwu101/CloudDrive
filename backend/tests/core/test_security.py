@@ -11,6 +11,7 @@ from app.core.security import (
     create_refresh_token,
     decode_access_token,
     decode_refresh_token,
+    generate_random_password,
     hash_password,
     verify_password,
 )
@@ -20,6 +21,37 @@ def test_hash_password_not_equal_to_plain() -> None:
     plain = "my-secret-password"
     hashed = hash_password(plain)
     assert hashed != plain
+
+
+def test_generate_random_password_default_length_is_10() -> None:
+    assert len(generate_random_password()) == 10
+
+
+def test_generate_random_password_custom_length() -> None:
+    assert len(generate_random_password(16)) == 16
+
+
+def test_generate_random_password_has_mixed_character_classes() -> None:
+    pw = generate_random_password()
+    assert any(c.islower() for c in pw)
+    assert any(c.isupper() for c in pw)
+    assert any(c.isdigit() for c in pw)
+
+
+def test_generate_random_password_avoids_ambiguous_characters() -> None:
+    # No 0/O/1/l/I so users can read it out of an email unambiguously.
+    pw = "".join(generate_random_password(20) for _ in range(20))
+    assert not any(c in "0O1lI" for c in pw)
+
+
+def test_generate_random_password_is_unique() -> None:
+    passwords = {generate_random_password() for _ in range(100)}
+    assert len(passwords) == 100
+
+
+def test_generate_random_password_rejects_too_short() -> None:
+    with pytest.raises(ValueError):
+        generate_random_password(2)
 
 
 def test_verify_password_correct() -> None:

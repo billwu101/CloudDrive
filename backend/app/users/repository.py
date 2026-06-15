@@ -75,7 +75,11 @@ class SQLUserRepository(AbstractUserRepository):  # pragma: no cover
         await self._session.execute(
             update(User)
             .where(User.id == user_id)
-            .values(password_hash=password_hash, updated_at=now)
+            .values(
+                password_hash=password_hash,
+                must_change_password=False,
+                updated_at=now,
+            )
         )
         await self._session.flush()
         user = await self.get_by_id(user_id)

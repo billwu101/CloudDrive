@@ -35,6 +35,16 @@
 - [x] 實作 `GET /auth/me`。
 - [x] 確認 response 不暴露 `password_hash`。
 
+### 忘記密碼（Forgot Password）
+
+- [x] `User` model 新增 `must_change_password` 欄位（Alembic `0004`）。
+- [x] 建立 email 寄送抽象層 `app/email/`（`EmailProvider` protocol + `ConsoleEmailProvider` + `SMTPEmailProvider` + factory），仿照 `StorageProvider` 模式。
+- [x] `core/security.py` 新增 `generate_random_password()`（預設 10 碼、含大小寫與數字、避開易混淆字元）。
+- [x] `AuthService.forgot_password()`：查無 email 或停用帳號時靜默結束（防枚舉），否則重設為隨機密碼、設定 `must_change_password=True`、寄送含臨時密碼的 email。
+- [x] 實作 `POST /auth/forgot-password`（無論 email 是否存在都回傳相同訊息）。
+- [x] `UserService.change_password()` 在更新密碼時清除 `must_change_password` 旗標。
+- [x] `CurrentUserResponse` 新增 `must_change_password` 欄位。
+
 ## 測試任務
 
 - [x] 測試註冊成功。
@@ -47,3 +57,9 @@
 - [x] 測試資料庫 refresh token 到期後不可使用。
 - [x] 測試 development/test cookie 支援 HTTP，staging/production 強制 Secure。
 - [x] 測試 `/auth/me` 需要 access token。
+- [x] 測試 `forgot_password` 重設密碼、設定旗標並寄出 email。
+- [x] 測試寄出的臨時密碼為 10 碼且可用於登入。
+- [x] 測試查無 email / 停用帳號時靜默不寄信（防枚舉）。
+- [x] 測試 `POST /auth/forgot-password` 對存在與不存在的 email 回傳相同回應。
+- [x] 測試 `generate_random_password` 長度、字元類別、唯一性、避開易混淆字元。
+- [x] 測試 email factory 預設 console、設定後選 SMTP、缺 host 時 fallback。

@@ -278,6 +278,7 @@ Auth 模組負責：
 4. refresh token 輪替或撤銷。
 5. 登出。
 6. 取得目前使用者。
+7. 忘記密碼：重設為隨機臨時密碼並寄送 email。
 
 Auth 模組不負責檔案權限，也不處理檔案資料。
 
@@ -287,6 +288,7 @@ Auth 模組不負責檔案權限，也不處理檔案資料。
 | --- | --- | --- |
 | POST | `/api/v1/auth/register` | 註冊 |
 | POST | `/api/v1/auth/login` | 登入 |
+| POST | `/api/v1/auth/forgot-password` | 忘記密碼：寄送隨機臨時密碼（防枚舉，恆回傳相同訊息） |
 | POST | `/api/v1/auth/refresh` | 刷新 access token |
 | POST | `/api/v1/auth/logout` | 登出 |
 | GET | `/api/v1/auth/me` | 目前使用者 |
@@ -297,10 +299,22 @@ Auth 模組不負責檔案權限，也不處理檔案資料。
 class AuthService:
     async def register(self, data: RegisterRequest) -> User
     async def login(self, email: str, password: str) -> TokenPair
+    async def forgot_password(self, *, email: str, email_provider: EmailProvider) -> None
     async def refresh(self, refresh_token: str) -> TokenPair
     async def logout(self, refresh_token: str) -> None
     async def get_current_user(self, access_token: str) -> User
 ```
+
+### 6.2.5 忘記密碼流程
+
+1. 前端 `/forgot-password` 頁送出 email 至 `POST /auth/forgot-password`。
+2. `forgot_password()` 正規化 email 後查詢使用者；查無或帳號停用時**靜默結束**（防枚舉）。
+3. 否則以 `generate_random_password(10)` 產生隨機 10 碼密碼，呼叫 `UserRepository.reset_password()` 更新 hash 並設定 `users.must_change_password = True`。
+4. 透過 `EmailProvider` 寄出含臨時密碼的 email。端點無論結果都回傳相同訊息。
+5. 使用者以臨時密碼登入；`CurrentUserResponse.must_change_password=True` 觸發前端提醒 banner。
+6. 使用者於帳號設定改密碼時，`UserService.change_password()` → `update_password()` 一併清除 `must_change_password`。
+
+**Email 抽象層（`app/email/`）**：仿照 `StorageProvider` 模式。`EmailProvider` protocol（`send(to, subject, body)`），`ConsoleEmailProvider`（記錄至 log，預設）與 `SMTPEmailProvider`（aiosmtplib，Gmail 等）。`get_email_provider()` factory 依 `EMAIL_PROVIDER` 設定選擇；`smtp` 但未設 `SMTP_HOST` 時 fallback 回 console。SMTP 寄送失敗會被吞下並記錄，以維持端點不可枚舉。
 
 ### 6.2.4 Repository 依賴
 

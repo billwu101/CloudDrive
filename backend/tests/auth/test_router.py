@@ -43,6 +43,7 @@ def _user(
         used_bytes=0,
         is_active=is_active,
         is_admin=False,
+        must_change_password=False,
         created_at=now,
         updated_at=now,
     )
@@ -52,9 +53,18 @@ class FakeUserRepo(AbstractUserRepository):
     def __init__(self, users: list[User]) -> None:
         self._users = users
         self.created: list[User] = []
+        self.reset_calls: list[tuple[Any, str]] = []
 
     async def get_by_email(self, email: str) -> User | None:
         return next((u for u in self._users if u.email == email), None)
+
+    async def reset_password(self, user_id: Any, password_hash: str) -> None:
+        self.reset_calls.append((user_id, password_hash))
+        for u in self._users:
+            if u.id == user_id:
+                u.password_hash = password_hash
+                u.must_change_password = True
+                break
 
     async def get_by_id(self, user_id: Any) -> User | None:
         return next((u for u in self._users if u.id == user_id), None)
@@ -73,6 +83,7 @@ class FakeUserRepo(AbstractUserRepository):
             used_bytes=0,
             is_active=True,
             is_admin=False,
+            must_change_password=False,
             created_at=now,
             updated_at=now,
         )
@@ -315,3 +326,47 @@ async def test_me_returns_user(existing_user: User) -> None:
     body = resp.json()
     assert body["email"] == existing_user.email
     assert "password_hash" not in body
+
+
+# ── Forgot password ─────────────────────────────────────────────────────────
+
+
+class _SpyEmailProvider:
+    def __init__(self) -> None:
+        self.sent: list[dict[str, str]] = []
+
+    async def send(self, *, to: str, subject: str, body: str) -> None:
+        self.sent.append({"to": to, "subject": subject, "body": body})
+
+
+def _with_email_spy(app: FastAPI) -> _SpyEmailProvider:
+    from app.email.factory import get_email_provider
+
+    spy = _SpyEmailProvider()
+    app.dependency_overrides[get_email_provider] = lambda: spy
+    return spy
+
+
+async def test_forgot_password_existing_email_resets_and_sends(existing_user: User) -> None:
+    app, repo, _ = _make_test_app([existing_user])
+    spy = _with_email_spy(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/auth/forgot-password", json={"email": existing_user.email})
+    assert resp.status_code == 200
+    assert "message" in resp.json()
+    assert len(repo.reset_calls) == 1
+    assert existing_user.must_change_password is True
+    assert len(spy.sent) == 1
+    assert spy.sent[0]["to"] == existing_user.email
+
+
+async def test_forgot_password_unknown_email_returns_same_response() -> None:
+    app, repo, _ = _make_test_app([])
+    spy = _with_email_spy(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/auth/forgot-password", json={"email": "ghost@example.com"})
+    # Non-enumerable: same 200 + message, but nothing actually happens.
+    assert resp.status_code == 200
+    assert "message" in resp.json()
+    assert repo.reset_calls == []
+    assert spy.sent == []

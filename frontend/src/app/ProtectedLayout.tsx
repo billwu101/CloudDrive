@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { ChangePasswordReminder } from '@/components/layout/ChangePasswordReminder'
 import { useCurrentUserQuery, useLogoutMutation, useQuotaQuery } from '@/hooks/useAuth'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -67,6 +68,7 @@ export function ProtectedLayout() {
 
   return (
     <AppShell user={user} quota={quota} onLogout={handleLogout} onSearch={handleSearch} searchValue={searchQuery}>
+      {user?.must_change_password && <ChangePasswordReminder />}
       <Outlet />
     </AppShell>
   )

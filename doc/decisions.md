@@ -125,3 +125,17 @@
 - 決策：使用 Homebrew 安裝 Docker CLI、Docker Compose 與 Colima，並以 Colima 提供本機 Docker runtime。
 - 理由：可在不依賴桌面 GUI 的情況下自動啟動 PostgreSQL 與執行整合測試。
 - 影響範圍：Project Setup、Database、Integration Testing、Docker Compose 驗收。
+
+## DEC-015：忘記密碼採「隨機臨時密碼 + 防枚舉 + 強制改密碼」
+
+- 日期：2026-06-15
+- 狀態：Accepted
+- 背景：需要在登入頁提供忘記密碼功能，由使用者郵箱收到還原密碼，登入後提醒改密碼。
+- 決策：
+  1. `POST /auth/forgot-password` 直接將密碼重設為系統產生的隨機 10 碼（`generate_random_password`），透過 email 寄出，而非寄送一次性 reset token 連結。
+  2. 防枚舉：查無 email 或帳號停用時靜默結束，端點對任何輸入都回傳相同訊息；SMTP 寄送失敗亦吞下並記錄。
+  3. 以 `users.must_change_password` 旗標標記被重設的帳號，登入後前端顯示提醒 banner；使用者改密碼時清除旗標。
+  4. Email 寄送做成 `EmailProvider` 抽象層（Console 預設 / SMTP 可選），仿照 `StorageProvider`。
+- 理由：符合需求描述（隨機密碼寄出）且最小化基礎設施；抽象層讓 SMTP 與 console 可切換、無 SMTP 設定也能運作。
+- 已知取捨：任何知道他人 email 者皆可觸發重設造成帳號臨時鎖定（DoS 向量）。可接受於本專案範圍；未來如需更嚴謹可改為一次性 token 連結 + 速率限制。
+- 影響範圍：AuthService、UserRepository、User model、Alembic 0004、`app/email/`、CurrentUserResponse、前端 ForgotPasswordPage 與 ChangePasswordReminder。

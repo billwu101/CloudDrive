@@ -36,6 +36,7 @@ def _make_user(
         used_bytes=0,
         is_active=is_active,
         is_admin=False,
+        must_change_password=False,
         created_at=now,
         updated_at=now,
     )
@@ -63,9 +64,18 @@ class MockUserRepo(AbstractUserRepository):
     def __init__(self, users: list[User] | None = None) -> None:
         self._users: list[User] = users or []
         self.created: list[User] = []
+        self.reset_calls: list[tuple[object, str]] = []
 
     async def get_by_email(self, email: str) -> User | None:
         return next((u for u in self._users if u.email == email), None)
+
+    async def reset_password(self, user_id: object, password_hash: str) -> None:
+        self.reset_calls.append((user_id, password_hash))
+        for u in self._users:
+            if u.id == user_id:
+                u.password_hash = password_hash
+                u.must_change_password = True
+                break
 
     async def get_by_id(self, user_id: object) -> User | None:
         return next((u for u in self._users if u.id == user_id), None)
@@ -89,6 +99,7 @@ class MockUserRepo(AbstractUserRepository):
             used_bytes=0,
             is_active=True,
             is_admin=False,
+            must_change_password=False,
             created_at=now,
             updated_at=now,
         )
@@ -252,6 +263,81 @@ class TestLogout:
         rt_str = create_refresh_token(user.id)
         svc = _make_service(user_repo=MockUserRepo([user]))
         await svc.logout(refresh_token_str=rt_str)  # should not raise
+
+
+class _SpyEmailProvider:
+    def __init__(self) -> None:
+        self.sent: list[dict[str, str]] = []
+
+    async def send(self, *, to: str, subject: str, body: str) -> None:
+        self.sent.append({"to": to, "subject": subject, "body": body})
+
+
+class TestForgotPassword:
+    async def test_resets_password_and_sends_email(self) -> None:
+        user = _make_user(email="forgot@example.com", password="originalpass")
+        original_hash = user.password_hash
+        repo = MockUserRepo([user])
+        svc = _make_service(user_repo=repo)
+        email = _SpyEmailProvider()
+
+        await svc.forgot_password(email="forgot@example.com", email_provider=email)
+
+        # Password was reset to something different and the flag is set.
+        assert user.password_hash != original_hash
+        assert user.must_change_password is True
+        # The email was delivered to the user's address.
+        assert len(email.sent) == 1
+        assert email.sent[0]["to"] == "forgot@example.com"
+
+    async def test_emailed_password_is_10_chars_and_can_log_in(self) -> None:
+        import re
+
+        user = _make_user(email="forgot@example.com", password="originalpass")
+        repo = MockUserRepo([user])
+        svc = _make_service(user_repo=repo)
+        email = _SpyEmailProvider()
+
+        await svc.forgot_password(email="forgot@example.com", email_provider=email)
+
+        # Extract the temporary password from the email body and verify length.
+        match = re.search(r"\n\s{4}(\S+)\n", email.sent[0]["body"])
+        assert match is not None
+        temp_password = match.group(1)
+        assert len(temp_password) == 10
+
+        # The temporary password actually works for login.
+        returned_user, _, _ = await svc.login(email="forgot@example.com", password=temp_password)
+        assert returned_user.id == user.id
+
+    async def test_unknown_email_is_silent_noop(self) -> None:
+        repo = MockUserRepo([])
+        svc = _make_service(user_repo=repo)
+        email = _SpyEmailProvider()
+
+        # Must not raise (non-enumerable) and must not send anything.
+        await svc.forgot_password(email="ghost@example.com", email_provider=email)
+        assert email.sent == []
+        assert repo.reset_calls == []
+
+    async def test_inactive_account_is_silent_noop(self) -> None:
+        user = _make_user(email="inactive@example.com", is_active=False)
+        repo = MockUserRepo([user])
+        svc = _make_service(user_repo=repo)
+        email = _SpyEmailProvider()
+
+        await svc.forgot_password(email="inactive@example.com", email_provider=email)
+        assert email.sent == []
+        assert repo.reset_calls == []
+
+    async def test_email_is_normalized_before_lookup(self) -> None:
+        user = _make_user(email="forgot@example.com")
+        repo = MockUserRepo([user])
+        svc = _make_service(user_repo=repo)
+        email = _SpyEmailProvider()
+
+        await svc.forgot_password(email="  Forgot@Example.com  ", email_provider=email)
+        assert len(email.sent) == 1
 
 
 class TestGetCurrentUser:

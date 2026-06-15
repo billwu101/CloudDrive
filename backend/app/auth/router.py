@@ -3,11 +3,17 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Depends, Response
 
 from app.auth.repository import SQLRefreshTokenRepository, SQLUserRepository
-from app.auth.schemas import LoginRequest, RegisterRequest
+from app.auth.schemas import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    MessageResponse,
+    RegisterRequest,
+)
 from app.auth.service import AuthService
 from app.core.config import get_settings
 from app.core.dependencies import CurrentUserId, DbSession
 from app.core.exceptions import UnauthorizedError
+from app.email.factory import EmailProviderDep
 from app.schemas.common import CurrentUserResponse, TokenPairResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -100,6 +106,26 @@ async def login(
     await session.commit()
     _set_refresh_cookie(response, refresh_token)
     return TokenPairResponse(access_token=access_token)
+
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    summary="Request a password reset email",
+)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    service: AuthServiceDep,
+    session: DbSession,
+    email_provider: EmailProviderDep,
+) -> MessageResponse:
+    await service.forgot_password(email=body.email, email_provider=email_provider)
+    await session.commit()
+    # Always return the same response so the endpoint cannot be used to probe
+    # which email addresses are registered.
+    return MessageResponse(
+        message="If an account exists for that email, a reset password has been sent."
+    )
 
 
 @router.post(

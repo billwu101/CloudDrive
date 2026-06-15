@@ -1,3 +1,5 @@
+import secrets
+import string
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -10,6 +12,10 @@ from app.core.exceptions import AppError, UnauthorizedError
 
 _hasher: PasswordHash = PasswordHash.recommended()
 
+# Unambiguous alphabet for generated passwords (no 0/O, 1/l/I) so users can
+# copy them out of an email without confusion.
+_PASSWORD_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
 
 def hash_password(password: str) -> str:
     return _hasher.hash(password)
@@ -17,6 +23,24 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return _hasher.verify(plain, hashed)
+
+
+def generate_random_password(length: int = 10) -> str:
+    """Return a cryptographically random password.
+
+    Guarantees at least one lowercase, one uppercase, and one digit so the
+    result satisfies common password policies.
+    """
+    if length < 3:
+        raise ValueError("Password length must be at least 3")
+    while True:
+        candidate = "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(length))
+        if (
+            any(c.islower() for c in candidate)
+            and any(c.isupper() for c in candidate)
+            and any(c in string.digits for c in candidate)
+        ):
+            return candidate
 
 
 def _create_token(

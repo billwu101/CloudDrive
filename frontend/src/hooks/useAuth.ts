@@ -89,6 +89,12 @@ export function useUpdateEmailMutation() {
   })
 }
 
+export function useForgotPasswordMutation() {
+  return useMutation({
+    mutationFn: (email: string) => authApi.forgotPassword(email).then((r) => r.data),
+  })
+}
+
 export function useChangePasswordMutation() {
   return useMutation({
     mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) =>

@@ -11,6 +11,9 @@ export const authApi = {
   register: (email: string, username: string, password: string) =>
     api.post<TokenPairResponse>('/auth/register', { email, username, password }),
 
+  forgotPassword: (email: string) =>
+    api.post<{ message: string }>('/auth/forgot-password', { email }),
+
   logout: () => api.post<void>('/auth/logout'),
 
   me: (signal?: AbortSignal) =>

@@ -20,3 +20,16 @@ class LoginRequest(BaseModel):
     @classmethod
     def normalize_email(cls, v: str) -> str:
         return v.strip().lower()
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class MessageResponse(BaseModel):
+    message: str
