@@ -16,13 +16,42 @@
 
 ### 1.1 模型
 
-- **Gemma 4 26B（本地）**，預設經 Ollama（`/api/chat`，支援 tools），亦可指向 OpenAI 相容端點。
-- 後端以 `LLMClient` 抽象封裝，只用 `httpx`，**不引入雲端 LLM SDK**。
-- 26B 本地模型 function-calling 與規劃可靠度有限，因此管線的**結構化輸出 + 驗證 + 修復重試 + 使用者確認閘**特別重要。
+- **預設：Gemma 4 26B（本地）**，經 Ollama（`/api/chat`，支援 tools）或 OpenAI 相容端點。
+- **升級路徑**：當本地 Gemma 反覆做不出可接受結果，且符合隱私條件時，可升級呼叫**外部大型模型 API**（見 1.3）。
+- 後端以 `LLMClient` 抽象封裝本地與外部執行器；本地端只用 `httpx`，外部端為可設定、可關閉、且受隱私閘控管。
+- 26B 本地模型 function-calling 與規劃可靠度有限，因此管線的**結構化輸出 + 驗證 + 修復重試 + 升級 + 使用者確認閘**特別重要。
 
 ### 1.2 方案抉擇（沿用）
 
-不採用 OpenClaw（DEC-016）；一律經 service 層或沙箱（DEC-017）；本地 Gemma（DEC-018）；自我撰寫技能須核可+沙箱+稽核（DEC-019）；session/技能/工作流程持久化（DEC-020）；以 Workflow 管線 + 計畫確認為執行模型（DEC-021）。
+不採用 OpenClaw（DEC-016）；一律經 service 層或沙箱（DEC-017）；**預設本地、條件式外部升級**（DEC-018 經 DEC-023 修訂）；自我撰寫技能須核可+沙箱+稽核（DEC-019）；session/技能/工作流程持久化（DEC-020）；以 Workflow 管線 + 計畫確認為執行模型（DEC-021）；驗證/評分 harness 把關（DEC-022）。
+
+### 1.3 模型策略與升級（隱私閘 + 複雜度路由 + 失敗升級）
+
+每個 LLM 工作（解析需求、規劃 workflow、技能 codegen…）依下列策略選擇執行器：
+
+```
+任務進入
+   ↓
+是否涉及隱私資料?
+   ├─是→ 標記 privacy_sensitive：限本地模型；若需外部，須先去識別化（去識別化失敗則禁止外部）
+   └─否→ 允許外部
+   ↓
+任務是否複雜?
+   ├─簡單→ 規則/傳統程式/小模型（能用非 LLM 規則就不呼叫模型；否則本地 Gemma）
+   └─複雜→ 傾向較強模型（先本地 Gemma；必要時升級外部）
+   ↓
+執行 → 回傳結果
+```
+
+**升級判斷（本題重點）**：本地 Gemma 為預設執行器。系統追蹤該工作的嘗試次數 `local_attempts`；當 **Gemma 連續 `max_local_attempts` 次仍做不出可接受結果**時觸發升級評估：
+
+- **「做不出可接受結果」的判定訊號**：結構化輸出/工具呼叫反覆無法通過 schema 驗證；產生的 workflow 步驟驗證失敗；執行迴圈無進展（no-progress）；或執行後自我檢查/驗證器判定未達需求。
+- **升級資格（且）**：`external_llm_enabled=true`（且使用者未關閉外部）**且**（`privacy_sensitive=false` **或** 去識別化成功）。
+- **符合資格** → 經 `LLMClient` 的外部執行器重試失敗的子工作；外部回來的計畫/結果仍走原本的權限、安全、沙箱、確認閘。
+- **不符資格**（隱私鎖定或外部停用）→ **不外送任何資料**，停止並向使用者說明「本地無法完成」，提供縮小需求/手動處理的選項。
+- 升級事件經 lifecycle hook 記錄（稽核），並可由使用者層級設定全面禁用外部。
+
+> 隱私永遠優先於升級：涉私且無法去識別化的工作，寧可在本地失敗回報，也不外送。
 
 ## 2. 名詞定義
 
@@ -175,8 +204,11 @@ app/assistant/
   subagent.py          # 04
   repository.py        # 06（sessions/messages/skills/workflows）
   llm/
-    client.py          # LLMClient 協定
-    ollama.py          # Gemma via Ollama / OpenAI 相容（httpx）
+    client.py          # LLMClient 協定（本地與外部共用介面）
+    ollama.py          # 本地 Gemma via Ollama / OpenAI 相容（httpx）
+    external.py        # 外部大型模型 API 執行器（可設定、可關閉）
+    router.py          # 1.3 模型策略：隱私閘 + 複雜度路由 + 失敗升級
+    privacy.py         # 隱私分類 + 去識別化（升級前置）
   skills/
     registry.py        # 03
     manifest.py        # 03
@@ -218,6 +250,7 @@ app/assistant/
 ## 12. 環境變數
 
 ```
+# 本地預設執行器
 LLM_PROVIDER=ollama
 LLM_BASE_URL=http://localhost:11434
 ASSISTANT_MODEL=gemma-4-26b
@@ -225,6 +258,14 @@ LLM_NUM_CTX=8192
 ASSISTANT_ENABLED=true
 ASSISTANT_MAX_TOOL_ITERATIONS=8
 ASSISTANT_SANDBOX_TIMEOUT_SEC=30
+
+# 失敗升級到外部大型模型（1.3）
+EXTERNAL_LLM_ENABLED=false        # 全域開關；false 則永不外送
+MAX_LOCAL_ATTEMPTS=3              # 本地連續失敗幾次才評估升級
+EXTERNAL_LLM_BASE_URL=
+EXTERNAL_MODEL=
+EXTERNAL_LLM_API_KEY=
+PRIVACY_DEFAULT=sensitive         # 預設保守：使用者檔案內容視為隱私，需去識別化才可外送
 ```
 
 ## 12.1 驗證與評分

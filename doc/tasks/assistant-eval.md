@@ -33,7 +33,8 @@
 
 ## E4：內建案例覆蓋
 
-- [ ] 案例涵蓋 tag：`read-only` / `daily-ops` / `skill-generation`（含 7zip）/ `safety` / `workflow-reuse` / `context`。
+- [ ] 案例涵蓋 tag：`read-only` / `daily-ops` / `skill-generation`（含 7zip）/ `safety` / `workflow-reuse` / `context` / `model-escalation`。
+- [ ] `model-escalation` 案例：mock 本地「永遠失敗」驗證升級到（mock）外部；隱私敏感案例驗證**不**外送、回報失敗；外部停用案例驗證不升級。
 
 ## 測試/驗證任務
 

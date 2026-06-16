@@ -12,8 +12,11 @@
 
 ## M1：引擎骨架（HARNESS 01/02/05/07）
 
-- [ ] `core/config.py` 新增 LLM/assistant/sandbox 相關設定。
-- [ ] `llm/client.py` + `llm/ollama.py`：Gemma 經 Ollama/OpenAI 相容，tool-call 解析與修復重試。
+- [ ] `core/config.py` 新增 LLM/assistant/sandbox 相關設定 + 外部升級設定（`EXTERNAL_LLM_ENABLED`/`MAX_LOCAL_ATTEMPTS`/`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`/`PRIVACY_DEFAULT`）。
+- [ ] `llm/client.py` + `llm/ollama.py`：本地 Gemma 經 Ollama/OpenAI 相容，tool-call 解析與修復重試。
+- [ ] `llm/external.py`：外部大型模型 API 執行器（可設定、可關閉，共用 LLMClient 介面）。
+- [ ] `llm/privacy.py`：隱私分類 + 去識別化（升級前置；去識別化失敗則禁止外送）。
+- [ ] `llm/router.py`：模型策略（隱私閘 + 複雜度路由 + 失敗升級）—— 追蹤 `local_attempts`，連續 `MAX_LOCAL_ATTEMPTS` 次仍不可接受且符合隱私條件時升級外部；不符資格則不外送、回報失敗；升級事件寫稽核 hook。
 - [ ] `context.py`：token 預算、裁切/摘要、輸出瘦身。
 - [ ] `prompt.py`：動態 system prompt（穩定前綴、無隨機/時間戳）。
 - [ ] `service.py`：AgentLoop（停止條件、上限、hook 點）。
@@ -48,6 +51,7 @@
 ## 測試任務
 
 - [ ] `test_router.py` / `test_loop.py` / `test_dispatch.py` / `test_context.py`。
+- [ ] `test_model_router.py`：本地連續失敗達上限 → 升級外部；隱私敏感且無法去識別化 → **不**外送、回報失敗；外部停用 → 不升級。
 - [ ] `test_planner.py`：NL→候選 workflow 結構化輸出與驗證。
 - [ ] `test_workflow.py`：相依、錯誤策略、fast-path vs 需確認。
 - [ ] `test_authoring.py`：停在 pending_approval。
