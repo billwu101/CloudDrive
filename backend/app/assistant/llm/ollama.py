@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -15,10 +16,22 @@ from app.assistant.llm.client import (
 
 
 class OllamaLLMClient:
-    def __init__(self, *, base_url: str, model: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        model: str,
+        timeout: float = 30.0,
+        api_key: str = "",
+        keep_alive: str = "",
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout = timeout
+        self._api_key = api_key
+        self._keep_alive = keep_alive
+        self._transport = transport
 
     async def chat(
         self,
@@ -33,17 +46,33 @@ class OllamaLLMClient:
             "stream": False,
             "options": {"num_ctx": num_ctx},
         }
+        if self._keep_alive:
+            payload["keep_alive"] = self._keep_alive
         if tools:
             payload["tools"] = [_to_ollama_tool(t) for t in tools]
+        headers = _auth_headers(self._api_key)
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.post(f"{self._base_url}/api/chat", json=payload)
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                transport=self._transport,
+            ) as client:
+                response = await client.post(
+                    f"{self._base_url}/api/chat",
+                    json=payload,
+                    headers=headers,
+                )
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             raise LLMUnavailableError("Local assistant model is unavailable") from exc
 
         return _parse_ollama_response(response.json(), self._model)
+
+
+def _auth_headers(api_key: str) -> Mapping[str, str] | None:
+    if not api_key:
+        return None
+    return {"Authorization": f"Bearer {api_key}"}
 
 
 def _to_ollama_tool(tool: LLMToolDefinition) -> dict[str, Any]:

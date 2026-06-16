@@ -32,6 +32,13 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-change-me}
       LOCAL_STORAGE_PATH: /app/storage
       REDIS_URL: redis://redis:6379/0
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://192.168.10.75:11434}
+      LLM_API_KEY: ${LLM_API_KEY:-ollama-local}
+      ASSISTANT_MODEL: ${ASSISTANT_MODEL:-gemma4:26b}
+      LLM_NUM_CTX: ${LLM_NUM_CTX:-65536}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
+      LLM_KEEP_ALIVE: ${LLM_KEEP_ALIVE:-15m}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

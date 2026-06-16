@@ -2109,9 +2109,12 @@ Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標
 | --- | --- | --- |
 | `ASSISTANT_ENABLED` | `true` | 停用時 `/assistant/chat` 回 503。 |
 | `LLM_PROVIDER` | `ollama` | 目前保留設定；M1 使用 Ollama-compatible local client。 |
-| `LLM_BASE_URL` | `http://localhost:11434` | 本地模型 base URL。 |
-| `ASSISTANT_MODEL` | `gemma-4-26b` | 本地模型名稱。 |
-| `LLM_NUM_CTX` | `8192` | Context 裁切預算。 |
+| `LLM_BASE_URL` | `http://192.168.10.75:11434` | 本地 Gemma/Ollama base URL。 |
+| `LLM_API_KEY` | `ollama-local` | 選用 Bearer token；純 Ollama 可忽略，多一層代理時可驗證。 |
+| `ASSISTANT_MODEL` | `gemma4:26b` | 本地模型名稱。 |
+| `LLM_NUM_CTX` | `65536` | Context 裁切預算，對應 `gemma4:26b`。 |
+| `LLM_TIMEOUT_SECONDS` | `300` | Ollama chat request timeout。 |
+| `LLM_KEEP_ALIVE` | `15m` | Ollama `keep_alive`，避免模型過快卸載。 |
 | `ASSISTANT_MAX_TOOL_ITERATIONS` | `8` | AgentLoop tool-call 上限。 |
 | `ASSISTANT_SANDBOX_TIMEOUT_SEC` | `30` | 後續 sandbox 預留設定。 |
 | `EXTERNAL_LLM_ENABLED` | `false` | 外部 fallback 全域開關。 |

@@ -31,9 +31,12 @@ class Settings(BaseSettings):
     # In-app AI assistant
     assistant_enabled: bool = True
     llm_provider: str = "ollama"
-    llm_base_url: str = "http://localhost:11434"
-    assistant_model: str = "gemma-4-26b"
-    llm_num_ctx: int = 8192
+    llm_base_url: str = "http://192.168.10.75:11434"
+    llm_api_key: str = "ollama-local"
+    assistant_model: str = "gemma4:26b"
+    llm_num_ctx: int = 65536
+    llm_timeout_seconds: float = 300
+    llm_keep_alive: str = "15m"
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
 

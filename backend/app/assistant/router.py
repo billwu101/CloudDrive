@@ -48,6 +48,9 @@ def _assistant_service(session: DbSession) -> AgentService:
     local_client = OllamaLLMClient(
         base_url=settings.llm_base_url,
         model=settings.assistant_model,
+        timeout=settings.llm_timeout_seconds,
+        api_key=settings.llm_api_key,
+        keep_alive=settings.llm_keep_alive,
     )
     external_client = None
     if settings.external_llm_enabled and settings.external_llm_base_url and settings.external_model:
