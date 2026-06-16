@@ -526,6 +526,8 @@ chore: complete cloud drive implementation
 
 完成後執行完整後端品質閘門（ruff/mypy/pytest），LLM 一律 mock，提交 Stage 12。
 
+目前狀態（2026-06-16）：Stage 12 已完成 M1 後端引擎骨架切片，包含 assistant 設定、LLMClient/Ollama/External/Privacy/ModelRouter、ContextManager、system prompt、AgentLoop、唯讀內建技能 registry，以及 `POST /assistant/chat` 註冊。尚未完成 M2 workflow 計畫確認、M3 DB 持久化/migration、M4 自我撰寫技能與 sandbox。
+
 ### Stage 13：Assistant 前端（聊天面板 + 計畫確認 + 技能核可 + 動態右鍵選單）
 
 僅執行：

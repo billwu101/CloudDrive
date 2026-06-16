@@ -2083,7 +2083,45 @@ useSearchItems(query, filters, page, pageSize)
 | 公開分享連結 | ShareLink |
 | 檔案版本 | FileVersion |
 
-## 17. 結論
+## 17. In-App AI Assistant M1 後端骨架
+
+Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標是先建立可測、可替換、預設安全的 agent loop。此切片尚未啟用寫入型 workflow、生成技能安裝或 sandbox 執行碼；所有已註冊內建技能皆為唯讀，且一律透過既有 service 層帶入 `user_id`。
+
+主要檔案：
+
+| 檔案 | 職責 |
+| --- | --- |
+| `assistant/router.py` | `POST /api/v1/assistant/chat`，檢查 `ASSISTANT_ENABLED`，將 request 交給 `AgentService`。 |
+| `assistant/service.py` | AgentLoop：組 prompt、呼叫模型、執行 tool calls、回填 tool result、以 iteration 上限防止無限迴圈。 |
+| `assistant/context.py` | 依 `LLM_NUM_CTX` 估算字元預算，保留 system prompt 與最新對話。 |
+| `assistant/prompt.py` | 組穩定 system prompt，列出 registry 中可用技能。 |
+| `assistant/llm/client.py` | `LLMClient` protocol 與 `LLMMessage`/`LLMResponse`/`LLMToolCall` 結構。 |
+| `assistant/llm/ollama.py` | 呼叫本地 Ollama `/api/chat`，解析 Ollama tool call 格式。 |
+| `assistant/llm/external.py` | OpenAI-compatible `/chat/completions` 外部 fallback client。 |
+| `assistant/llm/privacy.py` | 隱私分類與基本去識別化；預設 `PRIVACY_DEFAULT=sensitive` 時禁止外送。 |
+| `assistant/llm/router.py` | 本地模型重試、可接受性驗證 hook、達 `MAX_LOCAL_ATTEMPTS` 後依隱私閘決定是否升級外部。 |
+| `assistant/skills/registry.py` | 技能註冊、LLM tool schema 轉換、handler dispatch。 |
+| `assistant/skills/builtin/read_only.py` | `list_items`、`get_info`、`search`、`recent`、`storage_quota`。 |
+
+新增設定：
+
+| 環境變數 | 預設 | 說明 |
+| --- | --- | --- |
+| `ASSISTANT_ENABLED` | `true` | 停用時 `/assistant/chat` 回 503。 |
+| `LLM_PROVIDER` | `ollama` | 目前保留設定；M1 使用 Ollama-compatible local client。 |
+| `LLM_BASE_URL` | `http://localhost:11434` | 本地模型 base URL。 |
+| `ASSISTANT_MODEL` | `gemma-4-26b` | 本地模型名稱。 |
+| `LLM_NUM_CTX` | `8192` | Context 裁切預算。 |
+| `ASSISTANT_MAX_TOOL_ITERATIONS` | `8` | AgentLoop tool-call 上限。 |
+| `ASSISTANT_SANDBOX_TIMEOUT_SEC` | `30` | 後續 sandbox 預留設定。 |
+| `EXTERNAL_LLM_ENABLED` | `false` | 外部 fallback 全域開關。 |
+| `MAX_LOCAL_ATTEMPTS` | `3` | 本地模型連續失敗幾次後才評估外部升級。 |
+| `EXTERNAL_LLM_BASE_URL` / `EXTERNAL_MODEL` / `EXTERNAL_LLM_API_KEY` | 空 | 外部 OpenAI-compatible client 設定。 |
+| `PRIVACY_DEFAULT` | `sensitive` | 預設保守，不可去識別化時不外送。 |
+
+M1 測試位於 `backend/tests/assistant/`，包含 router dispatch/auth、agent loop tool 執行與迴圈上限、context 裁切，以及 model router 的外部升級與隱私阻擋。
+
+## 18. 結論
 
 本詳細設計將系統拆分為 Auth、User/Quota、DriveItem、Permission、Storage、Upload、Download、Preview、Trash、Search、Share、FileVersion、ActivityLog 與前端對應模組。模組之間透過明確接口互動，避免彼此直接耦合。
 

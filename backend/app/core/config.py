@@ -28,6 +28,23 @@ class Settings(BaseSettings):
     smtp_from: str = "Cloud Drive <no-reply@clouddrive.local>"
     smtp_use_tls: bool = True  # STARTTLS
 
+    # In-app AI assistant
+    assistant_enabled: bool = True
+    llm_provider: str = "ollama"
+    llm_base_url: str = "http://localhost:11434"
+    assistant_model: str = "gemma-4-26b"
+    llm_num_ctx: int = 8192
+    assistant_max_tool_iterations: int = 8
+    assistant_sandbox_timeout_sec: int = 30
+
+    # Optional external model fallback. Disabled by default; privacy gates apply first.
+    external_llm_enabled: bool = False
+    max_local_attempts: int = 3
+    external_llm_base_url: str = ""
+    external_model: str = ""
+    external_llm_api_key: str = ""
+    privacy_default: str = "sensitive"
+
 
 @lru_cache
 def get_settings() -> Settings:

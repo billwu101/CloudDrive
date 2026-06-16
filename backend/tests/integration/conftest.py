@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 from app.core.dependencies import get_db
@@ -31,7 +32,7 @@ _TEST_DB_URL = os.environ.get(
     "postgresql+asyncpg://postgres:postgres@localhost:5432/clouddrive_test",
 )
 
-_engine = create_async_engine(_TEST_DB_URL, echo=False, pool_pre_ping=True)
+_engine = create_async_engine(_TEST_DB_URL, echo=False, pool_pre_ping=True, poolclass=NullPool)
 _SessionFactory = async_sessionmaker(_engine, expire_on_commit=False)
 
 

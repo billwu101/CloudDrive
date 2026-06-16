@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.assistant.router import router as assistant_router
 from app.auth.router import router as auth_router
 from app.download.router import router as download_router
 from app.drive.router import router as drive_router
@@ -23,3 +24,4 @@ api_router.include_router(preview_router)
 api_router.include_router(trash_router)
 api_router.include_router(search_router)
 api_router.include_router(share_router)
+api_router.include_router(assistant_router)
