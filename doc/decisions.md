@@ -188,3 +188,13 @@
 - 決策：新增 `assistant_sessions` / `assistant_messages` / `assistant_skills` 資料表；對話可續接，使用者自訂技能依 `user_id` 隔離並於啟動時載入。
 - 理由：技能與對話留存是功能可用性的前提。
 - 影響範圍：Alembic migration、`app/assistant/repository.py`、models。
+
+## DEC-021：助理執行模型採「Workflow 管線 + 計畫確認」
+
+- 日期：2026-06-16
+- 狀態：Accepted
+- 背景：助理需涵蓋各類檔案/資料夾日常操作並能現場生成新功能；自由放任 tool 迴圈不利於可控性與安全。
+- 決策：採需求流程圖的管線 —— 使用者 NL → LLM 解析 → 轉成候選 Workflow（結構化步驟）→ 檢查可用 Skill（缺則走生成子流程）→ 權限與安全檢查 → 顯示執行計畫 → 使用者確認（是→執行，否→修改/取消）→ 執行 Workflow → 記錄操作與結果。Workflow 為有序 skill 步驟，可儲存重用；唯讀且非破壞工作流程可依權限自動確認 fast-path。此管線疊在 HARNESS 引擎之上，各階段對應 HARNESS 組件（見 assistant-design.md 第 3 節）。
+- 理由：先計畫後執行 + 使用者確認，兼顧通用性、可檢視性與安全；workflow 化讓多步操作與生成功能可重用、可稽核。
+- 已知取捨：每次（非 fast-path）需一次確認互動；規劃階段增加一次 LLM 結構化輸出成本；需維護 workflow schema 與執行器。
+- 影響範圍：`app/assistant/planner.py`、`workflow.py`、`assistant_workflows`/`assistant_workflow_runs` 表、前端計畫確認 UI。
