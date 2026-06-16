@@ -19,6 +19,8 @@
 - [x] `WorkflowPlanCard.tsx`：顯示 pending workflow（步驟、permission_tier、破壞性/需核可標記）+ 確認/拒絕。（修改需求待後續）
 - [x] 在 AppShell 掛載入口；助理停用（503）時以錯誤訊息呈現（M2a）。
 
+步驟結果顯示備註（2026-06-17）：新增 `StepResultList`，在助理泡泡內渲染 workflow 步驟結果（`results[].output`）。`storage_quota` 格式化為「15.0 GB free of 15.0 GB (0% used)」、清單類顯示項目數、其他顯示名稱/完成。chat 的 auto_executed 與 confirm 完成都會帶出結果。另：移除 Enter 送出（改用送出鈕）。
+
 M2 計畫卡備註（2026-06-17）：`/chat` 回 `plan.status==='pending_approval'` 時面板渲染 `WorkflowPlanCard`，按「Confirm & run」呼叫 `POST /workflows/{id}/confirm`、「Cancel」呼叫 `/cancel`；confirm 成功後 invalidate `['drive']`。auto_executed 計畫不需確認，僅顯示助理訊息。「修改需求」與工作流程一鍵重跑留待後續。
 
 ### M2a：登入後聊天面板切片（2026-06-17）

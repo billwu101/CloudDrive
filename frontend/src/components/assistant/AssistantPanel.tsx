@@ -78,7 +78,12 @@ export function AssistantPanel() {
       )
       setMessages((current) => [
         ...current,
-        { id: newMessageId('assistant'), role: 'assistant', content: response.message },
+        {
+          id: newMessageId('assistant'),
+          role: 'assistant',
+          content: response.message,
+          results: response.results?.length ? response.results : undefined,
+        },
       ])
     } catch (error) {
       setMessages((current) => [
@@ -118,10 +123,20 @@ export function AssistantPanel() {
     }
   }
 
-  const appendAssistant = (content: string, status?: AssistantMessage['status']) => {
+  const appendAssistant = (
+    content: string,
+    status?: AssistantMessage['status'],
+    results?: AssistantMessage['results'],
+  ) => {
     setMessages((current) => [
       ...current,
-      { id: newMessageId('assistant'), role: 'assistant', content, status },
+      {
+        id: newMessageId('assistant'),
+        role: 'assistant',
+        content,
+        status,
+        results: results && results.length > 0 ? results : undefined,
+      },
     ])
   }
 
@@ -129,11 +144,14 @@ export function AssistantPanel() {
     try {
       const response = await confirmWorkflow.mutateAsync(workflowId)
       setPendingPlan(null)
-      const failed = response.results.filter((result) => !result.ok)
+      const results = response.results ?? []
+      const failed = results.filter((result) => !result.ok)
       appendAssistant(
         failed.length === 0
           ? 'Done — the plan ran successfully.'
           : `Ran with ${failed.length} failed step(s).`,
+        undefined,
+        results,
       )
     } catch (error) {
       appendAssistant(errorMessage(error), 'error')

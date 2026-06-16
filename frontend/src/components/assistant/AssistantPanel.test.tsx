@@ -144,6 +144,44 @@ describe('AssistantPanel', () => {
     })
   })
 
+  it('renders step results (storage quota) in the assistant bubble', async () => {
+    server.use(
+      http.post(`${BASE}/assistant/chat`, async ({ request }) => {
+        const body = (await request.json()) as { session_id?: string }
+        return HttpResponse.json({
+          session_id: body.session_id ?? 'session-1',
+          message: 'I will check your current storage usage.',
+          tool_calls: [],
+          tool_results: [],
+          plan: { workflow_id: null, status: 'auto_executed', steps: [] },
+          results: [
+            {
+              index: 0,
+              skill: 'storage_quota',
+              ok: true,
+              output: {
+                quota_bytes: 16106127360,
+                used_bytes: 0,
+                available_bytes: 16106127360,
+                used_percent: 0,
+              },
+            },
+          ],
+        })
+      }),
+    )
+    renderAssistantPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+    await userEvent.type(screen.getByLabelText(/assistant message/i), 'how much space left')
+    await userEvent.click(screen.getByRole('button', { name: /send message/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/15\.0 GB free of 15\.0 GB \(0% used\)/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText('storage_quota')).toBeInTheDocument()
+  })
+
   it('shows a pending workflow plan and runs it on confirm', async () => {
     server.use(
       http.post(`${BASE}/assistant/chat`, async ({ request }) => {

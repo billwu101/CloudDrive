@@ -1,12 +1,15 @@
 import { Bot, User } from 'lucide-react'
 
+import type { WorkflowStepResult } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { StepResultList } from './StepResultList'
 
 export interface AssistantMessage {
   id: string
   role: 'assistant' | 'user'
   content: string
   status?: 'normal' | 'error'
+  results?: WorkflowStepResult[]
 }
 
 interface MessageBubbleProps {
@@ -34,6 +37,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         )}
       >
         {message.content}
+        {!isUser && message.results && message.results.length > 0 && (
+          <StepResultList results={message.results} />
+        )}
       </div>
       {isUser && (
         <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
