@@ -136,6 +136,20 @@
 
 文件標示為「保留接口、不實作」的內容只建立必要的 interface、protocol、schema 或擴充位置，不建立可使用的完整功能或 endpoint。
 
+### 擴充範圍：In-App AI Assistant（28 模組之後新增）
+
+原 28 模組完成後，新增 AI 助理功能（設計見 `doc/assistant-design.md` 與 `doc/assistant-eval-design.md`，決策見 DEC-016~023）。此擴充以下列三個任務文件為範圍，對應 Stage 12~14：
+
+- `doc/tasks/backend-assistant.md`
+- `doc/tasks/frontend-assistant.md`
+- `doc/tasks/assistant-eval.md`
+
+擴充原則：
+1. 助理一律經既有 service 層或受控沙箱操作，帶當前 `user_id`，不直接讀寫 DB／storage（DEC-017）。
+2. 預設本地 Gemma 4 26B；反覆失敗且符合隱私條件才升級外部 API；外部預設關閉（DEC-018/023）。
+3. 自我撰寫技能須「核可 → 沙箱 → 稽核」，絕不自動執行未審核程式碼（DEC-019）。
+4. 執行模型為 Workflow 管線 + 計畫確認（DEC-021）；功能正確性由驗證/評分 harness 把關（DEC-022）。
+
 ## 自主決策規則
 
 全程不得等待人工回答。
@@ -491,6 +505,63 @@ chore: complete cloud drive implementation
 
 完成後執行全部最終品質閘門並提交 Stage 11。
 
+### Stage 12：Assistant 後端（HARNESS 引擎 + Workflow 管線 + 模型策略 + 技能/自我撰寫 + 安全）
+
+僅執行：
+
+1. `backend-assistant`：`doc/tasks/backend-assistant.md`
+
+依賴：
+
+- Stage 6 全部後端模組（drive/upload/download/preview/trash/search/share）與 backend-permission、backend-activity-log、backend-user-quota（助理工具經這些 service）。
+
+此 Agent 負責建立：
+
+1. `app/assistant/`：`service.py`(01 迴圈)、`planner.py`、`workflow.py`、`context.py`、`prompt.py`、`hooks.py`、`permissions.py`、`subagent.py`、`repository.py`。
+2. `app/assistant/llm/`：`client.py`、`ollama.py`(本地 Gemma)、`external.py`、`router.py`(隱私閘+複雜度+失敗升級)、`privacy.py`。
+3. `app/assistant/skills/`：`registry.py`、`manifest.py`、`authoring.py`、`sandbox.py`、`builtin/`(檔案/批次內建技能 + `author_skill`)。
+4. Alembic migration：`assistant_sessions`/`assistant_messages`/`assistant_skills`/`assistant_workflows`/`assistant_workflow_runs`。
+5. `core/config.py` 助理與外部升級設定；於 `api/v1/router.py` 註冊（共享檔案，依檔案所有權規則由主 Agent 協調）。
+6. `tests/assistant/`。
+
+完成後執行完整後端品質閘門（ruff/mypy/pytest），LLM 一律 mock，提交 Stage 12。
+
+### Stage 13：Assistant 前端（聊天面板 + 計畫確認 + 技能核可 + 動態右鍵選單）
+
+僅執行：
+
+1. `frontend-assistant`：`doc/tasks/frontend-assistant.md`
+
+依賴：
+
+- Stage 12（後端 assistant API）、Stage 10 全部前端模組。
+
+此 Agent 負責建立：
+
+1. `src/api/assistantApi.ts`、`src/api/types.ts` 擴充、`src/hooks/useAssistant.ts`。
+2. `src/components/assistant/`：`AssistantPanel`、`MessageBubble`、`WorkflowPlanCard`(計畫確認)、`SkillApprovalDialog`(技能核可)。
+3. ProtectedLayout 入口；依 manifest 動態右鍵選單；已存 workflow 一鍵重跑。
+
+完成後執行前端 lint、typecheck、test、build，提交 Stage 13。
+
+### Stage 14：Assistant 驗證與評分 Harness
+
+僅執行：
+
+1. `assistant-eval`：`doc/tasks/assistant-eval.md`
+
+依賴：
+
+- Stage 12（API 模式受測對象）、Stage 13（Browser 模式 UI）。
+
+此 Agent 負責建立：
+
+1. `backend/eval/`：`schema.py`、`cases/`、`runner_api.py`、`runner_browser.py`、`verifier.py`、`judge.py`、`scoring.py`、`report.py`、`run.py`、`baseline.json`。
+2. `frontend/e2e/assistant/assistant-eval.spec.ts`（Browser 模式）。
+3. 涵蓋 tag：read-only / daily-ops / skill-generation(含 7zip) / safety / workflow-reuse / context / model-escalation。
+
+完成後以 mock LLM 的 API 模式案例進 CI，提交 Stage 14。
+
 ## 檔案所有權原則
 
 主 Agent在 spawn 前必須依目前專案結構給出更精確的路徑。至少遵循：
@@ -525,8 +596,11 @@ chore: complete cloud drive implementation
 | frontend-search | search page/components/hooks/API binding/tests |
 | frontend-share | share pages/components/hooks/API binding/tests |
 | integration-testing | integration fixtures、MSW、Playwright、E2E |
+| backend-assistant | `backend/app/assistant/`（含 `llm/`、`skills/`）、assistant Alembic migration、`tests/assistant/` |
+| frontend-assistant | `frontend/src/components/assistant/`、`assistantApi`、`useAssistant`、計畫確認/核可 UI、動態右鍵選單與相關 tests |
+| assistant-eval | `backend/eval/`、`frontend/e2e/assistant/`、eval cases 與 baseline |
 
-共享檔案如 `pyproject.toml`、`package.json`、router aggregator、SQLAlchemy model registry 與 migration head，只能由主 Agent或明確指定的單一 Agent在同一時間修改。
+共享檔案如 `pyproject.toml`、`package.json`、router aggregator（`backend/app/api/v1/router.py`）、SQLAlchemy model registry、`backend/app/core/config.py` 與 migration head，只能由主 Agent或明確指定的單一 Agent在同一時間修改。
 
 ## 任務與進度追蹤
 

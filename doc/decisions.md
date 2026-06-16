@@ -148,7 +148,8 @@
 - 決策：不使用 OpenClaw。自建 In-App Assistant：後端 `/api/v1/assistant/chat` endpoint 內跑 Claude tool-use 迴圈，工具呼叫既有 service 層；前端提供聊天面板。
 - 理由：OpenClaw 的核心價值（跨通訊平台、單人 daemon）在本專案用不到；扛一整個 Node daemon 並處理單人 vs 多人錯配不划算。自建在自家技術棧內、天然多租戶、工作量更小。
 - 已知取捨：放棄 OpenClaw 既有的多通訊平台與技能生態；若未來需要從 Telegram/語音等管道操作，需另議。
-- 影響範圍：新增 `app/assistant/` 模組、`anthropic` 依賴、前端 assistant 元件；詳見 assistant-design.md。
+- 影響範圍：新增 `app/assistant/` 模組、前端 assistant 元件；詳見 assistant-design.md。
+- 註：本決策當時假設以 Claude/`anthropic` 實作；模型選擇後由 DEC-018/DEC-023 取代為本地 Gemma + 條件式外部升級。OpenClaw 不採用之結論不變。
 
 ## DEC-017：助理一律經 service 層，不直接操作 DB／檔案
 
