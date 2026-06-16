@@ -86,9 +86,7 @@ async def test_remove_share_stops_access(client: AsyncClient) -> None:
     assert remove.status_code == 204
 
     # Confirm share is gone
-    shared_after = await client.get(
-        "/api/v1/share/shared-with-me", headers=auth_headers(token_b)
-    )
+    shared_after = await client.get("/api/v1/share/shared-with-me", headers=auth_headers(token_b))
     assert not any(s["item_id"] == item_id for s in shared_after.json()["items"])
 
 
@@ -128,7 +126,5 @@ async def test_deactivate_share_link(client: AsyncClient) -> None:
     assert deact.status_code == 204
 
     # Validating the deactivated link should fail
-    validate = await client.post(
-        "/api/v1/share/links/validate", params={"token": link_token}
-    )
+    validate = await client.post("/api/v1/share/links/validate", params={"token": link_token})
     assert validate.status_code in (400, 401, 404, 410)

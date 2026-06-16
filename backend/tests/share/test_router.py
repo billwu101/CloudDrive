@@ -156,9 +156,7 @@ async def test_remove_share_returns_204(user_id: UUID, headers: dict[str, str]) 
     link_svc = AsyncMock(spec=ShareLinkService)
     app = _make_app(share_svc, link_svc, user_id)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.delete(
-            f"/share/items/{uuid4()}/users/{uuid4()}", headers=headers
-        )
+        resp = await c.delete(f"/share/items/{uuid4()}/users/{uuid4()}", headers=headers)
     assert resp.status_code == 204
 
 
@@ -226,9 +224,7 @@ async def test_create_link_requires_auth() -> None:
     link_svc = AsyncMock(spec=ShareLinkService)
     app = _make_app(share_svc, link_svc, uuid4())
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post(
-            f"/share/items/{uuid4()}/links", json={"permission": "viewer"}
-        )
+        resp = await c.post(f"/share/items/{uuid4()}/links", json={"permission": "viewer"})
     assert resp.status_code in (401, 403)
 
 

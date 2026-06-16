@@ -4,6 +4,7 @@ Integration tests for the file version subsystem.
 Covers the invariant that every upload creates a version record (v1),
 and verifies the list-versions endpoint behavior including permission isolation.
 """
+
 from __future__ import annotations
 
 import io
@@ -96,13 +97,9 @@ async def test_non_owner_without_share_cannot_list_versions(client: AsyncClient)
 
 async def test_viewer_can_list_versions(client: AsyncClient) -> None:
     """A user shared as viewer must be able to list versions."""
-    owner_token = await register_and_login(
-        client, email="fv5_owner@test.com", username="fv5owner"
-    )
+    owner_token = await register_and_login(client, email="fv5_owner@test.com", username="fv5owner")
     viewer_email = "fv5_viewer@test.com"
-    viewer_token = await register_and_login(
-        client, email=viewer_email, username="fv5viewer"
-    )
+    viewer_token = await register_and_login(client, email=viewer_email, username="fv5viewer")
 
     # Owner uploads a file
     resp = await client.post(

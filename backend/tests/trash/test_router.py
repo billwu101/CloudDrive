@@ -113,7 +113,9 @@ async def test_move_to_trash_item_not_found_returns_404(
 
 async def test_list_trash_returns_page(user_id: UUID, headers: dict[str, str]) -> None:
     items = [_item(user_id, is_deleted=True, name=f"del{i}.txt") for i in range(3)]
-    page: Page[DriveItemResponse] = Page[DriveItemResponse].create(items, total=3, page=1, page_size=50)
+    page: Page[DriveItemResponse] = Page[DriveItemResponse].create(
+        items, total=3, page=1, page_size=50
+    )
     svc = AsyncMock(spec=TrashService)
     svc.list_trash.return_value = page
     app = _make_app(svc, user_id)

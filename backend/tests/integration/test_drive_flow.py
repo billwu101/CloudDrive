@@ -158,7 +158,5 @@ async def test_user_cannot_access_other_users_items(client: AsyncClient) -> None
     item_id = upload.json()["id"]
 
     # Bob tries to download Alice's file
-    resp = await client.get(
-        f"/api/v1/download/{item_id}", headers=auth_headers(token_b)
-    )
+    resp = await client.get(f"/api/v1/download/{item_id}", headers=auth_headers(token_b))
     assert resp.status_code in (403, 404)
