@@ -210,14 +210,8 @@ export function AssistantPanel() {
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  event.currentTarget.form?.requestSubmit()
-                }
-              }}
               className="max-h-28 min-h-10 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
-              placeholder="Message assistant"
+              placeholder="Message assistant (press the send button)"
               aria-label="Assistant message"
               rows={1}
             />
