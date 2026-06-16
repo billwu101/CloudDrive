@@ -526,7 +526,7 @@ chore: complete cloud drive implementation
 
 完成後執行完整後端品質閘門（ruff/mypy/pytest），LLM 一律 mock，提交 Stage 12。
 
-目前狀態（2026-06-16）：Stage 12 已完成 M1 後端引擎骨架切片，包含 assistant 設定、LLMClient/Ollama/External/Privacy/ModelRouter、ContextManager、system prompt、AgentLoop、唯讀內建技能 registry，以及 `POST /assistant/chat` 註冊。Docker 預設接本地 Gemma 4 Ollama (`LLM_BASE_URL=http://192.168.10.75:11434`, `ASSISTANT_MODEL=gemma4:26b`, `LLM_NUM_CTX=65536`, `LLM_TIMEOUT_SECONDS=300`, `LLM_KEEP_ALIVE=15m`)。尚未完成 M2 workflow 計畫確認、M3 DB 持久化/migration、M4 自我撰寫技能與 sandbox。
+目前狀態（2026-06-17）：Stage 12 已完成 M1 後端引擎骨架切片，包含 assistant 設定、LLMClient/Ollama/External/Privacy/ModelRouter、ContextManager、system prompt、AgentLoop、唯讀內建技能 registry，以及 `POST /assistant/chat` 註冊。Docker 預設接本地 Gemma 4 Ollama (`LLM_BASE_URL=http://192.168.10.75:11434`, `ASSISTANT_MODEL=gemma4:26b`, `LLM_NUM_CTX=65536`, `LLM_TIMEOUT_SECONDS=300`, `LLM_KEEP_ALIVE=15m`)。另完成第一個技能/manifest 持久化切片：`assistant_skills` migration/model/repository、`inspect_item_details` pending proposal、技能 approve/install/list/execute API。尚未完成 M2 workflow 計畫確認、完整 workflow DB、任意 codegen sandbox。
 
 ### Stage 13：Assistant 前端（聊天面板 + 計畫確認 + 技能核可 + 動態右鍵選單）
 
@@ -546,7 +546,7 @@ chore: complete cloud drive implementation
 
 完成後執行前端 lint、typecheck、test、build，提交 Stage 13。
 
-目前狀態（2026-06-17）：已完成 Stage 13 的登入後聊天面板切片：`assistantApi.chat`、assistant response 型別、`useAssistantChatMutation`、`AssistantPanel`、`MessageBubble`、`AppShell` 入口與 MSW/unit tests。使用者應在登入後 CloudDrive shell 內對話，不以 Swagger/API docs 作為產品入口。尚未完成 workflow plan card、技能核可 UI、manifest 驅動右鍵選單與已存 workflow 重跑。
+目前狀態（2026-06-17）：已完成 Stage 13 的登入後聊天面板與第一個技能核可/manifest 切片：`assistantApi.chat/listSkills/approveSkill/executeSkill`、assistant skill 型別、`useAssistantSkills`/approve/execute hooks、`AssistantPanel`、`MessageBubble`、`SkillApprovalCard`、`AssistantSkillResultDialog`、`AppShell` 入口，以及 DrivePage/FileContextMenu 依已安裝 manifest 動態插入右鍵選單。使用者應在登入後 CloudDrive shell 內對話，不以 Swagger/API docs 作為產品入口。尚未完成 workflow plan card、任意技能 code review/sandbox UI 與已存 workflow 重跑。
 
 ### Stage 14：Assistant 驗證與評分 Harness
 

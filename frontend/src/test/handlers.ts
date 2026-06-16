@@ -64,6 +64,30 @@ export const MOCK_FILE = {
   updated_at: '2024-01-01T00:00:00Z',
 }
 
+export const MOCK_ASSISTANT_SKILL = {
+  id: 'skill-1',
+  name: 'inspect_item_details',
+  description: 'Show details for a selected drive item.',
+  manifest: {
+    name: 'inspect_item_details',
+    description: 'Show details for a selected drive item.',
+    version: '1.0.0',
+    ui: {
+      context_menu: [
+        {
+          label: 'Inspect details',
+          handler: 'inspect_item_details',
+          item_types: ['FILE', 'FOLDER'],
+        },
+      ],
+    },
+  },
+  code: 'handler: inspect_item_details',
+  status: 'installed',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+}
+
 // ── Auth handlers ─────────────────────────────────────────────────────────────
 
 const authHandlers = [
@@ -233,11 +257,39 @@ const activityHandlers = [
 const assistantHandlers = [
   http.post(`${BASE}/assistant/chat`, async ({ request }) => {
     const body = await request.json() as { message: string; session_id?: string }
+    const wantsContextMenu = /right[- ]click|context menu|右鍵/i.test(body.message)
     return HttpResponse.json({
       session_id: body.session_id ?? 'assistant-session-1',
-      message: `Assistant heard: ${body.message}`,
+      message: wantsContextMenu
+        ? 'I drafted a right-click menu skill.'
+        : `Assistant heard: ${body.message}`,
       tool_calls: [],
       tool_results: [],
+      skill_proposal: wantsContextMenu ? { ...MOCK_ASSISTANT_SKILL, status: 'pending' } : null,
+    })
+  }),
+
+  http.get(`${BASE}/assistant/skills`, () => HttpResponse.json([])),
+
+  http.post(`${BASE}/assistant/skills/:id/approve`, ({ params }) =>
+    HttpResponse.json({
+      skill: { ...MOCK_ASSISTANT_SKILL, id: params.id as string, status: 'installed' },
+      message: 'inspect_item_details installed.',
+    }),
+  ),
+
+  http.post(`${BASE}/assistant/skills/:id/execute`, async ({ params, request }) => {
+    const body = await request.json() as { item_id: string }
+    return HttpResponse.json({
+      skill_id: params.id,
+      skill_name: 'inspect_item_details',
+      item_id: body.item_id,
+      message: `Details for ${MOCK_FILE.name}`,
+      output: {
+        name: MOCK_FILE.name,
+        item_type: MOCK_FILE.item_type,
+        size_bytes: MOCK_FILE.size_bytes,
+      },
     })
   }),
 ]

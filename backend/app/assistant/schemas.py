@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 AssistantRole = Literal["system", "user", "assistant", "tool"]
 
@@ -25,8 +26,56 @@ class AssistantToolResult(BaseModel):
     error: str | None = None
 
 
+class AssistantSkillContextMenuAction(BaseModel):
+    label: str
+    handler: str
+    item_types: list[str] = Field(default_factory=lambda: ["FILE", "FOLDER"])
+
+
+class AssistantSkillUI(BaseModel):
+    context_menu: list[AssistantSkillContextMenuAction] = Field(default_factory=list)
+
+
+class AssistantSkillManifest(BaseModel):
+    name: str
+    description: str
+    version: str = "1.0.0"
+    ui: AssistantSkillUI
+
+
+class AssistantSkillResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    description: str
+    manifest: dict[str, Any]
+    code: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssistantSkillApproveResponse(BaseModel):
+    skill: AssistantSkillResponse
+    message: str
+
+
+class AssistantSkillExecuteRequest(BaseModel):
+    item_id: UUID
+
+
+class AssistantSkillExecuteResponse(BaseModel):
+    skill_id: UUID
+    skill_name: str
+    item_id: UUID
+    message: str
+    output: dict[str, Any]
+
+
 class AssistantChatResponse(BaseModel):
     session_id: UUID
     message: str
     tool_calls: list[AssistantToolCall] = Field(default_factory=list)
     tool_results: list[AssistantToolResult] = Field(default_factory=list)
+    skill_proposal: AssistantSkillResponse | None = None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated, cast
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
@@ -12,8 +13,17 @@ from app.assistant.llm.external import ExternalLLMClient
 from app.assistant.llm.ollama import OllamaLLMClient
 from app.assistant.llm.privacy import PrivacyDefault
 from app.assistant.llm.router import ModelRouter
-from app.assistant.schemas import AssistantChatRequest, AssistantChatResponse
+from app.assistant.repository import SQLAssistantSkillRepository
+from app.assistant.schemas import (
+    AssistantChatRequest,
+    AssistantChatResponse,
+    AssistantSkillApproveResponse,
+    AssistantSkillExecuteRequest,
+    AssistantSkillExecuteResponse,
+    AssistantSkillResponse,
+)
 from app.assistant.service import AgentService
+from app.assistant.skills.authoring import AssistantSkillService
 from app.assistant.skills.builtin import build_read_only_registry
 from app.core.config import get_settings
 from app.core.dependencies import CurrentUserId, DbSession
@@ -29,14 +39,25 @@ from app.users.service import QuotaService
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 
-def _assistant_service(session: DbSession) -> AgentService:
-    settings = get_settings()
+def _drive_service(session: DbSession) -> DriveService:
     activity = ActivityLogService(SQLActivityLogRepository(session))
-    drive_service = DriveService(
+    return DriveService(
         item_repo=SQLDriveItemRepository(session),
         pref_repo=SQLUserItemPreferenceRepository(session),
         activity_svc=activity,
     )
+
+
+def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
+    return AssistantSkillService(
+        repo=SQLAssistantSkillRepository(session),
+        drive_service=_drive_service(session),
+    )
+
+
+def _assistant_service(session: DbSession) -> AgentService:
+    settings = get_settings()
+    drive_service = _drive_service(session)
     search_service = SearchService(SQLSearchRepository(session))
     quota_service = QuotaService(SQLUserRepository(session))
     registry = build_read_only_registry(
@@ -78,10 +99,15 @@ def _assistant_service(session: DbSession) -> AgentService:
         context=ContextManager(num_ctx=settings.llm_num_ctx),
         max_tool_iterations=settings.assistant_max_tool_iterations,
         num_ctx=settings.llm_num_ctx,
+        skill_authoring=AssistantSkillService(
+            repo=SQLAssistantSkillRepository(session),
+            drive_service=drive_service,
+        ),
     )
 
 
 AssistantServiceDep = Annotated[AgentService, Depends(_assistant_service)]
+AssistantSkillServiceDep = Annotated[AssistantSkillService, Depends(_assistant_skill_service)]
 
 
 @router.post(
@@ -93,6 +119,7 @@ AssistantServiceDep = Annotated[AgentService, Depends(_assistant_service)]
 async def chat(
     body: AssistantChatRequest,
     current_user_id: CurrentUserId,
+    session: DbSession,
     service: AssistantServiceDep,
 ) -> AssistantChatResponse:
     settings = get_settings()
@@ -103,14 +130,67 @@ async def chat(
             status_code=503,
         )
     try:
-        return await service.chat(
+        response = await service.chat(
             user_id=current_user_id,
             session_id=body.session_id,
             message=body.message,
         )
+        if response.skill_proposal is not None:
+            await session.commit()
+        return response
     except LLMClientError as exc:
         raise AppError(
             ErrorCode.ASSISTANT_UNAVAILABLE,
             "Assistant model is unavailable",
             status_code=503,
         ) from exc
+
+
+@router.get(
+    "/skills",
+    response_model=list[AssistantSkillResponse],
+    summary="List assistant skills",
+)
+async def list_skills(
+    current_user_id: CurrentUserId,
+    service: AssistantSkillServiceDep,
+    status: str | None = "installed",
+) -> list[AssistantSkillResponse]:
+    return await service.list_skills(user_id=current_user_id, status=status)
+
+
+@router.post(
+    "/skills/{skill_id}/approve",
+    response_model=AssistantSkillApproveResponse,
+    summary="Approve and install an assistant skill manifest",
+)
+async def approve_skill(
+    skill_id: UUID,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: AssistantSkillServiceDep,
+) -> AssistantSkillApproveResponse:
+    skill = await service.approve_skill(user_id=current_user_id, skill_id=skill_id)
+    await session.commit()
+    return AssistantSkillApproveResponse(
+        skill=skill,
+        message=f"{skill.manifest['name']} installed.",
+    )
+
+
+@router.post(
+    "/skills/{skill_id}/execute",
+    response_model=AssistantSkillExecuteResponse,
+    summary="Execute an installed assistant skill",
+)
+async def execute_skill(
+    skill_id: UUID,
+    body: AssistantSkillExecuteRequest,
+    current_user_id: CurrentUserId,
+    service: AssistantSkillServiceDep,
+) -> AssistantSkillExecuteResponse:
+    return await service.execute_skill(
+        user_id=current_user_id,
+        skill_id=skill_id,
+        item_id=body.item_id,
+    )

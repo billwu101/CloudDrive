@@ -2085,14 +2085,15 @@ useSearchItems(query, filters, page, pageSize)
 
 ## 17. In-App AI Assistant M1 後端骨架
 
-Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標是先建立可測、可替換、預設安全的 agent loop。此切片尚未啟用寫入型 workflow、生成技能安裝或 sandbox 執行碼；所有已註冊內建技能皆為唯讀，且一律透過既有 service 層帶入 `user_id`。
+Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標是先建立可測、可替換、預設安全的 agent loop。M1 已完成唯讀 agent loop；2026-06-17 追加一個安全白名單的技能/manifest 切片：助理可針對「新增右鍵 Inspect details」需求產生 pending skill proposal，使用者核可後安裝 manifest，前端右鍵選單再動態載入。此切片仍不執行任意 LLM 生成程式碼，完整 sandbox/codegen workflow 留在後續階段。
 
 主要檔案：
 
 | 檔案 | 職責 |
 | --- | --- |
-| `assistant/router.py` | `POST /api/v1/assistant/chat`，檢查 `ASSISTANT_ENABLED`，將 request 交給 `AgentService`。 |
-| `assistant/service.py` | AgentLoop：組 prompt、呼叫模型、執行 tool calls、回填 tool result、以 iteration 上限防止無限迴圈。 |
+| `assistant/router.py` | `POST /api/v1/assistant/chat`，以及技能 `GET /skills`、`POST /skills/{id}/approve`、`POST /skills/{id}/execute`。 |
+| `assistant/service.py` | AgentLoop：組 prompt、呼叫模型、執行 tool calls、回填 tool result、以 iteration 上限防止無限迴圈；技能 authoring request 可先走 deterministic proposal fast-path。 |
+| `assistant/repository.py` | `assistant_skills` CRUD，支援 pending proposal、installed manifest 列表與核可。 |
 | `assistant/context.py` | 依 `LLM_NUM_CTX` 估算字元預算，保留 system prompt 與最新對話。 |
 | `assistant/prompt.py` | 組穩定 system prompt，列出 registry 中可用技能。 |
 | `assistant/llm/client.py` | `LLMClient` protocol 與 `LLMMessage`/`LLMResponse`/`LLMToolCall` 結構。 |
@@ -2102,6 +2103,18 @@ Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標
 | `assistant/llm/router.py` | 本地模型重試、可接受性驗證 hook、達 `MAX_LOCAL_ATTEMPTS` 後依隱私閘決定是否升級外部。 |
 | `assistant/skills/registry.py` | 技能註冊、LLM tool schema 轉換、handler dispatch。 |
 | `assistant/skills/builtin/read_only.py` | `list_items`、`get_info`、`search`、`recent`、`storage_quota`。 |
+| `assistant/skills/authoring.py` | 第一個安全技能生成/安裝切片：產生 `inspect_item_details` manifest，核可後以既有 `DriveService.get_item()` 執行。 |
+| `models/assistant_skill.py` | 使用者 scoped skill manifest、code 摘要與狀態（`pending` / `installed`）。 |
+| `alembic/versions/0005_add_assistant_skills.py` | 建立 `assistant_skills` 資料表與 user/status index。 |
+
+新增 API：
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| `POST` | `/api/v1/assistant/chat` | 對話；符合技能生成意圖時回傳 `skill_proposal`。 |
+| `GET` | `/api/v1/assistant/skills?status=installed` | 列出已安裝 manifest，供前端右鍵選單動態載入。 |
+| `POST` | `/api/v1/assistant/skills/{skill_id}/approve` | 將 pending manifest 核可為 installed。 |
+| `POST` | `/api/v1/assistant/skills/{skill_id}/execute` | 執行已安裝技能；目前支援 `inspect_item_details`。 |
 
 新增設定：
 
@@ -2122,7 +2135,7 @@ Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標
 | `EXTERNAL_LLM_BASE_URL` / `EXTERNAL_MODEL` / `EXTERNAL_LLM_API_KEY` | 空 | 外部 OpenAI-compatible client 設定。 |
 | `PRIVACY_DEFAULT` | `sensitive` | 預設保守，不可去識別化時不外送。 |
 
-M1 測試位於 `backend/tests/assistant/`，包含 router dispatch/auth、agent loop tool 執行與迴圈上限、context 裁切，以及 model router 的外部升級與隱私阻擋。
+Assistant 測試位於 `backend/tests/assistant/`，包含 router dispatch/auth、agent loop tool 執行與迴圈上限、context 裁切、model router 的外部升級與隱私阻擋，以及 `test_skill_authoring.py` 的 pending proposal、已安裝去重與 execute metadata。
 
 ## 18. In-App AI Assistant 前端聊天切片
 
@@ -2132,14 +2145,18 @@ Assistant 的使用入口位於登入後 CloudDrive shell，而不是 Swagger/AP
 
 | 檔案 | 職責 |
 | --- | --- |
-| `src/api/assistantApi.ts` | 呼叫 `POST /assistant/chat`。 |
-| `src/api/types.ts` | `AssistantChatRequest`、`AssistantChatResponse`、tool call/result 型別。 |
-| `src/hooks/useAssistant.ts` | `useAssistantChatMutation`，統一使用既有 axios auth/refresh interceptor。 |
-| `src/components/assistant/AssistantPanel.tsx` | 登入後浮動聊天面板；保存當前 `session_id`，送出訊息並呈現錯誤。 |
+| `src/api/assistantApi.ts` | 呼叫 chat、list skills、approve skill、execute skill。 |
+| `src/api/types.ts` | `AssistantChatRequest`、`AssistantChatResponse`、tool call/result、skill manifest/approval/execute 型別。 |
+| `src/hooks/useAssistant.ts` | `useAssistantChatMutation`、`useAssistantSkills`、`useApproveAssistantSkill`、`useExecuteAssistantSkill`。 |
+| `src/components/assistant/AssistantPanel.tsx` | 登入後浮動聊天面板；保存當前 `session_id`，送出訊息、顯示錯誤與技能核可卡。 |
 | `src/components/assistant/MessageBubble.tsx` | 使用者/助理訊息視覺呈現。 |
+| `src/components/assistant/SkillApprovalCard.tsx` | 顯示 generated manifest 摘要並執行核可/略過。 |
+| `src/components/assistant/AssistantSkillResultDialog.tsx` | 顯示右鍵技能執行結果。 |
+| `src/components/drive/FileContextMenu.tsx` | 接收 manifest 轉出的 assistant actions，動態插入單檔右鍵選單。 |
+| `src/pages/DrivePage.tsx` | 讀取已安裝技能、依 `item_type` 過濾 `ui.context_menu`、執行技能並顯示結果。 |
 | `src/components/layout/AppShell.tsx` | 在受保護 CloudDrive shell 掛載 assistant 入口。 |
 
-此切片只涵蓋直接 chat；workflow plan 確認、技能核可、manifest 動態右鍵選單與已存 workflow 重跑仍屬後續 Stage 13 工作。
+此切片涵蓋直接 chat、第一個技能核可 UI、manifest 安裝與右鍵選單動態載入。Workflow plan 確認、任意 codegen sandbox、自訂工作流程儲存與一鍵重跑仍屬後續工作。
 
 ## 19. 結論
 

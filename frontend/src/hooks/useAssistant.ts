@@ -1,11 +1,41 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { assistantApi } from '@/api/assistantApi'
 import type { AssistantChatRequest } from '@/api/types'
+
+export const assistantKeys = {
+  all: ['assistant'] as const,
+  skills: (status: string) => [...assistantKeys.all, 'skills', status] as const,
+}
 
 export function useAssistantChatMutation() {
   return useMutation({
     mutationFn: (body: AssistantChatRequest) =>
       assistantApi.chat(body).then((response) => response.data),
+  })
+}
+
+export function useAssistantSkills(status = 'installed') {
+  return useQuery({
+    queryKey: assistantKeys.skills(status),
+    queryFn: () => assistantApi.listSkills(status).then((response) => response.data),
+  })
+}
+
+export function useApproveAssistantSkill() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (skillId: string) =>
+      assistantApi.approveSkill(skillId).then((response) => response.data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: assistantKeys.all })
+    },
+  })
+}
+
+export function useExecuteAssistantSkill() {
+  return useMutation({
+    mutationFn: ({ skillId, itemId }: { skillId: string; itemId: string }) =>
+      assistantApi.executeSkill(skillId, { item_id: itemId }).then((response) => response.data),
   })
 }

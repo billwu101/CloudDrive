@@ -100,6 +100,49 @@ export interface AssistantToolResult {
   error?: string | null
 }
 
+export interface AssistantSkillContextMenuAction {
+  label: string
+  handler: string
+  item_types: string[]
+}
+
+export interface AssistantSkillManifest {
+  name: string
+  description: string
+  version: string
+  ui: {
+    context_menu: AssistantSkillContextMenuAction[]
+  }
+}
+
+export interface AssistantSkillResponse {
+  id: string
+  name: string
+  description: string
+  manifest: AssistantSkillManifest
+  code: string
+  status: 'pending' | 'installed' | string
+  created_at: string
+  updated_at: string
+}
+
+export interface AssistantSkillApproveResponse {
+  skill: AssistantSkillResponse
+  message: string
+}
+
+export interface AssistantSkillExecuteRequest {
+  item_id: string
+}
+
+export interface AssistantSkillExecuteResponse {
+  skill_id: string
+  skill_name: string
+  item_id: string
+  message: string
+  output: Record<string, unknown>
+}
+
 export interface AssistantChatRequest {
   message: string
   session_id?: string
@@ -110,4 +153,5 @@ export interface AssistantChatResponse {
   message: string
   tool_calls: AssistantToolCall[]
   tool_results: AssistantToolResult[]
+  skill_proposal?: AssistantSkillResponse | null
 }

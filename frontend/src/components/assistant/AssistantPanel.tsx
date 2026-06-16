@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Bot, Loader2, MessageSquareText, Send, X } from 'lucide-react'
 
+import type { AssistantSkillResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { isApiError } from '@/api/client'
-import { useAssistantChatMutation } from '@/hooks/useAssistant'
+import { useApproveAssistantSkill, useAssistantChatMutation } from '@/hooks/useAssistant'
 import { cn } from '@/lib/utils'
 import { MessageBubble, type AssistantMessage } from './MessageBubble'
+import { SkillApprovalCard } from './SkillApprovalCard'
 
 const INITIAL_MESSAGE: AssistantMessage = {
   id: 'assistant-welcome',
@@ -33,7 +35,9 @@ export function AssistantPanel() {
   const [input, setInput] = useState('')
   const [sessionId, setSessionId] = useState<string | undefined>()
   const [messages, setMessages] = useState<AssistantMessage[]>([INITIAL_MESSAGE])
+  const [pendingSkill, setPendingSkill] = useState<AssistantSkillResponse | null>(null)
   const chatMutation = useAssistantChatMutation()
+  const approveSkill = useApproveAssistantSkill()
   const listRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -59,9 +63,35 @@ export function AssistantPanel() {
         session_id: sessionId,
       })
       setSessionId(response.session_id)
+      setPendingSkill(response.skill_proposal ?? null)
       setMessages((current) => [
         ...current,
         { id: newMessageId('assistant'), role: 'assistant', content: response.message },
+      ])
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: newMessageId('assistant'),
+          role: 'assistant',
+          content: errorMessage(error),
+          status: 'error',
+        },
+      ])
+    }
+  }
+
+  const handleApproveSkill = async (skill: AssistantSkillResponse) => {
+    try {
+      const response = await approveSkill.mutateAsync(skill.id)
+      setPendingSkill(null)
+      setMessages((current) => [
+        ...current,
+        {
+          id: newMessageId('assistant'),
+          role: 'assistant',
+          content: `Installed ${response.skill.manifest.ui.context_menu[0]?.label ?? skill.name}.`,
+        },
       ])
     } catch (error) {
       setMessages((current) => [
@@ -108,6 +138,14 @@ export function AssistantPanel() {
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
+            {pendingSkill && (
+              <SkillApprovalCard
+                skill={pendingSkill}
+                loading={approveSkill.isPending}
+                onApprove={handleApproveSkill}
+                onDismiss={() => setPendingSkill(null)}
+              />
+            )}
             {chatMutation.isPending && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />

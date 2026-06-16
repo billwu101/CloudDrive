@@ -9,8 +9,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useAuthStore } from './authStore'
 
 function clearStorage() {
-  try { localStorage.clear() } catch {}
-  try { sessionStorage.clear() } catch {}
+  try {
+    localStorage.clear()
+  } catch {
+    // jsdom can disable storage in a few isolated environments.
+  }
+  try {
+    sessionStorage.clear()
+  } catch {
+    // jsdom can disable storage in a few isolated environments.
+  }
 }
 
 const MOCK_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.test-payload.signature'

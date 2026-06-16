@@ -7,6 +7,7 @@ from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolCall
 from app.assistant.llm.router import ModelRouter
 from app.assistant.prompt import build_system_prompt
 from app.assistant.schemas import AssistantChatResponse, AssistantToolCall, AssistantToolResult
+from app.assistant.skills.authoring import AssistantSkillService
 from app.assistant.skills.registry import SkillContext, SkillRegistry
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
@@ -21,12 +22,14 @@ class AgentService:
         context: ContextManager,
         max_tool_iterations: int,
         num_ctx: int,
+        skill_authoring: AssistantSkillService | None = None,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._context = context
         self._max_tool_iterations = max(1, max_tool_iterations)
         self._num_ctx = num_ctx
+        self._skill_authoring = skill_authoring
 
     async def chat(
         self,
@@ -36,6 +39,18 @@ class AgentService:
         session_id: UUID | None = None,
     ) -> AssistantChatResponse:
         active_session_id = session_id or uuid4()
+        if self._skill_authoring is not None:
+            authoring_result = await self._skill_authoring.handle_authoring_message(
+                user_id=user_id,
+                message=message,
+            )
+            if authoring_result is not None:
+                return AssistantChatResponse(
+                    session_id=active_session_id,
+                    message=authoring_result.message,
+                    skill_proposal=authoring_result.skill_proposal,
+                )
+
         messages = [
             LLMMessage(role="system", content=build_system_prompt(self._registry)),
             LLMMessage(role="user", content=message),

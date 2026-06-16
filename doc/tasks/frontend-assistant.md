@@ -31,19 +31,22 @@
 
 ## M4：技能核可介面
 
-- [ ] `SkillApprovalDialog.tsx`：顯示生成的 manifest 與程式碼，核可/拒絕。
-- [ ] 核可後刷新已安裝技能與右鍵選單。
+- [x] `SkillApprovalCard.tsx`：顯示生成的 manifest 摘要，核可/略過。
+- [ ] `SkillApprovalDialog.tsx`：顯示完整生成程式碼與審查資訊，核可/拒絕。
+- [x] 核可後刷新已安裝技能與右鍵選單。
 
 ## M5：動態 UI 與工作流程重用
 
-- [ ] 右鍵選單依已安裝技能 manifest 的 `ui.context_menu` 動態插入（依副檔名比對）。
-- [ ] 點技能項目 → 呼叫 handler → 完成後 invalidate `driveKeys.items(parentId)` 等。
+- [x] 右鍵選單依已安裝技能 manifest 的 `ui.context_menu` 動態插入（目前依 `item_type` 比對）。
+- [x] 點技能項目 → 呼叫 handler → 顯示 `AssistantSkillResultDialog`。
+- [ ] 點技能項目 → 完成後 invalidate `driveKeys.items(parentId)` 等（寫入型技能需要）。
 - [ ] 已存工作流程清單 + 一鍵重跑。
 
 ## 測試任務
 
-- [ ] MSW mock chat / 計畫 / 核可 / 技能觸發 / 工作流程重跑。
+- [x] MSW mock chat / 核可 / 技能觸發。
+- [ ] MSW mock 計畫 / 工作流程重跑。
 - [ ] 測計畫卡顯示與確認/拒絕流程。
-- [ ] 測技能 manifest 驅動右鍵選單渲染（依副檔名）。
+- [x] 測技能 manifest 驅動右鍵選單渲染（目前依 `item_type`）。
 - [ ] 測改檔後 query 失效。
 - [ ] `lint`、`typecheck`、`test -- --run` 全綠。

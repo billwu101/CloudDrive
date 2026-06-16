@@ -2,12 +2,20 @@ import { ArrowLeft, FolderOpen } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import type { DriveItemResponse } from '@/api/types'
+import type {
+  AssistantSkillExecuteResponse,
+  AssistantSkillResponse,
+  DriveItemResponse,
+} from '@/api/types'
+import { AssistantSkillResultDialog } from '@/components/assistant/AssistantSkillResultDialog'
 import { Breadcrumbs, type BreadcrumbItem } from '@/components/drive/Breadcrumbs'
 import { ConfirmTrashDialog } from '@/components/drive/ConfirmTrashDialog'
 import { CreateFolderDialog } from '@/components/drive/CreateFolderDialog'
 import { DriveToolbar } from '@/components/drive/DriveToolbar'
-import { FileContextMenu } from '@/components/drive/FileContextMenu'
+import {
+  FileContextMenu,
+  type AssistantContextMenuAction,
+} from '@/components/drive/FileContextMenu'
 import { FileGrid } from '@/components/drive/FileGrid'
 import { FileTable } from '@/components/drive/FileTable'
 import { MoveDialog } from '@/components/drive/MoveDialog'
@@ -17,6 +25,7 @@ import { PreviewDialog } from '@/components/preview/PreviewDialog'
 import { UploadButton } from '@/components/upload/UploadButton'
 import { UploadDropzone } from '@/components/upload/UploadDropzone'
 import { UploadQueue } from '@/components/upload/UploadQueue'
+import { useAssistantSkills, useExecuteAssistantSkill } from '@/hooks/useAssistant'
 import { useCreateFolder, useDriveItems, useFolderAncestors, useFolderItem, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
 import { useDragSelect } from '@/hooks/useDragSelect'
 import { useUploadFiles } from '@/hooks/useUpload'
@@ -37,6 +46,21 @@ interface MultiContextMenuState {
 
 type ContextMenuState = SingleContextMenuState | MultiContextMenuState | null
 
+function assistantActionsForItem(
+  skills: AssistantSkillResponse[],
+  item: DriveItemResponse,
+): AssistantContextMenuAction[] {
+  return skills.flatMap((skill) =>
+    skill.manifest.ui.context_menu
+      .filter((action) => action.item_types.includes(item.item_type))
+      .map((action) => ({
+        skillId: skill.id,
+        label: action.label,
+        handler: action.handler,
+      })),
+  )
+}
+
 export function DrivePage() {
   const { folderId } = useParams<{ folderId?: string }>()
   const navigate = useNavigate()
@@ -49,11 +73,13 @@ export function DrivePage() {
   const { data, isLoading } = useDriveItems(folderId)
   const { data: folderItem } = useFolderItem(folderId)
   const { data: ancestorsData } = useFolderAncestors(folderId)
+  const { data: assistantSkills = [] } = useAssistantSkills()
   const createFolder = useCreateFolder(folderId)
   const rename = useRenameItem(folderId)
   const move = useMoveItem()
   const star = useSetStarred(folderId)
   const trash = useMoveToTrash(folderId)
+  const executeAssistantSkill = useExecuteAssistantSkill()
 
   const { upload } = useUploadFiles(folderId)
 
@@ -64,10 +90,19 @@ export function DrivePage() {
   const [trashTargets, setTrashTargets] = useState<DriveItemResponse[]>([])
   const [previewItemId, setPreviewItemId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
+  const [assistantSkillResult, setAssistantSkillResult] =
+    useState<AssistantSkillExecuteResponse | null>(null)
 
   const ancestors: BreadcrumbItem[] = (ancestorsData ?? []).map((a) => ({ id: a.id, name: a.name }))
   const currentFolderName = folderItem?.name
   const items = useMemo(() => data?.items ?? [], [data?.items])
+  const assistantMenuActions = useMemo(
+    () =>
+      contextMenu?.kind === 'single'
+        ? assistantActionsForItem(assistantSkills, contextMenu.item)
+        : [],
+    [assistantSkills, contextMenu],
+  )
 
   const handleBack = useCallback(() => {
     if (!folderId) return
@@ -141,6 +176,16 @@ export function DrivePage() {
       upload([task.file])
     },
     [upload],
+  )
+
+  const handleAssistantAction = useCallback(
+    (action: AssistantContextMenuAction, item: DriveItemResponse) => {
+      executeAssistantSkill.mutate(
+        { skillId: action.skillId, itemId: item.id },
+        { onSuccess: setAssistantSkillResult },
+      )
+    },
+    [executeAssistantSkill],
   )
 
   const handleDragSelect = useCallback((ids: string[]) => selectAll(ids), [selectAll])
@@ -222,6 +267,7 @@ export function DrivePage() {
           <FileContextMenu
             item={contextMenu.item}
             position={{ x: contextMenu.x, y: contextMenu.y }}
+            assistantActions={assistantMenuActions}
             onClose={() => setContextMenu(null)}
             onPreview={(item) => setPreviewItemId(item.id)}
             onRename={(item) => setRenameTarget(item)}
@@ -230,6 +276,7 @@ export function DrivePage() {
             onCopyLink={() => {}}
             onToggleStar={(item) => star.mutate({ id: item.id, starred: !item.is_starred })}
             onTrash={(item) => setTrashTargets([item])}
+            onAssistantAction={handleAssistantAction}
           />
         )}
 
@@ -294,6 +341,10 @@ export function DrivePage() {
         <UploadQueue onRetry={handleRetryUpload} />
 
         <PreviewDialog itemId={previewItemId} onClose={() => setPreviewItemId(null)} />
+        <AssistantSkillResultDialog
+          result={assistantSkillResult}
+          onClose={() => setAssistantSkillResult(null)}
+        />
       </div>
     </UploadDropzone>
   )
