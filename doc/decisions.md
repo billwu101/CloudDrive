@@ -139,3 +139,23 @@
 - 理由：符合需求描述（隨機密碼寄出）且最小化基礎設施；抽象層讓 SMTP 與 console 可切換、無 SMTP 設定也能運作。
 - 已知取捨：任何知道他人 email 者皆可觸發重設造成帳號臨時鎖定（DoS 向量）。可接受於本專案範圍；未來如需更嚴謹可改為一次性 token 連結 + 速率限制。
 - 影響範圍：AuthService、UserRepository、User model、Alembic 0004、`app/email/`、CurrentUserResponse、前端 ForgotPasswordPage 與 ChangePasswordReminder。
+
+## DEC-016：不採用 OpenClaw，改自建 In-App AI Assistant
+
+- 日期：2026-06-16
+- 狀態：Accepted
+- 背景：原需求為「接入 openclaw」。評估後，OpenClaw 是 Node.js/TypeScript 的個人 AI 助理 daemon，主打跨通訊平台、語音、單人 local-first，與 CloudDrive（Python、多使用者 web）技術棧與使用模型皆不符。實際需求僅為「在網頁內用對話操作檔案」。
+- 決策：不使用 OpenClaw。自建 In-App Assistant：後端 `/api/v1/assistant/chat` endpoint 內跑 Claude tool-use 迴圈，工具呼叫既有 service 層；前端提供聊天面板。
+- 理由：OpenClaw 的核心價值（跨通訊平台、單人 daemon）在本專案用不到；扛一整個 Node daemon 並處理單人 vs 多人錯配不划算。自建在自家技術棧內、天然多租戶、工作量更小。
+- 已知取捨：放棄 OpenClaw 既有的多通訊平台與技能生態；若未來需要從 Telegram/語音等管道操作，需另議。
+- 影響範圍：新增 `app/assistant/` 模組、`anthropic` 依賴、前端 assistant 元件；詳見 assistant-design.md。
+
+## DEC-017：助理一律經 service 層，不直接操作 DB／檔案
+
+- 日期：2026-06-16
+- 狀態：Accepted
+- 背景：「讓助理直接操作資料庫／檔案」（類比個人電腦直接裝 AI 助理操作本機檔案）會繞過 CloudDrive 的配額、權限、命名衝突、軟刪除、活動紀錄、分享 token 雜湊等業務邏輯。
+- 決策：助理的每個工具都呼叫既有 service（DriveService、SearchService、TrashService…），並一律帶入當前 JWT 的 `user_id`；不直接讀寫 Postgres 或 storage 目錄。v1 在 agent loop 內直接定義工具，暫不抽成 MCP server。
+- 理由：CloudDrive 的關鍵不變量全在 service 層，直接操作 DB 等於用另一語言重寫並承擔資料失同步風險。經 service 層可完整重用且天然多租戶安全。穩定介面是 service／REST，而非底層資料表。
+- 已知取捨：多一層呼叫（可忽略）；工具與 service 介面耦合（同 repo、可控）。未來若要讓同套工具被多個 AI 客戶端共用，再抽成後端內建 MCP server（路線 B）。
+- 影響範圍：AssistantService、ToolDispatcher、各既有 service 的注入。

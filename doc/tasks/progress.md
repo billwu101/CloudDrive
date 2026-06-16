@@ -49,6 +49,11 @@
 
 - [x] [Integration、E2E 與驗收](./integration-testing.md)
 
+## 未來擴充（設計完成，尚未實作）
+
+- [ ] [Backend Assistant](./backend-assistant.md) — In-App AI Assistant，設計見 [assistant-design.md](../assistant-design.md)
+- [ ] [Frontend Assistant](./frontend-assistant.md) — 聊天面板與串接
+
 ## 建議執行順序
 
 - [x] 第一階段：Project Setup、Backend Core、Database。
