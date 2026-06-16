@@ -68,6 +68,8 @@ M2 實作備註（2026-06-17）：`/chat` 改走 planner（取代 M1 直接 tool
 - [x] `test_planner.py`：NL→候選 workflow 結構化輸出、去 fence、修復重試。
 - [x] `test_workflow.py`：fast-path 自動執行、破壞性 pending 不執行、confirm 執行、cancel、未知 workflow。
 - [x] `test_permissions.py`：tier 標記、未知技能拒絕、向前相依拒絕、auto-confirmable。
+- [x] `test_workflow.py`：可組合技能（步驟輸出引用解析）+ 引用不到乾淨失敗。
+- [x] `test_pipeline_properties.py`：**property-based（hypothesis）模糊測試**，隨機產生複雜計畫（多技能/引用/未知技能/壞參數），驗證硬性不變量：validate_plan 全函式且健全、executor 永不拋例外且遇錯即停、resolve_arguments 只拋 StepResolutionError、classify 標 tier 或拒未知、**planner 產出永遠是可執行或空（絕不交出非法計畫）**。每項 200–300 隨機例。
 - [ ] `test_authoring.py`：任意 codegen 停在 pending_approval。
 - [ ] `test_sandbox.py`：逾時/路徑/網路限制。
 - [ ] `test_hooks.py`：權限閘阻擋破壞性/安裝。
