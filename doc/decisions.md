@@ -159,3 +159,32 @@
 - 理由：CloudDrive 的關鍵不變量全在 service 層，直接操作 DB 等於用另一語言重寫並承擔資料失同步風險。經 service 層可完整重用且天然多租戶安全。穩定介面是 service／REST，而非底層資料表。
 - 已知取捨：多一層呼叫（可忽略）；工具與 service 介面耦合（同 repo、可控）。未來若要讓同套工具被多個 AI 客戶端共用，再抽成後端內建 MCP server（路線 B）。
 - 影響範圍：AssistantService、ToolDispatcher、各既有 service 的注入。
+
+## DEC-018：助理採本地 Gemma 4 26B，不用雲端 API
+
+- 日期：2026-06-16
+- 狀態：Accepted
+- 背景：助理需自訂、可離線、資料不外流，且為使用者本地掌控的模型。
+- 決策：使用本地執行的 Gemma 4 26B；預設經 Ollama（`/api/chat`，支援 tools），亦可指向任何 OpenAI 相容端點。後端以 `LLMClient` 抽象封裝，只用 httpx，不引入雲端 LLM SDK（不使用 anthropic/openai 雲端服務）。
+- 理由：本地模型符合自訂與隱私需求；抽象層讓推論後端可替換。
+- 已知取捨：26B 本地模型的 function-calling 可靠度低於前沿雲端模型，需靠 harness 的穩健迴圈、輸出解析/修復、驗證與重試補強；推論延遲與品質受本機硬體限制。
+- 影響範圍：`app/assistant/llm/`、config（LLM_PROVIDER/LLM_BASE_URL/ASSISTANT_MODEL/LLM_NUM_CTX）、prompt 與迴圈設計。
+
+## DEC-019：允許 agent 自我撰寫技能，但須「核可 → 沙箱 → 稽核」
+
+- 日期：2026-06-16
+- 狀態：Accepted
+- 背景：核心價值是讓使用者請 agent 現場製作新功能（如 7zip 解壓縮並掛右鍵選單），這代表 agent 會生成並執行程式碼。
+- 決策：技能撰寫由子代理 codegen 產生 handler+manifest，狀態停在 `pending_approval`；經使用者明確核可後，於受限子行程沙箱（CPU/記憶體/逾時上限、檔案存取限該使用者 storage、無對外網路、參數化呼叫）執行；所有動作寫入 activity_logs。絕不自動執行未審核程式碼。
+- 理由：自我擴充是主要價值，但執行生成程式碼是最大安全面，必須以核可閘 + 沙箱 + 稽核三道關卡控管。
+- 已知取捨：每個新功能需人工核可一次（非全自動）；沙箱限制可能擋掉部分進階功能；維護沙箱有額外成本。對安全而言可接受。
+- 影響範圍：`skills/authoring.py`、`skills/sandbox.py`、`hooks.py`、`permissions.py`、`assistant_skills` 資料表、前端核可介面與動態右鍵選單。
+
+## DEC-020：助理 session 與技能持久化到 DB（取代記憶體 only）
+
+- 日期：2026-06-16
+- 狀態：Accepted（取代早期設計草案中「v1 不持久化」的暫定）
+- 背景：HARNESS 含 session persistence；且已安裝的自訂技能必須跨 session 留存才有意義。
+- 決策：新增 `assistant_sessions` / `assistant_messages` / `assistant_skills` 資料表；對話可續接，使用者自訂技能依 `user_id` 隔離並於啟動時載入。
+- 理由：技能與對話留存是功能可用性的前提。
+- 影響範圍：Alembic migration、`app/assistant/repository.py`、models。
