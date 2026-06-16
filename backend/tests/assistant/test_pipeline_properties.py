@@ -12,10 +12,11 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from app.assistant.context import ContextManager
@@ -23,6 +24,12 @@ from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolDefinition
 from app.assistant.llm.router import ModelRouter
 from app.assistant.permissions import classify_steps
 from app.assistant.planner import WorkflowPlanner, validate_plan
+from app.assistant.repository import (
+    WORKFLOW_EXECUTED,
+    WORKFLOW_PENDING,
+    AbstractAssistantWorkflowRepository,
+)
+from app.assistant.service import WorkflowService
 from app.assistant.skills.registry import RegisteredSkill, SkillContext, SkillRegistry
 from app.assistant.workflow import (
     READ_TIER,
@@ -35,6 +42,7 @@ from app.assistant.workflow import (
     resolve_arguments,
 )
 from app.core.exceptions import AppError
+from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
 
 # A fixed catalog of known skills: name -> (permission_tier, required_args).
 KNOWN: dict[str, tuple[str, list[str]]] = {
@@ -236,3 +244,188 @@ def test_planner_output_is_always_executable_or_empty(plans: list[dict[str, Any]
     # The planner must never hand back an invalid plan: either it is clean
     # (safe to execute) or it has no steps (answered conversationally).
     assert result.steps == [] or validate_plan(result.steps, registry) == []
+
+
+# --- WorkflowService routing properties -------------------------------------
+
+
+def _required_args(skill: str) -> dict[str, Any]:
+    return {arg: "x" for arg in KNOWN[skill][1]}
+
+
+def build_tracking_registry(calls: list[str]) -> SkillRegistry:
+    registry = SkillRegistry()
+
+    def make(name: str) -> Any:
+        async def handler(context: SkillContext, args: Mapping[str, Any]) -> dict[str, Any]:
+            calls.append(name)
+            return {"items": [{"id": "X", "name": "n"}], "total": 1}
+
+        return handler
+
+    for name, (tier, required) in KNOWN.items():
+        registry.register(
+            RegisteredSkill(
+                name=name,
+                description=name,
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                    "required": required,
+                    "additionalProperties": True,
+                },
+                permission_tier=tier,
+                handler=make(name),
+            )
+        )
+    return registry
+
+
+class _FakeWorkflowRepo(AbstractAssistantWorkflowRepository):
+    def __init__(self) -> None:
+        self.workflows: dict[UUID, AssistantWorkflow] = {}
+        self.runs: list[AssistantWorkflowRun] = []
+
+    async def create_pending(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        source_nl: str,
+        steps: list[dict[str, Any]],
+    ) -> AssistantWorkflow:
+        now = datetime.now(UTC)
+        workflow = AssistantWorkflow(
+            id=uuid4(),
+            user_id=user_id,
+            session_id=session_id,
+            source_nl=source_nl,
+            steps=steps,
+            status=WORKFLOW_PENDING,
+            created_at=now,
+            updated_at=now,
+        )
+        self.workflows[workflow.id] = workflow
+        return workflow
+
+    async def get_pending(self, *, user_id: UUID, workflow_id: UUID) -> AssistantWorkflow | None:
+        workflow = self.workflows.get(workflow_id)
+        if workflow is None or workflow.user_id != user_id or workflow.status != WORKFLOW_PENDING:
+            return None
+        return workflow
+
+    async def set_status(self, *, workflow: AssistantWorkflow, status: str) -> None:
+        workflow.status = status
+
+    async def record_run(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID | None,
+        source_nl: str,
+        status: str,
+        step_results: list[dict[str, Any]],
+    ) -> AssistantWorkflowRun:
+        run = AssistantWorkflowRun(
+            id=uuid4(),
+            user_id=user_id,
+            workflow_id=workflow_id,
+            source_nl=source_nl,
+            status=status,
+            step_results=step_results,
+            created_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+        )
+        self.runs.append(run)
+        return run
+
+
+def _build_service(
+    plan_json: dict[str, Any], calls: list[str]
+) -> tuple[WorkflowService, _FakeWorkflowRepo]:
+    registry = build_tracking_registry(calls)
+    router = ModelRouter(
+        local_client=_ScriptedLLM([plan_json]),
+        external_client=None,
+        external_enabled=False,
+        max_local_attempts=1,
+        privacy_default="non_sensitive",
+    )
+    planner = WorkflowPlanner(
+        llm=router,
+        registry=registry,
+        context=ContextManager(num_ctx=2048),
+        num_ctx=2048,
+        max_repair=2,
+    )
+    repo = _FakeWorkflowRepo()
+    service = WorkflowService(
+        planner=planner,
+        executor=WorkflowExecutor(registry=registry),
+        registry=registry,
+        workflow_repo=repo,
+    )
+    return service, repo
+
+
+# Valid plans only (known skills + required args supplied), so the planner
+# returns them unchanged and routing is exercised deterministically.
+valid_plan_payloads = st.builds(
+    lambda reply, steps: {"reply": reply, "steps": steps},
+    st.text(max_size=6),
+    st.lists(
+        st.sampled_from(sorted(KNOWN)).map(
+            lambda name: {"skill": name, "arguments": _required_args(name)}
+        ),
+        max_size=4,
+    ),
+)
+
+
+@settings(max_examples=200, deadline=None)
+@given(valid_plan_payloads)
+def test_service_auto_executes_read_only_and_defers_writes(plan_json: dict[str, Any]) -> None:
+    skills = [step["skill"] for step in plan_json["steps"]]
+    calls: list[str] = []
+    service, repo = _build_service(plan_json, calls)
+
+    response = asyncio.run(service.chat(user_id=uuid4(), message="x"))
+
+    if not skills:
+        assert response.plan is None  # conversational, no workflow
+        assert calls == []
+        assert repo.runs == []
+        return
+
+    if all(KNOWN[name][0] == READ_TIER for name in skills):
+        assert response.plan is not None and response.plan.status == "auto_executed"
+        assert calls == skills  # every read step executed, in order
+        assert len(repo.runs) == 1
+        assert repo.workflows == {}  # fast-path persists no pending workflow
+    else:
+        assert response.plan is not None and response.plan.status == "pending_approval"
+        assert response.plan.workflow_id is not None
+        assert calls == []  # a write/destructive plan runs NOTHING before confirmation
+        assert len(repo.workflows) == 1
+        assert repo.runs == []
+
+
+@settings(max_examples=150, deadline=None)
+@given(valid_plan_payloads)
+def test_pending_workflow_runs_only_after_confirm(plan_json: dict[str, Any]) -> None:
+    skills = [step["skill"] for step in plan_json["steps"]]
+    assume(any(KNOWN[name][0] != READ_TIER for name in skills))  # force a pending plan
+    user_id = uuid4()
+    calls: list[str] = []
+    service, repo = _build_service(plan_json, calls)
+
+    pending = asyncio.run(service.chat(user_id=user_id, message="x"))
+    assert pending.plan is not None and pending.plan.workflow_id is not None
+    assert calls == []  # nothing ran yet
+
+    confirmed = asyncio.run(service.confirm(user_id=user_id, workflow_id=pending.plan.workflow_id))
+
+    assert confirmed.status == "executed"
+    assert calls == skills  # executed in order, only after confirmation
+    assert len(repo.runs) == 1
+    assert repo.workflows[pending.plan.workflow_id].status == WORKFLOW_EXECUTED
