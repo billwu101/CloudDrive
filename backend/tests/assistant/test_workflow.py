@@ -20,7 +20,7 @@ from app.assistant.repository import (
 )
 from app.assistant.service import WorkflowService
 from app.assistant.skills.registry import RegisteredSkill, SkillContext, SkillRegistry
-from app.assistant.workflow import WorkflowExecutor
+from app.assistant.workflow import WorkflowExecutor, WorkflowStep
 from app.core.exceptions import NotFoundError
 from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
 
@@ -249,6 +249,95 @@ async def test_confirm_unknown_workflow_raises() -> None:
 
     with pytest.raises(NotFoundError):
         await service.confirm(user_id=user_id, workflow_id=uuid4())
+
+
+async def test_executor_resolves_step_output_reference() -> None:
+    user_id = uuid4()
+    seen: dict[str, Any] = {}
+    registry = SkillRegistry()
+
+    async def search(context: SkillContext, args: Mapping[str, Any]) -> dict[str, Any]:
+        return {"items": [{"id": "FOLDER-123", "name": "test"}], "total": 1}
+
+    async def list_items(context: SkillContext, args: Mapping[str, Any]) -> dict[str, Any]:
+        seen["parent_id"] = args.get("parent_id")
+        return {"items": [{"name": "inside.txt"}], "total": 1}
+
+    registry.register(
+        RegisteredSkill(
+            name="search",
+            description="Search.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": True},
+            permission_tier="read",
+            handler=search,
+        )
+    )
+    registry.register(
+        RegisteredSkill(
+            name="list_items",
+            description="List.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": True},
+            permission_tier="read",
+            handler=list_items,
+        )
+    )
+    executor = WorkflowExecutor(registry=registry)
+    steps = [
+        WorkflowStep(
+            index=0,
+            skill="search",
+            arguments={"q": "test"},
+            permission_tier="read",
+            requires_approval=False,
+        ),
+        WorkflowStep(
+            index=1,
+            skill="list_items",
+            arguments={"parent_id": {"from_step": 0, "path": "items.0.id"}},
+            depends_on=[0],
+            permission_tier="read",
+            requires_approval=False,
+        ),
+    ]
+
+    results = await executor.execute(user_id=user_id, steps=steps)
+
+    assert seen["parent_id"] == "FOLDER-123"  # resolved from step 0's output
+    assert all(r.ok for r in results)
+
+
+async def test_executor_reports_unresolvable_reference() -> None:
+    user_id = uuid4()
+    registry = SkillRegistry()
+
+    async def handler(context: SkillContext, args: Mapping[str, Any]) -> dict[str, Any]:
+        return {"items": [], "total": 0}
+
+    registry.register(
+        RegisteredSkill(
+            name="list_items",
+            description="List.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": True},
+            permission_tier="read",
+            handler=handler,
+        )
+    )
+    executor = WorkflowExecutor(registry=registry)
+    steps = [
+        WorkflowStep(
+            index=0,
+            skill="list_items",
+            # references a non-existent earlier step → must fail cleanly, not crash
+            arguments={"parent_id": {"from_step": 5, "path": "items.0.id"}},
+            permission_tier="read",
+            requires_approval=False,
+        ),
+    ]
+
+    results = await executor.execute(user_id=user_id, steps=steps)
+
+    assert results[0].ok is False
+    assert "references step 5" in (results[0].error or "")
 
 
 async def test_conversational_plan_without_steps() -> None:

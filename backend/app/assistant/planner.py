@@ -8,7 +8,7 @@ from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse
 from app.assistant.llm.router import ModelRouter
 from app.assistant.skills.registry import SkillRegistry
-from app.assistant.workflow import PlannedStep
+from app.assistant.workflow import PlannedStep, is_step_ref
 
 
 class PlanResult(BaseModel):
@@ -30,9 +30,13 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         "- steps: ordered skill calls. depends_on lists indices of earlier steps.\n"
         "- If the request needs no drive action, return an empty steps array and answer in reply.\n"
         "- Never invent a skill that is not listed, and always include every required argument.\n"
-        "- Arguments must be literal values you already know; you cannot reference another step's "
-        "output. To act on something you only know by name (e.g. a folder), use the search skill "
-        "with q=<name> — never guess a UUID.\n"
+        "- Skills are composable. An argument value may be a literal, OR a reference to an earlier "
+        'step\'s output: {"from_step": <earlier index>, "path": "items.0.id"}. search and '
+        'list_items return {"items": [{"id", "name", "item_type", ...}], "total": N}.\n'
+        "- Never guess a UUID. To act on something you only know by name (e.g. a folder), search "
+        'for it first, then reference the result. Example — "what is in the test folder": '
+        '[{"skill": "search", "arguments": {"q": "test"}}, {"skill": "list_items", "arguments": '
+        '{"parent_id": {"from_step": 0, "path": "items.0.id"}}}].\n'
         "- Output JSON only, no prose, no code fences.\n\n"
         "Available skills:\n"
         f"{skills}"
@@ -76,11 +80,19 @@ def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str
         if skill is None:
             problems.append(f"step {index}: unknown skill '{step.skill}'")
             continue
+        for arg_value in step.arguments.values():
+            if is_step_ref(arg_value):
+                from_step = arg_value.get("from_step")
+                if not isinstance(from_step, int) or from_step < 0 or from_step >= index:
+                    problems.append(
+                        f"step {index}: reference must point to an earlier step, got {from_step}"
+                    )
         required = skill.parameters.get("required", [])
         if isinstance(required, list):
             for arg in required:
                 value = step.arguments.get(arg)
-                if value is None or (isinstance(value, str) and not value.strip()):
+                missing = value is None or (isinstance(value, str) and not value.strip())
+                if missing and not is_step_ref(value):
                     problems.append(
                         f"step {index}: skill '{step.skill}' is missing required argument '{arg}'"
                     )

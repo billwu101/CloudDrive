@@ -117,6 +117,30 @@ def test_validate_plan_accepts_complete_plan() -> None:
     assert problems == []
 
 
+def test_validate_plan_accepts_step_reference_for_required_arg() -> None:
+    # list_items.parent_id is satisfied by a reference to step 0's output.
+    steps = [
+        PlannedStep(skill="search", arguments={"q": "test"}),
+        PlannedStep(
+            skill="list_items",
+            arguments={"parent_id": {"from_step": 0, "path": "items.0.id"}},
+        ),
+    ]
+    assert validate_plan(steps, _registry()) == []
+
+
+def test_validate_plan_rejects_forward_reference() -> None:
+    steps = [
+        PlannedStep(
+            skill="list_items",
+            arguments={"parent_id": {"from_step": 1, "path": "items.0.id"}},
+        ),
+        PlannedStep(skill="search", arguments={"q": "test"}),
+    ]
+    problems = validate_plan(steps, _registry())
+    assert any("must point to an earlier step" in p for p in problems)
+
+
 async def test_planner_repairs_missing_required_argument() -> None:
     # First plan calls search without q (parses as JSON, but invalid) -> repair ->
     # second plan supplies q. The bad plan must never reach execution.

@@ -44,6 +44,55 @@ def is_auto_confirmable(steps: list[WorkflowStep]) -> bool:
     return all(not step.requires_approval for step in steps)
 
 
+class StepResolutionError(Exception):
+    """Raised when a step argument references an earlier step that cannot be resolved."""
+
+
+def is_step_ref(value: Any) -> bool:
+    """A composable-skill reference: ``{"from_step": int, "path": "items.0.id"}``."""
+
+    return isinstance(value, dict) and "from_step" in value
+
+
+def _resolve_path(output: Any, path: str) -> Any:
+    current = output
+    for part in filter(None, path.split(".")):
+        if isinstance(current, list):
+            current = current[int(part)]
+        elif isinstance(current, dict):
+            current = current[part]
+        else:
+            raise StepResolutionError(f"cannot descend into {type(current).__name__} at '{part}'")
+    return current
+
+
+def resolve_arguments(
+    arguments: dict[str, Any],
+    results_by_index: dict[int, StepResult],
+) -> dict[str, Any]:
+    """Replace any step references in arguments with the referenced step's output."""
+
+    resolved: dict[str, Any] = {}
+    for key, value in arguments.items():
+        if not is_step_ref(value):
+            resolved[key] = value
+            continue
+        from_step = value.get("from_step")
+        path = str(value.get("path", ""))
+        source = results_by_index.get(from_step) if isinstance(from_step, int) else None
+        if source is None or not source.ok:
+            raise StepResolutionError(
+                f"argument '{key}' references step {from_step}, which did not produce a result"
+            )
+        try:
+            resolved[key] = _resolve_path(source.output, path)
+        except (KeyError, IndexError, ValueError, TypeError) as exc:
+            raise StepResolutionError(
+                f"argument '{key}': cannot resolve path '{path}' from step {from_step}"
+            ) from exc
+    return resolved
+
+
 class WorkflowExecutor:
     def __init__(self, *, registry: SkillRegistry, hooks: HookRegistry | None = None) -> None:
         self._registry = registry
@@ -58,10 +107,13 @@ class WorkflowExecutor:
                 "before_step", HookContext(user_id=user_id, steps=steps, step=step)
             )
             try:
+                # Composable skills: resolve references to earlier steps' outputs first.
+                ok_results = {r.index: r for r in results if r.ok}
+                arguments = resolve_arguments(step.arguments, ok_results)
                 output = await self._registry.execute(
                     name=step.skill,
                     context=context,
-                    arguments=step.arguments,
+                    arguments=arguments,
                 )
             except Exception as exc:
                 result = StepResult(index=step.index, skill=step.skill, ok=False, error=str(exc))
