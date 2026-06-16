@@ -10,3 +10,9 @@ expect:
 scoring:
   weights: { correctness: 1.0 }
   pass_threshold: 1.0
+mock_llm:
+  responses:
+    - reply: Checking your storage usage.
+      steps:
+        - skill: storage_quota
+          arguments: {}

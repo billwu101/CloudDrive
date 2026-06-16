@@ -10,3 +10,9 @@ expect:
 scoring:
   weights: { correctness: 1.0 }
   pass_threshold: 1.0
+mock_llm:
+  responses:
+    - reply: I will create the Reports folder.
+      steps:
+        - skill: create_folder
+          arguments: { name: Reports }

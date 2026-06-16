@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
@@ -24,6 +25,17 @@ class Scoring(BaseModel):
     pass_threshold: float = 0.8
 
 
+class MockLLM(BaseModel):
+    """Scripted model output for the deterministic in-process (mock) runner.
+
+    Each entry is the raw thing the model "returns" for one planner call: either
+    a plan object ({"reply": ..., "steps": [...]}) or a raw string. The harness
+    serialises plan objects to JSON before handing them to the pipeline.
+    """
+
+    responses: list[Any] = Field(default_factory=list)
+
+
 class EvalCase(BaseModel):
     id: str
     name: str = ""
@@ -34,6 +46,7 @@ class EvalCase(BaseModel):
     expect: Expect = Field(default_factory=Expect)
     scoring: Scoring = Field(default_factory=Scoring)
     runs: int = 1
+    mock_llm: MockLLM | None = None
 
 
 def load_cases(directory: str | Path) -> list[EvalCase]:

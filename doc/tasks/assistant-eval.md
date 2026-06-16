@@ -20,7 +20,7 @@
 - [x] `backend/eval/run.py`：CLI（`--cases`/`--base-url`/`--token`/`--mode`/`--json`），門檻不過回非零碼。
 - [x] `tests/eval/`：schema 載入 / verifier / scoring 單元測試（決定性、不打網路）。
 - [x] `tests/eval/test_eval_properties.py`：**property-based（hypothesis）**——隨機 case + 隨機/壞回應驗證 harness 自身不變量：verify 全函式不崩、score ∈ [0,1] 且 passed⇔過門檻、全對=1.0/全錯=0.0、verify 結果忠實反映期望、嚴格門檻下 passed⇔所有期望皆滿足。
-- [ ] in-process mock-LLM runner（決定性、可進 CI，免真 Gemma）— E1 後續。
+- [x] in-process mock-LLM runner（`eval/inproc.py`）：程序內以 scripted mock LLM + 假 service 驅動真實 pipeline，案例帶 `mock_llm` 腳本;`run.py --llm mock`（預設）決定性、免後端/Gemma → 可進 CI。`tests/eval/test_inproc_runner.py` 驗證 bundled 案例 inproc 全過且回合間決定性。
 - [ ] state/safety 斷言、多次執行通過率/變異、baseline 比較。
 
 ## E2：Browser runner
