@@ -30,7 +30,7 @@ from app.assistant.schemas import (
 )
 from app.assistant.service import WorkflowService
 from app.assistant.skills.authoring import AssistantSkillService
-from app.assistant.skills.builtin import build_read_only_registry
+from app.assistant.skills.builtin import build_read_only_registry, register_write_skills
 from app.assistant.workflow import WorkflowExecutor
 from app.core.config import get_settings
 from app.core.dependencies import CurrentUserId, DbSession
@@ -72,6 +72,7 @@ def _assistant_service(session: DbSession) -> WorkflowService:
         search_service=search_service,
         quota_service=quota_service,
     )
+    register_write_skills(registry, drive_service=drive_service)
 
     local_client = OllamaLLMClient(
         base_url=settings.llm_base_url,

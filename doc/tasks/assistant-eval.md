@@ -11,13 +11,16 @@
 
 ## E1：案例 schema + API runner + verifier + scoring + 報告
 
-- [ ] `backend/eval/schema.py`：EvalCase/Expect/Scoring（pydantic）+ YAML 載入。
-- [ ] `backend/eval/cases/`：放入起手案例（至少 read-only 與 daily-ops 各一）。
-- [ ] `backend/eval/runner_api.py`：啟測試後端、自動登入、餵 prompt、依 `auto_confirm` 過確認閘、驅動 workflow 完成、擷取回應 + DB/storage 狀態；支援 mock LLM。
-- [ ] `backend/eval/verifier.py`：workflow/state/safety 確定性斷言，按維度歸類。
-- [ ] `backend/eval/scoring.py`：維度加權、案例分、通過門檻、多次執行通過率/變異、套件彙總。
-- [ ] `backend/eval/report.py`：JSON + Markdown 報告。
-- [ ] `backend/eval/run.py`：CLI（`--mode`/`--llm`/`--cases`/`--runs`/`--baseline`），門檻不過回非零碼。
+- [x] `backend/eval/schema.py`：EvalCase/Expect/Scoring（pydantic）+ YAML 載入。
+- [x] `backend/eval/cases/`：起手案例（read-only `storage_quota`、daily-ops `create_folder`）。
+- [x] `backend/eval/runner.py`：API runner（HTTP，打 live 後端 /assistant/chat）。
+- [x] `backend/eval/verifier.py`：workflow 確定性斷言（steps_include / requires_confirmation / skill_generated），按維度歸類。
+- [x] `backend/eval/scoring.py`：維度加權、案例分、通過門檻。
+- [x] `backend/eval/report.py`：JSON + Markdown 報告。
+- [x] `backend/eval/run.py`：CLI（`--cases`/`--base-url`/`--token`/`--mode`/`--json`），門檻不過回非零碼。
+- [x] `tests/eval/`：schema 載入 / verifier / scoring 單元測試（決定性、不打網路）。
+- [ ] in-process mock-LLM runner（決定性、可進 CI，免真 Gemma）— E1 後續。
+- [ ] state/safety 斷言、多次執行通過率/變異、baseline 比較。
 
 ## E2：Browser runner
 

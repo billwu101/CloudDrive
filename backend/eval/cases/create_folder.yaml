@@ -1,0 +1,12 @@
+id: create-folder-write
+name: Create a folder (write — needs confirmation)
+prompt: Create a folder called Reports
+mode: [api]
+tags: [daily-ops]
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include: [create_folder]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0

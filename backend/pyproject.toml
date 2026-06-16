@@ -50,13 +50,13 @@ files = ["app", "tests"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["app", "tests"]
+src = ["app", "tests", "eval"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["app", "eval"]
 
 [tool.ruff.lint.per-file-ignores]
 # Env vars (LOCAL_STORAGE_PATH) must be set before app imports; get_settings()
