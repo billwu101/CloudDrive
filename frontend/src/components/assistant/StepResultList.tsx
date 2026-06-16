@@ -13,6 +13,20 @@ function formatBytes(bytes: number): string {
   return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`
 }
 
+function names(items: unknown[]): string {
+  const labels = items
+    .map((it) => (it && typeof it === 'object' ? (it as Record<string, unknown>).name : it))
+    .filter((n): n is string => typeof n === 'string')
+  if (labels.length === 0) return ''
+  const shown = labels.slice(0, 5).join(', ')
+  return labels.length > 5 ? `${shown}, …` : shown
+}
+
+function withCount(total: number, listing: string): string {
+  const head = `${total} item${total === 1 ? '' : 's'}`
+  return listing ? `${head}: ${listing}` : head
+}
+
 function summarize(result: WorkflowStepResult): string {
   if (!result.ok) return result.error ?? 'Failed'
   const output = result.output
@@ -24,11 +38,11 @@ function summarize(result: WorkflowStepResult): string {
     }
     if (Array.isArray(o.items)) {
       const total = typeof o.total === 'number' ? o.total : o.items.length
-      return `${total} item${total === 1 ? '' : 's'}`
+      return withCount(total, names(o.items))
     }
     if (typeof o.name === 'string') return o.name
   }
-  if (Array.isArray(output)) return `${output.length} item${output.length === 1 ? '' : 's'}`
+  if (Array.isArray(output)) return withCount(output.length, names(output))
   return 'Done'
 }
 

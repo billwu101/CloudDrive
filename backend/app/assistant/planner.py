@@ -29,7 +29,11 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         "- reply: a short natural-language answer or summary for the user.\n"
         "- steps: ordered skill calls. depends_on lists indices of earlier steps.\n"
         "- If the request needs no drive action, return an empty steps array and answer in reply.\n"
-        "- Never invent a skill that is not listed. Output JSON only, no prose, no code fences.\n\n"
+        "- Never invent a skill that is not listed, and always include every required argument.\n"
+        "- Arguments must be literal values you already know; you cannot reference another step's "
+        "output. To act on something you only know by name (e.g. a folder), use the search skill "
+        "with q=<name> — never guess a UUID.\n"
+        "- Output JSON only, no prose, no code fences.\n\n"
         "Available skills:\n"
         f"{skills}"
     )
@@ -57,6 +61,32 @@ def _parse(content: str) -> PlanResult | None:
         return None
 
 
+def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str]:
+    """Semantic validation of a planned workflow against the skill catalog.
+
+    Catches the classes of failure a JSON-parse check misses: a hallucinated
+    skill, or a step that omits a required argument (e.g. ``search`` without
+    ``q``). Returns a list of human-readable problems ([] means the plan is
+    executable).
+    """
+
+    problems: list[str] = []
+    for index, step in enumerate(steps):
+        skill = registry.get(step.skill)
+        if skill is None:
+            problems.append(f"step {index}: unknown skill '{step.skill}'")
+            continue
+        required = skill.parameters.get("required", [])
+        if isinstance(required, list):
+            for arg in required:
+                value = step.arguments.get(arg)
+                if value is None or (isinstance(value, str) and not value.strip()):
+                    problems.append(
+                        f"step {index}: skill '{step.skill}' is missing required argument '{arg}'"
+                    )
+    return problems
+
+
 class WorkflowPlanner:
     def __init__(
         self,
@@ -65,11 +95,13 @@ class WorkflowPlanner:
         registry: SkillRegistry,
         context: ContextManager,
         num_ctx: int,
+        max_repair: int = 2,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._context = context
         self._num_ctx = num_ctx
+        self._max_repair = max(0, max_repair)
 
     async def plan(self, *, message: str) -> PlanResult:
         messages = [
@@ -80,15 +112,48 @@ class WorkflowPlanner:
         def _valid(response: LLMResponse) -> bool:
             return _parse(response.content) is not None
 
-        # ModelRouter handles local-retry + privacy-gated external escalation; the
-        # validator forces a re-plan when the model returns malformed JSON.
-        response = await self._llm.chat(
-            self._context.trim(messages),
-            [],
-            num_ctx=self._num_ctx,
-            validator=_valid,
+        last_reply = "I could not plan that request."
+        # Each iteration: get a JSON plan (ModelRouter handles model-level retry +
+        # privacy-gated escalation), then semantically validate it against the
+        # skills. On problems, feed them back and re-plan — so a deeper / ambiguous
+        # request that first yields an invalid call (e.g. search without q) gets
+        # corrected instead of failing at execution.
+        for attempt in range(self._max_repair + 1):
+            response = await self._llm.chat(
+                self._context.trim(messages),
+                [],
+                num_ctx=self._num_ctx,
+                validator=_valid,
+            )
+            result = _parse(response.content)
+            if result is None:
+                return PlanResult(reply=response.content.strip() or last_reply)
+            last_reply = result.reply or last_reply
+            problems = validate_plan(result.steps, self._registry)
+            if not problems:
+                return result
+            if attempt < self._max_repair:
+                messages.append(LLMMessage(role="assistant", content=response.content))
+                messages.append(
+                    LLMMessage(
+                        role="user",
+                        content=(
+                            "Your previous plan was invalid: "
+                            + "; ".join(problems)
+                            + ". Re-plan using only the listed skills and include every required "
+                            "argument. If you cannot satisfy the request with the available "
+                            "skills, return an empty steps list and explain briefly in reply."
+                        ),
+                    )
+                )
+
+        # Repairs exhausted — never execute an invalid plan; answer conversationally.
+        return PlanResult(
+            reply=(
+                last_reply
+                if last_reply != "I could not plan that request."
+                else "I couldn't turn that into a valid action with the tools I have. "
+                "Could you rephrase or be more specific?"
+            ),
+            steps=[],
         )
-        result = _parse(response.content)
-        if result is None:
-            return PlanResult(reply=response.content.strip() or "I could not plan that request.")
-        return result

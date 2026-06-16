@@ -182,6 +182,47 @@ describe('AssistantPanel', () => {
     expect(screen.getByText('storage_quota')).toBeInTheDocument()
   })
 
+  it('lists file names from a list_items result', async () => {
+    server.use(
+      http.post(`${BASE}/assistant/chat`, async ({ request }) => {
+        const body = (await request.json()) as { session_id?: string }
+        return HttpResponse.json({
+          session_id: body.session_id ?? 'session-1',
+          message: 'Listing your root files.',
+          tool_calls: [],
+          tool_results: [],
+          plan: { workflow_id: null, status: 'auto_executed', steps: [] },
+          results: [
+            {
+              index: 0,
+              skill: 'list_items',
+              ok: true,
+              output: {
+                total: 3,
+                items: [
+                  { name: 'test' },
+                  { name: 'IMG_0001.pdf' },
+                  { name: 'IMG_3447.mov' },
+                ],
+              },
+            },
+          ],
+        })
+      }),
+    )
+    renderAssistantPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+    await userEvent.type(screen.getByLabelText(/assistant message/i), 'list file names')
+    await userEvent.click(screen.getByRole('button', { name: /send message/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/3 items: test, IMG_0001\.pdf, IMG_3447\.mov/i),
+      ).toBeInTheDocument()
+    })
+  })
+
   it('shows a pending workflow plan and runs it on confirm', async () => {
     server.use(
       http.post(`${BASE}/assistant/chat`, async ({ request }) => {
