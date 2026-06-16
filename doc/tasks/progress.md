@@ -51,8 +51,9 @@
 
 ## 未來擴充（設計完成，尚未實作）
 
-- [ ] [Backend Assistant](./backend-assistant.md) — In-App AI Assistant，設計見 [assistant-design.md](../assistant-design.md)
-- [ ] [Frontend Assistant](./frontend-assistant.md) — 聊天面板與串接
+- [ ] [Backend Assistant](./backend-assistant.md) — In-App AI Assistant（HARNESS 引擎 + Workflow 管線、本地 Gemma），設計見 [assistant-design.md](../assistant-design.md)
+- [ ] [Frontend Assistant](./frontend-assistant.md) — 聊天面板、計畫確認、動態右鍵選單
+- [ ] [Assistant 驗證與評分 Harness](./assistant-eval.md) — 自動餵 prompt、可選跑瀏覽器、確定性驗證 + 評分，設計見 [assistant-eval-design.md](../assistant-eval-design.md)
 
 ## 建議執行順序
 

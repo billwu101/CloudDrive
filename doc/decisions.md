@@ -198,3 +198,13 @@
 - 理由：先計畫後執行 + 使用者確認，兼顧通用性、可檢視性與安全；workflow 化讓多步操作與生成功能可重用、可稽核。
 - 已知取捨：每次（非 fast-path）需一次確認互動；規劃階段增加一次 LLM 結構化輸出成本；需維護 workflow schema 與執行器。
 - 影響範圍：`app/assistant/planner.py`、`workflow.py`、`assistant_workflows`/`assistant_workflow_runs` 表、前端計畫確認 UI。
+
+## DEC-022：助理功能以「驗證／評分 Harness」持續把關
+
+- 日期：2026-06-16
+- 狀態：Accepted
+- 背景：助理用本地非決定性模型、會生成技能與跑沙箱，需可重複的方式驗證「功能是否正常」並量化品質。
+- 決策：建立獨立 eval harness —— 以 YAML 測試案例自動餵 prompt，支援 API 與 Browser 兩種模式（`--mode` 即「是否跑瀏覽器」開關，共用同一份案例）；驗證採確定性斷言（workflow/state/safety）為主、LLM 評審為輔；評分為多維度加權 + 通過門檻 + 多次執行通過率/變異 + baseline 回歸；受測 LLM 可 mock（CI 必跑、決定性）或 real（量測品質）。
+- 理由：非決定性模型需以狀態斷言為主、judge 為輔，並以通過率/變異描述穩定度；雙模式兼顧 CI 速度與真實端到端；baseline 比較可擋回歸。
+- 已知取捨：維護案例與 harness 有成本；real LLM eval 較慢且分數會浮動，故 CI 主跑 mock 確定性案例。
+- 影響範圍：`backend/eval/`、`frontend/e2e/assistant/`、CI 設定；詳見 assistant-eval-design.md。

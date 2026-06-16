@@ -227,6 +227,10 @@ ASSISTANT_MAX_TOOL_ITERATIONS=8
 ASSISTANT_SANDBOX_TIMEOUT_SEC=30
 ```
 
+## 12.1 驗證與評分
+
+助理的功能正確性由獨立的**驗證／評分 harness** 持續把關：自動餵 prompt、可選跑瀏覽器（API / Browser 模式）、對結果做確定性斷言與可選 LLM 評審、並以多維度加權評分與 baseline 回歸比較。詳見 [assistant-eval-design.md](./assistant-eval-design.md)。
+
 ## 13. 里程碑
 
 1. **M1 引擎骨架（HARNESS 01/02/05/07）**：AgentLoop + LLMClient(Gemma) + context + prompt + 唯讀內建技能 + 測試。
