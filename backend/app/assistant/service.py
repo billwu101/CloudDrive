@@ -2,33 +2,48 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from app.assistant.context import ContextManager
-from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolCall
-from app.assistant.llm.router import ModelRouter
-from app.assistant.prompt import build_system_prompt
-from app.assistant.schemas import AssistantChatResponse, AssistantToolCall, AssistantToolResult
+from app.assistant.permissions import classify_steps
+from app.assistant.planner import WorkflowPlanner
+from app.assistant.repository import (
+    WORKFLOW_CANCELLED,
+    WORKFLOW_EXECUTED,
+    AbstractAssistantWorkflowRepository,
+)
+from app.assistant.schemas import (
+    AssistantChatResponse,
+    AssistantWorkflowConfirmResponse,
+    WorkflowPlanView,
+)
 from app.assistant.skills.authoring import AssistantSkillService
-from app.assistant.skills.registry import SkillContext, SkillRegistry
-from app.core.error_codes import ErrorCode
-from app.core.exceptions import AppError
+from app.assistant.skills.registry import SkillRegistry
+from app.assistant.workflow import StepResult, WorkflowExecutor, WorkflowStep, is_auto_confirmable
+from app.core.exceptions import NotFoundError
+
+_PENDING_NOTE = " 這個操作需要你確認後才會執行。"
 
 
-class AgentService:
+def _run_status(results: list[StepResult]) -> str:
+    return "succeeded" if all(result.ok for result in results) else "failed"
+
+
+class WorkflowService:
+    """Plan-and-confirm pipeline: NL -> candidate workflow -> check skills ->
+    permission gate -> (read-only fast-path execute | persist pending) -> log.
+    """
+
     def __init__(
         self,
         *,
-        llm: ModelRouter,
+        planner: WorkflowPlanner,
+        executor: WorkflowExecutor,
         registry: SkillRegistry,
-        context: ContextManager,
-        max_tool_iterations: int,
-        num_ctx: int,
+        workflow_repo: AbstractAssistantWorkflowRepository,
         skill_authoring: AssistantSkillService | None = None,
     ) -> None:
-        self._llm = llm
+        self._planner = planner
+        self._executor = executor
         self._registry = registry
-        self._context = context
-        self._max_tool_iterations = max(1, max_tool_iterations)
-        self._num_ctx = num_ctx
+        self._workflows = workflow_repo
         self._skill_authoring = skill_authoring
 
     async def chat(
@@ -39,70 +54,96 @@ class AgentService:
         session_id: UUID | None = None,
     ) -> AssistantChatResponse:
         active_session_id = session_id or uuid4()
+
         if self._skill_authoring is not None:
-            authoring_result = await self._skill_authoring.handle_authoring_message(
+            authoring = await self._skill_authoring.handle_authoring_message(
                 user_id=user_id,
                 message=message,
             )
-            if authoring_result is not None:
+            if authoring is not None:
                 return AssistantChatResponse(
                     session_id=active_session_id,
-                    message=authoring_result.message,
-                    skill_proposal=authoring_result.skill_proposal,
+                    message=authoring.message,
+                    skill_proposal=authoring.skill_proposal,
                 )
 
-        messages = [
-            LLMMessage(role="system", content=build_system_prompt(self._registry)),
-            LLMMessage(role="user", content=message),
-        ]
-        all_calls: list[AssistantToolCall] = []
-        all_results: list[AssistantToolResult] = []
-        final_response: LLMResponse | None = None
+        plan = await self._planner.plan(message=message)
+        if not plan.steps:
+            return AssistantChatResponse(session_id=active_session_id, message=plan.reply)
 
-        for _ in range(self._max_tool_iterations):
-            response = await self._llm.chat(
-                self._context.trim(messages),
-                self._registry.tool_definitions(),
-                num_ctx=self._num_ctx,
+        steps = classify_steps(plan.steps, self._registry)
+
+        if is_auto_confirmable(steps):
+            results = await self._executor.execute(user_id=user_id, steps=steps)
+            await self._workflows.record_run(
+                user_id=user_id,
+                workflow_id=None,
+                source_nl=message,
+                status=_run_status(results),
+                step_results=[result.model_dump(mode="json") for result in results],
             )
-            final_response = response
-            if not response.tool_calls:
-                break
-            messages.append(LLMMessage(role="assistant", content=response.content))
-            for call in response.tool_calls:
-                all_calls.append(_to_schema_call(call))
-                result = await self._execute_tool(user_id=user_id, call=call)
-                all_results.append(result)
-                messages.append(LLMMessage(role="tool", content=_tool_message(result)))
-        else:
-            raise AppError(
-                ErrorCode.INVALID_OPERATION,
-                "Assistant reached the maximum tool iteration limit",
+            return AssistantChatResponse(
+                session_id=active_session_id,
+                message=plan.reply,
+                plan=WorkflowPlanView(workflow_id=None, status="auto_executed", steps=steps),
+                results=results,
             )
 
-        content = final_response.content if final_response is not None else ""
+        workflow = await self._workflows.create_pending(
+            user_id=user_id,
+            session_id=active_session_id,
+            source_nl=message,
+            steps=[step.model_dump(mode="json") for step in steps],
+        )
         return AssistantChatResponse(
             session_id=active_session_id,
-            message=content or "Done.",
-            tool_calls=all_calls,
-            tool_results=all_results,
+            message=plan.reply + _PENDING_NOTE,
+            plan=WorkflowPlanView(
+                workflow_id=workflow.id,
+                status="pending_approval",
+                steps=steps,
+            ),
         )
 
-    async def _execute_tool(self, *, user_id: UUID, call: LLMToolCall) -> AssistantToolResult:
-        try:
-            output = await self._registry.execute(
-                name=call.name,
-                context=SkillContext(user_id=user_id),
-                arguments=call.arguments,
-            )
-            return AssistantToolResult(name=call.name, ok=True, output=output)
-        except Exception as exc:
-            return AssistantToolResult(name=call.name, ok=False, error=str(exc))
+    async def confirm(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID,
+    ) -> AssistantWorkflowConfirmResponse:
+        workflow = await self._workflows.get_pending(user_id=user_id, workflow_id=workflow_id)
+        if workflow is None:
+            raise NotFoundError("Pending workflow not found")
 
+        steps = [WorkflowStep.model_validate(step) for step in workflow.steps]
+        results = await self._executor.execute(user_id=user_id, steps=steps)
+        await self._workflows.set_status(workflow=workflow, status=WORKFLOW_EXECUTED)
+        await self._workflows.record_run(
+            user_id=user_id,
+            workflow_id=workflow.id,
+            source_nl=workflow.source_nl,
+            status=_run_status(results),
+            step_results=[result.model_dump(mode="json") for result in results],
+        )
+        return AssistantWorkflowConfirmResponse(
+            workflow_id=workflow.id,
+            status="executed",
+            message="Workflow executed.",
+            results=results,
+        )
 
-def _to_schema_call(call: LLMToolCall) -> AssistantToolCall:
-    return AssistantToolCall(name=call.name, arguments=call.arguments)
-
-
-def _tool_message(result: AssistantToolResult) -> str:
-    return result.model_dump_json()
+    async def cancel(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID,
+    ) -> AssistantWorkflowConfirmResponse:
+        workflow = await self._workflows.get_pending(user_id=user_id, workflow_id=workflow_id)
+        if workflow is None:
+            raise NotFoundError("Pending workflow not found")
+        await self._workflows.set_status(workflow=workflow, status=WORKFLOW_CANCELLED)
+        return AssistantWorkflowConfirmResponse(
+            workflow_id=workflow.id,
+            status="cancelled",
+            message="Workflow cancelled.",
+        )

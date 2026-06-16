@@ -13,13 +13,13 @@ from httpx import ASGITransport, AsyncClient
 from app.assistant.router import _assistant_service
 from app.assistant.router import router as assistant_router
 from app.assistant.schemas import AssistantChatResponse
-from app.assistant.service import AgentService
+from app.assistant.service import WorkflowService
 from app.core.dependencies import get_db
 from app.core.exceptions import AppError
 from app.core.security import create_access_token
 
 
-def _make_app(service: AgentService, user_id: UUID) -> FastAPI:
+def _make_app(service: WorkflowService, user_id: UUID) -> FastAPI:
     app = FastAPI()
 
     @app.exception_handler(AppError)
@@ -55,7 +55,7 @@ async def test_chat_dispatches_to_agent_service(
     headers: dict[str, str],
 ) -> None:
     response = AssistantChatResponse(session_id=uuid4(), message="Hello from assistant")
-    svc = AsyncMock(spec=AgentService)
+    svc = AsyncMock(spec=WorkflowService)
     svc.chat.return_value = response
     app = _make_app(svc, user_id)
 
@@ -70,7 +70,7 @@ async def test_chat_dispatches_to_agent_service(
 
 
 async def test_chat_requires_auth() -> None:
-    svc = AsyncMock(spec=AgentService)
+    svc = AsyncMock(spec=WorkflowService)
     app = _make_app(svc, uuid4())
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

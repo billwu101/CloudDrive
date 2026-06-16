@@ -9,6 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assistant_skill import AssistantSkill
+from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
+
+WORKFLOW_PENDING = "pending_approval"
+WORKFLOW_EXECUTED = "executed"
+WORKFLOW_CANCELLED = "cancelled"
 
 
 class AbstractAssistantSkillRepository(ABC):
@@ -117,3 +122,109 @@ class SQLAssistantSkillRepository(AbstractAssistantSkillRepository):  # pragma: 
         skill.updated_at = datetime.now(UTC)
         await self._session.flush()
         return skill
+
+
+class AbstractAssistantWorkflowRepository(ABC):
+    @abstractmethod
+    async def create_pending(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        source_nl: str,
+        steps: list[dict[str, Any]],
+    ) -> AssistantWorkflow: ...
+
+    @abstractmethod
+    async def get_pending(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID,
+    ) -> AssistantWorkflow | None: ...
+
+    @abstractmethod
+    async def set_status(self, *, workflow: AssistantWorkflow, status: str) -> None: ...
+
+    @abstractmethod
+    async def record_run(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID | None,
+        source_nl: str,
+        status: str,
+        step_results: list[dict[str, Any]],
+    ) -> AssistantWorkflowRun: ...
+
+
+class SQLAssistantWorkflowRepository(AbstractAssistantWorkflowRepository):  # pragma: no cover
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create_pending(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        source_nl: str,
+        steps: list[dict[str, Any]],
+    ) -> AssistantWorkflow:
+        now = datetime.now(UTC)
+        workflow = AssistantWorkflow(
+            id=uuid4(),
+            user_id=user_id,
+            session_id=session_id,
+            source_nl=source_nl,
+            steps=steps,
+            status=WORKFLOW_PENDING,
+            created_at=now,
+            updated_at=now,
+        )
+        self._session.add(workflow)
+        await self._session.flush()
+        return workflow
+
+    async def get_pending(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID,
+    ) -> AssistantWorkflow | None:
+        result = await self._session.execute(
+            select(AssistantWorkflow).where(
+                AssistantWorkflow.id == workflow_id,
+                AssistantWorkflow.user_id == user_id,
+                AssistantWorkflow.status == WORKFLOW_PENDING,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def set_status(self, *, workflow: AssistantWorkflow, status: str) -> None:
+        workflow.status = status
+        workflow.updated_at = datetime.now(UTC)
+        await self._session.flush()
+
+    async def record_run(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID | None,
+        source_nl: str,
+        status: str,
+        step_results: list[dict[str, Any]],
+    ) -> AssistantWorkflowRun:
+        now = datetime.now(UTC)
+        run = AssistantWorkflowRun(
+            id=uuid4(),
+            user_id=user_id,
+            workflow_id=workflow_id,
+            source_nl=source_nl,
+            status=status,
+            step_results=step_results,
+            created_at=now,
+            finished_at=now,
+        )
+        self._session.add(run)
+        await self._session.flush()
+        return run

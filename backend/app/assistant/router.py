@@ -8,12 +8,17 @@ from fastapi import APIRouter, Depends
 from app.activity_log.repository import SQLActivityLogRepository
 from app.activity_log.service import ActivityLogService
 from app.assistant.context import ContextManager
+from app.assistant.hooks import default_hook_registry
 from app.assistant.llm.client import LLMClientError
 from app.assistant.llm.external import ExternalLLMClient
 from app.assistant.llm.ollama import OllamaLLMClient
 from app.assistant.llm.privacy import PrivacyDefault
 from app.assistant.llm.router import ModelRouter
-from app.assistant.repository import SQLAssistantSkillRepository
+from app.assistant.planner import WorkflowPlanner
+from app.assistant.repository import (
+    SQLAssistantSkillRepository,
+    SQLAssistantWorkflowRepository,
+)
 from app.assistant.schemas import (
     AssistantChatRequest,
     AssistantChatResponse,
@@ -21,10 +26,12 @@ from app.assistant.schemas import (
     AssistantSkillExecuteRequest,
     AssistantSkillExecuteResponse,
     AssistantSkillResponse,
+    AssistantWorkflowConfirmResponse,
 )
-from app.assistant.service import AgentService
+from app.assistant.service import WorkflowService
 from app.assistant.skills.authoring import AssistantSkillService
 from app.assistant.skills.builtin import build_read_only_registry
+from app.assistant.workflow import WorkflowExecutor
 from app.core.config import get_settings
 from app.core.dependencies import CurrentUserId, DbSession
 from app.core.error_codes import ErrorCode
@@ -55,7 +62,7 @@ def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
     )
 
 
-def _assistant_service(session: DbSession) -> AgentService:
+def _assistant_service(session: DbSession) -> WorkflowService:
     settings = get_settings()
     drive_service = _drive_service(session)
     search_service = SearchService(SQLSearchRepository(session))
@@ -93,12 +100,19 @@ def _assistant_service(session: DbSession) -> AgentService:
         max_local_attempts=settings.max_local_attempts,
         privacy_default=privacy_default,
     )
-    return AgentService(
+    context = ContextManager(num_ctx=settings.llm_num_ctx)
+    planner = WorkflowPlanner(
         llm=model_router,
         registry=registry,
-        context=ContextManager(num_ctx=settings.llm_num_ctx),
-        max_tool_iterations=settings.assistant_max_tool_iterations,
+        context=context,
         num_ctx=settings.llm_num_ctx,
+    )
+    executor = WorkflowExecutor(registry=registry, hooks=default_hook_registry())
+    return WorkflowService(
+        planner=planner,
+        executor=executor,
+        registry=registry,
+        workflow_repo=SQLAssistantWorkflowRepository(session),
         skill_authoring=AssistantSkillService(
             repo=SQLAssistantSkillRepository(session),
             drive_service=drive_service,
@@ -106,7 +120,7 @@ def _assistant_service(session: DbSession) -> AgentService:
     )
 
 
-AssistantServiceDep = Annotated[AgentService, Depends(_assistant_service)]
+AssistantServiceDep = Annotated[WorkflowService, Depends(_assistant_service)]
 AssistantSkillServiceDep = Annotated[AssistantSkillService, Depends(_assistant_skill_service)]
 
 
@@ -135,15 +149,47 @@ async def chat(
             session_id=body.session_id,
             message=body.message,
         )
-        if response.skill_proposal is not None:
-            await session.commit()
-        return response
     except LLMClientError as exc:
         raise AppError(
             ErrorCode.ASSISTANT_UNAVAILABLE,
             "Assistant model is unavailable",
             status_code=503,
         ) from exc
+    # Persist skill proposals, fast-path runs, and pending workflows.
+    await session.commit()
+    return response
+
+
+@router.post(
+    "/workflows/{workflow_id}/confirm",
+    response_model=AssistantWorkflowConfirmResponse,
+    summary="Confirm and execute a pending workflow",
+)
+async def confirm_workflow(
+    workflow_id: UUID,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: AssistantServiceDep,
+) -> AssistantWorkflowConfirmResponse:
+    response = await service.confirm(user_id=current_user_id, workflow_id=workflow_id)
+    await session.commit()
+    return response
+
+
+@router.post(
+    "/workflows/{workflow_id}/cancel",
+    response_model=AssistantWorkflowConfirmResponse,
+    summary="Cancel a pending workflow",
+)
+async def cancel_workflow(
+    workflow_id: UUID,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: AssistantServiceDep,
+) -> AssistantWorkflowConfirmResponse:
+    response = await service.cancel(user_id=current_user_id, workflow_id=workflow_id)
+    await session.commit()
+    return response
 
 
 @router.get(

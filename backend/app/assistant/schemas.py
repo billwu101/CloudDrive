@@ -6,7 +6,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.assistant.workflow import StepResult, WorkflowStep
+
 AssistantRole = Literal["system", "user", "assistant", "tool"]
+WorkflowPlanStatus = Literal["auto_executed", "pending_approval"]
 
 
 class AssistantChatRequest(BaseModel):
@@ -73,9 +76,24 @@ class AssistantSkillExecuteResponse(BaseModel):
     output: dict[str, Any]
 
 
+class WorkflowPlanView(BaseModel):
+    workflow_id: UUID | None = None
+    status: WorkflowPlanStatus
+    steps: list[WorkflowStep]
+
+
 class AssistantChatResponse(BaseModel):
     session_id: UUID
     message: str
     tool_calls: list[AssistantToolCall] = Field(default_factory=list)
     tool_results: list[AssistantToolResult] = Field(default_factory=list)
+    plan: WorkflowPlanView | None = None
+    results: list[StepResult] = Field(default_factory=list)
     skill_proposal: AssistantSkillResponse | None = None
+
+
+class AssistantWorkflowConfirmResponse(BaseModel):
+    workflow_id: UUID
+    status: Literal["executed", "cancelled"]
+    message: str
+    results: list[StepResult] = Field(default_factory=list)

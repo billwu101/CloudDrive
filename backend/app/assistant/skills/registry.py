@@ -46,6 +46,9 @@ class SkillRegistry:
     def list_skills(self) -> list[RegisteredSkill]:
         return list(self._skills.values())
 
+    def get(self, name: str) -> RegisteredSkill | None:
+        return self._skills.get(name)
+
     def tool_definitions(self) -> list[LLMToolDefinition]:
         return [skill.to_tool_definition() for skill in self.list_skills()]
 
