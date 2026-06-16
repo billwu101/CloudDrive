@@ -87,3 +87,27 @@ export interface PreviewInfoResponse {
   size_bytes: number
   filename: string
 }
+
+export interface AssistantToolCall {
+  name: string
+  arguments: Record<string, unknown>
+}
+
+export interface AssistantToolResult {
+  name: string
+  ok: boolean
+  output?: unknown
+  error?: string | null
+}
+
+export interface AssistantChatRequest {
+  message: string
+  session_id?: string
+}
+
+export interface AssistantChatResponse {
+  session_id: string
+  message: string
+  tool_calls: AssistantToolCall[]
+  tool_results: AssistantToolResult[]
+}

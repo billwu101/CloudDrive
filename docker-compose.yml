@@ -28,6 +28,7 @@ services:
       context: ./backend
     environment:
       APP_ENV: development
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://127.0.0.1:5173","http://localhost:8088","http://127.0.0.1:8088"]}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cloud_drive}:${POSTGRES_PASSWORD:-cloud_drive_dev}@postgres:5432/${POSTGRES_DB:-cloud_drive}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-change-me}
       LOCAL_STORAGE_PATH: /app/storage

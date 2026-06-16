@@ -228,6 +228,20 @@ const activityHandlers = [
   http.get(`${BASE}/drive/recent`, () => HttpResponse.json([])),
 ]
 
+// ── Assistant handlers ───────────────────────────────────────────────────────
+
+const assistantHandlers = [
+  http.post(`${BASE}/assistant/chat`, async ({ request }) => {
+    const body = await request.json() as { message: string; session_id?: string }
+    return HttpResponse.json({
+      session_id: body.session_id ?? 'assistant-session-1',
+      message: `Assistant heard: ${body.message}`,
+      tool_calls: [],
+      tool_results: [],
+    })
+  }),
+]
+
 // ── Export all ────────────────────────────────────────────────────────────────
 
 export const handlers = [
@@ -239,4 +253,5 @@ export const handlers = [
   ...searchHandlers,
   ...shareHandlers,
   ...activityHandlers,
+  ...assistantHandlers,
 ]

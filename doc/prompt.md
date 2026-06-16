@@ -546,6 +546,8 @@ chore: complete cloud drive implementation
 
 完成後執行前端 lint、typecheck、test、build，提交 Stage 13。
 
+目前狀態（2026-06-17）：已完成 Stage 13 的登入後聊天面板切片：`assistantApi.chat`、assistant response 型別、`useAssistantChatMutation`、`AssistantPanel`、`MessageBubble`、`AppShell` 入口與 MSW/unit tests。使用者應在登入後 CloudDrive shell 內對話，不以 Swagger/API docs 作為產品入口。尚未完成 workflow plan card、技能核可 UI、manifest 驅動右鍵選單與已存 workflow 重跑。
+
 ### Stage 14：Assistant 驗證與評分 Harness
 
 僅執行：

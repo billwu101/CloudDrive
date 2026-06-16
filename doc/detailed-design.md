@@ -2124,7 +2124,24 @@ Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標
 
 M1 測試位於 `backend/tests/assistant/`，包含 router dispatch/auth、agent loop tool 執行與迴圈上限、context 裁切，以及 model router 的外部升級與隱私阻擋。
 
-## 18. 結論
+## 18. In-App AI Assistant 前端聊天切片
+
+Assistant 的使用入口位於登入後 CloudDrive shell，而不是 Swagger/API docs。`AppShell` 會掛載 `AssistantPanel`，因此 `/drive`、`/recent`、`/starred`、`/shared`、`/trash`、`/search`、`/settings` 等受保護頁面都能開啟同一個浮動對話面板。
+
+主要檔案：
+
+| 檔案 | 職責 |
+| --- | --- |
+| `src/api/assistantApi.ts` | 呼叫 `POST /assistant/chat`。 |
+| `src/api/types.ts` | `AssistantChatRequest`、`AssistantChatResponse`、tool call/result 型別。 |
+| `src/hooks/useAssistant.ts` | `useAssistantChatMutation`，統一使用既有 axios auth/refresh interceptor。 |
+| `src/components/assistant/AssistantPanel.tsx` | 登入後浮動聊天面板；保存當前 `session_id`，送出訊息並呈現錯誤。 |
+| `src/components/assistant/MessageBubble.tsx` | 使用者/助理訊息視覺呈現。 |
+| `src/components/layout/AppShell.tsx` | 在受保護 CloudDrive shell 掛載 assistant 入口。 |
+
+此切片只涵蓋直接 chat；workflow plan 確認、技能核可、manifest 動態右鍵選單與已存 workflow 重跑仍屬後續 Stage 13 工作。
+
+## 19. 結論
 
 本詳細設計將系統拆分為 Auth、User/Quota、DriveItem、Permission、Storage、Upload、Download、Preview、Trash、Search、Share、FileVersion、ActivityLog 與前端對應模組。模組之間透過明確接口互動，避免彼此直接耦合。
 

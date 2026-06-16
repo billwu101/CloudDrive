@@ -19,6 +19,16 @@
 - [ ] `WorkflowPlanCard.tsx`：顯示候選 workflow（步驟、影響範圍、破壞性/需核可標記）+ 確認/拒絕/修改。
 - [ ] 在 ProtectedLayout 掛載入口；助理停用（503）時隱藏。
 
+### M2a：登入後聊天面板切片（2026-06-17）
+
+- [x] `src/api/assistantApi.ts`：接 `POST /assistant/chat`。
+- [x] `src/api/types.ts`：新增 `AssistantChatRequest`/`AssistantChatResponse`/tool call/tool result 型別。
+- [x] `src/hooks/useAssistant.ts`：新增 chat mutation。
+- [x] `src/components/assistant/AssistantPanel.tsx`：登入後浮動對話面板，保留 session id 並顯示錯誤。
+- [x] `src/components/assistant/MessageBubble.tsx`：使用者/助理訊息顯示。
+- [x] `AppShell`：在登入後 CloudDrive shell 掛載 assistant 入口，不再以 Swagger 作為使用介面。
+- [x] MSW mock + `assistantApi`/`AssistantPanel` 測試。
+
 ## M4：技能核可介面
 
 - [ ] `SkillApprovalDialog.tsx`：顯示生成的 manifest 與程式碼，核可/拒絕。
