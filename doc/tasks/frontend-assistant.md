@@ -11,13 +11,15 @@
 
 ## M2：聊天面板 + 計畫確認
 
-- [ ] `src/api/assistantApi.ts`：chat、計畫確認、技能核可/安裝、工作流程儲存/重跑、技能觸發。
-- [ ] `src/api/types.ts`：ChatMessage/Workflow/WorkflowStep/Plan/SkillManifest/Approval 型別。
-- [ ] `src/hooks/useAssistant.ts`：對話與計畫流程；保存/續接 session。
-- [ ] `src/components/assistant/AssistantPanel.tsx`：浮動面板。
-- [ ] `MessageBubble.tsx`。
-- [ ] `WorkflowPlanCard.tsx`：顯示候選 workflow（步驟、影響範圍、破壞性/需核可標記）+ 確認/拒絕/修改。
-- [ ] 在 ProtectedLayout 掛載入口；助理停用（503）時隱藏。
+- [x] `src/api/assistantApi.ts`：chat、`confirmWorkflow`/`cancelWorkflow`、技能核可/安裝、技能觸發。（工作流程儲存/重跑待 M5）
+- [x] `src/api/types.ts`：WorkflowStep/WorkflowStepResult/WorkflowPlanView/ConfirmResponse + 擴充 ChatResponse(plan/results)。
+- [x] `src/hooks/useAssistant.ts`：對話 + `useConfirmWorkflow`(成功 invalidate `['drive']`)/`useCancelWorkflow`；保存 session。
+- [x] `src/components/assistant/AssistantPanel.tsx`：浮動面板（已於 M2a 完成，本次接入計畫卡）。
+- [x] `MessageBubble.tsx`（M2a）。
+- [x] `WorkflowPlanCard.tsx`：顯示 pending workflow（步驟、permission_tier、破壞性/需核可標記）+ 確認/拒絕。（修改需求待後續）
+- [x] 在 AppShell 掛載入口；助理停用（503）時以錯誤訊息呈現（M2a）。
+
+M2 計畫卡備註（2026-06-17）：`/chat` 回 `plan.status==='pending_approval'` 時面板渲染 `WorkflowPlanCard`，按「Confirm & run」呼叫 `POST /workflows/{id}/confirm`、「Cancel」呼叫 `/cancel`；confirm 成功後 invalidate `['drive']`。auto_executed 計畫不需確認，僅顯示助理訊息。「修改需求」與工作流程一鍵重跑留待後續。
 
 ### M2a：登入後聊天面板切片（2026-06-17）
 
@@ -45,8 +47,8 @@
 ## 測試任務
 
 - [x] MSW mock chat / 核可 / 技能觸發。
-- [ ] MSW mock 計畫 / 工作流程重跑。
-- [ ] 測計畫卡顯示與確認/拒絕流程。
+- [x] MSW mock 計畫 confirm/cancel。（工作流程重跑待 M5）
+- [x] 測計畫卡顯示與確認/拒絕流程。
 - [x] 測技能 manifest 驅動右鍵選單渲染（目前依 `item_type`）。
 - [ ] 測改檔後 query 失效。
 - [ ] `lint`、`typecheck`、`test -- --run` 全綠。

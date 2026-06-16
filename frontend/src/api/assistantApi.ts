@@ -5,12 +5,17 @@ import type {
   AssistantSkillExecuteRequest,
   AssistantSkillExecuteResponse,
   AssistantSkillResponse,
+  AssistantWorkflowConfirmResponse,
 } from './types'
 import { api } from './client'
 
 export const assistantApi = {
   chat: (body: AssistantChatRequest) =>
     api.post<AssistantChatResponse>('/assistant/chat', body),
+  confirmWorkflow: (workflowId: string) =>
+    api.post<AssistantWorkflowConfirmResponse>(`/assistant/workflows/${workflowId}/confirm`),
+  cancelWorkflow: (workflowId: string) =>
+    api.post<AssistantWorkflowConfirmResponse>(`/assistant/workflows/${workflowId}/cancel`),
   listSkills: (status = 'installed') =>
     api.get<AssistantSkillResponse[]>('/assistant/skills', { params: { status } }),
   approveSkill: (skillId: string) =>

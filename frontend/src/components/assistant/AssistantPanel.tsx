@@ -2,13 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Bot, Loader2, MessageSquareText, Send, X } from 'lucide-react'
 
-import type { AssistantSkillResponse } from '@/api/types'
+import type { AssistantSkillResponse, WorkflowPlanView } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { isApiError } from '@/api/client'
-import { useApproveAssistantSkill, useAssistantChatMutation } from '@/hooks/useAssistant'
+import {
+  useApproveAssistantSkill,
+  useAssistantChatMutation,
+  useCancelWorkflow,
+  useConfirmWorkflow,
+} from '@/hooks/useAssistant'
 import { cn } from '@/lib/utils'
 import { MessageBubble, type AssistantMessage } from './MessageBubble'
 import { SkillApprovalCard } from './SkillApprovalCard'
+import { WorkflowPlanCard } from './WorkflowPlanCard'
 
 const INITIAL_MESSAGE: AssistantMessage = {
   id: 'assistant-welcome',
@@ -36,8 +42,11 @@ export function AssistantPanel() {
   const [sessionId, setSessionId] = useState<string | undefined>()
   const [messages, setMessages] = useState<AssistantMessage[]>([INITIAL_MESSAGE])
   const [pendingSkill, setPendingSkill] = useState<AssistantSkillResponse | null>(null)
+  const [pendingPlan, setPendingPlan] = useState<WorkflowPlanView | null>(null)
   const chatMutation = useAssistantChatMutation()
   const approveSkill = useApproveAssistantSkill()
+  const confirmWorkflow = useConfirmWorkflow()
+  const cancelWorkflow = useCancelWorkflow()
   const listRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -64,6 +73,9 @@ export function AssistantPanel() {
       })
       setSessionId(response.session_id)
       setPendingSkill(response.skill_proposal ?? null)
+      setPendingPlan(
+        response.plan && response.plan.status === 'pending_approval' ? response.plan : null,
+      )
       setMessages((current) => [
         ...current,
         { id: newMessageId('assistant'), role: 'assistant', content: response.message },
@@ -106,6 +118,38 @@ export function AssistantPanel() {
     }
   }
 
+  const appendAssistant = (content: string, status?: AssistantMessage['status']) => {
+    setMessages((current) => [
+      ...current,
+      { id: newMessageId('assistant'), role: 'assistant', content, status },
+    ])
+  }
+
+  const handleConfirmWorkflow = async (workflowId: string) => {
+    try {
+      const response = await confirmWorkflow.mutateAsync(workflowId)
+      setPendingPlan(null)
+      const failed = response.results.filter((result) => !result.ok)
+      appendAssistant(
+        failed.length === 0
+          ? 'Done — the plan ran successfully.'
+          : `Ran with ${failed.length} failed step(s).`,
+      )
+    } catch (error) {
+      appendAssistant(errorMessage(error), 'error')
+    }
+  }
+
+  const handleCancelWorkflow = async (workflowId: string) => {
+    try {
+      await cancelWorkflow.mutateAsync(workflowId)
+      setPendingPlan(null)
+      appendAssistant('Cancelled. Nothing was changed.')
+    } catch (error) {
+      appendAssistant(errorMessage(error), 'error')
+    }
+  }
+
   return (
     <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-3">
       {isOpen && (
@@ -144,6 +188,14 @@ export function AssistantPanel() {
                 loading={approveSkill.isPending}
                 onApprove={handleApproveSkill}
                 onDismiss={() => setPendingSkill(null)}
+              />
+            )}
+            {pendingPlan && (
+              <WorkflowPlanCard
+                plan={pendingPlan}
+                loading={confirmWorkflow.isPending || cancelWorkflow.isPending}
+                onConfirm={handleConfirmWorkflow}
+                onCancel={handleCancelWorkflow}
               />
             )}
             {chatMutation.isPending && (

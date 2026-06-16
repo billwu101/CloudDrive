@@ -39,3 +39,22 @@ export function useExecuteAssistantSkill() {
       assistantApi.executeSkill(skillId, { item_id: itemId }).then((response) => response.data),
   })
 }
+
+export function useConfirmWorkflow() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (workflowId: string) =>
+      assistantApi.confirmWorkflow(workflowId).then((response) => response.data),
+    onSuccess: () => {
+      // A confirmed workflow may have changed drive contents.
+      void queryClient.invalidateQueries({ queryKey: ['drive'] })
+    },
+  })
+}
+
+export function useCancelWorkflow() {
+  return useMutation({
+    mutationFn: (workflowId: string) =>
+      assistantApi.cancelWorkflow(workflowId).then((response) => response.data),
+  })
+}

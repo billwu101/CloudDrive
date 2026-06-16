@@ -143,4 +143,110 @@ describe('AssistantPanel', () => {
       expect(screen.getByText('Installed Inspect details.')).toBeInTheDocument()
     })
   })
+
+  it('shows a pending workflow plan and runs it on confirm', async () => {
+    server.use(
+      http.post(`${BASE}/assistant/chat`, async ({ request }) => {
+        const body = (await request.json()) as { session_id?: string }
+        return HttpResponse.json({
+          session_id: body.session_id ?? 'session-1',
+          message: 'I will move it.',
+          tool_calls: [],
+          tool_results: [],
+          results: [],
+          plan: {
+            workflow_id: 'wf-1',
+            status: 'pending_approval',
+            steps: [
+              {
+                index: 0,
+                skill: 'trash_item',
+                arguments: {},
+                depends_on: [],
+                permission_tier: 'destructive',
+                requires_approval: true,
+              },
+            ],
+          },
+        })
+      }),
+      http.post(`${BASE}/assistant/workflows/:id/confirm`, ({ params }) =>
+        HttpResponse.json({
+          workflow_id: params.id as string,
+          status: 'executed',
+          message: 'Workflow executed.',
+          results: [{ index: 0, skill: 'trash_item', ok: true }],
+        }),
+      ),
+    )
+    renderAssistantPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+    await userEvent.type(screen.getByLabelText(/assistant message/i), 'delete the file')
+    await userEvent.click(screen.getByRole('button', { name: /send message/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/plan needs your confirmation/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/1\. trash_item/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /confirm & run/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Done — the plan ran successfully.')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/plan needs your confirmation/i)).not.toBeInTheDocument()
+  })
+
+  it('cancels a pending workflow plan', async () => {
+    server.use(
+      http.post(`${BASE}/assistant/chat`, async ({ request }) => {
+        const body = (await request.json()) as { session_id?: string }
+        return HttpResponse.json({
+          session_id: body.session_id ?? 'session-1',
+          message: 'I will move it.',
+          tool_calls: [],
+          tool_results: [],
+          results: [],
+          plan: {
+            workflow_id: 'wf-1',
+            status: 'pending_approval',
+            steps: [
+              {
+                index: 0,
+                skill: 'trash_item',
+                arguments: {},
+                depends_on: [],
+                permission_tier: 'destructive',
+                requires_approval: true,
+              },
+            ],
+          },
+        })
+      }),
+      http.post(`${BASE}/assistant/workflows/:id/cancel`, ({ params }) =>
+        HttpResponse.json({
+          workflow_id: params.id as string,
+          status: 'cancelled',
+          message: 'Workflow cancelled.',
+          results: [],
+        }),
+      ),
+    )
+    renderAssistantPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+    await userEvent.type(screen.getByLabelText(/assistant message/i), 'delete the file')
+    await userEvent.click(screen.getByRole('button', { name: /send message/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/plan needs your confirmation/i)).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Cancelled. Nothing was changed.')).toBeInTheDocument()
+    })
+  })
 })

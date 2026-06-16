@@ -148,10 +148,42 @@ export interface AssistantChatRequest {
   session_id?: string
 }
 
+export interface WorkflowStep {
+  index: number
+  skill: string
+  arguments: Record<string, unknown>
+  depends_on: number[]
+  permission_tier: string
+  requires_approval: boolean
+}
+
+export interface WorkflowStepResult {
+  index: number
+  skill: string
+  ok: boolean
+  output?: unknown
+  error?: string | null
+}
+
+export interface WorkflowPlanView {
+  workflow_id: string | null
+  status: 'auto_executed' | 'pending_approval'
+  steps: WorkflowStep[]
+}
+
 export interface AssistantChatResponse {
   session_id: string
   message: string
   tool_calls: AssistantToolCall[]
   tool_results: AssistantToolResult[]
+  plan?: WorkflowPlanView | null
+  results: WorkflowStepResult[]
   skill_proposal?: AssistantSkillResponse | null
+}
+
+export interface AssistantWorkflowConfirmResponse {
+  workflow_id: string
+  status: 'executed' | 'cancelled'
+  message: string
+  results: WorkflowStepResult[]
 }
