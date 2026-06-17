@@ -7,6 +7,7 @@ import type {
   AssistantSkillExecuteRequest,
   AssistantSkillExecuteResponse,
   AssistantSkillResponse,
+  AssistantSkillUpdateRequest,
   AssistantWorkflowConfirmResponse,
 } from './types'
 import { api } from './client'
@@ -28,6 +29,9 @@ export const assistantApi = {
     api.get<AssistantSkillResponse[]>('/assistant/skills', { params: { status } }),
   approveSkill: (skillId: string) =>
     api.post<AssistantSkillApproveResponse>(`/assistant/skills/${skillId}/approve`),
+  updateSkill: (skillId: string, body: AssistantSkillUpdateRequest) =>
+    api.patch<AssistantSkillResponse>(`/assistant/skills/${skillId}`, body),
+  deleteSkill: (skillId: string) => api.delete<void>(`/assistant/skills/${skillId}`),
   executeSkill: (skillId: string, body: AssistantSkillExecuteRequest) =>
     api.post<AssistantSkillExecuteResponse>(`/assistant/skills/${skillId}/execute`, body),
 }

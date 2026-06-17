@@ -64,6 +64,11 @@ class AssistantSkillApproveResponse(BaseModel):
     message: str
 
 
+class AssistantSkillUpdateRequest(BaseModel):
+    description: str | None = Field(default=None, min_length=1, max_length=500)
+    code: str | None = Field(default=None, max_length=20000)
+
+
 class AssistantSkillExecuteRequest(BaseModel):
     item_id: UUID
 

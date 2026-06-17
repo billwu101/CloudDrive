@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { assistantApi } from '@/api/assistantApi'
-import type { AssistantSaveWorkflowRequest } from '@/api/types'
+import type { AssistantSaveWorkflowRequest, AssistantSkillUpdateRequest } from '@/api/types'
 import type { AssistantChatRequest } from '@/api/types'
 
 export const assistantKeys = {
@@ -30,6 +30,28 @@ export function useApproveAssistantSkill() {
     mutationFn: (skillId: string) =>
       assistantApi.approveSkill(skillId).then((response) => response.data),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: assistantKeys.all })
+    },
+  })
+}
+
+export function useUpdateAssistantSkill() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ skillId, body }: { skillId: string; body: AssistantSkillUpdateRequest }) =>
+      assistantApi.updateSkill(skillId, body).then((response) => response.data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: assistantKeys.all })
+    },
+  })
+}
+
+export function useDeleteAssistantSkill() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (skillId: string) => assistantApi.deleteSkill(skillId).then((response) => response.data),
+    onSuccess: () => {
+      // Removing a skill also drops its right-click action from the drive menu.
       void queryClient.invalidateQueries({ queryKey: assistantKeys.all })
     },
   })

@@ -140,6 +140,26 @@ class _MemorySkillRepo(AbstractAssistantSkillRepository):
             skill.status = "installed"
         return skill
 
+    async def update(
+        self,
+        *,
+        user_id: UUID,
+        skill_id: UUID,
+        description: str,
+        manifest: dict[str, Any],
+        code: str,
+    ) -> AssistantSkill | None:
+        skill = self.by_id.get(skill_id)
+        if skill is None:
+            return None
+        skill.description = description
+        skill.manifest = manifest
+        skill.code = code
+        return skill
+
+    async def delete(self, *, user_id: UUID, skill_id: UUID) -> bool:
+        return self.by_id.pop(skill_id, None) is not None
+
 
 class _FakeTrash:
     async def trash_item(self, user_id: UUID, item_id: UUID) -> Any:

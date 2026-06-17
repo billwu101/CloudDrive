@@ -11,6 +11,7 @@ from uuid import UUID
 
 from app.assistant.repository import AbstractAssistantSkillRepository
 from app.assistant.schemas import AssistantSkillExecuteResponse, AssistantSkillResponse
+from app.assistant.skills.codeguard import validate_skill_code
 from app.assistant.skills.manifest import validate_manifest
 from app.assistant.skills.sandbox import SkillSandbox
 from app.assistant.subagent import CodegenSubAgent
@@ -288,6 +289,54 @@ class AssistantSkillService:
         if skill is None:
             raise NotFoundError("Assistant skill not found")
         return _skill_response(skill)
+
+    async def update_skill(
+        self,
+        *,
+        user_id: UUID,
+        skill_id: UUID,
+        description: str | None = None,
+        code: str | None = None,
+    ) -> AssistantSkillResponse:
+        """Edit an existing skill's description and/or code. Changed code is
+        re-validated through codeguard so a manual edit cannot bypass the
+        static safety scan before it runs in the sandbox."""
+        existing = await self._repo.get_by_id(user_id=user_id, skill_id=skill_id)
+        if existing is None:
+            raise NotFoundError("Assistant skill not found")
+
+        new_code = existing.code if code is None else code
+        new_description = existing.description if description is None else description.strip()
+        if not new_description:
+            raise AppError(ErrorCode.INVALID_OPERATION, "Description cannot be empty")
+
+        # The inspect-details built-in stores pseudo-code, not a sandbox skill,
+        # so only generated skills are subject to the run()-contract scan.
+        if code is not None and existing.name != INSPECT_DETAILS_SKILL_NAME:
+            problems = validate_skill_code(new_code)
+            if problems:
+                raise AppError(
+                    ErrorCode.INVALID_OPERATION,
+                    f"Edited code failed validation: {'; '.join(problems)}",
+                )
+
+        manifest = dict(existing.manifest)
+        manifest["description"] = new_description
+        updated = await self._repo.update(
+            user_id=user_id,
+            skill_id=skill_id,
+            description=new_description,
+            manifest=manifest,
+            code=new_code,
+        )
+        if updated is None:
+            raise NotFoundError("Assistant skill not found")
+        return _skill_response(updated)
+
+    async def delete_skill(self, *, user_id: UUID, skill_id: UUID) -> None:
+        deleted = await self._repo.delete(user_id=user_id, skill_id=skill_id)
+        if not deleted:
+            raise NotFoundError("Assistant skill not found")
 
     async def execute_skill(
         self,

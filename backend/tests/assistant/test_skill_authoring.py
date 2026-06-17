@@ -4,8 +4,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.assistant.repository import AbstractAssistantSkillRepository
 from app.assistant.skills.authoring import AssistantSkillService
+from app.core.exceptions import AppError, NotFoundError
 from app.drive.repository import AbstractDriveItemRepository, AbstractUserItemPreferenceRepository
 from app.drive.schemas import DriveItemSortField, ItemType
 from app.drive.service import DriveService
@@ -86,6 +89,27 @@ class MemAssistantSkillRepo(AbstractAssistantSkillRepository):
         skill.status = "installed"
         skill.updated_at = datetime.now(UTC)
         return skill
+
+    async def update(
+        self,
+        *,
+        user_id: UUID,
+        skill_id: UUID,
+        description: str,
+        manifest: dict[str, Any],
+        code: str,
+    ) -> AssistantSkill | None:
+        skill = await self.get_by_id(user_id=user_id, skill_id=skill_id)
+        if skill is None:
+            return None
+        skill.description = description
+        skill.manifest = manifest
+        skill.code = code
+        skill.updated_at = datetime.now(UTC)
+        return skill
+
+    async def delete(self, *, user_id: UUID, skill_id: UUID) -> bool:
+        return self._skills.pop(skill_id, None) is not None
 
 
 def _item(*, owner_id: UUID, name: str = "report.txt") -> DriveItem:
@@ -257,3 +281,95 @@ async def test_execute_installed_inspect_skill_returns_item_metadata() -> None:
     assert result.message == "Details for report.txt"
     assert result.output["name"] == "report.txt"
     assert result.output["size_bytes"] == 1024
+
+
+_VALID_SKILL_CODE = "def run(input_path, output_dir, params):\n    return {'ok': True}\n"
+
+
+async def _installed_generated_skill(repo: MemAssistantSkillRepo, user_id: UUID) -> AssistantSkill:
+    skill = await repo.create_or_replace_pending(
+        user_id=user_id,
+        name="my_skill",
+        description="Original description",
+        manifest={
+            "name": "my_skill",
+            "description": "Original description",
+            "version": "1.0.0",
+            "ui": {"context_menu": []},
+        },
+        code=_VALID_SKILL_CODE,
+    )
+    skill.status = "installed"
+    return skill
+
+
+async def test_update_skill_changes_description_and_manifest() -> None:
+    user_id = uuid4()
+    repo = MemAssistantSkillRepo()
+    service = _svc(repo)
+    skill = await _installed_generated_skill(repo, user_id)
+
+    updated = await service.update_skill(
+        user_id=user_id, skill_id=skill.id, description="New description"
+    )
+
+    assert updated.description == "New description"
+    # The manifest description is kept in sync so the proposal/review surface matches.
+    assert updated.manifest["description"] == "New description"
+    assert updated.code == _VALID_SKILL_CODE  # untouched
+
+
+async def test_update_skill_revalidates_edited_code() -> None:
+    user_id = uuid4()
+    repo = MemAssistantSkillRepo()
+    service = _svc(repo)
+    skill = await _installed_generated_skill(repo, user_id)
+
+    # A hand-edit that imports a forbidden module must be rejected, not installed.
+    with pytest.raises(AppError, match="failed validation"):
+        await service.update_skill(
+            user_id=user_id,
+            skill_id=skill.id,
+            code="import socket\ndef run(input_path, output_dir, params):\n    return {}\n",
+        )
+    # The stored code is unchanged after a rejected edit.
+    stored = await repo.get_by_id(user_id=user_id, skill_id=skill.id)
+    assert stored is not None
+    assert stored.code == _VALID_SKILL_CODE
+
+
+async def test_update_skill_accepts_valid_edited_code() -> None:
+    user_id = uuid4()
+    repo = MemAssistantSkillRepo()
+    service = _svc(repo)
+    skill = await _installed_generated_skill(repo, user_id)
+    new_code = "def run(input_path, output_dir, params):\n    return {'done': 1}\n"
+
+    updated = await service.update_skill(user_id=user_id, skill_id=skill.id, code=new_code)
+
+    assert updated.code == new_code
+
+
+async def test_update_missing_skill_raises_not_found() -> None:
+    user_id = uuid4()
+    service = _svc(MemAssistantSkillRepo())
+    with pytest.raises(NotFoundError):
+        await service.update_skill(user_id=user_id, skill_id=uuid4(), description="x")
+
+
+async def test_delete_skill_removes_it() -> None:
+    user_id = uuid4()
+    repo = MemAssistantSkillRepo()
+    service = _svc(repo)
+    skill = await _installed_generated_skill(repo, user_id)
+
+    await service.delete_skill(user_id=user_id, skill_id=skill.id)
+
+    assert await repo.get_by_id(user_id=user_id, skill_id=skill.id) is None
+
+
+async def test_delete_missing_skill_raises_not_found() -> None:
+    user_id = uuid4()
+    service = _svc(MemAssistantSkillRepo())
+    with pytest.raises(NotFoundError):
+        await service.delete_skill(user_id=user_id, skill_id=uuid4())

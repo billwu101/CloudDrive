@@ -32,6 +32,7 @@ from app.assistant.schemas import (
     AssistantSkillExecuteRequest,
     AssistantSkillExecuteResponse,
     AssistantSkillResponse,
+    AssistantSkillUpdateRequest,
     AssistantWorkflowConfirmResponse,
 )
 from app.assistant.service import WorkflowService
@@ -379,6 +380,43 @@ async def approve_skill(
         skill=skill,
         message=f"{skill.manifest['name']} installed.",
     )
+
+
+@router.patch(
+    "/skills/{skill_id}",
+    response_model=AssistantSkillResponse,
+    summary="Edit an assistant skill's description and/or code",
+)
+async def update_skill(
+    skill_id: UUID,
+    body: AssistantSkillUpdateRequest,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: AssistantSkillServiceDep,
+) -> AssistantSkillResponse:
+    skill = await service.update_skill(
+        user_id=current_user_id,
+        skill_id=skill_id,
+        description=body.description,
+        code=body.code,
+    )
+    await session.commit()
+    return skill
+
+
+@router.delete(
+    "/skills/{skill_id}",
+    status_code=204,
+    summary="Delete an assistant skill",
+)
+async def delete_skill(
+    skill_id: UUID,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: AssistantSkillServiceDep,
+) -> None:
+    await service.delete_skill(user_id=current_user_id, skill_id=skill_id)
+    await session.commit()
 
 
 @router.post(

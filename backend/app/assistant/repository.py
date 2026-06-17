@@ -47,6 +47,20 @@ class AbstractAssistantSkillRepository(ABC):
     @abstractmethod
     async def approve(self, *, user_id: UUID, skill_id: UUID) -> AssistantSkill | None: ...
 
+    @abstractmethod
+    async def update(
+        self,
+        *,
+        user_id: UUID,
+        skill_id: UUID,
+        description: str,
+        manifest: dict[str, Any],
+        code: str,
+    ) -> AssistantSkill | None: ...
+
+    @abstractmethod
+    async def delete(self, *, user_id: UUID, skill_id: UUID) -> bool: ...
+
 
 class SQLAssistantSkillRepository(AbstractAssistantSkillRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
@@ -124,6 +138,33 @@ class SQLAssistantSkillRepository(AbstractAssistantSkillRepository):  # pragma: 
         skill.updated_at = datetime.now(UTC)
         await self._session.flush()
         return skill
+
+    async def update(
+        self,
+        *,
+        user_id: UUID,
+        skill_id: UUID,
+        description: str,
+        manifest: dict[str, Any],
+        code: str,
+    ) -> AssistantSkill | None:
+        skill = await self.get_by_id(user_id=user_id, skill_id=skill_id)
+        if skill is None:
+            return None
+        skill.description = description
+        skill.manifest = manifest
+        skill.code = code
+        skill.updated_at = datetime.now(UTC)
+        await self._session.flush()
+        return skill
+
+    async def delete(self, *, user_id: UUID, skill_id: UUID) -> bool:
+        skill = await self.get_by_id(user_id=user_id, skill_id=skill_id)
+        if skill is None:
+            return False
+        await self._session.delete(skill)
+        await self._session.flush()
+        return True
 
 
 class AbstractAssistantSessionRepository(ABC):

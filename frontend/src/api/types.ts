@@ -131,6 +131,11 @@ export interface AssistantSkillApproveResponse {
   message: string
 }
 
+export interface AssistantSkillUpdateRequest {
+  description?: string
+  code?: string
+}
+
 export interface AssistantSkillExecuteRequest {
   item_id: string
 }
