@@ -6,6 +6,7 @@ from uuid import UUID
 
 from app.assistant.repository import AbstractAssistantSkillRepository
 from app.assistant.schemas import AssistantSkillExecuteResponse, AssistantSkillResponse
+from app.assistant.skills.manifest import validate_manifest
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, NotFoundError
 from app.drive.service import DriveService
@@ -135,7 +136,8 @@ class AssistantSkillService:
                 message="Inspect details is already installed in the right-click menu."
             )
 
-        manifest = _inspect_details_manifest()
+        # Validate before persisting: a malformed manifest never becomes a proposal.
+        manifest = validate_manifest(_inspect_details_manifest()).model_dump(mode="json")
         skill = await self._repo.create_or_replace_pending(
             user_id=user_id,
             name=INSPECT_DETAILS_SKILL_NAME,
@@ -161,6 +163,11 @@ class AssistantSkillService:
         return [_skill_response(skill) for skill in skills]
 
     async def approve_skill(self, *, user_id: UUID, skill_id: UUID) -> AssistantSkillResponse:
+        pending = await self._repo.get_by_id(user_id=user_id, skill_id=skill_id)
+        if pending is None:
+            raise NotFoundError("Assistant skill not found")
+        # Re-validate the manifest at the install gate, not just at draft time.
+        validate_manifest(pending.manifest)
         skill = await self._repo.approve(user_id=user_id, skill_id=skill_id)
         if skill is None:
             raise NotFoundError("Assistant skill not found")
