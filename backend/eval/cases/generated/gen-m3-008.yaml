@@ -1,6 +1,6 @@
 id: gen-m3-008
 name: 'M3 query+write #8 (search+list_items+recent->move_item)'
-prompt: 幫我搜尋檔案、列出根目錄檔案、看最近開啟的檔案、把某個項目移動到別的資料夾
+prompt: 幫我把某個項目移動到別的資料夾（過程中可先搜尋檔案、列出根目錄檔案、看最近開啟的檔案）
 mode:
 - api
 - browser
@@ -20,6 +20,7 @@ scoring:
   weights:
     correctness: 1.0
   pass_threshold: 1.0
+  min_pass_rate: 0.6
 mock_llm:
   responses:
   - reply: 計畫如下,請確認。

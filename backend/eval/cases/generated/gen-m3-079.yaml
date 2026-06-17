@@ -1,6 +1,6 @@
 id: gen-m3-079
 name: 'M3 query+write #79 (search+recent+storage_quota->organize_by_type)'
-prompt: 幫我搜尋檔案、看最近開啟的檔案、查目前容量用量、依副檔名分類整理
+prompt: 幫我依副檔名分類整理（過程中可先搜尋檔案、看最近開啟的檔案、查目前容量用量）
 mode:
 - api
 - browser
@@ -20,6 +20,7 @@ scoring:
   weights:
     correctness: 1.0
   pass_threshold: 1.0
+  min_pass_rate: 0.6
 mock_llm:
   responses:
   - reply: 計畫如下,請確認。

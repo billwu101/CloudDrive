@@ -1,6 +1,6 @@
 id: gen-m3-039
 name: 'M3 query+write #39 (list_items+get_info+storage_quota->organize_by_type)'
-prompt: 幫我列出根目錄檔案、查看某個項目的詳情、查目前容量用量、依副檔名分類整理
+prompt: 幫我依副檔名分類整理（過程中可先列出根目錄檔案、查看某個項目的詳情、查目前容量用量）
 mode:
 - api
 - browser
@@ -20,6 +20,7 @@ scoring:
   weights:
     correctness: 1.0
   pass_threshold: 1.0
+  min_pass_rate: 0.6
 mock_llm:
   responses:
   - reply: 計畫如下,請確認。

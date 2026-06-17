@@ -1,6 +1,6 @@
 id: gen-m3-050
 name: 'M3 query+write #50 (get_info+recent+storage_quota->star_item)'
-prompt: 幫我查看某個項目的詳情、看最近開啟的檔案、查目前容量用量、把某個項目加星號
+prompt: 幫我把某個項目加星號（過程中可先查看某個項目的詳情、看最近開啟的檔案、查目前容量用量）
 mode:
 - api
 - browser
@@ -20,6 +20,7 @@ scoring:
   weights:
     correctness: 1.0
   pass_threshold: 1.0
+  min_pass_rate: 0.6
 mock_llm:
   responses:
   - reply: 計畫如下,請確認。

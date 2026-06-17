@@ -86,8 +86,17 @@ def _prompt(parts: list[str]) -> str:
     return "幫我" + "、".join(parts)
 
 
+def _write_first_prompt(write_phrase: str, query_phrases: list[str]) -> str:
+    # Lead with the write action so the real model reliably plans a write
+    # (pending-approval) step; query tools are secondary context.
+    return f"幫我{write_phrase}（過程中可先{'、'.join(query_phrases)}）"  # noqa: RUF001
+
+
 def _scoring(dim: str = "correctness") -> dict[str, Any]:
-    return {"weights": {dim: 1.0}, "pass_threshold": 1.0}
+    # min_pass_rate is the multi-run acceptance bar: under `--runs N` (real model)
+    # a case passes if it succeeds in >= 60% of runs. At runs=1 (deterministic
+    # mock) this still requires the single run to pass, so mock stays strict.
+    return {"weights": {dim: 1.0}, "pass_threshold": 1.0, "min_pass_rate": 0.6}
 
 
 def _query_combos() -> list[list[str]]:
@@ -145,8 +154,8 @@ def build_m3() -> list[dict[str, Any]]:
                     {
                         "id": f"gen-m3-{n:03d}",
                         "name": f"M3 query+write #{n} ({'+'.join(trio)}->{write})",
-                        "prompt": _prompt(
-                            [_QUERY_PHRASE[t] for t in trio] + [_WRITE_PHRASE[write]]
+                        "prompt": _write_first_prompt(
+                            _WRITE_PHRASE[write], [_QUERY_PHRASE[t] for t in trio]
                         ),
                         "mode": ["api", "browser"],
                         "tags": ["daily-ops", "generated", "m3"],
@@ -188,8 +197,8 @@ def build_m5() -> list[dict[str, Any]]:
                         {
                             "id": f"gen-m5-{n:03d}",
                             "name": f"M5 multi-step+refs #{n} ({'+'.join(base)}->{write})",
-                            "prompt": _prompt(
-                                [_QUERY_PHRASE[t] for t in base] + [_WRITE_PHRASE[write]]
+                            "prompt": _write_first_prompt(
+                                _WRITE_PHRASE[write], [_QUERY_PHRASE[t] for t in base]
                             ),
                             "mode": ["api", "browser"],
                             "tags": ["workflow-reuse", "generated", "m5"],

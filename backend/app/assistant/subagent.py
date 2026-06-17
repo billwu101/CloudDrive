@@ -33,8 +33,14 @@ _CODEGEN_SYSTEM = (
     "- Define exactly: def run(input_path, output_dir, params): ...\n"
     "- input_path is a read-only source file. Write outputs ONLY under output_dir.\n"
     "- Return a small JSON-serializable dict summarizing what happened.\n"
-    "- Allowed: standard library (zipfile, tarfile, gzip, pathlib, os.path, json, io, "
-    "shutil) and py7zr for 7z archives.\n"
+    "- Allowed libraries (use the RIGHT one for the format):\n"
+    "    standard library — zipfile, tarfile, gzip, bz2, lzma, pathlib, os.path, json, csv, "
+    "io, shutil, hashlib (md5/sha1/sha256/...), base64, zlib, re, struct;\n"
+    "    py7zr — for .7z archives;\n"
+    "    PIL (Pillow) — for images (thumbnail/resize/convert/grayscale), `from PIL import Image`;\n"
+    "    pypdf — for PDFs (text extraction/pages/metadata): `from pypdf import PdfReader`.\n"
+    "  Prefer these real libraries over hand-rolled parsers (e.g. use pypdf for PDF text, "
+    "not a custom stream parser).\n"
     "- FORBIDDEN: network (socket/urllib/requests), subprocess/os.system, eval/exec, "
     "ctypes, threads. No writing outside output_dir.\n"
     "Rules for `name`: lowercase identifier ([a-z][a-z0-9_]+). Every context_menu "
@@ -108,7 +114,7 @@ class CodegenSubAgent:
         llm: ModelRouter,
         context: ContextManager,
         num_ctx: int,
-        max_repair: int = 2,
+        max_repair: int = 3,
     ) -> None:
         self._llm = llm
         self._context = context
@@ -132,22 +138,22 @@ class CodegenSubAgent:
             )
             parsed = _split_manifest_and_code(response.content)
             if parsed is None:
-                return CodegenResult(
-                    ok=False,
-                    problems=["model did not return a valid {manifest, code} JSON object"],
-                    reply="I couldn't generate that skill in a usable form.",
-                )
-            manifest_raw, code = parsed
-            validated, problems = _validate(manifest_raw, code)
-            if not problems and validated is not None:
-                return CodegenResult(
-                    ok=True,
-                    name=validated["name"],
-                    description=validated["description"],
-                    manifest=validated,
-                    code=code,
-                    reply=f"I drafted a skill named {validated['name']}.",
-                )
+                # Invalid JSON is also retryable — earlier this returned
+                # immediately, which is why complex prompts occasionally failed
+                # outright. Repair it like a validation problem.
+                problems = ["respond with ONE valid JSON object only (no prose, no code fences)"]
+            else:
+                manifest_raw, code = parsed
+                validated, problems = _validate(manifest_raw, code)
+                if not problems and validated is not None:
+                    return CodegenResult(
+                        ok=True,
+                        name=validated["name"],
+                        description=validated["description"],
+                        manifest=validated,
+                        code=code,
+                        reply=f"I drafted a skill named {validated['name']}.",
+                    )
             if attempt < self._max_repair:
                 messages.append(LLMMessage(role="assistant", content=response.content))
                 messages.append(
