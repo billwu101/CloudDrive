@@ -1,18 +1,28 @@
 from __future__ import annotations
 
+import asyncio
+import shutil
+import tempfile
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from app.assistant.repository import AbstractAssistantSkillRepository
 from app.assistant.schemas import AssistantSkillExecuteResponse, AssistantSkillResponse
 from app.assistant.skills.manifest import validate_manifest
+from app.assistant.skills.sandbox import SkillSandbox
 from app.assistant.subagent import CodegenSubAgent
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, NotFoundError
+from app.drive.schemas import ItemType
 from app.drive.service import DriveService
 from app.models.assistant_skill import AssistantSkill
+from app.models.drive_item import DriveItem
 from app.schemas.common import DriveItemResponse
+from app.storage.base import StorageProvider
+from app.upload.service import UploadService
 
 INSPECT_DETAILS_SKILL_NAME = "inspect_item_details"
 INSPECT_DETAILS_DESCRIPTION = "Show details for a selected drive item."
@@ -129,6 +139,22 @@ def _looks_like_skill_generation_request(message: str) -> bool:
     return has_verb and has_target
 
 
+def _split_name(name: str) -> tuple[str, str]:
+    idx = name.rfind(".")
+    if idx > 0:
+        return name[:idx], name[idx:]
+    return name, ""
+
+
+def _safe_input_name(name: str) -> str:
+    base = Path(name).name or "input"
+    return base.replace("\x00", "")
+
+
+async def _bytes_stream(data: bytes) -> AsyncGenerator[bytes, None]:
+    yield data
+
+
 def _skill_response(skill: AssistantSkill) -> AssistantSkillResponse:
     return AssistantSkillResponse(
         id=skill.id,
@@ -163,10 +189,16 @@ class AssistantSkillService:
         repo: AbstractAssistantSkillRepository,
         drive_service: DriveService,
         codegen: CodegenSubAgent | None = None,
+        sandbox: SkillSandbox | None = None,
+        uploads: UploadService | None = None,
+        storage: StorageProvider | None = None,
     ) -> None:
         self._repo = repo
         self._drive = drive_service
         self._codegen = codegen
+        self._sandbox = sandbox
+        self._uploads = uploads
+        self._storage = storage
 
     async def handle_authoring_message(
         self,
@@ -267,9 +299,17 @@ class AssistantSkillService:
         skill = await self._repo.get_by_id(user_id=user_id, skill_id=skill_id)
         if skill is None or skill.status != _INSTALLED:
             raise NotFoundError("Assistant skill not found")
-        if skill.name != INSPECT_DETAILS_SKILL_NAME:
-            raise AppError(ErrorCode.INVALID_OPERATION, "Unsupported assistant skill handler")
+        if skill.name == INSPECT_DETAILS_SKILL_NAME:
+            return await self._execute_inspect(user_id=user_id, skill=skill, item_id=item_id)
+        return await self._execute_generated(user_id=user_id, skill=skill, item_id=item_id)
 
+    async def _execute_inspect(
+        self,
+        *,
+        user_id: UUID,
+        skill: AssistantSkill,
+        item_id: UUID,
+    ) -> AssistantSkillExecuteResponse:
         item = await self._drive.get_item(user_id=user_id, item_id=item_id)
         return AssistantSkillExecuteResponse(
             skill_id=skill.id,
@@ -278,3 +318,94 @@ class AssistantSkillService:
             message=f"Details for {item.name}",
             output=_item_output(item),
         )
+
+    async def _execute_generated(
+        self,
+        *,
+        user_id: UUID,
+        skill: AssistantSkill,
+        item_id: UUID,
+    ) -> AssistantSkillExecuteResponse:
+        if self._sandbox is None or self._uploads is None or self._storage is None:
+            raise AppError(ErrorCode.INVALID_OPERATION, "Sandbox execution is not available")
+        item = await self._drive.get_raw_item(user_id=user_id, item_id=item_id)
+        if item.item_type != ItemType.FILE or not item.storage_key:
+            raise AppError(ErrorCode.INVALID_OPERATION, "This skill runs on a file")
+
+        run_root = Path(tempfile.mkdtemp(prefix="skill_input_"))
+        input_path = run_root / _safe_input_name(item.name)
+        try:
+            with input_path.open("wb") as handle:
+                async for chunk in self._storage.open_read(item.storage_key):
+                    handle.write(chunk)
+            # The sandbox uses a blocking subprocess; keep the event loop free.
+            result = await asyncio.to_thread(
+                self._sandbox.run,
+                code=skill.code,
+                input_path=input_path,
+                params={"filename": item.name},
+            )
+            if not result.ok:
+                detail = result.error or "unknown error"
+                raise AppError(ErrorCode.INVALID_OPERATION, f"Skill execution failed: {detail}")
+            ingested = await self._ingest(user_id, item, self._sandbox.last_output_dir)
+        finally:
+            self._sandbox.cleanup()
+            shutil.rmtree(run_root, ignore_errors=True)
+
+        return AssistantSkillExecuteResponse(
+            skill_id=skill.id,
+            skill_name=skill.name,
+            item_id=item_id,
+            message=f"{skill.name} produced {len(ingested)} file(s) from {item.name}.",
+            output={"produced_files": ingested, "summary": result.output},
+        )
+
+    async def _ingest(
+        self,
+        user_id: UUID,
+        source: DriveItem,
+        output_dir: Path | None,
+    ) -> list[str]:
+        assert self._uploads is not None
+        if output_dir is None:
+            return []
+        files = [p for p in sorted(output_dir.rglob("*")) if p.is_file()]
+        if not files:
+            return []
+        stem = _split_name(source.name)[0] or source.name
+        dest = await self._drive.create_folder(user_id, source.parent_id, f"{stem} (extracted)")
+        folder_ids: dict[str, UUID] = {"": dest.id}
+        ingested: list[str] = []
+        for path in files:
+            rel = path.relative_to(output_dir)
+            parent_id = await self._ensure_folders(user_id, dest.id, rel.parent, folder_ids)
+            data = path.read_bytes()
+            created = await self._uploads.upload_simple(
+                user_id,
+                parent_id,
+                path.name,
+                _bytes_stream(data),
+                len(data),
+            )
+            ingested.append(created.name)
+        return ingested
+
+    async def _ensure_folders(
+        self,
+        user_id: UUID,
+        base_id: UUID,
+        rel_dir: Path,
+        cache: dict[str, UUID],
+    ) -> UUID:
+        if str(rel_dir) in ("", "."):
+            return base_id
+        current = base_id
+        key = ""
+        for part in rel_dir.parts:
+            key = f"{key}/{part}" if key else part
+            if key not in cache:
+                folder = await self._drive.create_folder(user_id, current, part)
+                cache[key] = folder.id
+            current = cache[key]
+        return current

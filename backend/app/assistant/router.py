@@ -37,6 +37,7 @@ from app.assistant.schemas import (
 from app.assistant.service import WorkflowService
 from app.assistant.skills.authoring import AssistantSkillService
 from app.assistant.skills.builtin import build_read_only_registry, register_write_skills
+from app.assistant.skills.sandbox import SkillSandbox
 from app.assistant.subagent import CodegenSubAgent
 from app.assistant.workflow import WorkflowExecutor
 from app.core.config import get_settings
@@ -47,6 +48,7 @@ from app.drive.repository import SQLDriveItemRepository, SQLUserItemPreferenceRe
 from app.drive.service import DriveService
 from app.file_version.repository import SQLFileVersionRepository
 from app.permission.repository import SQLShareRepository
+from app.permission.service import PermissionService
 from app.search.repository import SQLSearchRepository
 from app.search.service import SearchService
 from app.share.repository import SQLShareLinkRepository
@@ -54,6 +56,7 @@ from app.share.service import ShareLinkService
 from app.storage.factory import get_storage_provider
 from app.trash.repository import SQLTrashRepository
 from app.trash.service import TrashService
+from app.upload.service import UploadService
 from app.users.repository import SQLUserRepository
 from app.users.service import QuotaService
 
@@ -85,10 +88,27 @@ def _assistant_session_repo(session: DbSession) -> AbstractAssistantSessionRepos
     return SQLAssistantSessionRepository(session)
 
 
+def _upload_service(session: DbSession) -> UploadService:
+    return UploadService(
+        item_repo=SQLDriveItemRepository(session),
+        version_repo=SQLFileVersionRepository(session),
+        storage=get_storage_provider(get_settings()),
+        permission_svc=PermissionService(
+            share_repo=SQLShareRepository(session),
+            item_repo=SQLDriveItemRepository(session),
+        ),
+        quota_svc=QuotaService(SQLUserRepository(session)),
+    )
+
+
 def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
+    settings = get_settings()
     return AssistantSkillService(
         repo=SQLAssistantSkillRepository(session),
         drive_service=_drive_service(session),
+        sandbox=SkillSandbox(timeout_sec=settings.assistant_sandbox_timeout_sec),
+        uploads=_upload_service(session),
+        storage=get_storage_provider(settings),
     )
 
 
@@ -370,10 +390,14 @@ async def execute_skill(
     skill_id: UUID,
     body: AssistantSkillExecuteRequest,
     current_user_id: CurrentUserId,
+    session: DbSession,
     service: AssistantSkillServiceDep,
 ) -> AssistantSkillExecuteResponse:
-    return await service.execute_skill(
+    response = await service.execute_skill(
         user_id=current_user_id,
         skill_id=skill_id,
         item_id=body.item_id,
     )
+    # Generated skills ingest produced files as new drive items — persist them.
+    await session.commit()
+    return response
