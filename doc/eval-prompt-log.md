@@ -27,24 +27,30 @@
 
 ## 2. 已知問題 prompt（下次務必重驗）
 
-### 2.1 `做一個抽取 PDF 文字的功能`（pdf-text）— browser 內容驗證未過
-- **現象**：`--mode browser` 0.75（執行成功、有產出檔，但抽出的內容對不上 `Hello PDF Eval`）。
-- **原因**：模型生成的是 naive PDF 解析器，對 PDF 結構處理不穩；**非 harness 問題**——決定性 `--mode exec`（用 pypdf）為 ✅。
-- **判定**：真實模型產碼品質限制。**不得為了讓它過而放寬內容斷言**。
-- **下次驗證**：重跑 `--mode browser --cases eval/cases/exec`，看模型該次是否產出能正確抽字的 skill；趨勢若持續失敗，考慮在 prompt 提示「用 pypdf」或將其歸類為已知弱項。
+> 2026-06-18 harness 優化後，§2.1–2.3 多數已解決——下表為「優化前→後」對照，作為回歸基準。
 
-### 2.2 `做一個產生 MD5+SHA1+SHA256 雜湊報告的功能`（hash-report）— 兩個曾發生的問題
-- **問題 A（模型非決定性）**：手動實測曾**連兩次生成失敗**（模型沒回合法 `{manifest, code}` JSON），但自動化批次當下卻成功。→ 真實模型對「較複雜的 prompt」生成穩定度會浮動。決定性 mock/exec 不受影響。
-- **問題 B（harness spec bug，已修）**：browser 執行時用**寫死的右鍵選單標籤**去點，對不上模型實際生成的標籤 → execute 沒觸發、逾時。**修法**：改從提案 manifest 的 `ui.context_menu[0].label` 取實際標籤（commit `3937949`）。
-- **下次驗證**：`--mode browser --cases eval/cases/exec` 應 ✅；若又生成失敗，屬問題 A（模型波動），重跑或調 prompt。
+### 2.1 `做一個抽取 PDF 文字的功能`（pdf-text）— ✅ 已解決
+- **原現象**：`--mode browser` 0.75（模型寫 naive PDF 解析器，抽不到 `Hello PDF Eval`）。
+- **修法（codegen 告知可用庫）**：codegen system prompt 現在明列 **pypdf 可用**並要求「用對的庫、別自己寫解析器」。模型改用 pypdf → 內容正確。
+- **現況**：`--mode browser --cases eval/cases/exec` **exec-pdf-text PASS**。
+- **下次驗證**：同上指令應 ✅；若退步檢查 codegen prompt 是否仍列 pypdf。
 
-### 2.3 M2–M5 量產批次（每級 100，共 400）— Mock 全過；Browser 只有 M2/M4 可靠
-- 對應 `backend/eval/cases/generated/gen-m{2..5}-*.yaml`（由 `eval/generate_cases.py` 產生）。M4 prompt 為「做一個＋功能描述＋的功能」（100 種技能）；M2/M3/M5 為 3+ 查詢工具交叉組合（M3/M5 再接寫入）。
-- **Mock（決定性）**：全 **400/400 恆過**（連同手寫共 411/411）。這是回歸守門。
-- **Browser（真實模型）**：
-  - **M2（唯讀）/ M4（生成）可靠**：M2 看「有產出計畫 + auto_executed」、M4 看「有產出提案」（`skill_generated:"*"`），對真實模型穩健。
-  - **M3 / M5 不可靠**（實測 sample：`gen-m3-001`/`gen-m5-001` 0.50 FAIL）：真實模型對「合併多查詢工具 + 寫入」的合成 prompt，**不一定產出寫入步驟/不一定標成需確認**，所以連「確認層級」這個放寬後的斷言也對不上。判定：合成 prompt 對非決定性模型本就難穩；**不為了過而再放寬**。M3/M5 的 browser 結果視為盡力而為，Mock 才是事實來源。
-- 全 400 都標 `mode: [api, browser]`；但**整批 browser 跑一輪是數小時**（每案經真實模型），平時用 `--cases` 取樣即可。
+### 2.2 `做一個產生 MD5+SHA1+SHA256 雜湊報告的功能`（hash-report）— ✅ 已解決
+- **問題 A（生成偶爾回非法 JSON）**：原本 `author()` 遇非法 JSON **直接放棄**。**修法（codegen 重試）**：非法 JSON 改為重試（同驗證失敗），`max_repair` 2→3。
+- **問題 B（spec 寫死選單標籤）**：已改從 manifest `ui.context_menu[0].label` 取實際標籤（commit `3937949`）。
+- **現況**：browser **exec-hash-report PASS**。
+
+### 2.3 M2–M5 量產批次（每級 100，共 400）— Mock 全過；Browser 大幅改善
+- 對應 `backend/eval/cases/generated/gen-m{2..5}-*.yaml`。M4=100 種自我撰寫技能；M2/M3/M5=3+ 查詢工具組合（M3/M5 接寫入）。
+- **Mock（決定性）**：全 **400/400 恆過**（連同手寫共 411/411）。回歸守門。
+- **Browser（真實模型，優化後）**：
+  - **M2（唯讀）/ M4（生成）**：可靠。
+  - **M3**：原 0.50 FAIL → **寫入優先 prompt** 後 `gen-m3-001` **PASS**（可靠產出 pending 層級）。
+  - **M5**：單跑仍偶爾 FAIL（模型波動），但 **`--runs 3` 下 `gen-m5-001` 3/3 PASS**——靠**多次執行通過率門檻**（`min_pass_rate=0.6`）正確評估，而非放寬斷言。
+- 全 400 標 `mode: [api, browser]`；整批 browser 一輪是數小時，平時 `--cases` 取樣 + 對 flaky 案例用 `--runs N`。
+
+### 2.4 harness 優化摘要（2026-06-18，commit `86b53c0`）
+讓測試「為對的理由變綠」的四項：①codegen 告知沙箱可用庫（Pillow/pypdf/…）②codegen 非法 JSON 重試 + max_repair↑ ③M3/M5 改寫入優先自然 prompt ④`min_pass_rate=0.6` 多次執行通過率門檻。效果：browser exec 2/4→4/4、M3 修好、M5 多跑穩定。**原則：絕不為了變綠而放寬內容/安全斷言**——真實模型品質問題該以「換更好的庫提示／重試／多跑取通過率」解，不是降標準。
 
 ---
 
