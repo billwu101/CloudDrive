@@ -38,14 +38,16 @@ def _make_png() -> None:
 
 
 def _make_pdf() -> None:
-    # Minimal one-page PDF with an uncompressed text stream pypdf can extract.
+    # Minimal one-page PDF with a FlateDecode-compressed text stream. pypdf reads
+    # it, and so do generated skills that decompress FlateDecode content.
     text = b"BT /F1 24 Tf 50 100 Td (Hello PDF Eval) Tj ET"
+    stream = zlib.compress(text)
     objs = [
         b"<</Type/Catalog/Pages 2 0 R>>",
         b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
         b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]"
         b"/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
-        b"<</Length %d>>stream\n%s\nendstream" % (len(text), text),
+        b"<</Length %d/Filter/FlateDecode>>stream\n%s\nendstream" % (len(stream), stream),
         b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
     ]
     out = bytearray(b"%PDF-1.4\n")
@@ -63,7 +65,6 @@ def _make_pdf() -> None:
         xref_pos,
     )
     (FIXTURES / "sample.pdf").write_bytes(bytes(out))
-    _ = zlib  # FlateDecode not used here (uncompressed stream keeps it simple)
 
 
 def main() -> None:

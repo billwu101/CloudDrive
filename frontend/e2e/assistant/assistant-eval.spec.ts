@@ -217,11 +217,17 @@ async function runExecutionCase(
 
   // 2. Generate the skill.
   const body = await sendPrompt(page, evalCase.prompt)
-  const proposal = (body.skill_proposal ?? null) as { name?: string } | null
+  const proposal = (body.skill_proposal ?? null) as {
+    name?: string
+    manifest?: { ui?: { context_menu?: { label?: string }[] } }
+  } | null
   if (!proposal?.name) {
     results[evalCase.id] = { ok: false, error: 'no skill proposal generated', produced_files: [], outputs: {} }
     return
   }
+  // The right-click label is whatever the model named it — read it from the
+  // generated manifest rather than assuming a fixed string.
+  const generatedLabel = proposal.manifest?.ui?.context_menu?.[0]?.label
 
   // 3. Approve → install.
   const approved = page.waitForResponse((r) => /\/skills\/[^/]+\/approve/.test(r.url()), {
@@ -236,10 +242,10 @@ async function runExecutionCase(
   await expect(fileCard).toBeVisible({ timeout: 15_000 })
   await fileCard.click({ button: 'right' })
 
-  const label = exec.context_menu_label ?? proposal.name
+  const label = generatedLabel ?? exec.context_menu_label ?? proposal.name
   const execResp = page.waitForResponse(
     (r) => /\/skills\/[^/]+\/execute/.test(r.url()) && r.request().method() === 'POST',
-    { timeout: CHAT_TIMEOUT },
+    { timeout: 90_000 },
   )
   await page.getByText(label, { exact: false }).first().click()
   const execBody = (await (await execResp).json()) as {
