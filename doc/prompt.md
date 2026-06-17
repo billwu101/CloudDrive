@@ -528,7 +528,9 @@ chore: complete cloud drive implementation
 
 目前狀態（2026-06-17）：Stage 12 已完成 M1 後端引擎骨架切片，包含 assistant 設定、LLMClient/Ollama/External/Privacy/ModelRouter、ContextManager、system prompt、AgentLoop、唯讀內建技能 registry，以及 `POST /assistant/chat` 註冊。Docker 預設接本地 Gemma 4 Ollama (`LLM_BASE_URL=http://192.168.10.75:11434`, `ASSISTANT_MODEL=gemma4:26b`, `LLM_NUM_CTX=65536`, `LLM_TIMEOUT_SECONDS=300`, `LLM_KEEP_ALIVE=15m`)。另完成第一個技能/manifest 持久化切片：`assistant_skills` migration/model/repository、`inspect_item_details` pending proposal、技能 approve/install/list/execute API。尚未完成 M2 workflow 計畫確認、完整 workflow DB、任意 codegen sandbox。
 
-M2/M3 更新（2026-06-17）：Stage 12 完成 M2 workflow 管線（planner→validate/repair→permissions→read fast-path | 非 read 持久化 pending→confirm/cancel，migration `0006`）與 M3 持久化/技能框架：`models/assistant_session.py` + migration `0007`（sessions/messages）、`assistant_workflows.name` + migration `0008`（命名儲存）、`assistant/skills/manifest.py`（嚴格 `SkillManifest` + `validate_manifest`，接撰寫草稿與安裝閘）、寫入技能 `create_folder`/`rename_item`/`move_item`/`star_item`/`trash_item`/`restore_item`/`share_item`/`organize_by_type`（皆走計畫確認）、workflow 命名儲存＋一鍵重跑 endpoint、對話 sessions/messages endpoint。可組合技能（步驟輸出引用）讓批次操作免設專用技能。測試含 `test_workflow.py`/`test_write_skills.py`/`test_manifest.py`/`test_router.py` 與 hypothesis property fuzz（`test_pipeline_properties.py`）。尚未完成 M4 任意 codegen sandbox 與 7zip 端到端。
+M2/M3 更新（2026-06-17）：Stage 12 完成 M2 workflow 管線（planner→validate/repair→permissions→read fast-path | 非 read 持久化 pending→confirm/cancel，migration `0006`）與 M3 持久化/技能框架：`models/assistant_session.py` + migration `0007`（sessions/messages）、`assistant_workflows.name` + migration `0008`（命名儲存）、`assistant/skills/manifest.py`（嚴格 `SkillManifest` + `validate_manifest`，接撰寫草稿與安裝閘）、寫入技能 `create_folder`/`rename_item`/`move_item`/`star_item`/`trash_item`/`restore_item`/`share_item`/`organize_by_type`（皆走計畫確認）、workflow 命名儲存＋一鍵重跑 endpoint、對話 sessions/messages endpoint。可組合技能（步驟輸出引用）讓批次操作免設專用技能。測試含 `test_workflow.py`/`test_write_skills.py`/`test_manifest.py`/`test_router.py` 與 hypothesis property fuzz（`test_pipeline_properties.py`）。
+
+M4 + Skill 管理更新（2026-06-17）：Stage 12 完成 M4 自我撰寫管線——`subagent.py`（`CodegenSubAgent`：經 ModelRouter 產生 `{manifest, code}`，靜態驗證後失敗回饋重試，只回 pending 提案、不執行）、`skills/codeguard.py`（AST 靜態防線，拒絕禁用 import/dunder/錯誤 `run()` 簽章）、`skills/sandbox.py`（`python -I` + 獨立 process group + POSIX rlimit + `sys.addaudithook` 封鎖網路/spawn/越界寫入）、`skills/authoring.py` 的 `_execute_generated`（取檔→`asyncio.to_thread` 跑沙箱→經 `UploadService` 寫回 `<stem> (extracted)` 資料夾，名稱衝突自動遞增）。7zip/zip/gzip/csv→json/base64/tar/hash 等自生成技能已瀏覽器實測端到端。另加 **Skill 管理**：`update_skill`/`delete_skill` service、`AbstractAssistantSkillRepository.update/delete`、`PATCH /assistant/skills/{id}`（描述/程式碼編輯，改碼會重跑 codeguard）、`DELETE /assistant/skills/{id}`。測試 `test_subagent.py`/`test_sandbox.py`/`test_skill_execution.py`/`test_skill_authoring.py`。M1–M4 全數完成。
 
 ### Stage 13：Assistant 前端（聊天面板 + 計畫確認 + 技能核可 + 動態右鍵選單）
 
@@ -548,7 +550,9 @@ M2/M3 更新（2026-06-17）：Stage 12 完成 M2 workflow 管線（planner→va
 
 完成後執行前端 lint、typecheck、test、build，提交 Stage 13。
 
-目前狀態（2026-06-17）：已完成 Stage 13 的登入後聊天面板與第一個技能核可/manifest 切片：`assistantApi.chat/listSkills/approveSkill/executeSkill`、assistant skill 型別、`useAssistantSkills`/approve/execute hooks、`AssistantPanel`、`MessageBubble`、`SkillApprovalCard`、`AssistantSkillResultDialog`、`AppShell` 入口，以及 DrivePage/FileContextMenu 依已安裝 manifest 動態插入右鍵選單。使用者應在登入後 CloudDrive shell 內對話，不以 Swagger/API docs 作為產品入口。尚未完成 workflow plan card、任意技能 code review/sandbox UI 與已存 workflow 重跑。
+目前狀態（2026-06-17）：已完成 Stage 13 的登入後聊天面板與第一個技能核可/manifest 切片：`assistantApi.chat/listSkills/approveSkill/executeSkill`、assistant skill 型別、`useAssistantSkills`/approve/execute hooks、`AssistantPanel`、`MessageBubble`、`SkillApprovalCard`、`AssistantSkillResultDialog`、`AppShell` 入口，以及 DrivePage/FileContextMenu 依已安裝 manifest 動態插入右鍵選單。使用者應在登入後 CloudDrive shell 內對話，不以 Swagger/API docs 作為產品入口。
+
+M4/M5 + Skill 管理頁更新（2026-06-17）：完成計畫確認卡 `WorkflowPlanCard`、技能 code review 對話框 `SkillApprovalDialog`、生成技能執行後 invalidate `['drive']`、已存 workflow 清單 `SavedWorkflowsPanel` 與一鍵重跑（`saveWorkflow`/`listSavedWorkflows`/`rerunWorkflow` + hooks）。另加**側欄 Skills 管理頁**（`/skills` 路由 + lazy page + `Sidebar` 入口）：`SkillsPage`（顯示已安裝技能數、列表、刪除確認）+ `SkillEditDialog`（編輯描述/程式碼）、`updateSkill`/`deleteSkill` api 與 `useUpdateAssistantSkill`/`useDeleteAssistantSkill` hooks；測試 `SkillsPage.test.tsx`、`SkillApprovalDialog.test.tsx`、`SavedWorkflowsPanel.test.tsx`。Stage 13 全數完成。
 
 ### Stage 14：Assistant 驗證與評分 Harness
 
@@ -562,11 +566,13 @@ M2/M3 更新（2026-06-17）：Stage 12 完成 M2 workflow 管線（planner→va
 
 此 Agent 負責建立：
 
-1. `backend/eval/`：`schema.py`、`cases/`、`runner_api.py`、`runner_browser.py`、`verifier.py`、`judge.py`、`scoring.py`、`report.py`、`run.py`、`baseline.json`。
-2. `frontend/e2e/assistant/assistant-eval.spec.ts`（Browser 模式）。
+1. `backend/eval/`：`schema.py`、`cases/`、`runner.py`(HTTP/API)、`inproc.py`(in-process mock-LLM)、`runner_browser.py`、`verifier.py`、`judge.py`、`scoring.py`、`report.py`、`baseline.py`、`run.py`。
+2. `frontend/e2e/assistant/assistant-eval.spec.ts` + `frontend/playwright.eval.config.ts`（Browser 模式）。
 3. 涵蓋 tag：read-only / daily-ops / skill-generation(含 7zip) / safety / workflow-reuse / context / model-escalation。
 
 完成後以 mock LLM 的 API 模式案例進 CI，提交 Stage 14。
+
+目前狀態（2026-06-17）：Stage 14 完成 E1（`run.py --llm mock` in-process 決定性 runner + verifier/scoring/report，property-based 不變量）、E4（10/10 mock 案例涵蓋全 tag）、**E2 Browser runner**（`runner_browser.py` 橋接 → Playwright `assistant-eval.spec.ts` 驅動真實 UI 並擷取 `/assistant/chat`，`run.py --mode browser` 整批跑一次再以同一套 verifier/scoring 計分；對 Docker 全棧 + 真實 Gemma 實測 3/3 PASS）、**E3**（`judge.py` rubric→0–1 連續分數 + `HttpJudgeModel` 獨立評審模型、`--llm real` 打 live 後端、`baseline.py` 回歸比較與非零退出；judge/real/baseline 皆 live 實測）。E1 尚餘 state/safety 斷言與多次執行通過率/變異統計。
 
 ## 檔案所有權原則
 
@@ -603,8 +609,8 @@ M2/M3 更新（2026-06-17）：Stage 12 完成 M2 workflow 管線（planner→va
 | frontend-share | share pages/components/hooks/API binding/tests |
 | integration-testing | integration fixtures、MSW、Playwright、E2E |
 | backend-assistant | `backend/app/assistant/`（含 `llm/`、`skills/`）、assistant Alembic migration、`tests/assistant/` |
-| frontend-assistant | `frontend/src/components/assistant/`、`assistantApi`、`useAssistant`、計畫確認/核可 UI、動態右鍵選單與相關 tests |
-| assistant-eval | `backend/eval/`、`frontend/e2e/assistant/`、eval cases 與 baseline |
+| frontend-assistant | `frontend/src/components/assistant/`、`assistantApi`、`useAssistant`、計畫確認/核可 UI、動態右鍵選單、`pages/SkillsPage`(技能管理頁) 與 `/skills` 路由、相關 tests |
+| assistant-eval | `backend/eval/`（runner/inproc/browser、verifier、judge、scoring、baseline、report、run）、`frontend/e2e/assistant/` + `playwright.eval.config.ts`、eval cases |
 
 共享檔案如 `pyproject.toml`、`package.json`、router aggregator（`backend/app/api/v1/router.py`）、SQLAlchemy model registry、`backend/app/core/config.py` 與 migration head，只能由主 Agent或明確指定的單一 Agent在同一時間修改。
 

@@ -2083,9 +2083,9 @@ useSearchItems(query, filters, page, pageSize)
 | 公開分享連結 | ShareLink |
 | 檔案版本 | FileVersion |
 
-## 17. In-App AI Assistant M1 後端骨架
+## 17. In-App AI Assistant（M1–M4 後端）
 
-Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標是先建立可測、可替換、預設安全的 agent loop。M1 已完成唯讀 agent loop；2026-06-17 追加一個安全白名單的技能/manifest 切片：助理可針對「新增右鍵 Inspect details」需求產生 pending skill proposal，使用者核可後安裝 manifest，前端右鍵選單再動態載入。此切片仍不執行任意 LLM 生成程式碼，完整 sandbox/codegen workflow 留在後續階段。
+Assistant 後端位於 `backend/app/assistant/`，目標是可測、可替換、預設安全的 agent loop。M1 唯讀 agent loop → M2 workflow 計畫管線 → M3 技能框架與持久化 → M4 自我撰寫 sandbox 已全部完成（M4 細節見下方「M4 自我撰寫」段）。
 
 主要檔案：
 
@@ -2118,9 +2118,11 @@ Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標
 | `POST` | `/api/v1/assistant/workflows/save` | 將計畫步驟命名儲存為可重用工作流程（驗證技能後存成 `saved`，不執行）。 |
 | `GET` | `/api/v1/assistant/workflows/saved` | 列出已存工作流程。 |
 | `POST` | `/api/v1/assistant/workflows/saved/{id}/rerun` | 一鍵重跑已存工作流程（重驗 → 執行 → 記錄 run）。 |
-| `GET` | `/api/v1/assistant/skills?status=installed` | 列出已安裝 manifest，供前端右鍵選單動態載入。 |
+| `GET` | `/api/v1/assistant/skills?status=installed` | 列出已安裝 manifest，供前端右鍵選單動態載入與 Skills 管理頁。 |
 | `POST` | `/api/v1/assistant/skills/{skill_id}/approve` | 經 `validate_manifest` 後將 pending manifest 核可為 installed。 |
-| `POST` | `/api/v1/assistant/skills/{skill_id}/execute` | 執行已安裝技能；目前支援 `inspect_item_details`。 |
+| `PATCH` | `/api/v1/assistant/skills/{skill_id}` | 編輯已安裝技能的描述/程式碼（`AssistantSkillUpdateRequest`）；改碼會重跑 `codeguard` 靜態驗證，描述同步寫回 manifest。 |
+| `DELETE` | `/api/v1/assistant/skills/{skill_id}` | 刪除技能（連同其右鍵動作）；回 204。 |
+| `POST` | `/api/v1/assistant/skills/{skill_id}/execute` | 執行已安裝技能：`inspect_item_details` 直接回 metadata；生成技能則取檔→沙箱執行→產出檔案經 `UploadService` 寫回 drive。 |
 
 M3 持久化與技能（2026-06-17）：新增 `models/assistant_session.py`（`AssistantSession`/`AssistantMessage`，migration `0007`）與 `assistant_workflows.name`（migration `0008`，`saved` 狀態）。`assistant/repository.py` 增 `AbstractAssistantSessionRepository`（`ensure_session`/`add_message`/`list_sessions`/`list_messages`）與 workflow 的 `save_named`/`list_saved`/`get_saved`。`assistant/skills/manifest.py` 提供嚴格 `SkillManifest` schema 與 `validate_manifest`（識別字 `name`、semver `version`、`ui.context_menu` 的 `FILE`/`FOLDER` item types，強制 handler == skill name），接到撰寫草稿與安裝閘。寫入技能再加 `share_item`（`ShareLinkService` 公開檢視連結）與 `organize_by_type`（依副檔名分組搬移）。批次操作（`batch_rename`/`bulk_move`）由可組合 planner 多步驟達成，`copy` 依提案不另實作。
 
@@ -2145,6 +2147,17 @@ M3 持久化與技能（2026-06-17）：新增 `models/assistant_session.py`（`
 
 Assistant 測試位於 `backend/tests/assistant/`，包含 router dispatch/auth、agent loop tool 執行與迴圈上限、context 裁切、model router 的外部升級與隱私阻擋，以及 `test_skill_authoring.py` 的 pending proposal、已安裝去重與 execute metadata。
 
+M4 自我撰寫（2026-06-17）：助理可從自然語言生成全新技能並在受限沙箱中執行，流程為 **codegen → 靜態驗證 → 使用者核可 → 沙箱執行 → 寫回 drive**：
+
+| 檔案 | 職責 |
+| --- | --- |
+| `assistant/subagent.py` | `CodegenSubAgent.author`：經 `ModelRouter` 產生 `{manifest, code}` JSON，`validate_manifest` + `validate_skill_code` 驗證後失敗回饋重試；只回 pending 提案、永不自動執行。 |
+| `assistant/skills/codeguard.py` | `validate_skill_code`：AST 靜態防線，拒絕禁用 import（`subprocess`/`socket`/`ctypes`…）、`eval`/`exec`、`os.system`、dunder 存取與錯誤的 `run(input_path, output_dir, params)` 簽章。 |
+| `assistant/skills/sandbox.py` | `SkillSandbox.run`：`python -I` 子行程 + 獨立 process group + 最小 env + POSIX CPU/檔案大小 rlimit；內嵌 harness 以 `sys.addaudithook` 封鎖網路/spawn/output 目錄外寫入。 |
+| `assistant/skills/authoring.py` | `_execute_generated`：從 storage 取檔 → `asyncio.to_thread` 跑沙箱 → 產出檔案經 `UploadService` 寫回 `<stem> (extracted)` 資料夾（鏡射巢狀目錄、名稱衝突自動遞增）；失敗回 4xx 且不寫入。另含 `update_skill`/`delete_skill`（Skill 管理）。 |
+
+Skill 管理：`AbstractAssistantSkillRepository` 增 `update`/`delete`；`update_skill` 編輯描述/程式碼，改碼會重跑 `codeguard`（手動編輯無法繞過靜態掃描），描述同步寫回 manifest；對應 `PATCH`/`DELETE /assistant/skills/{id}`。沙箱可用 stdlib（zip/gzip/tarfile/json/hashlib…）加 `py7zr`；7zip/gzip/csv→json/base64/tar/hash 等自生成技能已瀏覽器實測端到端。測試 `test_subagent.py`、`test_sandbox.py`、`test_skill_execution.py`（真實 zip 在真實沙箱解壓並寫回、沙箱失敗不寫入、同檔案連跑兩次資料夾名不衝突）。
+
 ## 18. In-App AI Assistant 前端聊天切片
 
 Assistant 的使用入口位於登入後 CloudDrive shell，而不是 Swagger/API docs。`AppShell` 會掛載 `AssistantPanel`，因此 `/drive`、`/recent`、`/starred`、`/shared`、`/trash`、`/search`、`/settings` 等受保護頁面都能開啟同一個浮動對話面板。
@@ -2163,8 +2176,32 @@ Assistant 的使用入口位於登入後 CloudDrive shell，而不是 Swagger/AP
 | `src/components/drive/FileContextMenu.tsx` | 接收 manifest 轉出的 assistant actions，動態插入單檔右鍵選單。 |
 | `src/pages/DrivePage.tsx` | 讀取已安裝技能、依 `item_type` 過濾 `ui.context_menu`、執行技能並顯示結果。 |
 | `src/components/layout/AppShell.tsx` | 在受保護 CloudDrive shell 掛載 assistant 入口。 |
+| `src/components/assistant/WorkflowPlanCard.tsx` | 顯示 pending 計畫（步驟/permission tier/需核可）並確認/取消/儲存。 |
+| `src/components/assistant/SkillApprovalDialog.tsx` | 顯示生成技能的完整程式碼供 code review，核可/拒絕。 |
+| `src/components/assistant/SavedWorkflowsPanel.tsx` | 列出已存工作流程並一鍵重跑。 |
+| `src/pages/SkillsPage.tsx` + `src/components/assistant/SkillEditDialog.tsx` | 側欄 `/skills` 技能管理頁：顯示已安裝技能數、列表、刪除確認、編輯描述/程式碼。 |
+| `src/hooks/useAssistant.ts` | 另含 `useUpdateAssistantSkill`/`useDeleteAssistantSkill`/`useSavedWorkflows`/`useSaveWorkflow`/`useRerunWorkflow`。 |
 
-此切片涵蓋直接 chat、第一個技能核可 UI、manifest 安裝與右鍵選單動態載入。Workflow plan 確認、任意 codegen sandbox、自訂工作流程儲存與一鍵重跑仍屬後續工作。
+前端 assistant 功能已完整：直接 chat、計畫確認卡、技能核可與 code review、manifest 驅動右鍵選單、已存工作流程一鍵重跑，以及側欄 Skills 管理頁（列表/編輯/刪除）。測試涵蓋 `AssistantPanel`、`SkillApprovalDialog`、`SavedWorkflowsPanel`、`SkillsPage` 等。
+
+## 18.5 Assistant 驗證與評分 Harness
+
+評測 harness 位於 `backend/eval/`（前端 browser spec 於 `frontend/e2e/assistant/`），對同一批 YAML 案例提供多種執行模式，並以同一套 verifier/scoring 計分，門檻不過回非零碼，可進 CI。
+
+| 檔案 | 職責 |
+| --- | --- |
+| `eval/schema.py` | `EvalCase`/`Expect`/`Scoring`/`MockLLM` pydantic 模型 + YAML 載入。 |
+| `eval/runner.py` | API runner：HTTP 打 live 後端 `/assistant/chat`（`--llm real`）。 |
+| `eval/inproc.py` | in-process mock-LLM runner：程序內以 scripted mock LLM 驅動真實 pipeline（`--llm mock`，決定性、免後端/Gemma，CI 用）。 |
+| `eval/runner_browser.py` | E2 橋接：把案例寫成暫存 JSON、以 Playwright 一次跑完整批、回收 `{case_id: chat_response}`。 |
+| `eval/verifier.py` | 確定性斷言（`steps_include`/`requires_confirmation`/`skill_generated`），`CheckResult` 可帶連續分數。 |
+| `eval/judge.py` | E3 LLM judge：rubric → 0–1 連續分數，OpenAI 相容 `HttpJudgeModel`（建議獨立模型），`parse_verdict` 容錯 + clamp。 |
+| `eval/scoring.py` | 維度加權、連續分數與布林 check 合併、案例分與通過門檻。 |
+| `eval/baseline.py` | E3 baseline：save/load/compare、回歸偵測（容差、新案例不算回歸）。 |
+| `eval/report.py` / `eval/run.py` | JSON/Markdown 報告；CLI（`--mode api|browser`、`--llm mock|real`、`--judge`、`--baseline`/`--save-baseline`）。 |
+| `frontend/e2e/assistant/assistant-eval.spec.ts` + `playwright.eval.config.ts` | E2 browser 模式：驅動真實 UI、擷取 `/assistant/chat`、斷言 UI、確認 pending 計畫。 |
+
+E1 in-process mock 模式 + E4 案例（read-only / daily-ops / skill-generation / safety / workflow-reuse / context / model-escalation）10/10 決定性通過；E2 browser 與 E3 judge/`--llm real`/baseline 皆對 Docker 全棧 + 真實 Gemma 實測通過。E1 尚餘 state/safety 斷言與多次執行通過率/變異統計。
 
 ## 19. 結論
 
