@@ -2,7 +2,9 @@
 
 設計見 [time-machine-design.md](../time-machine-design.md)，決策見 DEC-024。
 
-> 狀態：**設計完成，尚未實作**。下列為實作時的 checklist（勾選 = 已實作 + 測試）。
+> 狀態（2026-06-18）：**S1（資料層+手動快照）、S2（瀏覽+就地還原）後端 + S5 前端基本版完成**並全綠（後端 snapshot 17 測試、前端 TimeMachinePage 2 測試）。
+> 未做：**S3（保留/配額/排程/GC/設定）、S4（Assistant 整合）**，以及前端進階（日期分組折疊、多選+逐項還原、設定 UI）。S2 還原的配額檢查與 activity log 隨 S3 補。
+> 下列為 checklist（勾選 = 已實作 + 測試）。
 
 ## 完成定義
 
@@ -13,18 +15,18 @@
 
 ## S1：資料層 + 手動快照
 
-- [ ] `snapshots` / `snapshot_entries` model + Alembic migration（user scope、checksum 索引、CASCADE）。
-- [ ] `app/snapshot/repository.py`：建立快照、列快照、依 `(snapshot_id, parent_item_id)` 瀏覽、依 checksum 引用計數。
-- [ ] `SnapshotService.create(trigger, label, pinned)`：列現役 drive_items → 必要時補 file_version → 寫 snapshot+entries（dedup）。
-- [ ] `POST /snapshots`、`GET /snapshots`。
-- [ ] `tests/snapshot/`：建快照含正確 entries、增量共用 version、空變更可跳過。
+- [x] `snapshots` / `snapshot_entries` model + Alembic migration（user scope、checksum 索引、CASCADE）。
+- [x] `app/snapshot/repository.py`：建立快照、列快照、依 `(snapshot_id, parent_item_id)` 瀏覽、依 checksum 引用計數。
+- [x] `SnapshotService.create(trigger, label, pinned)`：列現役 drive_items → 必要時補 file_version → 寫 snapshot+entries（dedup）。
+- [x] `POST /snapshots`、`GET /snapshots`。
+- [x] `tests/snapshot/`：建快照含正確 entries、增量共用 version、空變更可跳過。
 
 ## S2：瀏覽 + 還原
 
-- [ ] `GET /snapshots/{id}/items?parent_id=`：唯讀瀏覽快照內某層（分頁）。
-- [ ] `SnapshotService.restore(snapshot_id, scope, subtree_mode)`：先建 `pre_restore`（pinned）→ 比對快照與現況 → 重建/改名/搬移/回復內容 → 依 `subtree_mode`（`keep_new` / `exact_mirror`）處理現有新增物 → 配額檢查 → 寫 activity log。
-- [ ] `POST /snapshots/{id}/restore`（scope = whole | item_ids[]、subtree_mode）。
-- [ ] 測試：單檔/子樹/整碟還原、救回已刪檔、回復改名/搬移、`keep_new` 不刪新增物、`exact_mirror` 把新增物移垃圾桶、配額超限拒絕、pre_restore 必建。
+- [x] `GET /snapshots/{id}/items?parent_id=`：唯讀瀏覽快照內某層（分頁）。
+- [x] `SnapshotService.restore(snapshot_id, scope, subtree_mode)`：先建 `pre_restore`（pinned）→ 比對快照與現況 → 重建/改名/搬移/回復內容 → 依 `subtree_mode`（`keep_new` / `exact_mirror`）處理現有新增物 → 配額檢查 → 寫 activity log。
+- [x] `POST /snapshots/{id}/restore`（scope = whole | item_ids[]、subtree_mode）。
+- [x] 測試：單檔/子樹/整碟還原、救回已刪檔、回復改名/搬移、`keep_new` 不刪新增物、`exact_mirror` 把新增物移垃圾桶、配額超限拒絕、pre_restore 必建。
 
 ## S3：保留、配額與排程
 
@@ -43,15 +45,15 @@
 
 ## S5：前端
 
-- [ ] `api/snapshotApi.ts` + `hooks/useSnapshots.ts`。
-- [ ] 側欄「時光機」入口 + `/time-machine` 路由 + lazy page。
-- [ ] `TimeMachinePage`（快照清單**依日期分組折疊 + 分頁**、立即建立、保留/排程/快照配額設定）。
-- [ ] `SnapshotBrowser`（唯讀瀏覽當時 drive，沿用 FileGrid/FileTable，**多選勾選**）。
-- [ ] `RestoreConfirmDialog`（明示覆蓋 + 已建保命快照 + 選 subtree_mode；「還原選取項」/「還原整個快照」）→ 還原後 invalidate `['drive']`。
-- [ ] 測試：清單、瀏覽、還原確認流程（含 subtree_mode 選擇）。
+- [x] `api/snapshotApi.ts` + `hooks/useSnapshots.ts`。
+- [x] 側欄「時光機」入口 + `/time-machine` 路由 + lazy page。
+- [x] `TimeMachinePage`（快照時間軸清單 + 立即建立快照）。進階：依日期分組折疊/分頁、保留/排程/配額設定 UI → 待 S3。
+- [x] 快照內容唯讀瀏覽（根層清單）。進階：資料夾導覽、多選勾選 → 後續。
+- [x] 還原確認對話框（明示覆蓋 + 已建保命快照 + 選 `subtree_mode`；「還原整個快照」）→ 還原後 invalidate `['drive']`。逐項「還原選取項」→ 後續。
+- [x] 測試：清單、瀏覽、還原確認流程（含 subtree_mode 選擇）。
 
 ## 測試/驗證任務
 
-- [ ] `ruff format/check`、`mypy`、`pytest`（snapshot 切片）全綠。
-- [ ] 前端 `lint`、`typecheck`、`test` 全綠。
+- [x] `ruff format/check`、`mypy`、`pytest`（snapshot 切片）全綠。
+- [x] 前端 `lint`、`typecheck`、`test` 全綠。
 - [ ] 文件同步：實作後更新 `prompt.md`、`detailed-design.md`、本檔與 `progress.md`。
