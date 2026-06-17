@@ -55,13 +55,13 @@ M3 實作備註（2026-06-17）：完成 sessions/messages 持久化（`0007`）
 
 ## M4：自我撰寫 + 安全（HARNESS 04/03/08/09）
 
-- [ ] `subagent.py`：單層子代理（codegen）。
-- [ ] `skills/authoring.py`：`author_skill` + 生成子流程（codegen→驗證→pending_approval）。
+- [x] `subagent.py`：單層子代理（codegen）。`CodegenSubAgent.author` 經 ModelRouter 產生 `{manifest, code}`,靜態驗證（manifest schema + codeguard）後失敗回饋重試;不執行,只回提案。
+- [x] `skills/authoring.py`：`author_skill` + 生成子流程（codegen→靜態驗證→pending_approval）。`handle_authoring_message` 依生成意圖路由到子代理,存成 pending 提案,絕不自動安裝/執行;日常內建操作不觸發。
 - [x] `skills/authoring.py`：第一個 deterministic `inspect_item_details` pending proposal + approve/install/execute 切片。
-- [ ] `skills/sandbox.py`：子行程沙箱（CPU/記憶體/逾時、路徑限 storage、無對外網路、參數化呼叫）。
+- [x] `skills/sandbox.py`：子行程沙箱（`python -I` + 自有 process group + 最小 env;POSIX CPU/檔案大小 rlimit;`sys.addaudithook` 永久封鎖網路/spawn/output 外寫入;參數化 `run(input_path, output_dir, params)`）。另加 `skills/codeguard.py` AST 靜態防線。
 - [x] 技能核可/安裝/觸發 endpoint（manifest-only `inspect_item_details` 切片）。
-- [ ] 技能核可/安裝/觸發 endpoint（任意 generated code + sandbox）。
-- [ ] 7zip 範例端到端（生成→核可→沙箱→安裝→掛右鍵→解壓寫回 drive items）。
+- [x] 技能核可/安裝/觸發 endpoint（任意 generated code + sandbox）：`execute_skill` 對生成技能從 storage 取檔 → `asyncio.to_thread` 跑沙箱 → 把產出檔案經 `UploadService` 寫回 drive（建立 `<name> (extracted)` 資料夾、鏡射巢狀目錄）;失敗回 4xx 且不寫入。execute endpoint 加 commit。
+- [x] 7zip 範例端到端（生成→核可→沙箱→安裝→解壓寫回 drive items）：加 `py7zr` 相依（zip 走 stdlib）;`test_skill_execution.py` 以真實 zip 在真實沙箱解壓並寫回 readme.txt + 巢狀 docs/guide.md。前端右鍵掛載屬 M5（manifest UI 已支援）。
 
 ## 測試任務
 
@@ -77,7 +77,9 @@ M3 實作備註（2026-06-17）：完成 sessions/messages 持久化（`0007`）
 - [x] `test_router.py`：`/chat` 持久化 user/assistant 訊息、`GET /sessions`、`GET /sessions/{id}/messages`。
 - [x] `test_manifest.py`：合法 manifest round-trip、預設空選單、非物件拒絕、結構性畸形（壞 name/version/item_types/額外欄位）拒絕、handler≠skill name 拒絕。
 - [x] `test_pipeline_properties.py`：**property-based（hypothesis）模糊測試**，隨機產生複雜計畫（多技能/引用/未知技能/壞參數），驗證硬性不變量：validate_plan 全函式且健全、executor 永不拋例外且遇錯即停、resolve_arguments 只拋 StepResolutionError、classify 標 tier 或拒未知、**planner 產出永遠是可執行或空（絕不交出非法計畫）**。每項 200–300 隨機例。
-- [ ] `test_authoring.py`：任意 codegen 停在 pending_approval。
-- [ ] `test_sandbox.py`：逾時/路徑/網路限制。
-- [ ] `test_hooks.py`：權限閘阻擋破壞性/安裝。
-- [ ] `ruff format/check`、`mypy app tests`、`pytest` 全綠。
+- [x] `test_authoring.py`：任意 codegen 停在 pending_approval（不自動安裝/執行）;失敗無提案;非生成意圖回 None。`test_subagent.py`：驗證提案、不安全碼修復重試、放棄不交出碼、非 JSON 處理。
+- [x] `test_sandbox.py`：逾時/路徑（output 外寫入）/網路/子行程封鎖 + codeguard 靜態拒絕。`test_skill_execution.py`：真實 zip 在沙箱解壓並寫回 drive、沙箱失敗不寫入。
+- [x] `test_hooks.py`：HookRegistry 依序觸發、executor 觸發 before/after/on_error、權限閘讓破壞性/安裝不進 fast-path（需核可）。
+- [x] `ruff format/check`、`mypy app tests`、`pytest` 全綠（M4 切片）。
+
+M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.py`(codegen)、`skills/codeguard.py`(AST 靜態驗證)、`skills/sandbox.py`(子行程沙箱:`-I`+process group+rlimit+audithook 封鎖網路/spawn/越界寫入)、`authoring.py` 生成子流程(意圖→codegen→pending,核可→安裝,執行→沙箱→寫回 drive)。加 `py7zr` 相依。前端右鍵掛載與程式碼審查 dialog 屬 M5。尚未做:生成子流程接進 planner 的「缺技能」自動偵測(目前由 authoring 關鍵字意圖觸發)、7zip 真模型 live 瀏覽器 demo(需重建 Docker 映像)。
