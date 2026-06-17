@@ -10,6 +10,8 @@ from app.core.exceptions import NotFoundError
 from app.snapshot.repository import SQLSnapshotRepository
 from app.snapshot.schemas import (
     CreateSnapshotRequest,
+    RestoreRequest,
+    RestoreResponse,
     SnapshotEntryResponse,
     SnapshotResponse,
 )
@@ -65,3 +67,32 @@ async def list_snapshot_items(
     if entries is None:
         raise NotFoundError("Snapshot not found")
     return [SnapshotEntryResponse.model_validate(e) for e in entries]
+
+
+@router.post(
+    "/{snapshot_id}/restore",
+    response_model=RestoreResponse,
+    summary="Restore the drive (or selected items) to a snapshot (in-place)",
+)
+async def restore_snapshot(
+    snapshot_id: UUID,
+    body: RestoreRequest,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: SnapshotServiceDep,
+) -> RestoreResponse:
+    outcome = await service.restore(
+        user_id=current_user_id,
+        snapshot_id=snapshot_id,
+        scope=body.scope,
+        item_ids=body.item_ids,
+        subtree_mode=body.subtree_mode,
+    )
+    if outcome is None:
+        raise NotFoundError("Snapshot not found")
+    await session.commit()
+    return RestoreResponse(
+        pre_restore_snapshot_id=outcome.pre_restore_snapshot_id,
+        restored=outcome.restored,
+        trashed=outcome.trashed,
+    )

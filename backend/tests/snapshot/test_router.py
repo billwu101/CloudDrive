@@ -17,7 +17,7 @@ from app.core.security import create_access_token
 from app.models.snapshot import Snapshot, SnapshotEntry
 from app.snapshot.router import _snapshot_service
 from app.snapshot.router import router as snapshot_router
-from app.snapshot.service import SnapshotService
+from app.snapshot.service import RestoreOutcome, SnapshotService
 
 pytestmark = pytest.mark.asyncio
 
@@ -117,6 +117,32 @@ async def test_browse_unknown_snapshot_returns_404(user_id: UUID, headers: dict[
     app = _make_app(svc, user_id)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.get(f"/snapshots/{uuid4()}/items", headers=headers)
+    assert resp.status_code == 404
+
+
+async def test_restore_returns_200(user_id: UUID, headers: dict[str, str]) -> None:
+    svc = AsyncMock(spec=SnapshotService)
+    svc.restore.return_value = RestoreOutcome(
+        pre_restore_snapshot_id=uuid4(), restored=5, trashed=2
+    )
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post(
+            f"/snapshots/{uuid4()}/restore",
+            json={"scope": "whole", "subtree_mode": "exact_mirror"},
+            headers=headers,
+        )
+    assert resp.status_code == 200
+    assert resp.json()["restored"] == 5
+    assert resp.json()["trashed"] == 2
+
+
+async def test_restore_unknown_snapshot_returns_404(user_id: UUID, headers: dict[str, str]) -> None:
+    svc = AsyncMock(spec=SnapshotService)
+    svc.restore.return_value = None
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post(f"/snapshots/{uuid4()}/restore", json={}, headers=headers)
     assert resp.status_code == 404
 
 

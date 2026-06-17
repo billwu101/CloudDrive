@@ -43,12 +43,40 @@ def _item(
 
 class MemSnapshotRepo(AbstractSnapshotRepository):
     def __init__(self, items: list[DriveItem]) -> None:
-        self._items = items
+        self.items: dict[UUID, DriveItem] = {i.id: i for i in items}
         self.snapshots: dict[UUID, Snapshot] = {}
         self.entries: dict[UUID, list[SnapshotEntry]] = {}
 
     async def list_owner_items(self, owner_id: UUID) -> list[DriveItem]:
-        return [i for i in self._items if i.owner_id == owner_id]
+        return [i for i in self.items.values() if i.owner_id == owner_id and not i.is_deleted]
+
+    async def list_all_entries(self, snapshot_id: UUID) -> list[SnapshotEntry]:
+        return list(self.entries.get(snapshot_id, []))
+
+    async def list_all_items(self, owner_id: UUID) -> list[DriveItem]:
+        return [i for i in self.items.values() if i.owner_id == owner_id]
+
+    async def upsert_item(self, *, owner_id: UUID, entry: SnapshotEntry) -> None:
+        existing = self.items.get(entry.item_id)
+        if existing is None:
+            self.items[entry.item_id] = _item(
+                owner_id,
+                item_type=ItemType(entry.item_type),
+                name=entry.name,
+                parent_id=entry.parent_item_id,
+                size=entry.size_bytes,
+            )
+            self.items[entry.item_id].id = entry.item_id
+        else:
+            existing.name = entry.name
+            existing.parent_id = entry.parent_item_id
+            existing.size_bytes = entry.size_bytes
+            existing.storage_key = entry.storage_key
+            existing.is_deleted = False
+
+    async def set_deleted(self, *, item_id: UUID, deleted: bool) -> None:
+        if item_id in self.items:
+            self.items[item_id].is_deleted = deleted
 
     async def create_snapshot(
         self,
@@ -147,3 +175,75 @@ async def test_browse_other_users_snapshot_returns_none() -> None:
     svc = SnapshotService(repo=repo)
     snap = await svc.create(user_id=owner)
     assert await svc.browse(user_id=other, snapshot_id=snap.id, parent_item_id=None) is None
+
+
+# ── restore ──────────────────────────────────────────────────────────────────
+
+
+async def test_restore_takes_pre_restore_snapshot_first() -> None:
+    user = uuid4()
+    repo = MemSnapshotRepo([_item(user, name="a.txt")])
+    svc = SnapshotService(repo=repo)
+    snap = await svc.create(user_id=user)
+
+    outcome = await svc.restore(user_id=user, snapshot_id=snap.id)
+
+    assert outcome is not None
+    pre = repo.snapshots[outcome.pre_restore_snapshot_id]
+    assert pre.trigger == "pre_restore"
+    assert pre.pinned is True
+
+
+async def test_restore_recreates_a_deleted_item() -> None:
+    user = uuid4()
+    f = _item(user, name="keep.txt")
+    repo = MemSnapshotRepo([f])
+    svc = SnapshotService(repo=repo)
+    snap = await svc.create(user_id=user)
+    # user hard-deletes the file after the snapshot
+    del repo.items[f.id]
+
+    outcome = await svc.restore(user_id=user, snapshot_id=snap.id)
+
+    assert outcome is not None and outcome.restored == 1
+    assert f.id in repo.items  # recreated with its original id
+    assert repo.items[f.id].name == "keep.txt"
+    assert repo.items[f.id].is_deleted is False
+
+
+async def test_restore_reverts_a_rename() -> None:
+    user = uuid4()
+    f = _item(user, name="original.txt")
+    repo = MemSnapshotRepo([f])
+    svc = SnapshotService(repo=repo)
+    snap = await svc.create(user_id=user)
+    repo.items[f.id].name = "renamed.txt"  # changed after snapshot
+
+    await svc.restore(user_id=user, snapshot_id=snap.id)
+
+    assert repo.items[f.id].name == "original.txt"
+
+
+async def test_restore_exact_mirror_trashes_new_item_keep_new_does_not() -> None:
+    user = uuid4()
+    original = _item(user, name="original.txt")
+    repo = MemSnapshotRepo([original])
+    svc = SnapshotService(repo=repo)
+    snap = await svc.create(user_id=user)
+    # a new file added after the snapshot
+    added = _item(user, name="added.txt")
+    repo.items[added.id] = added
+
+    keep = await svc.restore(user_id=user, snapshot_id=snap.id, subtree_mode="keep_new")
+    assert keep is not None and keep.trashed == 0
+    assert repo.items[added.id].is_deleted is False
+
+    mirror = await svc.restore(user_id=user, snapshot_id=snap.id, subtree_mode="exact_mirror")
+    assert mirror is not None and mirror.trashed == 1
+    assert repo.items[added.id].is_deleted is True
+
+
+async def test_restore_unknown_snapshot_returns_none() -> None:
+    user = uuid4()
+    svc = SnapshotService(repo=MemSnapshotRepo([_item(user)]))
+    assert await svc.restore(user_id=user, snapshot_id=uuid4()) is None
