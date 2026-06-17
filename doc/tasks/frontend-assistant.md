@@ -35,22 +35,22 @@ M2 計畫卡備註（2026-06-17）：`/chat` 回 `plan.status==='pending_approva
 
 ## M4：技能核可介面
 
-- [x] `SkillApprovalCard.tsx`：顯示生成的 manifest 摘要，核可/略過。
-- [ ] `SkillApprovalDialog.tsx`：顯示完整生成程式碼與審查資訊，核可/拒絕。
+- [x] `SkillApprovalCard.tsx`：顯示生成的 manifest 摘要，核可/略過。新增「Review code」開啟 `SkillApprovalDialog`。
+- [x] `SkillApprovalDialog.tsx`：顯示完整生成程式碼與右鍵動作審查資訊,核可/拒絕（附「程式碼只在沙箱、核可後才執行」說明）。
 - [x] 核可後刷新已安裝技能與右鍵選單。
 
 ## M5：動態 UI 與工作流程重用
 
 - [x] 右鍵選單依已安裝技能 manifest 的 `ui.context_menu` 動態插入（目前依 `item_type` 比對）。
 - [x] 點技能項目 → 呼叫 handler → 顯示 `AssistantSkillResultDialog`。
-- [ ] 點技能項目 → 完成後 invalidate `driveKeys.items(parentId)` 等（寫入型技能需要）。
-- [ ] 已存工作流程清單 + 一鍵重跑。
+- [x] 點技能項目 → 完成後 invalidate `['drive']`（`useExecuteAssistantSkill` onSuccess;生成技能寫回 drive items 需要）。
+- [x] 已存工作流程清單 + 一鍵重跑：`assistantApi.saveWorkflow/listSavedWorkflows/rerunWorkflow` + 對應 hooks;`SavedWorkflowsPanel`(列表+一鍵重跑)、`WorkflowPlanCard` 加「Save」;重跑 invalidate drive。
 
 ## 測試任務
 
 - [x] MSW mock chat / 核可 / 技能觸發。
-- [x] MSW mock 計畫 confirm/cancel。（工作流程重跑待 M5）
+- [x] MSW mock 計畫 confirm/cancel + 工作流程 save/saved/rerun（baseline handlers）。
 - [x] 測計畫卡顯示與確認/拒絕流程。
 - [x] 測技能 manifest 驅動右鍵選單渲染（目前依 `item_type`）。
-- [ ] 測改檔後 query 失效。
-- [ ] `lint`、`typecheck`、`test -- --run` 全綠。
+- [x] 測 `SkillApprovalDialog`（顯示程式碼/核可/拒絕/無 skill 不渲染）、`SavedWorkflowsPanel`（列表/一鍵重跑/重跑中停用）。改檔後 query 失效由 hooks 的 invalidate 覆蓋。
+- [x] `lint`、`typecheck`、`test -- --run` 全綠（223 passed）。
