@@ -94,6 +94,10 @@ def main() -> int:
         for _ in range(runs):
             if args.mode == "exec":
                 checks = verify_execution(case, run_execution_case(case))
+            elif args.mode == "browser" and case.expect.execute is not None:
+                # Browser execution: the spec generated/approved/ran the skill on
+                # the fixture and reported produced files + downloaded text.
+                checks = verify_execution(case, browser_responses.get(case.id, {}))
             else:
                 response = _run_case(case, args, browser_responses)
                 checks = verify(case, response)

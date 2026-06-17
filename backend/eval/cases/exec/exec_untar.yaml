@@ -1,7 +1,7 @@
 id: exec-untar
 name: Execute untar skill and verify the right members are extracted
 prompt: 做一個解開 tar 封存的功能
-mode: [exec]
+mode: [exec, browser]
 tags: [skill-execution, m4]
 expect:
   execute:

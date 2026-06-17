@@ -1,7 +1,7 @@
 id: exec-thumbnail
 name: Execute image-thumbnail skill and verify a smaller image is produced
 prompt: 做一個產生圖片縮圖的功能
-mode: [exec]
+mode: [exec, browser]
 tags: [skill-execution, m4]
 expect:
   execute:

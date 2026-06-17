@@ -47,9 +47,22 @@ def run_browser_suite(
         raise BrowserRunnerError(f"playwright.eval.config.ts not found under {fe_dir}")
 
     stamp = str(int(time.time()))
-    payload = [
-        {"id": case.id, "prompt": case.prompt, "auto_confirm": case.auto_confirm} for case in cases
-    ]
+    fixtures_dir = Path(__file__).resolve().parent / "fixtures"
+    payload = []
+    for case in cases:
+        item: dict[str, Any] = {
+            "id": case.id,
+            "prompt": case.prompt,
+            "auto_confirm": case.auto_confirm,
+        }
+        # Execution cases also drive approve → run-on-fixture → assert output.
+        if case.expect.execute is not None:
+            ex = case.expect.execute
+            item["execute"] = {
+                "fixture": ex.fixture,
+                "context_menu_label": ex.context_menu_label,
+            }
+        payload.append(item)
 
     with tempfile.TemporaryDirectory(prefix="assistant_eval_") as tmp:
         cases_file = Path(tmp) / "cases.json"
@@ -63,6 +76,7 @@ def run_browser_suite(
             "EVAL_BASE_URL": base_url,
             "EVAL_API_BASE_URL": api_base_url,
             "EVAL_STAMP": stamp,
+            "EVAL_FIXTURES_DIR": str(fixtures_dir),
             "EVAL_EMAIL": email or f"eval_{stamp}@example.com",
             "EVAL_USERNAME": username or f"eval{stamp}",
             "EVAL_PASSWORD": password,

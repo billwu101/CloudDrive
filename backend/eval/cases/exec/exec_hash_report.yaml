@@ -1,7 +1,7 @@
 id: exec-hash-report
 name: Execute hash-report skill and verify the SHA256 is correct
 prompt: 做一個產生 MD5+SHA1+SHA256 雜湊報告的功能
-mode: [exec]
+mode: [exec, browser]
 tags: [skill-execution, m4]
 expect:
   execute:

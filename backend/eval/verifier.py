@@ -153,12 +153,16 @@ def verify_execution(case: EvalCase, result: dict[str, Any]) -> list[CheckResult
                 f"len(text)={len(all_text)}",
             )
         )
+    # Match by basename: exec mode produces relative paths ("docs/beta.txt")
+    # while the browser ingests flattened basenames ("beta.txt").
+    produced_basenames = {name.rsplit("/", 1)[-1] for name in produced}
     for name in spec.expected_files:
+        base = name.rsplit("/", 1)[-1]
         checks.append(
             CheckResult(
                 "execution",
                 f"produced {name}",
-                name in produced,
+                base in produced_basenames,
                 f"produced={produced}",
             )
         )

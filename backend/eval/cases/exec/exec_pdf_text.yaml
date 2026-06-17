@@ -1,7 +1,7 @@
 id: exec-pdf-text
 name: Execute pdf-text skill and verify the extracted text is correct
 prompt: 做一個抽取 PDF 文字的功能
-mode: [exec]
+mode: [exec, browser]
 tags: [skill-execution, m4]
 expect:
   execute:
