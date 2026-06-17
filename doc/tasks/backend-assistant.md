@@ -41,14 +41,17 @@ M2 實作備註（2026-06-17）：`/chat` 改走 planner（取代 M1 直接 tool
 
 ## M3：技能框架與持久化（HARNESS 03/05/06）
 
-- [ ] Alembic migration：`assistant_sessions`/`assistant_messages`/`assistant_skills`/`assistant_workflows`/`assistant_workflow_runs`。
+- [x] Alembic migration：`assistant_sessions`/`assistant_messages`（`0007`）、`assistant_skills`（`0005`）、`assistant_workflows`/`assistant_workflow_runs`（`0006`）、`assistant_workflows.name`（`0008`，已存工作流程）。
 - [x] Alembic migration：`assistant_skills`（`pending`/`installed` manifest 持久化切片）。
 - [x] `repository.py`：`assistant_skills` create/replace pending、list by status、approve、get by id/name。
-- [ ] `repository.py`：sessions/messages/workflows CRUD；啟動載入使用者技能與已存工作流程。
-- [ ] `skills/manifest.py`：manifest schema + 驗證（含 `ui.context_menu`）。
+- [x] `repository.py`：sessions/messages CRUD（`AbstractAssistantSessionRepository`：`ensure_session`/`add_message`/`list_sessions`/`list_messages`，依 `user_id` 隔離）；workflows CRUD（pending + 已存 `save_named`/`list_saved`/`get_saved`）。
+- [x] `skills/manifest.py`：manifest schema + 驗證（嚴格 `SkillManifest`：識別字 `name`、semver `version`、`ui.context_menu` 含 `FILE`/`FOLDER` item types；`validate_manifest` 拒絕畸形並強制 handler == skill name；接到撰寫草稿與核可/安裝閘）。
 - [x] 寫入內建技能：`create_folder`/`rename_item`/`move_item`/`star_item`（write）+ `trash_item`（destructive）/`restore_item`（write，需 trash_service）。皆非 read → 走計畫確認;經 DriveService/TrashService 帶 user_id;UUID/必填參數驗證 + 測試。eval mock 案例涵蓋 create/rename/trash。
-- [ ] 其餘寫入/批次技能：`copy`/`share`/`batch_rename`/`organize_by_type`/`organize_by_date`/`deduplicate`/`bulk_move`。
-- [ ] 工作流程命名儲存與一鍵重跑 endpoint。
+- [x] 其餘寫入技能：`share_item`（經 `ShareLinkService` 建公開檢視連結，需 share_link_service）、`organize_by_type`（composite：把根目錄散落檔案搬進 `{ext}-files` 資料夾，缺則建立）。`copy` 依提案不另實作（不得做檔案複製）；`batch_rename`/`bulk_move` 由可組合 planner 多步驟達成，不另設專用技能；`deduplicate`/`organize_by_date` 暫緩（去重需 checksum 揭露，目前 `DriveItemResponse` 未含）。
+- [x] 工作流程命名儲存與一鍵重跑 endpoint：`POST /assistant/workflows/save`（驗證技能後存成 `saved`，不執行）、`GET /assistant/workflows/saved`、`POST /assistant/workflows/saved/{id}/rerun`（重驗 → 執行 → 記錄 run）。
+- [x] 對話持久化 endpoint：`/chat` 記錄 user/assistant 訊息並 `ensure_session`；`GET /assistant/sessions`、`GET /assistant/sessions/{id}/messages`（依擁有者）。
+
+M3 實作備註（2026-06-17）：完成 sessions/messages 持久化（`0007`）、工作流程命名儲存＋一鍵重跑（`0008` 加 `name` 欄、`saved` 狀態）、`skills/manifest.py` 嚴格 manifest schema + 驗證（接到撰寫草稿與安裝閘），以及最後兩個寫入技能 `share_item`/`organize_by_type`。三個假 workflow repo（unit/property/eval-inproc）同步補上 `save_named`/`list_saved`/`get_saved`。批次操作走可組合 planner，不另設專用技能。
 
 ## M4：自我撰寫 + 安全（HARNESS 04/03/08/09）
 
@@ -69,6 +72,10 @@ M2 實作備註（2026-06-17）：`/chat` 改走 planner（取代 M1 直接 tool
 - [x] `test_workflow.py`：fast-path 自動執行、破壞性 pending 不執行、confirm 執行、cancel、未知 workflow。
 - [x] `test_permissions.py`：tier 標記、未知技能拒絕、向前相依拒絕、auto-confirmable。
 - [x] `test_workflow.py`：可組合技能（步驟輸出引用解析）+ 引用不到乾淨失敗。
+- [x] `test_workflow.py`：工作流程命名儲存（驗證未知技能拒絕、不執行）、saved 列表、一鍵重跑（執行＋記錄 run）、跨使用者/未知 rerun 拒絕。
+- [x] `test_write_skills.py`：`share_item`（經 ShareLinkService）、`organize_by_type`（依副檔名分組搬移、缺資料夾則建立）、無 share_service 時技能缺席。
+- [x] `test_router.py`：`/chat` 持久化 user/assistant 訊息、`GET /sessions`、`GET /sessions/{id}/messages`。
+- [x] `test_manifest.py`：合法 manifest round-trip、預設空選單、非物件拒絕、結構性畸形（壞 name/version/item_types/額外欄位）拒絕、handler≠skill name 拒絕。
 - [x] `test_pipeline_properties.py`：**property-based（hypothesis）模糊測試**，隨機產生複雜計畫（多技能/引用/未知技能/壞參數），驗證硬性不變量：validate_plan 全函式且健全、executor 永不拋例外且遇錯即停、resolve_arguments 只拋 StepResolutionError、classify 標 tier 或拒未知、**planner 產出永遠是可執行或空（絕不交出非法計畫）**。每項 200–300 隨機例。
 - [ ] `test_authoring.py`：任意 codegen 停在 pending_approval。
 - [ ] `test_sandbox.py`：逾時/路徑/網路限制。

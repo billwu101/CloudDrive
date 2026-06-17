@@ -528,6 +528,8 @@ chore: complete cloud drive implementation
 
 目前狀態（2026-06-17）：Stage 12 已完成 M1 後端引擎骨架切片，包含 assistant 設定、LLMClient/Ollama/External/Privacy/ModelRouter、ContextManager、system prompt、AgentLoop、唯讀內建技能 registry，以及 `POST /assistant/chat` 註冊。Docker 預設接本地 Gemma 4 Ollama (`LLM_BASE_URL=http://192.168.10.75:11434`, `ASSISTANT_MODEL=gemma4:26b`, `LLM_NUM_CTX=65536`, `LLM_TIMEOUT_SECONDS=300`, `LLM_KEEP_ALIVE=15m`)。另完成第一個技能/manifest 持久化切片：`assistant_skills` migration/model/repository、`inspect_item_details` pending proposal、技能 approve/install/list/execute API。尚未完成 M2 workflow 計畫確認、完整 workflow DB、任意 codegen sandbox。
 
+M2/M3 更新（2026-06-17）：Stage 12 完成 M2 workflow 管線（planner→validate/repair→permissions→read fast-path | 非 read 持久化 pending→confirm/cancel，migration `0006`）與 M3 持久化/技能框架：`models/assistant_session.py` + migration `0007`（sessions/messages）、`assistant_workflows.name` + migration `0008`（命名儲存）、`assistant/skills/manifest.py`（嚴格 `SkillManifest` + `validate_manifest`，接撰寫草稿與安裝閘）、寫入技能 `create_folder`/`rename_item`/`move_item`/`star_item`/`trash_item`/`restore_item`/`share_item`/`organize_by_type`（皆走計畫確認）、workflow 命名儲存＋一鍵重跑 endpoint、對話 sessions/messages endpoint。可組合技能（步驟輸出引用）讓批次操作免設專用技能。測試含 `test_workflow.py`/`test_write_skills.py`/`test_manifest.py`/`test_router.py` 與 hypothesis property fuzz（`test_pipeline_properties.py`）。尚未完成 M4 任意 codegen sandbox 與 7zip 端到端。
+
 ### Stage 13：Assistant 前端（聊天面板 + 計畫確認 + 技能核可 + 動態右鍵選單）
 
 僅執行：

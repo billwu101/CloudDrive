@@ -2111,10 +2111,18 @@ Assistant 後端第一個可執行切片位於 `backend/app/assistant/`，目標
 
 | Method | Path | 用途 |
 | --- | --- | --- |
-| `POST` | `/api/v1/assistant/chat` | 對話；符合技能生成意圖時回傳 `skill_proposal`。 |
+| `POST` | `/api/v1/assistant/chat` | 對話；符合技能生成意圖時回傳 `skill_proposal`；每輪記錄 user/assistant 訊息並 `ensure_session`。 |
+| `GET` | `/api/v1/assistant/sessions` | 列出使用者的對話 session（依 `updated_at` 由新到舊）。 |
+| `GET` | `/api/v1/assistant/sessions/{session_id}/messages` | 取得單一 session 的訊息歷史（依擁有者隔離）。 |
+| `POST` | `/api/v1/assistant/workflows/{id}/confirm` · `/cancel` | 確認執行 / 取消 pending 工作流程。 |
+| `POST` | `/api/v1/assistant/workflows/save` | 將計畫步驟命名儲存為可重用工作流程（驗證技能後存成 `saved`，不執行）。 |
+| `GET` | `/api/v1/assistant/workflows/saved` | 列出已存工作流程。 |
+| `POST` | `/api/v1/assistant/workflows/saved/{id}/rerun` | 一鍵重跑已存工作流程（重驗 → 執行 → 記錄 run）。 |
 | `GET` | `/api/v1/assistant/skills?status=installed` | 列出已安裝 manifest，供前端右鍵選單動態載入。 |
-| `POST` | `/api/v1/assistant/skills/{skill_id}/approve` | 將 pending manifest 核可為 installed。 |
+| `POST` | `/api/v1/assistant/skills/{skill_id}/approve` | 經 `validate_manifest` 後將 pending manifest 核可為 installed。 |
 | `POST` | `/api/v1/assistant/skills/{skill_id}/execute` | 執行已安裝技能；目前支援 `inspect_item_details`。 |
+
+M3 持久化與技能（2026-06-17）：新增 `models/assistant_session.py`（`AssistantSession`/`AssistantMessage`，migration `0007`）與 `assistant_workflows.name`（migration `0008`，`saved` 狀態）。`assistant/repository.py` 增 `AbstractAssistantSessionRepository`（`ensure_session`/`add_message`/`list_sessions`/`list_messages`）與 workflow 的 `save_named`/`list_saved`/`get_saved`。`assistant/skills/manifest.py` 提供嚴格 `SkillManifest` schema 與 `validate_manifest`（識別字 `name`、semver `version`、`ui.context_menu` 的 `FILE`/`FOLDER` item types，強制 handler == skill name），接到撰寫草稿與安裝閘。寫入技能再加 `share_item`（`ShareLinkService` 公開檢視連結）與 `organize_by_type`（依副檔名分組搬移）。批次操作（`batch_rename`/`bulk_move`）由可組合 planner 多步驟達成，`copy` 依提案不另實作。
 
 新增設定：
 
