@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from typing import Any
 
+from eval.baseline import (
+    compare_to_baseline,
+    comparison_to_markdown,
+    has_regression,
+    load_baseline,
+    save_baseline,
+)
 from eval.inproc import run_case_inproc
+from eval.judge import HttpJudgeModel, JudgeModel, judge_case
 from eval.report import to_json, to_markdown
 from eval.runner import run_case_http
 from eval.runner_browser import run_browser_suite
@@ -29,6 +39,28 @@ def main() -> int:
         default="mock",
         help="mock = deterministic in-process runner (CI); real = HTTP against a live backend",
     )
+    parser.add_argument(
+        "--judge",
+        action="store_true",
+        help="Run the LLM judge on cases that declare an `expect.rubric` (needs --judge-base-url)",
+    )
+    parser.add_argument(
+        "--judge-base-url",
+        default=os.environ.get("JUDGE_BASE_URL", ""),
+        help="OpenAI-compatible base URL for the judge model (recommend a separate model)",
+    )
+    parser.add_argument("--judge-model", default=os.environ.get("JUDGE_MODEL", ""))
+    parser.add_argument("--judge-api-key", default=os.environ.get("JUDGE_API_KEY", ""))
+    parser.add_argument(
+        "--baseline",
+        default="",
+        help="Path to a baseline JSON; compare current scores and fail on regression",
+    )
+    parser.add_argument(
+        "--save-baseline",
+        default="",
+        help="Write the current run's per-case scores to this path as a new baseline",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a Markdown table")
     args = parser.parse_args()
 
@@ -44,13 +76,47 @@ def main() -> int:
             api_base_url=args.base_url,
         )
 
+    judge = _build_judge(args)
+
     scores = []
     for case in cases:
         response = _run_case(case, args, browser_responses)
-        scores.append(score_case(case, verify(case, response)))
+        checks = verify(case, response)
+        if judge is not None:
+            checks = checks + judge_case(case, response, judge)
+        scores.append(score_case(case, checks))
 
     print(to_json(scores) if args.json else to_markdown(scores))
-    return 0 if scores and all(score.passed for score in scores) else 1
+
+    if args.save_baseline:
+        save_baseline(args.save_baseline, scores)
+
+    regressed = False
+    if args.baseline:
+        comparisons = compare_to_baseline(scores, load_baseline(args.baseline))
+        if not args.json:
+            print()
+            print(comparison_to_markdown(comparisons))
+        regressed = has_regression(comparisons)
+
+    passed = bool(scores) and all(score.passed for score in scores)
+    return 0 if passed and not regressed else 1
+
+
+def _build_judge(args: argparse.Namespace) -> JudgeModel | None:
+    if not args.judge:
+        return None
+    if not args.judge_base_url or not args.judge_model:
+        sys.stderr.write(
+            "error: --judge requires --judge-base-url and --judge-model "
+            "(or JUDGE_BASE_URL / JUDGE_MODEL).\n"
+        )
+        raise SystemExit(2)
+    return HttpJudgeModel(
+        base_url=args.judge_base_url,
+        model=args.judge_model,
+        api_key=args.judge_api_key,
+    )
 
 
 def _run_case(

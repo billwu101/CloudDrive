@@ -31,9 +31,10 @@
 
 ## E3：LLM judge + real eval + baseline
 
-- [ ] `backend/eval/judge.py`：rubric → 0-1 分（評審端點可設、建議獨立模型）。
-- [ ] `--llm real` 對真實 Gemma 跑套件。
-- [ ] `baseline.json` 比較與回歸標記。
+- [x] `backend/eval/judge.py`：rubric → 0-1 分。OpenAI 相容 `HttpJudgeModel`（建議獨立模型，可經 `--judge-base-url`/`--judge-model`/`--judge-api-key` 或環境變數設定）；`parse_verdict` 容忍 code-fence/雜訊並 clamp 到 [0,1]；`judge_case` 對有 `expect.rubric` 的案例回傳 `judge` 維度的**連續分數** check（`CheckResult.score`），由 `scoring` 以加權平均納入案例分。`run.py --judge` 啟用。實測對真實 gemma4:26b 評 read-only 案例得 1.0。
+- [x] `--llm real` 對真實 Gemma 跑套件：`run.py --llm real --token <jwt>` 走 `run_case_http` 打 live 後端 `/assistant/chat`；單案 live 實測（read-only-list）+ judge 全鏈 1/1 PASS。
+- [x] `baseline.json` 比較與回歸標記：`backend/eval/baseline.py`（`save_baseline`/`load_baseline`/`compare_to_baseline`/`has_regression`/Markdown 表）；`run.py --save-baseline` 寫入、`--baseline` 比較並在回歸時非零退出（容差防真實模型浮動，新案例不算回歸）。
+- [x] 測試：`tests/eval/test_judge.py`（verdict 解析/clamp/拒垃圾、prompt 內容、無 rubric 不呼叫模型、連續分數入計分、門檻可設）、`tests/eval/test_baseline.py`（round-trip、回歸/改善旗標、新案例、容差、Markdown）。
 
 ## E4：內建案例覆蓋
 

@@ -12,6 +12,9 @@ class CheckResult:
     name: str
     ok: bool
     detail: str
+    # Optional continuous 0..1 score (e.g. an LLM judge rubric). When None the
+    # check is treated as a boolean (1.0 if ok else 0.0) by scoring.
+    score: float | None = None
 
 
 def verify(case: EvalCase, response: dict[str, Any]) -> list[CheckResult]:

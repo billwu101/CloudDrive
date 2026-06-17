@@ -24,7 +24,13 @@ def to_json(scores: list[CaseScore]) -> str:
             "passed": score.passed,
             "dimension_scores": score.dimension_scores,
             "checks": [
-                {"dimension": c.dimension, "name": c.name, "ok": c.ok, "detail": c.detail}
+                {
+                    "dimension": c.dimension,
+                    "name": c.name,
+                    "ok": c.ok,
+                    "detail": c.detail,
+                    "score": c.score,
+                }
                 for c in score.checks
             ],
         }

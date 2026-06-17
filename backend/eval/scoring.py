@@ -18,13 +18,16 @@ class CaseScore:
 def score_case(case: EvalCase, checks: list[CheckResult]) -> CaseScore:
     """Per-dimension pass-rate, weighted into a single case score."""
 
-    by_dimension: dict[str, list[bool]] = {}
+    by_dimension: dict[str, list[float]] = {}
     for check in checks:
-        by_dimension.setdefault(check.dimension, []).append(check.ok)
+        # A continuous score (e.g. an LLM judge) contributes its value directly;
+        # a plain assertion contributes 1.0/0.0. A dimension's score is the mean.
+        value = check.score if check.score is not None else (1.0 if check.ok else 0.0)
+        by_dimension.setdefault(check.dimension, []).append(value)
 
     dimension_scores = {
-        dimension: (sum(1 for ok in oks if ok) / len(oks) if oks else 0.0)
-        for dimension, oks in by_dimension.items()
+        dimension: (sum(values) / len(values) if values else 0.0)
+        for dimension, values in by_dimension.items()
     }
 
     weights = case.scoring.weights
