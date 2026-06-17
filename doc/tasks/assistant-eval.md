@@ -52,6 +52,7 @@
 - [x] 沙箱補 **Pillow + pypdf** 依賴（重建後端映像 + 本地 `uv sync`）,讓 image/pdf skill 真的能跑。
 - [x] 4 個執行案例（`eval/cases/exec/`,內容正確性斷言）：hash 報告（驗 SHA256 hex 正確）、untar（驗解出 `alpha.txt`+`docs/beta.txt`）、縮圖（Pillow 64→32px 產出檔）、PDF 抽字（pypdf 驗抽出 "Hello PDF Eval"）。`--mode exec` **4/4 PASS**,fixtures 由 `eval/fixtures/make_fixtures.py` 決定性產生。
 - [x] 測試 `tests/eval/test_exec.py`（bundled exec 案例產出正確、內容錯誤要 fail、沙箱失敗要 fail）;`test_inproc_runner` 改只跑有 `mock_llm` 的 chat 案例。
+- [x] **Browser 執行（真實模型 + UI + 沙箱端到端）**：`--mode browser` 對 execution 案例 → 用 API 把 fixture 種進 drive → 生成 skill → Approve 安裝 → 右鍵 fixture 執行（用 manifest 實際生成的選單標籤）→ 擷取 `/skills/{id}/execute` → 下載產出檔內容 → `verify_execution`（spec 見 `assistant-eval.spec.ts` `runExecutionCase`）。實測 **3/4**：hash 報告 / 縮圖 / untar 模型生成的 skill 端到端產出正確;**pdf 抽字 0.75（執行成功、有產出,但模型 naive PDF 解析器抽出的內容對不上預期文字——真實模型能力限制,非 harness 問題;決定性 exec 用 pypdf 為 4/4）**。browser 執行為盡力而為的真實 smoke,通過數反映模型當下產碼品質。
 
 ## 測試/驗證任務
 
