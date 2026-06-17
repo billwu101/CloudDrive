@@ -42,6 +42,8 @@ from app.file_version.repository import SQLFileVersionRepository
 from app.permission.repository import SQLShareRepository
 from app.search.repository import SQLSearchRepository
 from app.search.service import SearchService
+from app.share.repository import SQLShareLinkRepository
+from app.share.service import ShareLinkService
 from app.storage.factory import get_storage_provider
 from app.trash.repository import SQLTrashRepository
 from app.trash.service import TrashService
@@ -90,7 +92,13 @@ def _assistant_service(session: DbSession) -> WorkflowService:
         quota_service=quota_service,
     )
     register_write_skills(
-        registry, drive_service=drive_service, trash_service=_trash_service(session)
+        registry,
+        drive_service=drive_service,
+        trash_service=_trash_service(session),
+        share_link_service=ShareLinkService(
+            item_repo=SQLDriveItemRepository(session),
+            link_repo=SQLShareLinkRepository(session),
+        ),
     )
 
     local_client = OllamaLLMClient(

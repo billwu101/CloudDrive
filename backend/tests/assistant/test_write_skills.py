@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -11,14 +12,22 @@ from app.assistant.skills.registry import SkillContext, SkillRegistry
 from app.assistant.workflow import PlannedStep, is_auto_confirmable
 from app.core.exceptions import AppError
 from app.drive.service import DriveService
+from app.share.service import ShareLinkService
 from app.trash.service import TrashService
 
 
 def _registry_with_writes(
-    drive_service: DriveService, trash_service: TrashService | None = None
+    drive_service: DriveService,
+    trash_service: TrashService | None = None,
+    share_link_service: ShareLinkService | None = None,
 ) -> SkillRegistry:
     registry = SkillRegistry()
-    register_write_skills(registry, drive_service=drive_service, trash_service=trash_service)
+    register_write_skills(
+        registry,
+        drive_service=drive_service,
+        trash_service=trash_service,
+        share_link_service=share_link_service,
+    )
     return registry
 
 
@@ -143,6 +152,67 @@ def test_write_and_destructive_tiers_all_require_confirmation() -> None:
     assert steps[1].permission_tier == "destructive"
     assert all(step.requires_approval for step in steps)
     assert is_auto_confirmable(steps) is False
+
+
+async def test_share_item_creates_link_via_share_service() -> None:
+    user_id = uuid4()
+    item_id = uuid4()
+    drive = AsyncMock(spec=DriveService)
+    share = AsyncMock(spec=ShareLinkService)
+    share.create_link.return_value = {"id": str(uuid4()), "token": "tok", "permission": "viewer"}
+    registry = _registry_with_writes(drive, share_link_service=share)
+
+    output = await registry.execute(
+        name="share_item",
+        context=SkillContext(user_id=user_id),
+        arguments={"item_id": str(item_id)},
+    )
+
+    assert share.create_link.await_args.args[0] == user_id
+    assert share.create_link.await_args.args[1] == item_id
+    assert output["token"] == "tok"
+
+
+def test_share_item_absent_without_share_service() -> None:
+    drive = AsyncMock(spec=DriveService)
+    names = {s.name for s in _registry_with_writes(drive).list_skills()}
+    assert "share_item" not in names
+    assert "organize_by_type" in names  # composite skill needs only drive_service
+
+
+async def test_organize_by_type_groups_files_into_per_extension_folders() -> None:
+    user_id = uuid4()
+
+    def _item(name: str, item_type: str, ext: str | None) -> SimpleNamespace:
+        return SimpleNamespace(id=uuid4(), name=name, item_type=item_type, extension=ext)
+
+    files = [
+        _item("a.pdf", "FILE", "pdf"),
+        _item("b.pdf", "FILE", "pdf"),
+        _item("c.jpg", "FILE", "jpg"),
+    ]
+    drive = AsyncMock(spec=DriveService)
+    drive.list_items.return_value = SimpleNamespace(items=files)
+    created: dict[str, SimpleNamespace] = {}
+
+    async def _create_folder(uid: object, parent: object, fname: str) -> SimpleNamespace:
+        folder = SimpleNamespace(id=uuid4(), name=fname, item_type="FOLDER")
+        created[fname] = folder
+        return folder
+
+    drive.create_folder.side_effect = _create_folder
+    registry = _registry_with_writes(drive)
+
+    output = await registry.execute(
+        name="organize_by_type",
+        context=SkillContext(user_id=user_id),
+        arguments={},
+    )
+
+    assert output["moved_files"] == 3
+    assert set(output["folders"]) == {"pdf-files", "jpg-files"}
+    assert drive.create_folder.await_count == 2  # one folder per distinct extension
+    assert drive.move.await_count == 3  # every file moved
 
 
 async def test_invalid_uuid_argument_is_rejected() -> None:

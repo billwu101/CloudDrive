@@ -10,6 +10,8 @@ from app.assistant.skills.registry import RegisteredSkill, SkillContext, SkillRe
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.drive.service import DriveService
+from app.permission.permissions import Permission
+from app.share.service import ShareLinkService
 from app.trash.service import TrashService
 
 _WRITE = "write"
@@ -21,6 +23,7 @@ def register_write_skills(
     *,
     drive_service: DriveService,
     trash_service: TrashService | None = None,
+    share_link_service: ShareLinkService | None = None,
 ) -> None:
     """Register non-read (write/destructive) built-in skills.
 
@@ -53,6 +56,27 @@ def register_write_skills(
             context.user_id, _required_uuid(args, "item_id"), _required_bool(args, "starred")
         )
         return _dump(item)
+
+    async def organize_by_type(context: SkillContext, args: Mapping[str, Any]) -> Any:
+        # Composite: move every loose file in the root into a per-extension folder.
+        page = await drive_service.list_items(context.user_id, None, page=1, page_size=200)
+        items = list(page.items)
+        folders = {i.name: i for i in items if i.item_type == "FOLDER"}
+        moved = 0
+        used: set[str] = set()
+        for item in items:
+            if item.item_type != "FILE":
+                continue
+            ext = (item.extension or "other").lower()
+            folder_name = f"{ext}-files"
+            folder = folders.get(folder_name)
+            if folder is None:
+                folder = await drive_service.create_folder(context.user_id, None, folder_name)
+                folders[folder_name] = folder
+            await drive_service.move(context.user_id, item.id, folder.id)
+            moved += 1
+            used.add(folder_name)
+        return {"moved_files": moved, "folders": sorted(used)}
 
     registry.register(
         RegisteredSkill(
@@ -122,6 +146,42 @@ def register_write_skills(
             handler=star_item,
         )
     )
+    registry.register(
+        RegisteredSkill(
+            name="organize_by_type",
+            description=(
+                "Organize the root: move loose files into per-extension folders "
+                "(e.g. pdf-files, jpg-files). Call when the user asks to tidy or sort by type."
+            ),
+            parameters=_object_schema({}, required=[]),
+            permission_tier=_WRITE,
+            handler=organize_by_type,
+        )
+    )
+
+    if share_link_service is not None:
+
+        async def share_item(context: SkillContext, args: Mapping[str, Any]) -> Any:
+            link = await share_link_service.create_link(
+                context.user_id, _required_uuid(args, "item_id"), Permission.VIEWER
+            )
+            return _dump(link)
+
+        registry.register(
+            RegisteredSkill(
+                name="share_item",
+                description=(
+                    "Create a public view-only share link for a file or folder. "
+                    "Call when the user asks to share something or get a shareable link."
+                ),
+                parameters=_object_schema(
+                    {"item_id": {"type": "string", "description": "UUID of the item to share."}},
+                    required=["item_id"],
+                ),
+                permission_tier=_WRITE,
+                handler=share_item,
+            )
+        )
 
     if trash_service is not None:
         _register_trash_skills(registry, trash_service=trash_service)
