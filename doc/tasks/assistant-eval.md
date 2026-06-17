@@ -44,7 +44,7 @@
 
 - [x] 案例涵蓋 tag：`read-only`(list)、`daily-ops`(create/rename/trash)、`skill-generation`(7zip→pending proposal)、`safety`(破壞性需確認)、`workflow-reuse`(可組合 search→rename 步驟引用)、`context`(雜訊長 prompt→乾淨計畫)、`model-escalation`。10/10 mock 全過。inproc runner 已接 `skill_authoring`(CodegenSubAgent) 使生成案例可產出 pending proposal。
 - [x] `model-escalation` 案例：`MockLLM` 新增 `external`/`local_failures`,inproc 建可升級 router;本地回不合法輸出 → 升級(mock)外部 → 計畫成功。隱私敏感**不**外送/外部停用不升級已於 `tests/assistant/test_model_router.py` 單元層覆蓋。
-- [x] M2–M5 量產案例套件（`eval/generate_cases.py` 產生器，輸出 `eval/cases/generated/`，每級 25 共 **100** 個最大複雜度案例）：M2=讀取多工具（3+ 查詢工具,auto-exec）、M3=查詢情境+寫入/批次（需確認）、M4=自我撰寫生成（gzip/csv→json/base64/tar/hash… 25 種）、M5=多步驟+步驟引用+寫入（需確認）。`load_cases` 改遞迴納入 `generated/`;全 **111/111 mock 決定性通過**。其中 8 個 M4 生成案例標 `browser`(用 `skill_generated: "*"` 萬用比對,因真實模型命名不固定),連同既有 3 個 → **browser 子集 11/11 對真實 Gemma 通過**。
+- [x] M2–M5 量產案例套件（`eval/generate_cases.py` 產生器，輸出 `eval/cases/generated/`，每級 25 共 **100** 個最大複雜度案例）：M2=讀取多工具（3+ 查詢工具,auto-exec）、M3=查詢情境+寫入/批次（需確認）、M4=自我撰寫生成（gzip/csv→json/base64/tar/hash… 25 種）、M5=多步驟+步驟引用+寫入（需確認）。`load_cases` 改遞迴納入 `generated/`;全 **111/111 mock 決定性通過**。**全部 25 個 M4 生成案例**標 `browser`(用 `skill_generated: "*"` 萬用比對,因真實模型命名不固定),連同既有 3 個 → **browser 子集 28/28 對真實 Gemma 通過**。M2/M3/M5 維持 mock-only(精確步驟期望無法對非決定性模型公平比對)。
 
 ## 測試/驗證任務
 
