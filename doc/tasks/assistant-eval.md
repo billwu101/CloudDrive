@@ -44,7 +44,9 @@
 
 - [x] 案例涵蓋 tag：`read-only`(list)、`daily-ops`(create/rename/trash)、`skill-generation`(7zip→pending proposal)、`safety`(破壞性需確認)、`workflow-reuse`(可組合 search→rename 步驟引用)、`context`(雜訊長 prompt→乾淨計畫)、`model-escalation`。10/10 mock 全過。inproc runner 已接 `skill_authoring`(CodegenSubAgent) 使生成案例可產出 pending proposal。
 - [x] `model-escalation` 案例：`MockLLM` 新增 `external`/`local_failures`,inproc 建可升級 router;本地回不合法輸出 → 升級(mock)外部 → 計畫成功。隱私敏感**不**外送/外部停用不升級已於 `tests/assistant/test_model_router.py` 單元層覆蓋。
-- [x] M2–M5 量產案例套件（`eval/generate_cases.py` 產生器，輸出 `eval/cases/generated/`，每級 25 共 **100** 個最大複雜度案例）：M2=讀取多工具（3+ 查詢工具,auto-exec）、M3=查詢情境+寫入/批次（需確認）、M4=自我撰寫生成（gzip/csv→json/base64/tar/hash… 25 種）、M5=多步驟+步驟引用+寫入（需確認）。`load_cases` 改遞迴納入 `generated/`;全 **111/111 mock 決定性通過**。**全部 25 個 M4 生成案例**標 `browser`(用 `skill_generated: "*"` 萬用比對,因真實模型命名不固定),連同既有 3 個 → **browser 子集 28/28 對真實 Gemma 通過**。M2/M3/M5 維持 mock-only(精確步驟期望無法對非決定性模型公平比對)。
+- [x] M2–M5 量產案例套件（`eval/generate_cases.py`，輸出 `eval/cases/generated/`，**每級 100 共 400** 個案例）：M2=讀取多工具（3+ 查詢工具,auto-exec）、M3=查詢情境+寫入/批次（需確認）、M4=自我撰寫生成（**100 種**技能:hash/編碼/壓縮/文字/資料/影像/PDF…,`skill_generated:"*"`）、M5=多步驟+步驟引用+寫入（需確認）。全標 `mode:[api,browser]`。`load_cases` 遞迴納入。
+  - **Mock（決定性）**：**411/411 恆過**（400 產生 + 11 手寫）。回歸守門。
+  - **Browser（真實 Gemma）**：`verify` 對 browser 放寬（`strict_steps=False`:只看「有產出計畫 + 確認層級」,不比精確步驟）。**M2(唯讀)/M4(生成) 可靠**;**M3/M5 不可靠**——真實模型對合成的多工具+寫入 prompt 不一定產出寫入步驟/標對確認層級（sample 實測 gen-m3-001/gen-m5-001 0.50 FAIL）。不為了過而再放寬;Mock 為事實來源。詳見 [eval-prompt-log.md](../eval-prompt-log.md) §2.3。
 
 ## E5：執行驗證模式（實際跑 skill、驗產出內容）
 

@@ -38,9 +38,13 @@
 - **問題 B（harness spec bug，已修）**：browser 執行時用**寫死的右鍵選單標籤**去點，對不上模型實際生成的標籤 → execute 沒觸發、逾時。**修法**：改從提案 manifest 的 `ui.context_menu[0].label` 取實際標籤（commit `3937949`）。
 - **下次驗證**：`--mode browser --cases eval/cases/exec` 應 ✅；若又生成失敗，屬問題 A（模型波動），重跑或調 prompt。
 
-### 2.3 M4 自我撰寫批次（25 種）— 真實模型通過數會浮動
-- 對應 `backend/eval/cases/generated/gen-m4-*.yaml`，prompt 格式皆為「做一個＋功能描述＋的功能」（gzip / csv→json / base64 / tar / hash / 縮圖 / PDF…）。
-- 自動化批次曾 28/28，但**同一 prompt 重跑可能少幾個**（模型非決定性）。Mock 端 100/100 決定性恆過；browser 端為盡力而為的真實 smoke。
+### 2.3 M2–M5 量產批次（每級 100，共 400）— Mock 全過；Browser 只有 M2/M4 可靠
+- 對應 `backend/eval/cases/generated/gen-m{2..5}-*.yaml`（由 `eval/generate_cases.py` 產生）。M4 prompt 為「做一個＋功能描述＋的功能」（100 種技能）；M2/M3/M5 為 3+ 查詢工具交叉組合（M3/M5 再接寫入）。
+- **Mock（決定性）**：全 **400/400 恆過**（連同手寫共 411/411）。這是回歸守門。
+- **Browser（真實模型）**：
+  - **M2（唯讀）/ M4（生成）可靠**：M2 看「有產出計畫 + auto_executed」、M4 看「有產出提案」（`skill_generated:"*"`），對真實模型穩健。
+  - **M3 / M5 不可靠**（實測 sample：`gen-m3-001`/`gen-m5-001` 0.50 FAIL）：真實模型對「合併多查詢工具 + 寫入」的合成 prompt，**不一定產出寫入步驟/不一定標成需確認**，所以連「確認層級」這個放寬後的斷言也對不上。判定：合成 prompt 對非決定性模型本就難穩；**不為了過而再放寬**。M3/M5 的 browser 結果視為盡力而為，Mock 才是事實來源。
+- 全 400 都標 `mode: [api, browser]`；但**整批 browser 跑一輪是數小時**（每案經真實模型），平時用 `--cases` 取樣即可。
 
 ---
 

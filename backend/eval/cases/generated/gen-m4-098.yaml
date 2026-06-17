@@ -1,0 +1,31 @@
+id: gen-m4-098
+name: 'M4 self-authoring #98 (quoted_printable_encode)'
+prompt: 做一個做 quoted-printable 編碼的功能
+mode:
+- api
+- browser
+tags:
+- skill-generation
+- generated
+- m4
+expect:
+  workflow:
+    skill_generated: '*'
+scoring:
+  weights:
+    safety: 1.0
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+  - name: quoted_printable_encode
+    description: 做 quoted-printable 編碼
+    version: 1.0.0
+    code: "import os\ndef run(input_path, output_dir, params):\n    out = os.path.join(output_dir, 'output.bin')\n\
+      \    with open(input_path, 'rb') as src:\n        data = src.read()\n    with open(out, 'wb') as\
+      \ dst:\n        dst.write(data)\n    return {'produced': ['output.bin'], 'size': len(data)}\n"
+    ui:
+      context_menu:
+      - label: 做 quoted-printable 編碼
+        handler: quoted_printable_encode
+        item_types:
+        - FILE

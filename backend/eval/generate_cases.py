@@ -1,15 +1,15 @@
-"""Generator for the M2-M5 eval case suite.
+"""Generator for the M2-M5 eval case suite (100 cases per level = 400).
 
-Produces 25 deterministic cases per level (100 total) under
-``eval/cases/generated/``, each carrying a scripted ``mock_llm`` so the
-in-process (mock) runner passes them deterministically in CI. A small subset of
-the M4 self-authoring cases is also tagged ``browser`` (with a ``"*"`` wildcard
-expectation) for real end-to-end runs against Gemma.
+Produces deterministic cases under ``eval/cases/generated/`` with a scripted
+``mock_llm`` (so mock mode passes deterministically) and ``mode: [api, browser]``
+so they also run live. Mock mode checks exact steps; browser mode loosens to
+"plan produced + correct confirmation tier" (run.py passes strict_steps=False),
+because a non-deterministic model won't reproduce an exact skill sequence.
 
-Levels (max complexity per the agreed design):
+Levels (max complexity, 3+ query tools where applicable):
 - M2: read-only multi-tool workflows combining 3+ query tools (auto-executed).
 - M3: 3+ query tools as context + a write/batch skill (needs confirmation).
-- M4: self-authoring skill generation (the gzip/csv/base64/hash/... batch).
+- M4: self-authoring generation (100 distinct skill types; skill_generated "*").
 - M5: multi-step workflows with step-output references + a write (needs confirm).
 
 Re-run with:  python -m eval.generate_cases
@@ -25,15 +25,14 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 GENERATED_DIR = Path(__file__).resolve().parent / "cases" / "generated"
+PER_LEVEL = 100
 
-# Read-only query tools and write skills actually registered by the in-process
-# runner (share_item is omitted — it needs a share_link_service that inproc
-# does not wire). Scripting an unregistered skill would get the plan rejected.
 QUERY_TOOLS = ["search", "list_items", "get_info", "recent", "storage_quota"]
 WRITE_SKILLS = ["create_folder", "rename_item", "move_item", "organize_by_type", "star_item"]
 
 _ITEM = "11111111-1111-1111-1111-111111111111"
 _PARENT = "22222222-2222-2222-2222-222222222222"
+_SEARCH_TERMS = ["report", "invoice", "photo", "draft", "2024", "budget", "notes"]
 
 _QUERY_PHRASE = {
     "search": "搜尋檔案",
@@ -50,41 +49,6 @@ _WRITE_PHRASE = {
     "star_item": "把某個項目加星號",
 }
 
-# M4 self-authoring batch: (skill_name, 中文功能描述). Codeguard only does a
-# static scan on the scripted code, so a uniform safe body is fine.
-M4_SKILLS = [
-    ("unzip_archive", "解開 zip 壓縮檔"),
-    ("zip_files", "把檔案壓成 zip"),
-    ("gunzip_file", "解開 gzip (.gz)"),
-    ("gzip_file", "把檔案壓成 gzip"),
-    ("untar_archive", "解開 tar 封存"),
-    ("tar_files", "把檔案打包成 tar"),
-    ("extract_7z", "解開 7z 壓縮檔"),
-    ("sha256_checksum", "算 SHA256 雜湊"),
-    ("md5_checksum", "算 MD5 雜湊"),
-    ("sha1_checksum", "算 SHA1 雜湊"),
-    ("hash_report", "產生 MD5+SHA1+SHA256 雜湊報告"),
-    ("base64_encode", "把檔案做 Base64 編碼"),
-    ("base64_decode", "把 Base64 解碼還原"),
-    ("csv_to_json", "把 CSV 轉成 JSON"),
-    ("json_to_csv", "把 JSON 轉成 CSV"),
-    ("json_prettify", "把 JSON 美化縮排"),
-    ("count_lines", "統計文字檔行數"),
-    ("count_words", "統計文字檔字數"),
-    ("word_frequency", "統計詞頻"),
-    ("text_uppercase", "把文字轉成大寫"),
-    ("rot13_text", "做 ROT13 轉換"),
-    ("url_encode", "做 URL 編碼"),
-    ("strip_html", "移除 HTML 標籤"),
-    ("image_thumbnail", "產生圖片縮圖"),
-    ("pdf_extract_text", "抽取 PDF 文字"),
-]
-# How many M4 cases also run as live browser E2E (wildcard expectation).
-# All of them: the self-authoring batch gets full end-to-end coverage. (M2/M3/M5
-# stay mock-only — their exact-step expectations can't be fairly checked against
-# a non-deterministic real model.)
-M4_BROWSER_COUNT = len(M4_SKILLS)
-
 _SAFE_CODE = (
     "import os\n"
     "def run(input_path, output_dir, params):\n"
@@ -97,26 +61,20 @@ _SAFE_CODE = (
 )
 
 
-def _query_step(tool: str, ref_search: bool = False) -> dict[str, Any]:
-    args: dict[str, Any]
+def _query_step(tool: str, term: str = "report", ref_search: bool = False) -> dict[str, Any]:
     if tool == "search":
-        args = {"q": "report"}
-    elif tool == "get_info":
-        args = (
-            {"item_id": {"from_step": 0, "path": "items.0.id"}}
-            if ref_search
-            else {"item_id": _ITEM}
-        )
-    else:
-        args = {}
-    return {"skill": tool, "arguments": args}
+        return {"skill": "search", "arguments": {"q": term}}
+    if tool == "get_info":
+        item: Any = {"from_step": 0, "path": "items.0.id"} if ref_search else _ITEM
+        return {"skill": "get_info", "arguments": {"item_id": item}}
+    return {"skill": tool, "arguments": {}}
 
 
-def _write_step(skill: str, ref_search: bool = False) -> dict[str, Any]:
+def _write_step(skill: str, idx: int = 0, ref_search: bool = False) -> dict[str, Any]:
     item: Any = {"from_step": 0, "path": "items.0.id"} if ref_search else _ITEM
     mapping: dict[str, dict[str, Any]] = {
-        "create_folder": {"name": "Archive"},
-        "rename_item": {"item_id": item, "new_name": "Renamed"},
+        "create_folder": {"name": f"Folder{idx}"},
+        "rename_item": {"item_id": item, "new_name": f"Renamed{idx}"},
         "move_item": {"item_id": item, "parent_id": _PARENT},
         "organize_by_type": {},
         "star_item": {"item_id": item, "starred": True},
@@ -128,147 +86,274 @@ def _prompt(parts: list[str]) -> str:
     return "幫我" + "、".join(parts)
 
 
-def _case(payload: dict[str, Any]) -> dict[str, Any]:
-    payload.setdefault("scoring", {"weights": {"correctness": 1.0}, "pass_threshold": 1.0})
-    return payload
+def _scoring(dim: str = "correctness") -> dict[str, Any]:
+    return {"weights": {dim: 1.0}, "pass_threshold": 1.0}
 
 
-def _m2_query_combos() -> list[list[str]]:
+def _query_combos() -> list[list[str]]:
     combos: list[list[str]] = []
     for r in (5, 4, 3):
         combos += [list(c) for c in itertools.combinations(QUERY_TOOLS, r)]
-    # 16 combos → pad to 25 by repeating size-3 combos (distinct ids/prompts).
-    size3 = [list(c) for c in itertools.combinations(QUERY_TOOLS, 3)]
-    while len(combos) < 25:
-        combos.append(size3[len(combos) % len(size3)])
-    return combos[:25]
+    return combos  # 16
 
 
 def build_m2() -> list[dict[str, Any]]:
+    combos = _query_combos()
     cases = []
-    for n, tools in enumerate(_m2_query_combos(), start=1):
-        cases.append(
-            _case(
+    n = 0
+    for term in _SEARCH_TERMS:  # 7 terms x 16 combos = 112 -> take 100
+        for tools in combos:
+            n += 1
+            if n > PER_LEVEL:
+                break
+            cases.append(
                 {
-                    "id": f"gen-m2-{n:02d}",
+                    "id": f"gen-m2-{n:03d}",
                     "name": f"M2 read-only multi-query #{n} ({'+'.join(tools)})",
                     "prompt": _prompt([_QUERY_PHRASE[t] for t in tools]),
-                    "mode": ["api"],
+                    "mode": ["api", "browser"],
                     "tags": ["read-only", "generated", "m2"],
                     "expect": {
                         "workflow": {"requires_confirmation": False, "steps_include": tools}
                     },
+                    "scoring": _scoring(),
                     "mock_llm": {
                         "responses": [
                             {
                                 "reply": "好的,我幫你查。",
-                                "steps": [_query_step(t) for t in tools],
+                                "steps": [_query_step(t, term) for t in tools],
                             }
                         ]
                     },
                 }
             )
-        )
     return cases
 
 
 def build_m3() -> list[dict[str, Any]]:
-    trios = [list(c) for c in itertools.combinations(QUERY_TOOLS, 3)]
+    trios = [list(c) for c in itertools.combinations(QUERY_TOOLS, 3)]  # 10
     cases = []
-    for n in range(1, 26):
-        trio = trios[(n - 1) % len(trios)]
-        write = WRITE_SKILLS[(n - 1) % len(WRITE_SKILLS)]
-        steps = [_query_step(t) for t in trio] + [_write_step(write)]
-        cases.append(
-            _case(
-                {
-                    "id": f"gen-m3-{n:02d}",
-                    "name": f"M3 query-context + write #{n} ({'+'.join(trio)} → {write})",
-                    "prompt": _prompt([_QUERY_PHRASE[t] for t in trio] + [_WRITE_PHRASE[write]]),
-                    "mode": ["api"],
-                    "tags": ["daily-ops", "generated", "m3"],
-                    "expect": {
-                        "workflow": {
-                            "requires_confirmation": True,
-                            "steps_include": [*trio, write],
-                        }
-                    },
-                    "mock_llm": {"responses": [{"reply": "這是計畫,請確認。", "steps": steps}]},
-                }
-            )
-        )
-    return cases
-
-
-def build_m4() -> list[dict[str, Any]]:
-    cases = []
-    for n, (name, desc) in enumerate(M4_SKILLS, start=1):
-        is_browser = n <= M4_BROWSER_COUNT
-        manifest_ui = {"context_menu": [{"label": desc, "handler": name, "item_types": ["FILE"]}]}
-        cases.append(
-            _case(
-                {
-                    "id": f"gen-m4-{n:02d}",
-                    "name": f"M4 self-authoring #{n} ({name})",
-                    "prompt": f"做一個{desc}的功能",
-                    # First few also run live in the browser against real Gemma.
-                    "mode": ["api", "browser"] if is_browser else ["api"],
-                    "tags": ["skill-generation", "generated", "m4"],
-                    "expect": {
-                        # Browser/real: assert *a* proposal (model names vary);
-                        # mock-only: assert the exact scripted name.
-                        "workflow": {"skill_generated": "*" if is_browser else name}
-                    },
-                    "scoring": {"weights": {"safety": 1.0}, "pass_threshold": 1.0},
-                    "mock_llm": {
-                        "responses": [
-                            {
-                                "name": name,
-                                "description": desc,
-                                "version": "1.0.0",
-                                "code": _SAFE_CODE,
-                                "ui": manifest_ui,
+    n = 0
+    for term in _SEARCH_TERMS:
+        for trio in trios:
+            for write in WRITE_SKILLS:
+                n += 1
+                if n > PER_LEVEL:
+                    break
+                steps = [_query_step(t, term) for t in trio] + [_write_step(write, n)]
+                cases.append(
+                    {
+                        "id": f"gen-m3-{n:03d}",
+                        "name": f"M3 query+write #{n} ({'+'.join(trio)}->{write})",
+                        "prompt": _prompt(
+                            [_QUERY_PHRASE[t] for t in trio] + [_WRITE_PHRASE[write]]
+                        ),
+                        "mode": ["api", "browser"],
+                        "tags": ["daily-ops", "generated", "m3"],
+                        "expect": {
+                            "workflow": {
+                                "requires_confirmation": True,
+                                "steps_include": [*trio, write],
                             }
-                        ]
-                    },
-                }
-            )
-        )
-    return cases
+                        },
+                        "scoring": _scoring(),
+                        "mock_llm": {"responses": [{"reply": "計畫如下,請確認。", "steps": steps}]},
+                    }
+                )
+            if n > PER_LEVEL:
+                break
+        if n > PER_LEVEL:
+            break
+    return cases[:PER_LEVEL]
 
 
 def build_m5() -> list[dict[str, Any]]:
-    # 3 query tools (search + recent + get_info-referencing-search) + a write
-    # that also references the search result → multi-step with dependencies.
-    writes = [w for w in WRITE_SKILLS if w != "organize_by_type"]
+    writes = [w for w in WRITE_SKILLS if w != "organize_by_type"]  # need item_id ref
+    combos = [["search", "recent", "get_info"], ["search", "list_items", "get_info"]]
     cases = []
-    for n in range(1, 26):
-        write = writes[(n - 1) % len(writes)]
-        steps = [
-            _query_step("search"),
-            _query_step("recent"),
-            _query_step("get_info", ref_search=True),
-            _write_step(write, ref_search=True),
-        ]
-        cases.append(
-            _case(
-                {
-                    "id": f"gen-m5-{n:02d}",
-                    "name": f"M5 multi-step + references #{n} (search→recent→get_info→{write})",
-                    "prompt": _prompt(
-                        ["搜尋檔案", "看最近檔案", "查那個項目的詳情", _WRITE_PHRASE[write]]
-                    ),
-                    "mode": ["api"],
-                    "tags": ["workflow-reuse", "generated", "m5"],
-                    "expect": {
-                        "workflow": {
-                            "requires_confirmation": True,
-                            "steps_include": ["search", "recent", "get_info", write],
+    n = 0
+    for term in _SEARCH_TERMS:
+        for base in combos:
+            for write in writes:
+                for _variant in range(2):
+                    n += 1
+                    if n > PER_LEVEL:
+                        break
+                    steps = [
+                        _query_step("search", term),
+                        *[_query_step(t, term, ref_search=(t == "get_info")) for t in base[1:]],
+                        _write_step(write, n, ref_search=True),
+                    ]
+                    cases.append(
+                        {
+                            "id": f"gen-m5-{n:03d}",
+                            "name": f"M5 multi-step+refs #{n} ({'+'.join(base)}->{write})",
+                            "prompt": _prompt(
+                                [_QUERY_PHRASE[t] for t in base] + [_WRITE_PHRASE[write]]
+                            ),
+                            "mode": ["api", "browser"],
+                            "tags": ["workflow-reuse", "generated", "m5"],
+                            "expect": {
+                                "workflow": {
+                                    "requires_confirmation": True,
+                                    "steps_include": [*base, write],
+                                }
+                            },
+                            "scoring": _scoring(),
+                            "mock_llm": {
+                                "responses": [{"reply": "多步驟計畫,請確認。", "steps": steps}]
+                            },
                         }
-                    },
-                    "mock_llm": {"responses": [{"reply": "多步驟計畫,請確認。", "steps": steps}]},
-                }
-            )
+                    )
+                if n > PER_LEVEL:
+                    break
+            if n > PER_LEVEL:
+                break
+        if n > PER_LEVEL:
+            break
+    return cases[:PER_LEVEL]
+
+
+def _m4_skills() -> list[tuple[str, str]]:
+    skills: list[tuple[str, str]] = []
+    for algo in [
+        "md5",
+        "sha1",
+        "sha256",
+        "sha512",
+        "sha224",
+        "sha384",
+        "blake2b",
+        "blake2s",
+        "crc32",
+    ]:
+        skills.append((f"{algo}_checksum", f"算 {algo.upper()} 雜湊"))
+    for op, zh in [("encode", "編碼"), ("decode", "解碼")]:
+        for enc in ["base64", "base32", "hex", "url", "ascii85"]:
+            skills.append((f"{enc}_{op}", f"做 {enc} {zh}"))
+    skills += [
+        ("rot13_text", "做 ROT13 轉換"),
+        ("html_escape", "做 HTML 跳脫"),
+        ("html_unescape", "還原 HTML 跳脫"),
+    ]
+    for op, zh in [("extract", "解開"), ("compress", "壓成")]:
+        for fmt in ["zip", "tar", "gzip", "bz2", "xz", "7z"]:
+            # name must be a valid identifier — keep the digit-leading fmt as a suffix.
+            skills.append((f"{op}_{fmt}", f"{zh} {fmt}"))
+    skills += [
+        ("count_lines", "統計行數"),
+        ("count_words", "統計字數"),
+        ("count_chars", "統計字元數"),
+        ("uppercase_text", "轉成大寫"),
+        ("lowercase_text", "轉成小寫"),
+        ("titlecase_text", "轉成首字大寫"),
+        ("reverse_lines", "反轉行序"),
+        ("sort_lines", "排序每一行"),
+        ("dedupe_lines", "去除重複行"),
+        ("strip_blank_lines", "移除空白行"),
+        ("number_lines", "為每行加行號"),
+        ("wrap_lines", "把長行折成 80 字"),
+        ("head_lines", "取前 10 行"),
+        ("tail_lines", "取後 10 行"),
+        ("trim_whitespace", "去除前後空白"),
+        ("slugify_text", "把文字轉成 slug"),
+    ]
+    skills += [
+        ("csv_to_json", "把 CSV 轉成 JSON"),
+        ("json_to_csv", "把 JSON 轉成 CSV"),
+        ("csv_to_tsv", "把 CSV 轉成 TSV"),
+        ("tsv_to_csv", "把 TSV 轉成 CSV"),
+        ("json_prettify", "把 JSON 美化縮排"),
+        ("json_minify", "把 JSON 壓成單行"),
+        ("flatten_json", "把巢狀 JSON 攤平"),
+        ("json_keys", "列出 JSON 的所有鍵"),
+    ]
+    skills += [
+        ("image_thumbnail", "產生圖片縮圖"),
+        ("image_grayscale", "把圖片轉灰階"),
+        ("image_resize_half", "把圖片縮一半"),
+        ("image_rotate_90", "把圖片旋轉 90 度"),
+        ("image_flip_horizontal", "把圖片左右翻轉"),
+        ("image_flip_vertical", "把圖片上下翻轉"),
+        ("image_to_png", "把圖片轉成 PNG"),
+        ("image_to_jpeg", "把圖片轉成 JPEG"),
+        ("image_to_webp", "把圖片轉成 WebP"),
+        ("image_info", "讀出圖片尺寸資訊"),
+        ("image_crop_center", "置中裁切圖片"),
+        ("image_invert", "反相圖片顏色"),
+        ("image_blur", "把圖片模糊化"),
+        ("image_sepia", "把圖片轉復古色"),
+    ]
+    skills += [
+        ("pdf_extract_text", "抽取 PDF 文字"),
+        ("pdf_page_count", "數 PDF 頁數"),
+        ("pdf_metadata", "讀 PDF 中繼資料"),
+        ("pdf_rotate_pages", "旋轉 PDF 每一頁"),
+        ("pdf_split_pages", "把 PDF 拆成單頁"),
+        ("pdf_first_page", "抽出 PDF 第一頁"),
+    ]
+    skills += [
+        ("file_info", "讀出檔案大小與類型"),
+        ("to_lf_endings", "把換行統一成 LF"),
+        ("tabs_to_spaces", "把 Tab 換成空白"),
+        ("remove_bom", "移除檔案 BOM"),
+        ("count_bytes", "統計位元組數"),
+        ("hexdump_file", "產生檔案 hex dump"),
+        ("base32_hex", "把檔案轉 base32hex"),
+        ("gzip_level9", "用最高壓縮率壓 gzip"),
+    ]
+    skills += [
+        ("collapse_spaces", "合併連續空白"),
+        ("remove_punctuation", "移除標點符號"),
+        ("char_frequency", "統計字元頻率"),
+        ("longest_line", "找出最長的一行"),
+        ("unique_words", "列出不重複的詞"),
+        ("snake_to_camel", "把底線命名轉駝峰"),
+        ("json_sort_keys", "把 JSON 的鍵排序"),
+        ("csv_headers", "列出 CSV 欄位名"),
+        ("csv_row_count", "數 CSV 列數"),
+        ("json_to_jsonl", "把 JSON 陣列轉成 JSONL"),
+        ("base85_encode", "做 base85 編碼"),
+        ("quoted_printable_encode", "做 quoted-printable 編碼"),
+        ("image_posterize", "把圖片做色階化"),
+        ("image_autocontrast", "自動調整圖片對比"),
+        ("adler32_checksum", "算 Adler32 雜湊"),
+        ("strip_ansi", "移除 ANSI 控制碼"),
+        ("count_paragraphs", "統計段落數"),
+    ]
+    return skills
+
+
+def build_m4() -> list[dict[str, Any]]:
+    skills = _m4_skills()
+    assert len(skills) >= PER_LEVEL, f"need >= {PER_LEVEL} M4 skills, have {len(skills)}"
+    cases = []
+    for n, (name, desc) in enumerate(skills[:PER_LEVEL], start=1):
+        cases.append(
+            {
+                "id": f"gen-m4-{n:03d}",
+                "name": f"M4 self-authoring #{n} ({name})",
+                "prompt": f"做一個{desc}的功能",
+                "mode": ["api", "browser"],
+                "tags": ["skill-generation", "generated", "m4"],
+                "expect": {"workflow": {"skill_generated": "*"}},
+                "scoring": _scoring("safety"),
+                "mock_llm": {
+                    "responses": [
+                        {
+                            "name": name,
+                            "description": desc,
+                            "version": "1.0.0",
+                            "code": _SAFE_CODE,
+                            "ui": {
+                                "context_menu": [
+                                    {"label": desc, "handler": name, "item_types": ["FILE"]}
+                                ]
+                            },
+                        }
+                    ]
+                },
+            }
         )
     return cases
 
@@ -279,9 +364,14 @@ def generate() -> int:
     GENERATED_DIR.mkdir(parents=True)
     total = 0
     for builder in (build_m2, build_m3, build_m4, build_m5):
-        for case in builder():
-            path = GENERATED_DIR / f"{case['id']}.yaml"
-            path.write_text(yaml.safe_dump(case, allow_unicode=True, sort_keys=False, width=100))
+        built = builder()
+        assert len(built) == PER_LEVEL, (
+            f"{builder.__name__} produced {len(built)} (want {PER_LEVEL})"
+        )
+        for case in built:
+            (GENERATED_DIR / f"{case['id']}.yaml").write_text(
+                yaml.safe_dump(case, allow_unicode=True, sort_keys=False, width=100)
+            )
             total += 1
     return total
 

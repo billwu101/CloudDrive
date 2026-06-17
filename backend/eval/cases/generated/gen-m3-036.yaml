@@ -1,0 +1,36 @@
+id: gen-m3-036
+name: 'M3 query+write #36 (list_items+get_info+storage_quota->create_folder)'
+prompt: 幫我列出根目錄檔案、查看某個項目的詳情、查目前容量用量、建立一個資料夾
+mode:
+- api
+- browser
+tags:
+- daily-ops
+- generated
+- m3
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include:
+    - list_items
+    - get_info
+    - storage_quota
+    - create_folder
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+  - reply: 計畫如下,請確認。
+    steps:
+    - skill: list_items
+      arguments: {}
+    - skill: get_info
+      arguments:
+        item_id: 11111111-1111-1111-1111-111111111111
+    - skill: storage_quota
+      arguments: {}
+    - skill: create_folder
+      arguments:
+        name: Folder36

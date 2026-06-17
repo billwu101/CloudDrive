@@ -1,0 +1,35 @@
+id: gen-m3-014
+name: 'M3 query+write #14 (search+list_items+storage_quota->organize_by_type)'
+prompt: 幫我搜尋檔案、列出根目錄檔案、查目前容量用量、依副檔名分類整理
+mode:
+- api
+- browser
+tags:
+- daily-ops
+- generated
+- m3
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include:
+    - search
+    - list_items
+    - storage_quota
+    - organize_by_type
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+  - reply: 計畫如下,請確認。
+    steps:
+    - skill: search
+      arguments:
+        q: report
+    - skill: list_items
+      arguments: {}
+    - skill: storage_quota
+      arguments: {}
+    - skill: organize_by_type
+      arguments: {}

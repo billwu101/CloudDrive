@@ -100,7 +100,8 @@ def main() -> int:
                 checks = verify_execution(case, browser_responses.get(case.id, {}))
             else:
                 response = _run_case(case, args, browser_responses)
-                checks = verify(case, response)
+                # Browser/real plans are non-deterministic — don't gate on exact steps.
+                checks = verify(case, response, strict_steps=args.mode != "browser")
                 if judge is not None:
                     checks = checks + judge_case(case, response, judge)
                 checks = checks + _state_checks(case, args)

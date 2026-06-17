@@ -1,0 +1,31 @@
+id: gen-m4-008
+name: 'M4 self-authoring #8 (blake2s_checksum)'
+prompt: 做一個算 BLAKE2S 雜湊的功能
+mode:
+- api
+- browser
+tags:
+- skill-generation
+- generated
+- m4
+expect:
+  workflow:
+    skill_generated: '*'
+scoring:
+  weights:
+    safety: 1.0
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+  - name: blake2s_checksum
+    description: 算 BLAKE2S 雜湊
+    version: 1.0.0
+    code: "import os\ndef run(input_path, output_dir, params):\n    out = os.path.join(output_dir, 'output.bin')\n\
+      \    with open(input_path, 'rb') as src:\n        data = src.read()\n    with open(out, 'wb') as\
+      \ dst:\n        dst.write(data)\n    return {'produced': ['output.bin'], 'size': len(data)}\n"
+    ui:
+      context_menu:
+      - label: 算 BLAKE2S 雜湊
+        handler: blake2s_checksum
+        item_types:
+        - FILE

@@ -1,0 +1,37 @@
+id: gen-m3-083
+name: 'M3 query+write #83 (list_items+get_info+recent->move_item)'
+prompt: 幫我列出根目錄檔案、查看某個項目的詳情、看最近開啟的檔案、把某個項目移動到別的資料夾
+mode:
+- api
+- browser
+tags:
+- daily-ops
+- generated
+- m3
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include:
+    - list_items
+    - get_info
+    - recent
+    - move_item
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+  - reply: 計畫如下,請確認。
+    steps:
+    - skill: list_items
+      arguments: {}
+    - skill: get_info
+      arguments:
+        item_id: 11111111-1111-1111-1111-111111111111
+    - skill: recent
+      arguments: {}
+    - skill: move_item
+      arguments:
+        item_id: 11111111-1111-1111-1111-111111111111
+        parent_id: 22222222-2222-2222-2222-222222222222
