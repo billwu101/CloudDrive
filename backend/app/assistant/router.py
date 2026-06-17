@@ -25,6 +25,8 @@ from app.assistant.schemas import (
     AssistantChatRequest,
     AssistantChatResponse,
     AssistantMessageResponse,
+    AssistantSavedWorkflowResponse,
+    AssistantSaveWorkflowRequest,
     AssistantSessionResponse,
     AssistantSkillApproveResponse,
     AssistantSkillExecuteRequest,
@@ -270,6 +272,56 @@ async def cancel_workflow(
     service: AssistantServiceDep,
 ) -> AssistantWorkflowConfirmResponse:
     response = await service.cancel(user_id=current_user_id, workflow_id=workflow_id)
+    await session.commit()
+    return response
+
+
+@router.post(
+    "/workflows/save",
+    response_model=AssistantSavedWorkflowResponse,
+    summary="Save a workflow under a name for later reuse",
+)
+async def save_workflow(
+    body: AssistantSaveWorkflowRequest,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: AssistantServiceDep,
+) -> AssistantSavedWorkflowResponse:
+    workflow = await service.save_workflow(
+        user_id=current_user_id,
+        name=body.name,
+        source_nl=body.source_nl,
+        steps=body.steps,
+    )
+    await session.commit()
+    return AssistantSavedWorkflowResponse.model_validate(workflow)
+
+
+@router.get(
+    "/workflows/saved",
+    response_model=list[AssistantSavedWorkflowResponse],
+    summary="List the user's saved workflows",
+)
+async def list_saved_workflows(
+    current_user_id: CurrentUserId,
+    service: AssistantServiceDep,
+) -> list[AssistantSavedWorkflowResponse]:
+    workflows = await service.list_saved_workflows(user_id=current_user_id)
+    return [AssistantSavedWorkflowResponse.model_validate(w) for w in workflows]
+
+
+@router.post(
+    "/workflows/saved/{workflow_id}/rerun",
+    response_model=AssistantWorkflowConfirmResponse,
+    summary="Re-execute a saved workflow",
+)
+async def rerun_workflow(
+    workflow_id: UUID,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: AssistantServiceDep,
+) -> AssistantWorkflowConfirmResponse:
+    response = await service.rerun_workflow(user_id=current_user_id, workflow_id=workflow_id)
     await session.commit()
     return response
 

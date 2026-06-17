@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.assistant.workflow import StepResult, WorkflowStep
+from app.assistant.workflow import PlannedStep, StepResult, WorkflowStep
 
 AssistantRole = Literal["system", "user", "assistant", "tool"]
 WorkflowPlanStatus = Literal["auto_executed", "pending_approval"]
@@ -116,3 +116,19 @@ class AssistantWorkflowConfirmResponse(BaseModel):
     status: Literal["executed", "cancelled"]
     message: str
     results: list[StepResult] = Field(default_factory=list)
+
+
+class AssistantSaveWorkflowRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    source_nl: str = Field(default="", max_length=4000)
+    steps: list[PlannedStep] = Field(min_length=1)
+
+
+class AssistantSavedWorkflowResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    source_nl: str
+    steps: list[WorkflowStep]
+    created_at: datetime

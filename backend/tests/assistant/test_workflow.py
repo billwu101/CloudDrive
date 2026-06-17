@@ -16,12 +16,13 @@ from app.assistant.repository import (
     WORKFLOW_CANCELLED,
     WORKFLOW_EXECUTED,
     WORKFLOW_PENDING,
+    WORKFLOW_SAVED,
     AbstractAssistantWorkflowRepository,
 )
 from app.assistant.service import WorkflowService
 from app.assistant.skills.registry import RegisteredSkill, SkillContext, SkillRegistry
-from app.assistant.workflow import WorkflowExecutor, WorkflowStep
-from app.core.exceptions import NotFoundError
+from app.assistant.workflow import PlannedStep, WorkflowExecutor, WorkflowStep
+from app.core.exceptions import AppError, NotFoundError
 from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
 
 
@@ -96,6 +97,42 @@ class FakeWorkflowRepo(AbstractAssistantWorkflowRepository):
         )
         self.runs.append(run)
         return run
+
+    async def save_named(
+        self,
+        *,
+        user_id: UUID,
+        name: str,
+        source_nl: str,
+        steps: list[dict[str, Any]],
+    ) -> AssistantWorkflow:
+        now = datetime.now(UTC)
+        workflow = AssistantWorkflow(
+            id=uuid4(),
+            user_id=user_id,
+            session_id=uuid4(),
+            source_nl=source_nl,
+            steps=steps,
+            status=WORKFLOW_SAVED,
+            name=name,
+            created_at=now,
+            updated_at=now,
+        )
+        self.workflows[workflow.id] = workflow
+        return workflow
+
+    async def list_saved(self, *, user_id: UUID) -> list[AssistantWorkflow]:
+        return [
+            w
+            for w in self.workflows.values()
+            if w.user_id == user_id and w.status == WORKFLOW_SAVED
+        ]
+
+    async def get_saved(self, *, user_id: UUID, workflow_id: UUID) -> AssistantWorkflow | None:
+        workflow = self.workflows.get(workflow_id)
+        if workflow is None or workflow.user_id != user_id or workflow.status != WORKFLOW_SAVED:
+            return None
+        return workflow
 
 
 def _registry(user_id: UUID, executed: list[str]) -> SkillRegistry:
@@ -249,6 +286,78 @@ async def test_confirm_unknown_workflow_raises() -> None:
 
     with pytest.raises(NotFoundError):
         await service.confirm(user_id=user_id, workflow_id=uuid4())
+
+
+async def test_save_workflow_persists_named_validated_steps() -> None:
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    executed: list[str] = []
+    service = _service(user_id, {"reply": "hi", "steps": []}, repo, executed)
+
+    saved = await service.save_workflow(
+        user_id=user_id,
+        name="Nightly cleanup",
+        source_nl="delete temp",
+        steps=[PlannedStep(skill="delete_item", arguments={"item_id": "x"})],
+    )
+
+    assert saved.name == "Nightly cleanup"
+    assert saved.status == WORKFLOW_SAVED
+    assert executed == []  # saving never executes
+    listed = await service.list_saved_workflows(user_id=user_id)
+    assert [w.id for w in listed] == [saved.id]
+
+
+async def test_save_workflow_rejects_unknown_skill() -> None:
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    service = _service(user_id, {"reply": "hi", "steps": []}, repo, [])
+
+    with pytest.raises(AppError, match="unknown skill"):
+        await service.save_workflow(
+            user_id=user_id,
+            name="bad",
+            source_nl="",
+            steps=[PlannedStep(skill="not_a_real_skill", arguments={})],
+        )
+    assert not repo.workflows
+
+
+async def test_rerun_saved_workflow_executes_and_records_run() -> None:
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    executed: list[str] = []
+    service = _service(user_id, {"reply": "hi", "steps": []}, repo, executed)
+    saved = await service.save_workflow(
+        user_id=user_id,
+        name="Cleanup",
+        source_nl="delete temp",
+        steps=[PlannedStep(skill="delete_item", arguments={"item_id": "x"})],
+    )
+
+    result = await service.rerun_workflow(user_id=user_id, workflow_id=saved.id)
+
+    assert result.status == "executed"
+    assert executed == ["delete_item"]
+    assert repo.runs[-1].workflow_id == saved.id
+    assert repo.runs[-1].source_nl == "Cleanup"
+
+
+async def test_rerun_unknown_or_other_users_workflow_raises() -> None:
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    service = _service(user_id, {"reply": "hi", "steps": []}, repo, [])
+    saved = await service.save_workflow(
+        user_id=user_id,
+        name="mine",
+        source_nl="",
+        steps=[PlannedStep(skill="delete_item", arguments={})],
+    )
+
+    with pytest.raises(NotFoundError):
+        await service.rerun_workflow(user_id=uuid4(), workflow_id=saved.id)
+    with pytest.raises(NotFoundError):
+        await service.rerun_workflow(user_id=user_id, workflow_id=uuid4())
 
 
 async def test_executor_resolves_step_output_reference() -> None:

@@ -24,6 +24,7 @@ class AssistantWorkflow(Base):
     source_nl: Mapped[str] = mapped_column(Text, nullable=False)
     steps: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

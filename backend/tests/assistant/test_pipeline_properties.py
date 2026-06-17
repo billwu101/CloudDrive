@@ -27,6 +27,7 @@ from app.assistant.planner import WorkflowPlanner, validate_plan
 from app.assistant.repository import (
     WORKFLOW_EXECUTED,
     WORKFLOW_PENDING,
+    WORKFLOW_SAVED,
     AbstractAssistantWorkflowRepository,
 )
 from app.assistant.service import WorkflowService
@@ -338,6 +339,42 @@ class _FakeWorkflowRepo(AbstractAssistantWorkflowRepository):
         )
         self.runs.append(run)
         return run
+
+    async def save_named(
+        self,
+        *,
+        user_id: UUID,
+        name: str,
+        source_nl: str,
+        steps: list[dict[str, Any]],
+    ) -> AssistantWorkflow:
+        now = datetime.now(UTC)
+        workflow = AssistantWorkflow(
+            id=uuid4(),
+            user_id=user_id,
+            session_id=uuid4(),
+            source_nl=source_nl,
+            steps=steps,
+            status=WORKFLOW_SAVED,
+            name=name,
+            created_at=now,
+            updated_at=now,
+        )
+        self.workflows[workflow.id] = workflow
+        return workflow
+
+    async def list_saved(self, *, user_id: UUID) -> list[AssistantWorkflow]:
+        return [
+            w
+            for w in self.workflows.values()
+            if w.user_id == user_id and w.status == WORKFLOW_SAVED
+        ]
+
+    async def get_saved(self, *, user_id: UUID, workflow_id: UUID) -> AssistantWorkflow | None:
+        workflow = self.workflows.get(workflow_id)
+        if workflow is None or workflow.user_id != user_id or workflow.status != WORKFLOW_SAVED:
+            return None
+        return workflow
 
 
 def _build_service(

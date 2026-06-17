@@ -16,8 +16,15 @@ from app.assistant.schemas import (
 )
 from app.assistant.skills.authoring import AssistantSkillService
 from app.assistant.skills.registry import SkillRegistry
-from app.assistant.workflow import StepResult, WorkflowExecutor, WorkflowStep, is_auto_confirmable
+from app.assistant.workflow import (
+    PlannedStep,
+    StepResult,
+    WorkflowExecutor,
+    WorkflowStep,
+    is_auto_confirmable,
+)
 from app.core.exceptions import NotFoundError
+from app.models.assistant_workflow import AssistantWorkflow
 
 _PENDING_NOTE = " 這個操作需要你確認後才會執行。"
 
@@ -129,6 +136,60 @@ class WorkflowService:
             workflow_id=workflow.id,
             status="executed",
             message="Workflow executed.",
+            results=results,
+        )
+
+    async def save_workflow(
+        self,
+        *,
+        user_id: UUID,
+        name: str,
+        source_nl: str,
+        steps: list[PlannedStep],
+    ) -> AssistantWorkflow:
+        # classify_steps rejects unknown skills / bad dependencies before saving.
+        classified = classify_steps(steps, self._registry)
+        return await self._workflows.save_named(
+            user_id=user_id,
+            name=name,
+            source_nl=source_nl,
+            steps=[step.model_dump(mode="json") for step in classified],
+        )
+
+    async def list_saved_workflows(self, *, user_id: UUID) -> list[AssistantWorkflow]:
+        return await self._workflows.list_saved(user_id=user_id)
+
+    async def rerun_workflow(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID,
+    ) -> AssistantWorkflowConfirmResponse:
+        workflow = await self._workflows.get_saved(user_id=user_id, workflow_id=workflow_id)
+        if workflow is None:
+            raise NotFoundError("Saved workflow not found")
+        # Re-validate against the live registry — a skill may have been removed.
+        planned = [
+            PlannedStep(
+                skill=step["skill"],
+                arguments=step.get("arguments", {}),
+                depends_on=step.get("depends_on", []),
+            )
+            for step in workflow.steps
+        ]
+        steps = classify_steps(planned, self._registry)
+        results = await self._executor.execute(user_id=user_id, steps=steps)
+        await self._workflows.record_run(
+            user_id=user_id,
+            workflow_id=workflow.id,
+            source_nl=workflow.name or workflow.source_nl,
+            status=_run_status(results),
+            step_results=[result.model_dump(mode="json") for result in results],
+        )
+        return AssistantWorkflowConfirmResponse(
+            workflow_id=workflow.id,
+            status="executed",
+            message="Saved workflow executed.",
             results=results,
         )
 

@@ -15,6 +15,7 @@ from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRu
 WORKFLOW_PENDING = "pending_approval"
 WORKFLOW_EXECUTED = "executed"
 WORKFLOW_CANCELLED = "cancelled"
+WORKFLOW_SAVED = "saved"
 
 
 class AbstractAssistantSkillRepository(ABC):
@@ -276,6 +277,27 @@ class AbstractAssistantWorkflowRepository(ABC):
         step_results: list[dict[str, Any]],
     ) -> AssistantWorkflowRun: ...
 
+    @abstractmethod
+    async def save_named(
+        self,
+        *,
+        user_id: UUID,
+        name: str,
+        source_nl: str,
+        steps: list[dict[str, Any]],
+    ) -> AssistantWorkflow: ...
+
+    @abstractmethod
+    async def list_saved(self, *, user_id: UUID) -> list[AssistantWorkflow]: ...
+
+    @abstractmethod
+    async def get_saved(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID,
+    ) -> AssistantWorkflow | None: ...
+
 
 class SQLAssistantWorkflowRepository(AbstractAssistantWorkflowRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
@@ -347,3 +369,53 @@ class SQLAssistantWorkflowRepository(AbstractAssistantWorkflowRepository):  # pr
         self._session.add(run)
         await self._session.flush()
         return run
+
+    async def save_named(
+        self,
+        *,
+        user_id: UUID,
+        name: str,
+        source_nl: str,
+        steps: list[dict[str, Any]],
+    ) -> AssistantWorkflow:
+        now = datetime.now(UTC)
+        workflow = AssistantWorkflow(
+            id=uuid4(),
+            user_id=user_id,
+            session_id=uuid4(),
+            source_nl=source_nl,
+            steps=steps,
+            status=WORKFLOW_SAVED,
+            name=name[:200],
+            created_at=now,
+            updated_at=now,
+        )
+        self._session.add(workflow)
+        await self._session.flush()
+        return workflow
+
+    async def list_saved(self, *, user_id: UUID) -> list[AssistantWorkflow]:
+        result = await self._session.execute(
+            select(AssistantWorkflow)
+            .where(
+                AssistantWorkflow.user_id == user_id,
+                AssistantWorkflow.status == WORKFLOW_SAVED,
+            )
+            .order_by(AssistantWorkflow.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def get_saved(
+        self,
+        *,
+        user_id: UUID,
+        workflow_id: UUID,
+    ) -> AssistantWorkflow | None:
+        result = await self._session.execute(
+            select(AssistantWorkflow).where(
+                AssistantWorkflow.id == workflow_id,
+                AssistantWorkflow.user_id == user_id,
+                AssistantWorkflow.status == WORKFLOW_SAVED,
+            )
+        )
+        return result.scalar_one_or_none()
