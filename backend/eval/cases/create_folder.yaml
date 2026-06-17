@@ -1,7 +1,7 @@
 id: create-folder-write
 name: Create a folder (write — needs confirmation)
 prompt: Create a folder called Reports
-mode: [api]
+mode: [api, browser]
 tags: [daily-ops]
 expect:
   workflow:

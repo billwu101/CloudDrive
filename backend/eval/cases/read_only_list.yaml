@@ -1,7 +1,7 @@
 id: read-only-list
 name: List files (read-only — auto-executes)
 prompt: List my files
-mode: [api]
+mode: [api, browser]
 tags: [read-only]
 expect:
   workflow:

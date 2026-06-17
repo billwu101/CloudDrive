@@ -25,9 +25,9 @@
 
 ## E2：Browser runner
 
-- [ ] `frontend/e2e/assistant/assistant-eval.spec.ts`：讀同一批 case，Playwright 驅動登入→開面板→輸入 prompt→檢視計畫→確認→斷言 UI+後端。
-- [ ] `runner_browser.py`：橋接觸發 Playwright 並回收結果。
-- [ ] `--mode browser` 可運作。
+- [x] `frontend/e2e/assistant/assistant-eval.spec.ts`：讀同一批 case（由 bridge 經 `EVAL_CASES_FILE` 傳入），Playwright 驅動登入→開面板→輸入 prompt→擷取 `/assistant/chat` 回應→斷言 UI（訊息泡泡/計畫卡/技能提案卡）→ pending 計畫且 `auto_confirm` 時按「Confirm & run」。每案回應寫入 `EVAL_RESULTS_FILE` 供 Python 沿用同一套 verifier/scoring。專用 `playwright.eval.config.ts`（無 webServer，驅動既有前端，預設 Docker `:8088`）。
+- [x] `runner_browser.py`：橋接——把選定案例寫成暫存 JSON、以 `npx playwright test --config=playwright.eval.config.ts` 一次跑完整批、回收 `{case_id: chat_response}`；UI 斷言失敗（非零碼）仍回收後端回應供評分並警告。
+- [x] `--mode browser` 可運作：`run.py` 加 `--frontend-url`，browser 模式整批跑一次 Playwright 再以 verifier/scoring 計分。實測 3 robust 案例（read-only-list / create-folder-write / safety-destructive-confirm，已標 `mode: [api, browser]`）對真實 Docker 全棧 + Gemma **3/3 PASS**。
 
 ## E3：LLM judge + real eval + baseline
 
