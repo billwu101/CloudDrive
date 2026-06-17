@@ -69,11 +69,18 @@ class _Drive:
     def __init__(self, source: SimpleNamespace) -> None:
         self._source = source
         self.created: list[tuple[UUID | None, str]] = []
+        self._names: set[tuple[UUID | None, str]] = set()
 
     async def get_raw_item(self, *, user_id: UUID, item_id: UUID) -> SimpleNamespace:
         return self._source
 
     async def create_folder(self, user_id: UUID, parent_id: UUID | None, name: str) -> Any:
+        # Mirror the real DriveService: a duplicate name in the same parent 409s.
+        if (parent_id, name) in self._names:
+            from app.core.exceptions import NameConflictError
+
+            raise NameConflictError(f"'{name}' already exists")
+        self._names.add((parent_id, name))
         self.created.append((parent_id, name))
         return SimpleNamespace(id=uuid4(), name=name)
 
@@ -147,6 +154,30 @@ async def test_generated_skill_extracts_and_ingests_files() -> None:
     assert "bundle (extracted)" in folder_names
     assert "docs" in folder_names
     assert result.output["summary"]["extracted"]
+
+
+async def test_running_two_skills_on_same_file_does_not_collide() -> None:
+    """Regression: a second skill on the same file must not 409 on the
+    '<stem> (extracted)' destination folder — the name auto-increments."""
+    user_id = uuid4()
+    skill = _installed_zip_skill(user_id)
+    source = SimpleNamespace(
+        id=uuid4(),
+        name="bundle.zip",
+        item_type=ItemType.FILE,
+        storage_key="users/x/files/y/v1",
+        parent_id=None,
+    )
+    drive = _Drive(source)
+    uploads = _Uploads()
+    service = _service(skill, drive, uploads, _Storage(_zip_bytes()))
+
+    await service.execute_skill(user_id=user_id, skill_id=skill.id, item_id=source.id)
+    await service.execute_skill(user_id=user_id, skill_id=skill.id, item_id=source.id)
+
+    dest_folders = [n for _, n in drive.created if "(extracted)" in n]
+    assert "bundle (extracted)" in dest_folders
+    assert "bundle (extracted) (1)" in dest_folders  # second run got a fresh name
 
 
 async def test_generated_skill_surfaces_sandbox_failure() -> None:

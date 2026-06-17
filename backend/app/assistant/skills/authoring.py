@@ -15,7 +15,7 @@ from app.assistant.skills.manifest import validate_manifest
 from app.assistant.skills.sandbox import SkillSandbox
 from app.assistant.subagent import CodegenSubAgent
 from app.core.error_codes import ErrorCode
-from app.core.exceptions import AppError, NotFoundError
+from app.core.exceptions import AppError, NameConflictError, NotFoundError
 from app.drive.schemas import ItemType
 from app.drive.service import DriveService
 from app.models.assistant_skill import AssistantSkill
@@ -374,7 +374,7 @@ class AssistantSkillService:
         if not files:
             return []
         stem = _split_name(source.name)[0] or source.name
-        dest = await self._drive.create_folder(user_id, source.parent_id, f"{stem} (extracted)")
+        dest = await self._create_destination_folder(user_id, source.parent_id, stem)
         folder_ids: dict[str, UUID] = {"": dest.id}
         ingested: list[str] = []
         for path in files:
@@ -390,6 +390,23 @@ class AssistantSkillService:
             )
             ingested.append(created.name)
         return ingested
+
+    async def _create_destination_folder(
+        self,
+        user_id: UUID,
+        parent_id: UUID | None,
+        stem: str,
+    ) -> DriveItemResponse:
+        """Create the "<stem> (extracted)" folder, auto-incrementing the name on
+        conflict so running a second skill on the same file does not collide."""
+        base = f"{stem} (extracted)"
+        for attempt in range(100):
+            name = base if attempt == 0 else f"{base} ({attempt})"
+            try:
+                return await self._drive.create_folder(user_id, parent_id, name)
+            except NameConflictError:
+                continue
+        raise AppError(ErrorCode.INVALID_OPERATION, "Could not allocate an output folder name")
 
     async def _ensure_folders(
         self,
