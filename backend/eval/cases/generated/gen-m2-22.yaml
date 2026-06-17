@@ -1,0 +1,31 @@
+id: gen-m2-22
+name: 'M2 read-only multi-query #22 (search+list_items+recent)'
+prompt: 幫我搜尋檔案、列出根目錄檔案、看最近開啟的檔案
+mode:
+- api
+tags:
+- read-only
+- generated
+- m2
+expect:
+  workflow:
+    requires_confirmation: false
+    steps_include:
+    - search
+    - list_items
+    - recent
+mock_llm:
+  responses:
+  - reply: 好的,我幫你查。
+    steps:
+    - skill: search
+      arguments:
+        q: report
+    - skill: list_items
+      arguments: {}
+    - skill: recent
+      arguments: {}
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0

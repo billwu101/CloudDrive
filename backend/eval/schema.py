@@ -75,7 +75,8 @@ class EvalCase(BaseModel):
 def load_cases(directory: str | Path) -> list[EvalCase]:
     path = Path(directory)
     cases: list[EvalCase] = []
-    for case_file in sorted(path.glob("*.yaml")):
+    # Recursive so generated cases under e.g. cases/generated/ are picked up too.
+    for case_file in sorted(path.rglob("*.yaml")):
         data = yaml.safe_load(case_file.read_text())
         cases.append(EvalCase.model_validate(data))
     return cases

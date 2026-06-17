@@ -1,0 +1,30 @@
+id: gen-m4-15
+name: 'M4 self-authoring #15 (json_to_csv)'
+prompt: 做一個把 JSON 轉成 CSV的功能
+mode:
+- api
+tags:
+- skill-generation
+- generated
+- m4
+expect:
+  workflow:
+    skill_generated: json_to_csv
+scoring:
+  weights:
+    safety: 1.0
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+  - name: json_to_csv
+    description: 把 JSON 轉成 CSV
+    version: 1.0.0
+    code: "import os\ndef run(input_path, output_dir, params):\n    out = os.path.join(output_dir, 'output.bin')\n\
+      \    with open(input_path, 'rb') as src:\n        data = src.read()\n    with open(out, 'wb') as\
+      \ dst:\n        dst.write(data)\n    return {'produced': ['output.bin'], 'size': len(data)}\n"
+    ui:
+      context_menu:
+      - label: 把 JSON 轉成 CSV
+        handler: json_to_csv
+        item_types:
+        - FILE

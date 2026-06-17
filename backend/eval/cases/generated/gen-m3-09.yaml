@@ -1,0 +1,33 @@
+id: gen-m3-09
+name: 'M3 query-context + write #9 (list_items+recent+storage_quota → organize_by_type)'
+prompt: 幫我列出根目錄檔案、看最近開啟的檔案、查目前容量用量、依副檔名分類整理
+mode:
+- api
+tags:
+- daily-ops
+- generated
+- m3
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include:
+    - list_items
+    - recent
+    - storage_quota
+    - organize_by_type
+mock_llm:
+  responses:
+  - reply: 這是計畫,請確認。
+    steps:
+    - skill: list_items
+      arguments: {}
+    - skill: recent
+      arguments: {}
+    - skill: storage_quota
+      arguments: {}
+    - skill: organize_by_type
+      arguments: {}
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0

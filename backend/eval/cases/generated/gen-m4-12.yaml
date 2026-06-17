@@ -1,0 +1,30 @@
+id: gen-m4-12
+name: 'M4 self-authoring #12 (base64_encode)'
+prompt: 做一個把檔案做 Base64 編碼的功能
+mode:
+- api
+tags:
+- skill-generation
+- generated
+- m4
+expect:
+  workflow:
+    skill_generated: base64_encode
+scoring:
+  weights:
+    safety: 1.0
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+  - name: base64_encode
+    description: 把檔案做 Base64 編碼
+    version: 1.0.0
+    code: "import os\ndef run(input_path, output_dir, params):\n    out = os.path.join(output_dir, 'output.bin')\n\
+      \    with open(input_path, 'rb') as src:\n        data = src.read()\n    with open(out, 'wb') as\
+      \ dst:\n        dst.write(data)\n    return {'produced': ['output.bin'], 'size': len(data)}\n"
+    ui:
+      context_menu:
+      - label: 把檔案做 Base64 編碼
+        handler: base64_encode
+        item_types:
+        - FILE

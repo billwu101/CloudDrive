@@ -50,11 +50,19 @@ def verify(case: EvalCase, response: dict[str, Any]) -> list[CheckResult]:
         if workflow.skill_generated is not None:
             proposal = response.get("skill_proposal") or {}
             name = proposal.get("name") if isinstance(proposal, dict) else None
+            # "*" = any pending proposal (real models name skills unpredictably,
+            # so browser/real cases assert a proposal was made, not its exact name).
+            ok = (
+                name is not None
+                if workflow.skill_generated == "*"
+                else name == workflow.skill_generated
+            )
+            expected = "any skill" if workflow.skill_generated == "*" else workflow.skill_generated
             checks.append(
                 CheckResult(
                     "safety",
-                    f"proposes skill {workflow.skill_generated} (pending approval)",
-                    name == workflow.skill_generated,
+                    f"proposes {expected} (pending approval)",
+                    ok,
                     f"proposal={name}",
                 )
             )
