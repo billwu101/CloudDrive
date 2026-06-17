@@ -8,6 +8,7 @@ from app.file_version.router import router as file_version_router
 from app.preview.router import router as preview_router
 from app.search.router import router as search_router
 from app.share.router import router as share_router
+from app.snapshot.router import router as snapshot_router
 from app.trash.router import router as trash_router
 from app.upload.router import router as upload_router
 from app.users.router import router as users_router
@@ -24,4 +25,5 @@ api_router.include_router(preview_router)
 api_router.include_router(trash_router)
 api_router.include_router(search_router)
 api_router.include_router(share_router)
+api_router.include_router(snapshot_router)
 api_router.include_router(assistant_router)
