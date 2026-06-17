@@ -26,6 +26,7 @@ from app.assistant.workflow import WorkflowExecutor
 from app.drive.service import DriveService
 from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
 from app.search.service import SearchService
+from app.trash.service import TrashService
 from app.users.service import QuotaService
 from eval.schema import EvalCase
 
@@ -84,6 +85,14 @@ class _FakeSearch:
 class _FakeQuota:
     async def get_quota_info(self, user_id: UUID) -> Any:
         return dict(_QUOTA)
+
+
+class _FakeTrash:
+    async def trash_item(self, user_id: UUID, item_id: UUID) -> Any:
+        return {"id": str(item_id), "is_deleted": True}
+
+    async def restore(self, user_id: UUID, item_id: UUID) -> Any:
+        return {"id": str(item_id), "is_deleted": False}
 
 
 class _MemoryWorkflowRepo(AbstractAssistantWorkflowRepository):
@@ -146,7 +155,11 @@ def _build_service(responses: list[Any]) -> WorkflowService:
         search_service=cast(SearchService, _FakeSearch()),
         quota_service=cast(QuotaService, _FakeQuota()),
     )
-    register_write_skills(registry, drive_service=cast(DriveService, _FakeDrive()))
+    register_write_skills(
+        registry,
+        drive_service=cast(DriveService, _FakeDrive()),
+        trash_service=cast(TrashService, _FakeTrash()),
+    )
     router = ModelRouter(
         local_client=_ScriptedLLM(responses),
         external_client=None,

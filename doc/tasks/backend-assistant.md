@@ -46,8 +46,8 @@ M2 實作備註（2026-06-17）：`/chat` 改走 planner（取代 M1 直接 tool
 - [x] `repository.py`：`assistant_skills` create/replace pending、list by status、approve、get by id/name。
 - [ ] `repository.py`：sessions/messages/workflows CRUD；啟動載入使用者技能與已存工作流程。
 - [ ] `skills/manifest.py`：manifest schema + 驗證（含 `ui.context_menu`）。
-- [x] 寫入內建技能：`create_folder`（permission_tier=write → 需計畫確認；經 `DriveService.create_folder` 帶 user_id）+ 測試。
-- [ ] 其餘寫入/批次技能：`rename`/`move`/`copy`/`trash`/`restore`/`star`/`share`/`batch_rename`/`organize_by_type`/`organize_by_date`/`deduplicate`/`bulk_move`。
+- [x] 寫入內建技能：`create_folder`/`rename_item`/`move_item`/`star_item`（write）+ `trash_item`（destructive）/`restore_item`（write，需 trash_service）。皆非 read → 走計畫確認;經 DriveService/TrashService 帶 user_id;UUID/必填參數驗證 + 測試。eval mock 案例涵蓋 create/rename/trash。
+- [ ] 其餘寫入/批次技能：`copy`/`share`/`batch_rename`/`organize_by_type`/`organize_by_date`/`deduplicate`/`bulk_move`。
 - [ ] 工作流程命名儲存與一鍵重跑 endpoint。
 
 ## M4：自我撰寫 + 安全（HARNESS 04/03/08/09）

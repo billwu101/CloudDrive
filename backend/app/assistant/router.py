@@ -38,8 +38,13 @@ from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.drive.repository import SQLDriveItemRepository, SQLUserItemPreferenceRepository
 from app.drive.service import DriveService
+from app.file_version.repository import SQLFileVersionRepository
+from app.permission.repository import SQLShareRepository
 from app.search.repository import SQLSearchRepository
 from app.search.service import SearchService
+from app.storage.factory import get_storage_provider
+from app.trash.repository import SQLTrashRepository
+from app.trash.service import TrashService
 from app.users.repository import SQLUserRepository
 from app.users.service import QuotaService
 
@@ -52,6 +57,18 @@ def _drive_service(session: DbSession) -> DriveService:
         item_repo=SQLDriveItemRepository(session),
         pref_repo=SQLUserItemPreferenceRepository(session),
         activity_svc=activity,
+    )
+
+
+def _trash_service(session: DbSession) -> TrashService:
+    return TrashService(
+        item_repo=SQLDriveItemRepository(session),
+        trash_repo=SQLTrashRepository(session),
+        version_repo=SQLFileVersionRepository(session),
+        share_repo=SQLShareRepository(session),
+        storage=get_storage_provider(get_settings()),
+        quota_svc=QuotaService(SQLUserRepository(session)),
+        activity_svc=ActivityLogService(SQLActivityLogRepository(session)),
     )
 
 
@@ -72,7 +89,9 @@ def _assistant_service(session: DbSession) -> WorkflowService:
         search_service=search_service,
         quota_service=quota_service,
     )
-    register_write_skills(registry, drive_service=drive_service)
+    register_write_skills(
+        registry, drive_service=drive_service, trash_service=_trash_service(session)
+    )
 
     local_client = OllamaLLMClient(
         base_url=settings.llm_base_url,
