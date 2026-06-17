@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from eval.scoring import CaseScore
+from eval.scoring import Scored
 
 # Scores within this tolerance of the baseline are treated as unchanged (guards
 # against float noise from a real, non-deterministic model).
@@ -31,7 +32,7 @@ def load_baseline(path: str | Path) -> dict[str, float]:
     return {str(case_id): float(score) for case_id, score in cases.items()}
 
 
-def save_baseline(path: str | Path, scores: list[CaseScore]) -> None:
+def save_baseline(path: str | Path, scores: Sequence[Scored]) -> None:
     """Persist the current run's per-case scores as a baseline."""
 
     payload = {"cases": {score.case_id: score.score for score in scores}}
@@ -39,7 +40,7 @@ def save_baseline(path: str | Path, scores: list[CaseScore]) -> None:
 
 
 def compare_to_baseline(
-    scores: list[CaseScore],
+    scores: Sequence[Scored],
     baseline: dict[str, float],
     *,
     tolerance: float = DEFAULT_TOLERANCE,

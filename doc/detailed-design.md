@@ -2194,14 +2194,15 @@ Assistant 的使用入口位於登入後 CloudDrive shell，而不是 Swagger/AP
 | `eval/runner.py` | API runner：HTTP 打 live 後端 `/assistant/chat`（`--llm real`）。 |
 | `eval/inproc.py` | in-process mock-LLM runner：程序內以 scripted mock LLM 驅動真實 pipeline（`--llm mock`，決定性、免後端/Gemma，CI 用）。 |
 | `eval/runner_browser.py` | E2 橋接：把案例寫成暫存 JSON、以 Playwright 一次跑完整批、回收 `{case_id: chat_response}`。 |
-| `eval/verifier.py` | 確定性斷言（`steps_include`/`requires_confirmation`/`skill_generated`），`CheckResult` 可帶連續分數。 |
+| `eval/verifier.py` | 確定性斷言（`steps_include`/`requires_confirmation`/`skill_generated`）+ `verify_state`（`item_present`→`state` 維度、`item_absent`→`safety` 維度）；`CheckResult` 可帶連續分數。 |
+| `eval/state.py` | `fetch_item_names_http`：對 live 後端取 drive 狀態快照，供 state/safety 斷言（僅 api+real+token 時評估）。 |
 | `eval/judge.py` | E3 LLM judge：rubric → 0–1 連續分數，OpenAI 相容 `HttpJudgeModel`（建議獨立模型），`parse_verdict` 容錯 + clamp。 |
-| `eval/scoring.py` | 維度加權、連續分數與布林 check 合併、案例分與通過門檻。 |
+| `eval/scoring.py` | 維度加權、連續分數與布林 check 合併、案例分與通過門檻；`AggregateScore`/`aggregate_runs` 收斂 N 次執行為 pass-rate/mean/變異（`min_pass_rate` 為多次執行通過閘）。 |
 | `eval/baseline.py` | E3 baseline：save/load/compare、回歸偵測（容差、新案例不算回歸）。 |
-| `eval/report.py` / `eval/run.py` | JSON/Markdown 報告；CLI（`--mode api|browser`、`--llm mock|real`、`--judge`、`--baseline`/`--save-baseline`）。 |
+| `eval/report.py` / `eval/run.py` | JSON/Markdown 報告（含 Mean/Pass-rate/Runs/Std）；CLI（`--mode api|browser`、`--llm mock|real`、`--judge`、`--runs N`、`--baseline`/`--save-baseline`）。 |
 | `frontend/e2e/assistant/assistant-eval.spec.ts` + `playwright.eval.config.ts` | E2 browser 模式：驅動真實 UI、擷取 `/assistant/chat`、斷言 UI、確認 pending 計畫。 |
 
-E1 in-process mock 模式 + E4 案例（read-only / daily-ops / skill-generation / safety / workflow-reuse / context / model-escalation）10/10 決定性通過；E2 browser 與 E3 judge/`--llm real`/baseline 皆對 Docker 全棧 + 真實 Gemma 實測通過。E1 尚餘 state/safety 斷言與多次執行通過率/變異統計。
+E1 in-process mock 模式 + E4 案例（read-only / daily-ops / skill-generation / safety / workflow-reuse / context / model-escalation）11/11 決定性通過；E2 browser、E3 judge/`--llm real`/baseline、E1 state/safety 斷言與多次執行通過率/變異皆對 Docker 全棧 + 真實 Gemma 實測通過。Assistant 評測 harness（E1–E4）全部完成。
 
 ## 19. 結論
 

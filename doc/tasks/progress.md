@@ -53,7 +53,7 @@
 
 - [x] [Backend Assistant](./backend-assistant.md) — In-App AI Assistant（HARNESS 引擎 + Workflow 管線、本地 Gemma）。M1–M4 全部完成：模型策略、planner/workflow、技能框架與持久化、自我撰寫 sandbox（codegen→codeguard→sandbox→approve→execute→ingest）、skill 管理（`PATCH`/`DELETE /skills/{id}`）。設計見 [assistant-design.md](../assistant-design.md)
 - [x] [Frontend Assistant](./frontend-assistant.md) — 聊天面板、計畫確認、技能核可/code review、動態右鍵選單、已存 workflow 重跑、側欄 Skills 管理頁（列表/編輯/刪除）。
-- [x] [Assistant 驗證與評分 Harness](./assistant-eval.md) — E1 API/in-process mock runner + verifier/scoring/report、E2 Playwright browser runner、E3 LLM judge + `--llm real` + baseline 回歸、E4 案例覆蓋。設計見 [assistant-eval-design.md](../assistant-eval-design.md)。E1 尚餘 state/safety 斷言與多次執行變異統計。
+- [x] [Assistant 驗證與評分 Harness](./assistant-eval.md) — E1 API/in-process mock runner + verifier/scoring/report + state/safety 斷言 + 多次執行通過率/變異、E2 Playwright browser runner、E3 LLM judge + `--llm real` + baseline 回歸、E4 案例覆蓋。全部完成。設計見 [assistant-eval-design.md](../assistant-eval-design.md)。
 
 ## 建議執行順序
 

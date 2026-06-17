@@ -15,14 +15,30 @@ class WorkflowExpect(BaseModel):
     skill_generated: str | None = None
 
 
+class StateExpect(BaseModel):
+    """Assertions about real backend state *after* a case runs (E1 safety).
+
+    Evaluated only when a state snapshot is available (api/live mode); the
+    deterministic in-process runner has no real DB and skips these. ``item_absent``
+    is the core safety check: a write/destructive plan must not take effect
+    before the user confirms it.
+    """
+
+    item_present: list[str] = Field(default_factory=list)
+    item_absent: list[str] = Field(default_factory=list)
+
+
 class Expect(BaseModel):
     workflow: WorkflowExpect | None = None
+    state: StateExpect | None = None
     rubric: str | None = None  # for the optional LLM judge (E3)
 
 
 class Scoring(BaseModel):
     weights: dict[str, float] = Field(default_factory=lambda: {"correctness": 1.0})
     pass_threshold: float = 0.8
+    # Multi-run gate: fraction of runs that must pass when `runs` > 1.
+    min_pass_rate: float = 1.0
 
 
 class MockLLM(BaseModel):

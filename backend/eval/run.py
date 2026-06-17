@@ -14,12 +14,13 @@ from eval.baseline import (
 )
 from eval.inproc import run_case_inproc
 from eval.judge import HttpJudgeModel, JudgeModel, judge_case
-from eval.report import to_json, to_markdown
+from eval.report import aggregates_to_json, aggregates_to_markdown
 from eval.runner import run_case_http
 from eval.runner_browser import run_browser_suite
 from eval.schema import EvalCase, load_cases
-from eval.scoring import score_case
-from eval.verifier import verify
+from eval.scoring import AggregateScore, aggregate_runs, score_case
+from eval.state import fetch_item_names_http
+from eval.verifier import CheckResult, verify, verify_state
 
 
 def main() -> int:
@@ -61,6 +62,13 @@ def main() -> int:
         default="",
         help="Write the current run's per-case scores to this path as a new baseline",
     )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=0,
+        help="Override each case's run count (0 = use the case's own `runs`); "
+        "repeats a case to measure pass-rate/variance against a real model",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a Markdown table")
     args = parser.parse_args()
 
@@ -78,15 +86,20 @@ def main() -> int:
 
     judge = _build_judge(args)
 
-    scores = []
+    scores: list[AggregateScore] = []
     for case in cases:
-        response = _run_case(case, args, browser_responses)
-        checks = verify(case, response)
-        if judge is not None:
-            checks = checks + judge_case(case, response, judge)
-        scores.append(score_case(case, checks))
+        runs = args.runs if args.runs > 0 else max(1, case.runs)
+        run_scores = []
+        for _ in range(runs):
+            response = _run_case(case, args, browser_responses)
+            checks = verify(case, response)
+            if judge is not None:
+                checks = checks + judge_case(case, response, judge)
+            checks = checks + _state_checks(case, args)
+            run_scores.append(score_case(case, checks))
+        scores.append(aggregate_runs(case, run_scores))
 
-    print(to_json(scores) if args.json else to_markdown(scores))
+    print(aggregates_to_json(scores) if args.json else aggregates_to_markdown(scores))
 
     if args.save_baseline:
         save_baseline(args.save_baseline, scores)
@@ -101,6 +114,19 @@ def main() -> int:
 
     passed = bool(scores) and all(score.passed for score in scores)
     return 0 if passed and not regressed else 1
+
+
+def _state_checks(case: EvalCase, args: argparse.Namespace) -> list[CheckResult]:
+    """Post-run state/safety assertions — only when a live snapshot is reachable
+    (api mode against a real backend with a token). Skipped otherwise (the
+    in-process mock runner has no real DB)."""
+
+    if case.expect.state is None:
+        return []
+    if args.mode != "api" or args.llm != "real" or not args.token:
+        return []
+    item_names = fetch_item_names_http(args.base_url, args.token)
+    return verify_state(case, item_names)
 
 
 def _build_judge(args: argparse.Namespace) -> JudgeModel | None:

@@ -21,7 +21,11 @@
 - [x] `tests/eval/`：schema 載入 / verifier / scoring 單元測試（決定性、不打網路）。
 - [x] `tests/eval/test_eval_properties.py`：**property-based（hypothesis）**——隨機 case + 隨機/壞回應驗證 harness 自身不變量：verify 全函式不崩、score ∈ [0,1] 且 passed⇔過門檻、全對=1.0/全錯=0.0、verify 結果忠實反映期望、嚴格門檻下 passed⇔所有期望皆滿足。
 - [x] in-process mock-LLM runner（`eval/inproc.py`）：程序內以 scripted mock LLM + 假 service 驅動真實 pipeline，案例帶 `mock_llm` 腳本;`run.py --llm mock`（預設）決定性、免後端/Gemma → 可進 CI。`tests/eval/test_inproc_runner.py` 驗證 bundled 案例 inproc 全過且回合間決定性。
-- [ ] state/safety 斷言、多次執行通過率/變異、baseline 比較。
+- [x] state/safety 斷言、多次執行通過率/變異、baseline 比較。
+  - **state/safety 斷言**：`schema.StateExpect`（`item_present`/`item_absent`）+ `verifier.verify_state`；`item_absent` 落 `safety` 維度（寫入/破壞計畫在**未確認前不得生效**）、`item_present` 落 `state` 維度。`eval/state.py` `fetch_item_names_http` 對 live 後端取 drive 狀態快照（僅 `--mode api --llm real --token` 時評估；in-process 無真 DB 故跳過）。新增 `cases/safety_no_side_effect.yaml`（建資料夾計畫不確認 → Reports 不存在）。
+  - **多次執行通過率/變異**：`scoring.AggregateScore` + `aggregate_runs` 收斂 N 次執行為 pass-rate、mean、min/max、母體標準差；`Scoring.min_pass_rate`（預設 1.0）為通過閘；`run.py --runs N` 覆寫；報告 `report.aggregates_to_markdown`/`aggregates_to_json` 顯示 Mean/Pass-rate/Runs/Std。
+  - **baseline 比較**：見 E3（`eval/baseline.py`，已完成）。
+  - 測試 `tests/eval/test_aggregate_state.py`。實測：read-only `--runs 3` 對真實 Gemma pass-rate 1.0/Std 0.0；safety-no-side-effect 對 live 後端確認未確認計畫不產生 Reports 資料夾。
 
 ## E2：Browser runner
 
