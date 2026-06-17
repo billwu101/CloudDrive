@@ -82,9 +82,7 @@ async def test_chat_create_folder_pending_confirm_creates_real_item(
     # Folder creation is a write action -> it must be gated, not auto-run.
     if plan["status"] == "pending_approval":
         workflow_id = plan["workflow_id"]
-        confirm = await client.post(
-            f"/api/v1/assistant/workflows/{workflow_id}/confirm", headers=h
-        )
+        confirm = await client.post(f"/api/v1/assistant/workflows/{workflow_id}/confirm", headers=h)
         assert confirm.status_code == 200, confirm.text
         assert confirm.json()["status"] == "executed"
 
