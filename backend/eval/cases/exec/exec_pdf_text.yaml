@@ -1,0 +1,25 @@
+id: exec-pdf-text
+name: Execute pdf-text skill and verify the extracted text is correct
+prompt: 做一個抽取 PDF 文字的功能
+mode: [exec]
+tags: [skill-execution, m4]
+expect:
+  execute:
+    fixture: sample.pdf
+    context_menu_label: Extract Text from PDF
+    produces_min: 1
+    output_name_contains: text
+    # Content correctness: the fixture PDF's text is extracted verbatim.
+    output_text_contains: Hello PDF Eval
+    code: |
+      import os
+      from pypdf import PdfReader
+      def run(input_path, output_dir, params):
+          reader = PdfReader(input_path)
+          text = '\n'.join((page.extract_text() or '') for page in reader.pages)
+          out = os.path.join(output_dir, 'extracted_text.txt')
+          open(out, 'w').write(text)
+          return {'chars': len(text)}
+scoring:
+  weights: { execution: 1.0 }
+  pass_threshold: 1.0

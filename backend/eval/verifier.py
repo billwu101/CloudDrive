@@ -107,3 +107,59 @@ def verify_state(case: EvalCase, item_names: list[str]) -> list[CheckResult]:
             )
         )
     return checks
+
+
+def verify_execution(case: EvalCase, result: dict[str, Any]) -> list[CheckResult]:
+    """Assert what a skill actually produced when run (execution mode).
+
+    ``result`` is the dict from the execution runner (or browser run):
+    ``{ok, error, produced_files, outputs}``. All checks land in the
+    ``execution`` dimension. Content checks (``output_text_contains``) are how we
+    verify the skill's output is *correct*, not just present.
+    """
+
+    spec = case.expect.execute
+    if spec is None:
+        return []
+    ok = bool(result.get("ok"))
+    produced: list[str] = list(result.get("produced_files", []))
+    outputs: dict[str, Any] = dict(result.get("outputs", {}))
+    all_text = "\n".join(v for v in outputs.values() if isinstance(v, str))
+
+    checks: list[CheckResult] = [
+        CheckResult("execution", "skill ran without error", ok, f"error={result.get('error')}"),
+        CheckResult(
+            "execution",
+            f"produced >= {spec.produces_min} file(s)",
+            len(produced) >= spec.produces_min,
+            f"produced={produced}",
+        ),
+    ]
+    if spec.output_name_contains:
+        checks.append(
+            CheckResult(
+                "execution",
+                f"a produced file name contains '{spec.output_name_contains}'",
+                any(spec.output_name_contains in name for name in produced),
+                f"produced={produced}",
+            )
+        )
+    if spec.output_text_contains:
+        checks.append(
+            CheckResult(
+                "execution",
+                f"output content contains '{spec.output_text_contains[:24]}'",
+                spec.output_text_contains in all_text,
+                f"len(text)={len(all_text)}",
+            )
+        )
+    for name in spec.expected_files:
+        checks.append(
+            CheckResult(
+                "execution",
+                f"produced {name}",
+                name in produced,
+                f"produced={produced}",
+            )
+        )
+    return checks

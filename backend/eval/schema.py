@@ -28,10 +28,30 @@ class StateExpect(BaseModel):
     item_absent: list[str] = Field(default_factory=list)
 
 
+class ExecuteSpec(BaseModel):
+    """Run a generated skill for real and verify the output it produces.
+
+    Mock/exec mode runs ``code`` (a reference implementation) in the real
+    SkillSandbox against ``fixture``; browser mode generates the skill from the
+    case prompt, approves it, runs it on ``fixture`` via the UI. Both then assert
+    the produced files/content — so we verify what the skill actually outputs,
+    not just that a plan/proposal appeared.
+    """
+
+    code: str = ""  # reference implementation for deterministic exec mode
+    fixture: str  # fixture filename under eval/fixtures/
+    context_menu_label: str | None = None  # which right-click action to run (browser)
+    produces_min: int = 1
+    output_name_contains: str | None = None
+    output_text_contains: str | None = None  # content correctness (e.g. a hash)
+    expected_files: list[str] = Field(default_factory=list)
+
+
 class Expect(BaseModel):
     workflow: WorkflowExpect | None = None
     state: StateExpect | None = None
     rubric: str | None = None  # for the optional LLM judge (E3)
+    execute: ExecuteSpec | None = None
 
 
 class Scoring(BaseModel):

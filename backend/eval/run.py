@@ -12,6 +12,7 @@ from eval.baseline import (
     load_baseline,
     save_baseline,
 )
+from eval.exec_runner import run_execution_case
 from eval.inproc import run_case_inproc
 from eval.judge import HttpJudgeModel, JudgeModel, judge_case
 from eval.report import aggregates_to_json, aggregates_to_markdown
@@ -20,7 +21,7 @@ from eval.runner_browser import run_browser_suite
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, aggregate_runs, score_case
 from eval.state import fetch_item_names_http
-from eval.verifier import CheckResult, verify, verify_state
+from eval.verifier import CheckResult, verify, verify_execution, verify_state
 
 
 def main() -> int:
@@ -33,7 +34,7 @@ def main() -> int:
         help="Frontend origin for --mode browser (Playwright drives this)",
     )
     parser.add_argument("--token", default="", help="Bearer access token for the test user")
-    parser.add_argument("--mode", choices=["api", "browser"], default="api")
+    parser.add_argument("--mode", choices=["api", "browser", "exec"], default="api")
     parser.add_argument(
         "--llm",
         choices=["mock", "real"],
@@ -91,11 +92,14 @@ def main() -> int:
         runs = args.runs if args.runs > 0 else max(1, case.runs)
         run_scores = []
         for _ in range(runs):
-            response = _run_case(case, args, browser_responses)
-            checks = verify(case, response)
-            if judge is not None:
-                checks = checks + judge_case(case, response, judge)
-            checks = checks + _state_checks(case, args)
+            if args.mode == "exec":
+                checks = verify_execution(case, run_execution_case(case))
+            else:
+                response = _run_case(case, args, browser_responses)
+                checks = verify(case, response)
+                if judge is not None:
+                    checks = checks + judge_case(case, response, judge)
+                checks = checks + _state_checks(case, args)
             run_scores.append(score_case(case, checks))
         scores.append(aggregate_runs(case, run_scores))
 

@@ -46,6 +46,13 @@
 - [x] `model-escalation` 案例：`MockLLM` 新增 `external`/`local_failures`,inproc 建可升級 router;本地回不合法輸出 → 升級(mock)外部 → 計畫成功。隱私敏感**不**外送/外部停用不升級已於 `tests/assistant/test_model_router.py` 單元層覆蓋。
 - [x] M2–M5 量產案例套件（`eval/generate_cases.py` 產生器，輸出 `eval/cases/generated/`，每級 25 共 **100** 個最大複雜度案例）：M2=讀取多工具（3+ 查詢工具,auto-exec）、M3=查詢情境+寫入/批次（需確認）、M4=自我撰寫生成（gzip/csv→json/base64/tar/hash… 25 種）、M5=多步驟+步驟引用+寫入（需確認）。`load_cases` 改遞迴納入 `generated/`;全 **111/111 mock 決定性通過**。**全部 25 個 M4 生成案例**標 `browser`(用 `skill_generated: "*"` 萬用比對,因真實模型命名不固定),連同既有 3 個 → **browser 子集 28/28 對真實 Gemma 通過**。M2/M3/M5 維持 mock-only(精確步驟期望無法對非決定性模型公平比對)。
 
+## E5：執行驗證模式（實際跑 skill、驗產出內容）
+
+- [x] **不只驗「有沒有生成提案」,而是實際執行 skill 並驗產出內容**。新增 `--mode exec`：`eval/exec_runner.py` 把案例的參考實作 `expect.execute.code` 丟進**真實 `SkillSandbox`** 對 `eval/fixtures/` 的 fixture 執行,收集產出檔與內容;`verifier.verify_execution` 斷言 `execution` 維度（執行無誤、產出檔數、檔名含、**內容含**、指定檔名）。決定性、免 LLM/後端,可進 CI。
+- [x] 沙箱補 **Pillow + pypdf** 依賴（重建後端映像 + 本地 `uv sync`）,讓 image/pdf skill 真的能跑。
+- [x] 4 個執行案例（`eval/cases/exec/`,內容正確性斷言）：hash 報告（驗 SHA256 hex 正確）、untar（驗解出 `alpha.txt`+`docs/beta.txt`）、縮圖（Pillow 64→32px 產出檔）、PDF 抽字（pypdf 驗抽出 "Hello PDF Eval"）。`--mode exec` **4/4 PASS**,fixtures 由 `eval/fixtures/make_fixtures.py` 決定性產生。
+- [x] 測試 `tests/eval/test_exec.py`（bundled exec 案例產出正確、內容錯誤要 fail、沙箱失敗要 fail）;`test_inproc_runner` 改只跑有 `mock_llm` 的 chat 案例。
+
 ## 測試/驗證任務
 
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。
