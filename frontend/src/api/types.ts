@@ -212,3 +212,35 @@ export interface AssistantSavedWorkflowResponse {
   steps: WorkflowStep[]
   created_at: string
 }
+
+// ── Time Machine (snapshots) ──────────────────────────────────────────────
+export interface SnapshotResponse {
+  id: string
+  trigger: 'scheduled' | 'manual' | 'assistant' | 'pre_restore' | string
+  label: string
+  item_count: number
+  total_bytes: number
+  pinned: boolean
+  created_at: string
+}
+
+export interface SnapshotEntryResponse {
+  item_id: string
+  parent_item_id: string | null
+  name: string
+  item_type: 'FILE' | 'FOLDER' | string
+  size_bytes: number
+  checksum_sha256: string | null
+}
+
+export interface RestoreRequest {
+  scope?: 'whole' | 'items'
+  item_ids?: string[]
+  subtree_mode?: 'keep_new' | 'exact_mirror'
+}
+
+export interface RestoreResponse {
+  pre_restore_snapshot_id: string
+  restored: number
+  trashed: number
+}

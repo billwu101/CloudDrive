@@ -17,6 +17,7 @@ import {
   LazySharedPage,
   LazySkillsPage,
   LazyStarredPage,
+  LazyTimeMachinePage,
   LazyTrashPage,
 } from './LazyPages'
 
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
           { path: '/starred', element: <LazyStarredPage /> },
           { path: '/shared', element: <LazySharedPage /> },
           { path: '/skills', element: <LazySkillsPage /> },
+          { path: '/time-machine', element: <LazyTimeMachinePage /> },
           { path: '/trash', element: <LazyTrashPage /> },
           { path: '/search', element: <LazySearchPage /> },
           { path: '/settings', element: <LazySettingsPage /> },

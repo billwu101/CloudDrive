@@ -32,6 +32,10 @@ const SkillsPage = lazy(async () => {
   const { SkillsPage } = await import('@/pages/SkillsPage')
   return { default: SkillsPage }
 })
+const TimeMachinePage = lazy(async () => {
+  const { TimeMachinePage } = await import('@/pages/TimeMachinePage')
+  return { default: TimeMachinePage }
+})
 
 function PageFallback() {
   return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
@@ -97,6 +101,14 @@ export function LazySkillsPage() {
   return (
     <Suspense fallback={<PageFallback />}>
       <SkillsPage />
+    </Suspense>
+  )
+}
+
+export function LazyTimeMachinePage() {
+  return (
+    <Suspense fallback={<PageFallback />}>
+      <TimeMachinePage />
     </Suspense>
   )
 }
