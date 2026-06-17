@@ -50,6 +50,25 @@ const server = setupServer(
       message: 'inspect_item_details installed.',
     }),
   ),
+  http.get(`${BASE}/assistant/workflows/saved`, () => HttpResponse.json([])),
+  http.post(`${BASE}/assistant/workflows/save`, async ({ request }) => {
+    const body = (await request.json()) as { name: string }
+    return HttpResponse.json({
+      id: 'saved-1',
+      name: body.name,
+      source_nl: '',
+      steps: [],
+      created_at: '2024-01-01T00:00:00Z',
+    })
+  }),
+  http.post(`${BASE}/assistant/workflows/saved/:id/rerun`, ({ params }) =>
+    HttpResponse.json({
+      workflow_id: params.id,
+      status: 'executed',
+      message: 'Saved workflow executed.',
+      results: [],
+    }),
+  ),
 )
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))

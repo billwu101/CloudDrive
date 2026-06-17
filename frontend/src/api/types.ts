@@ -187,3 +187,23 @@ export interface AssistantWorkflowConfirmResponse {
   message: string
   results: WorkflowStepResult[]
 }
+
+export interface AssistantPlannedStep {
+  skill: string
+  arguments: Record<string, unknown>
+  depends_on?: number[]
+}
+
+export interface AssistantSaveWorkflowRequest {
+  name: string
+  source_nl?: string
+  steps: AssistantPlannedStep[]
+}
+
+export interface AssistantSavedWorkflowResponse {
+  id: string
+  name: string
+  source_nl: string
+  steps: WorkflowStep[]
+  created_at: string
+}

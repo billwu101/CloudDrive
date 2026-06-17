@@ -1,4 +1,4 @@
-import { Loader2, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { Code2, Loader2, ShieldCheck, Sparkles, X } from 'lucide-react'
 
 import type { AssistantSkillResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ interface SkillApprovalCardProps {
   loading: boolean
   onApprove: (skill: AssistantSkillResponse) => void
   onDismiss: () => void
+  onReview?: () => void
 }
 
 export function SkillApprovalCard({
@@ -15,6 +16,7 @@ export function SkillApprovalCard({
   loading,
   onApprove,
   onDismiss,
+  onReview,
 }: SkillApprovalCardProps) {
   const actions = skill.manifest.ui.context_menu
 
@@ -38,6 +40,19 @@ export function SkillApprovalCard({
             ))}
           </div>
           <div className="flex justify-end gap-2">
+            {onReview && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onReview}
+                disabled={loading}
+                title="Review the generated code before installing"
+              >
+                <Code2 className="size-3.5" aria-hidden="true" />
+                Review code
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"

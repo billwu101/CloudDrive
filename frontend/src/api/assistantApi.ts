@@ -1,6 +1,8 @@
 import type {
   AssistantChatRequest,
   AssistantChatResponse,
+  AssistantSavedWorkflowResponse,
+  AssistantSaveWorkflowRequest,
   AssistantSkillApproveResponse,
   AssistantSkillExecuteRequest,
   AssistantSkillExecuteResponse,
@@ -16,6 +18,12 @@ export const assistantApi = {
     api.post<AssistantWorkflowConfirmResponse>(`/assistant/workflows/${workflowId}/confirm`),
   cancelWorkflow: (workflowId: string) =>
     api.post<AssistantWorkflowConfirmResponse>(`/assistant/workflows/${workflowId}/cancel`),
+  saveWorkflow: (body: AssistantSaveWorkflowRequest) =>
+    api.post<AssistantSavedWorkflowResponse>('/assistant/workflows/save', body),
+  listSavedWorkflows: () =>
+    api.get<AssistantSavedWorkflowResponse[]>('/assistant/workflows/saved'),
+  rerunWorkflow: (workflowId: string) =>
+    api.post<AssistantWorkflowConfirmResponse>(`/assistant/workflows/saved/${workflowId}/rerun`),
   listSkills: (status = 'installed') =>
     api.get<AssistantSkillResponse[]>('/assistant/skills', { params: { status } }),
   approveSkill: (skillId: string) =>

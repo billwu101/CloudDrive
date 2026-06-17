@@ -1,4 +1,4 @@
-import { ListChecks, Loader2, Play, ShieldAlert, X } from 'lucide-react'
+import { Bookmark, ListChecks, Loader2, Play, ShieldAlert, X } from 'lucide-react'
 
 import type { WorkflowPlanView } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -9,9 +9,18 @@ interface WorkflowPlanCardProps {
   loading: boolean
   onConfirm: (workflowId: string) => void
   onCancel: (workflowId: string) => void
+  onSave?: (plan: WorkflowPlanView) => void
+  saving?: boolean
 }
 
-export function WorkflowPlanCard({ plan, loading, onConfirm, onCancel }: WorkflowPlanCardProps) {
+export function WorkflowPlanCard({
+  plan,
+  loading,
+  onConfirm,
+  onCancel,
+  onSave,
+  saving,
+}: WorkflowPlanCardProps) {
   const workflowId = plan.workflow_id
   if (workflowId === null) return null
 
@@ -52,6 +61,19 @@ export function WorkflowPlanCard({ plan, loading, onConfirm, onCancel }: Workflo
             ))}
           </ol>
           <div className="flex justify-end gap-2">
+            {onSave && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onSave(plan)}
+                disabled={loading || saving}
+                title="Save this workflow to re-run later"
+              >
+                <Bookmark className="size-3.5" aria-hidden="true" />
+                Save
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"

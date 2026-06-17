@@ -271,6 +271,28 @@ const assistantHandlers = [
 
   http.get(`${BASE}/assistant/skills`, () => HttpResponse.json([])),
 
+  http.get(`${BASE}/assistant/workflows/saved`, () => HttpResponse.json([])),
+
+  http.post(`${BASE}/assistant/workflows/save`, async ({ request }) => {
+    const body = (await request.json()) as { name: string; source_nl?: string; steps: unknown[] }
+    return HttpResponse.json({
+      id: 'saved-workflow-1',
+      name: body.name,
+      source_nl: body.source_nl ?? '',
+      steps: [],
+      created_at: '2024-01-01T00:00:00Z',
+    })
+  }),
+
+  http.post(`${BASE}/assistant/workflows/saved/:id/rerun`, ({ params }) =>
+    HttpResponse.json({
+      workflow_id: params.id,
+      status: 'executed',
+      message: 'Saved workflow executed.',
+      results: [],
+    }),
+  ),
+
   http.post(`${BASE}/assistant/skills/:id/approve`, ({ params }) =>
     HttpResponse.json({
       skill: { ...MOCK_ASSISTANT_SKILL, id: params.id as string, status: 'installed' },

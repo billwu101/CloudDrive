@@ -10,10 +10,15 @@ import {
   useAssistantChatMutation,
   useCancelWorkflow,
   useConfirmWorkflow,
+  useRerunWorkflow,
+  useSaveWorkflow,
+  useSavedWorkflows,
 } from '@/hooks/useAssistant'
 import { cn } from '@/lib/utils'
 import { MessageBubble, type AssistantMessage } from './MessageBubble'
+import { SavedWorkflowsPanel } from './SavedWorkflowsPanel'
 import { SkillApprovalCard } from './SkillApprovalCard'
+import { SkillApprovalDialog } from './SkillApprovalDialog'
 import { WorkflowPlanCard } from './WorkflowPlanCard'
 
 const INITIAL_MESSAGE: AssistantMessage = {
@@ -43,10 +48,15 @@ export function AssistantPanel() {
   const [messages, setMessages] = useState<AssistantMessage[]>([INITIAL_MESSAGE])
   const [pendingSkill, setPendingSkill] = useState<AssistantSkillResponse | null>(null)
   const [pendingPlan, setPendingPlan] = useState<WorkflowPlanView | null>(null)
+  const [reviewingSkill, setReviewingSkill] = useState(false)
+  const [lastPrompt, setLastPrompt] = useState('')
   const chatMutation = useAssistantChatMutation()
   const approveSkill = useApproveAssistantSkill()
   const confirmWorkflow = useConfirmWorkflow()
   const cancelWorkflow = useCancelWorkflow()
+  const savedWorkflows = useSavedWorkflows()
+  const saveWorkflow = useSaveWorkflow()
+  const rerunWorkflow = useRerunWorkflow()
   const listRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -61,6 +71,7 @@ export function AssistantPanel() {
     if (!message || chatMutation.isPending) return
 
     setInput('')
+    setLastPrompt(message)
     setMessages((current) => [
       ...current,
       { id: newMessageId('user'), role: 'user', content: message },
@@ -168,6 +179,41 @@ export function AssistantPanel() {
     }
   }
 
+  const handleSaveWorkflow = async (plan: WorkflowPlanView) => {
+    const name = (lastPrompt || 'Saved workflow').slice(0, 80)
+    try {
+      await saveWorkflow.mutateAsync({
+        name,
+        source_nl: lastPrompt,
+        steps: plan.steps.map((step) => ({
+          skill: step.skill,
+          arguments: step.arguments,
+          depends_on: step.depends_on,
+        })),
+      })
+      appendAssistant(`Saved this workflow as "${name}". You can re-run it any time.`)
+    } catch (error) {
+      appendAssistant(errorMessage(error), 'error')
+    }
+  }
+
+  const handleRerunWorkflow = async (workflowId: string) => {
+    try {
+      const response = await rerunWorkflow.mutateAsync(workflowId)
+      const results = response.results ?? []
+      const failed = results.filter((result) => !result.ok)
+      appendAssistant(
+        failed.length === 0
+          ? 'Re-ran the saved workflow successfully.'
+          : `Re-ran with ${failed.length} failed step(s).`,
+        undefined,
+        results,
+      )
+    } catch (error) {
+      appendAssistant(errorMessage(error), 'error')
+    }
+  }
+
   return (
     <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-3">
       {isOpen && (
@@ -205,6 +251,7 @@ export function AssistantPanel() {
                 skill={pendingSkill}
                 loading={approveSkill.isPending}
                 onApprove={handleApproveSkill}
+                onReview={() => setReviewingSkill(true)}
                 onDismiss={() => setPendingSkill(null)}
               />
             )}
@@ -214,8 +261,15 @@ export function AssistantPanel() {
                 loading={confirmWorkflow.isPending || cancelWorkflow.isPending}
                 onConfirm={handleConfirmWorkflow}
                 onCancel={handleCancelWorkflow}
+                onSave={handleSaveWorkflow}
+                saving={saveWorkflow.isPending}
               />
             )}
+            <SavedWorkflowsPanel
+              workflows={savedWorkflows.data ?? []}
+              rerunningId={rerunWorkflow.isPending ? (rerunWorkflow.variables ?? null) : null}
+              onRerun={handleRerunWorkflow}
+            />
             {chatMutation.isPending && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -247,6 +301,22 @@ export function AssistantPanel() {
               )}
             </Button>
           </form>
+
+          {reviewingSkill && (
+            <SkillApprovalDialog
+              skill={pendingSkill}
+              loading={approveSkill.isPending}
+              onApprove={(skill) => {
+                setReviewingSkill(false)
+                void handleApproveSkill(skill)
+              }}
+              onReject={() => {
+                setReviewingSkill(false)
+                setPendingSkill(null)
+              }}
+              onClose={() => setReviewingSkill(false)}
+            />
+          )}
         </section>
       )}
 
