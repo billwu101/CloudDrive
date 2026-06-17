@@ -78,7 +78,7 @@ async def test_rename_item(client: AsyncClient) -> None:
     item_id = create.json()["id"]
 
     rename = await client.patch(
-        f"/api/v1/drive/items/{item_id}/rename", json={"name": "NewName"}, headers=h
+        f"/api/v1/drive/items/{item_id}/name", json={"name": "NewName"}, headers=h
     )
     assert rename.status_code == 200
     assert rename.json()["name"] == "NewName"

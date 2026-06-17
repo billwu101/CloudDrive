@@ -58,6 +58,9 @@ class MemFileVersionRepo(AbstractFileVersionRepository):
             reverse=True,
         )
 
+    async def delete_by_file(self, file_id: UUID) -> None:
+        self._versions = [v for v in self._versions if v.file_id != file_id]
+
 
 def _file_item(owner_id: UUID) -> DriveItem:
     return _item(owner_id=owner_id, item_type=ItemType.FILE)

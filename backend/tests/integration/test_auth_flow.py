@@ -15,9 +15,10 @@ async def test_register_creates_user(client: AsyncClient) -> None:
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["email"] == "bob@example.com"
-    assert data["username"] == "bob"
+    # Registration auto-logs-in and returns an access token (no user PII echoed).
+    assert data["access_token"]
     assert "password_hash" not in data
+    assert "email" not in data
 
 
 async def test_register_duplicate_email_returns_409(client: AsyncClient) -> None:

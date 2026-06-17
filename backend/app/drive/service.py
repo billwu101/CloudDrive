@@ -5,7 +5,7 @@ from uuid import UUID
 from app.activity_log.actions import ActivityAction
 from app.activity_log.service import ActivityLogService
 from app.core.error_codes import ErrorCode
-from app.core.exceptions import AppError, ForbiddenError, NotFoundError
+from app.core.exceptions import AppError, ForbiddenError, NameConflictError, NotFoundError
 from app.drive.repository import (
     AbstractDriveItemRepository,
     AbstractUserItemPreferenceRepository,
@@ -105,6 +105,17 @@ class DriveService:
         """Return the raw DriveItem model (ownership-checked). Used by downstream services."""
         return await self._get_owned(item_id, user_id)
 
+    async def get_raw_item_unscoped(self, item_id: UUID) -> DriveItem:
+        """Return the raw DriveItem without an ownership check.
+
+        For endpoints that must permit non-owners (e.g. a shared viewer) — the
+        caller is responsible for the actual permission gate (``assert_can_*``).
+        """
+        item = await self._items.get_by_id(item_id)
+        if item is None or item.is_deleted:
+            raise NotFoundError("Item not found")
+        return item
+
     async def get_item(self, user_id: UUID, item_id: UUID) -> DriveItemResponse:
         item = await self._get_owned(item_id, user_id)
         starred = await self._starred(user_id, [item])
@@ -155,7 +166,7 @@ class DriveService:
             if parent.item_type != ItemType.FOLDER:
                 raise AppError(ErrorCode.INVALID_OPERATION, "Parent must be a folder")
         if await self._items.name_exists_in_parent(name, parent_id, user_id):
-            raise AppError(ErrorCode.NAME_CONFLICT, f"'{name}' already exists in this location")
+            raise NameConflictError(f"'{name}' already exists in this location")
         item = await self._items.create(
             owner_id=user_id,
             parent_id=parent_id,
@@ -179,7 +190,7 @@ class DriveService:
         if await self._items.name_exists_in_parent(
             new_name, item.parent_id, user_id, exclude_id=item_id
         ):
-            raise AppError(ErrorCode.NAME_CONFLICT, f"'{new_name}' already exists in this location")
+            raise NameConflictError(f"'{new_name}' already exists in this location")
         updated = await self._items.update_name(item_id, new_name, user_id)
         await self._log(actor_id=user_id, action=ActivityAction.RENAME, item_id=item_id)
         starred = await self._starred(user_id, [updated])
@@ -210,7 +221,7 @@ class DriveService:
         if await self._items.name_exists_in_parent(
             item.name, new_parent_id, user_id, exclude_id=item_id
         ):
-            raise AppError(ErrorCode.NAME_CONFLICT, f"'{item.name}' already exists in destination")
+            raise NameConflictError(f"'{item.name}' already exists in destination")
         updated = await self._items.update_parent(item_id, new_parent_id, user_id)
         await self._log(actor_id=user_id, action=ActivityAction.MOVE, item_id=item_id)
         starred = await self._starred(user_id, [updated])

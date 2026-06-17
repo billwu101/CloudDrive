@@ -100,12 +100,18 @@ class TrashService:
         return _to_response(item)
 
     async def _free_file_storage(self, item: DriveItem) -> int:
-        """Delete storage objects for all versions of a file. Returns bytes freed."""
+        """Delete storage objects and version rows for a file. Returns bytes freed.
+
+        The ``file_versions`` rows must be removed before the ``drive_items`` row
+        (FK ``file_versions.file_id`` → ``drive_items.id``), otherwise the
+        subsequent hard delete violates the constraint.
+        """
         freed = 0
         for version in await self._versions.list_by_file(item.id):
             if await self._storage.exists(version.storage_key):
                 freed += await self._storage.get_size(version.storage_key)
                 await self._storage.delete(version.storage_key)
+        await self._versions.delete_by_file(item.id)
         return freed
 
     async def permanent_delete(self, user_id: UUID, item_id: UUID) -> None:
