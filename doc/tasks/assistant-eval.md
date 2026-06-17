@@ -37,11 +37,11 @@
 
 ## E4：內建案例覆蓋
 
-- [ ] 案例涵蓋 tag：`read-only` / `daily-ops` / `skill-generation`（含 7zip）/ `safety` / `workflow-reuse` / `context` / `model-escalation`。
-- [ ] `model-escalation` 案例：mock 本地「永遠失敗」驗證升級到（mock）外部；隱私敏感案例驗證**不**外送、回報失敗；外部停用案例驗證不升級。
+- [x] 案例涵蓋 tag：`read-only`(list)、`daily-ops`(create/rename/trash)、`skill-generation`(7zip→pending proposal)、`safety`(破壞性需確認)、`workflow-reuse`(可組合 search→rename 步驟引用)、`context`(雜訊長 prompt→乾淨計畫)、`model-escalation`。10/10 mock 全過。inproc runner 已接 `skill_authoring`(CodegenSubAgent) 使生成案例可產出 pending proposal。
+- [x] `model-escalation` 案例：`MockLLM` 新增 `external`/`local_failures`,inproc 建可升級 router;本地回不合法輸出 → 升級(mock)外部 → 計畫成功。隱私敏感**不**外送/外部停用不升級已於 `tests/assistant/test_model_router.py` 單元層覆蓋。
 
 ## 測試/驗證任務
 
-- [ ] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言、報告產出）以 mock 資料驗證。
-- [ ] API 模式 mock-LLM 案例可整進 CI。
-- [ ] `ruff format/check`、`mypy`、`pytest` 全綠。
+- [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。
+- [x] API 模式 mock-LLM 案例可整進 CI（`eval/inproc.py` + `run.py --llm mock`,決定性、免後端/Gemma）。
+- [x] `ruff format/check`、`mypy`、`pytest` 全綠（eval 切片）。
