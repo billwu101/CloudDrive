@@ -35,13 +35,14 @@
 ## 4. 快照觸發來源（三種）
 
 ### 4.1 自動排程
-背景任務定期（間隔可設，預設每小時）建 `trigger=scheduled` 快照。無變更時可跳過（與上一個快照內容一致則不建，避免冗餘）。
+**預設開啟，每小時**一次（間隔可在設定調整或關閉）建 `trigger=scheduled` 快照，由背景任務驅動。無變更時可跳過（與上一個快照內容一致則不建，避免冗餘）。
 
 ### 4.2 手動
 使用者於時光機頁按「立即建立快照」，建 `trigger=manual`，可加標籤（label）。
 
 ### 4.3 AI agent / skill 操作前自動快照（本專案特有）
 助理執行**寫入/破壞性 workflow** 或執行**生成式 skill（會寫回 drive）**前，自動建一個 `trigger=assistant` 快照，label 標註來源（例如「執行前：organize_by_type」）。讓使用者對助理的批次操作能一鍵回到操作前狀態。
+- **粒度：每個 workflow / 每次 skill 執行前建一個**（一個 workflow 不論內含幾步，只在第一個非唯讀步驟前建一個；單次 skill 執行前建一個）——不是每個寫入步驟各建。
 - 串接點：`workflow.py` 的 executor 在第一個非唯讀步驟前、`skills/authoring.py` 的 `_execute_generated` 寫回前，呼叫 `SnapshotService.create(trigger="assistant", label=...)`。
 - 唯讀操作不建（無副作用）。
 
@@ -49,18 +50,23 @@
 
 - **範圍**：
   - 單一檔案 → 還原其內容/名稱/位置到快照當下。
-  - 資料夾子樹 → 還原整個子樹（含子項的存在與否：快照當時有、現在被刪 → 救回；快照當時無、現在有 → 依模式刪除或保留，預設保留現有新增物以策安全，可由旗標切換為「精確鏡像」）。
-  - 整個 drive → 還原全部。
+  - 資料夾子樹 → 還原整個子樹。對「快照當時無、現在才新增」的項目，**由使用者在每次還原時選擇模式**：
+    - `keep_new`（保留新增物）：只把快照裡有的還原回來，現在多出來的不動。
+    - `exact_mirror`（精確鏡像）：完全還原成快照當時樣子，現在多出來的移到垃圾桶。
+    - 還原 API 帶 `subtree_mode` 參數，前端還原對話框讓使用者選（預設提示 `keep_new` 較安全）。
+  - 整個 drive → 還原全部（同樣可選 `subtree_mode`）。
 - **覆蓋規則**：以快照狀態為準覆蓋現況；被刪檔重建、改名/搬移回復、內容回到當時 version。
 - **保命**：還原前自動建 `pre_restore` 快照（pinned，不被自動刪）。
-- **配額**：還原走 service 層並套 `QuotaService` 檢查；若還原會超過配額則拒絕並提示。
+- **配額**：還原走 service 層並套配額檢查；若還原會超過（檔案）配額則拒絕並提示。
 - **稽核**：還原寫 `activity_logs`（action=`snapshot_restore`，記快照 id 與範圍）。
 
-## 6. 保留策略（保留最近 N 個）
+## 6. 保留策略與配額
 
-- 每次建快照後執行 prune：依時間保留最近 **N** 個（預設 N=50，可設定），超過刪最舊。
+- **保留最近 N 個**：每次建快照後執行 prune，依時間保留最近 **N** 個（預設 **N=50**，可設定），超過刪最舊。
 - **豁免**：`pinned=true` 與 `trigger=pre_restore` 的快照不計入自動刪除（避免把保命點刪掉）。
-- 刪快照時只移除 entries 與不再被任何快照/現役檔案引用的 blob（依 checksum reference count 回收，交由既有 storage 清理路徑）。
+- **獨立快照配額**：快照佔用的空間**不計入使用者的檔案配額**，而是另設一個**獨立的快照配額**（per-user 上限，可設）。判斷「快照吃多少空間」以去重後（checksum reference count）實際新增的 blob 計。建快照若會超過快照配額 → 先 prune 最舊的非豁免快照騰空間；仍不夠則該次排程快照跳過並提示（手動建快照則回錯誤）。
+  - 預設快照配額值待定（見 §13）——可設為等同檔案配額、或固定倍數、或獨立數值。
+- **Blob 回收採背景 GC**：刪快照（prune 或手動）時只移除 metadata（snapshot/entries）；實際不再被任何快照或現役檔案引用的 blob，由**背景任務依 checksum 引用計數定期回收**，不阻塞刪除操作。
 
 ## 7. 資料模型（新增表，Alembic migration）
 
@@ -97,18 +103,18 @@
 | POST | `/snapshots` | 手動建立快照（body 可帶 label） |
 | GET | `/snapshots` | 列出快照（時間軸；含 trigger/label/大小/pinned） |
 | GET | `/snapshots/{id}/items?parent_id=` | 瀏覽某快照中某資料夾的內容（唯讀，分頁） |
-| POST | `/snapshots/{id}/restore` | 就地還原（body: `scope = whole` 或 `item_ids[]`；自動先建 pre_restore） |
+| POST | `/snapshots/{id}/restore` | 就地還原（body: `scope = whole` 或 `item_ids[]`、`subtree_mode = keep_new`\|`exact_mirror`；自動先建 pre_restore） |
 | PATCH | `/snapshots/{id}` | pin/unpin、改 label |
-| DELETE | `/snapshots/{id}` | 刪除快照（pre_restore 可選擇性保護） |
-| GET/PUT | `/snapshots/settings` | 保留數 N、自動排程間隔與開關（per-user 設定） |
+| DELETE | `/snapshots/{id}` | 刪除快照（pre_restore 可選擇性保護；blob 由背景 GC 回收） |
+| GET/PUT | `/snapshots/settings` | 保留數 N（預設 50）、自動排程開關（預設開）與間隔（預設每小時）、獨立快照配額上限（per-user 設定） |
 
 ## 9. 前端（設計）
 
-- **側欄入口「時光機」**（`/timeline` 或 `/snapshots`）。
-- **時間軸**：快照清單（時間、來源標籤、大小、pinned 標記）；「立即建立快照」按鈕；保留 N / 排程設定。
+- **側欄入口「時光機」**，路由 **`/time-machine`**。
+- **時間軸**：快照清單（時間、來源標籤、大小、pinned 標記）；「立即建立快照」按鈕；保留 N / 排程開關與間隔 / 快照配額用量設定。
 - **進入快照**：選一個快照 → 唯讀檔案瀏覽器，呈現當時的 drive（沿用既有 FileGrid/FileTable，資料源換成 snapshot items）。
-- **還原流程**：選檔案/資料夾/整碟 → 確認對話框明示「**會覆蓋目前內容；已自動建立還原前快照，可再倒回**」→ 執行 → 完成後 invalidate `['drive']`。
-- 對應元件（建議）：`pages/TimelinePage.tsx`、`components/timeline/SnapshotList.tsx`、`SnapshotBrowser.tsx`、`RestoreConfirmDialog.tsx`；`api/snapshotApi.ts`、`hooks/useSnapshots.ts`。
+- **還原流程**：選檔案/資料夾/整碟 → 確認對話框明示「**會覆蓋目前內容；已自動建立還原前快照，可再倒回**」，並讓使用者選 `subtree_mode`（保留新增 / 精確鏡像）→ 執行 → 完成後 invalidate `['drive']`。
+- 對應元件（建議）：`pages/TimeMachinePage.tsx`、`components/timeline/SnapshotList.tsx`、`SnapshotBrowser.tsx`、`RestoreConfirmDialog.tsx`；`api/snapshotApi.ts`、`hooks/useSnapshots.ts`。
 
 ## 10. 後端模組（設計，沿用四件式結構）
 
@@ -134,14 +140,29 @@ tests/snapshot/
 ## 12. 里程碑（建議）
 
 1. **S1 資料層**：`snapshots`/`snapshot_entries` model + migration + repository + `SnapshotService.create`（手動）+ 測試。
-2. **S2 瀏覽 + 還原**：list / browse / restore（含 pre_restore + 配額）+ API + 測試。
-3. **S3 保留與排程**：prune（保留 N、pinned 豁免）+ 背景排程自動快照 + 設定 endpoint。
-4. **S4 Assistant 整合**：workflow/skill 寫入前自動 `assistant` 快照。
-5. **S5 前端**：時間軸頁、快照瀏覽、還原流程、設定 UI。
+2. **S2 瀏覽 + 還原**：list / browse / restore（含 pre_restore + `subtree_mode` keep_new/exact_mirror + 配額）+ API + 測試。
+3. **S3 保留與排程**：prune（保留 N=50、pinned 豁免）+ 獨立快照配額 + blob 背景 GC + 背景排程自動快照（預設開、每小時）+ 設定 endpoint。
+4. **S4 Assistant 整合**：workflow / skill 執行前自動 `assistant` 快照（每個 workflow/skill 一個）。
+5. **S5 前端**：`/time-machine` 頁、快照瀏覽、還原流程（含 subtree_mode 選擇）、設定 UI。
 
-## 13. 待確認 / 未決
+## 13. 決策與待確認
 
-- 自動排程預設間隔（每小時？）與是否「無變更則跳過」的判定成本。
-- 資料夾子樹還原時，對「快照當時不存在、但現在新增」的項目預設保留還是刪除（本文件預設保留，旗標可切「精確鏡像」）。
-- 快照數量很大時時間軸的分頁/壓縮顯示。
-- blob 引用計數回收的觸發時機（刪快照即時 vs 背景 GC）。
+### 13.1 已決定（2026-06-17，記入 DEC-024）
+
+| 項目 | 決定 |
+|---|---|
+| 快照配額 | **獨立快照配額**，不計入使用者檔案配額（§6） |
+| 自動排程 | **預設開啟，每小時**（可設定/關閉，§4.1） |
+| 保留數 N | **預設 50**（可設定，§6） |
+| 子樹還原模式 | **還原時讓使用者選** `keep_new` / `exact_mirror`（§5） |
+| Blob 回收 | **背景 GC**（依引用計數，不阻塞刪除，§6） |
+| 助理快照粒度 | **每個 workflow / 每次 skill 執行前一個**（§4.3） |
+| 協作/分享還原 | **僅擁有者可還原**（§11） |
+| 前端路由 | **`/time-machine`**（§9） |
+
+### 13.2 仍待確認
+
+- **獨立快照配額的預設值**：等同檔案配額？固定倍數？獨立數值？（先放設定，預設值待定。）
+- **「無變更則跳過」的判定成本**：排程建快照時如何低成本判定「與上一個快照內容一致」（例如比對 drive_items 的 max(updated_at) 與項目數）。
+- **時間軸大量快照的顯示**（#3）：幾百個快照時的分頁/依日折疊——純前端，S5 實作時定。
+- **還原 scope 的選取互動**（#9）：單檔/子樹/整碟在前端怎麼選與預覽差異——純前端，S5 實作時定。

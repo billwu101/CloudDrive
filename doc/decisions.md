@@ -232,9 +232,12 @@
 - 背景：使用者希望有類 Apple Time Machine 的能力——把整個雲端硬碟倒帶到過去某時間點瀏覽與還原。既有 `file_versions` 只記每檔版本，無法表達「整碟在時間 T 的狀態」（哪些檔存在、名稱、位置、是否被刪）。
 - 決策：
   1. 新增 `snapshots` / `snapshot_entries` 兩表記錄整碟時間點；**內容層引用既有 `file_versions` 並以 `checksum_sha256` 去重**，不重複存 blob（增量、省空間）。
-  2. 快照三種觸發：**自動排程**（背景任務，間隔可設）、**手動**、以及**助理寫入/破壞性 workflow 或生成式 skill 執行前自動建快照**（`trigger=assistant`），讓使用者能一鍵回到助理操作前。
-  3. 還原採**就地覆蓋**現況；還原前一律自動先建 `pre_restore` 保命快照（pinned），並走 service 層套配額/權限檢查、寫稽核。
-  4. 保留策略為**保留最近 N 個**（預設 50，可設），`pinned` 與 `pre_restore` 豁免；超量刪最舊，blob 依引用計數回收。
-- 理由：以新模型表達整碟狀態才能還原刪除/改名/搬移；重用 file_versions + checksum 讓快照便宜；就地還原貼近 Time Machine 行為，pre_restore 快照消除「誤覆蓋無法回頭」風險；保留 N 比 Apple thinning 簡單且足夠。
+  2. 快照三種觸發：**自動排程（預設開啟、每小時，可設定/關閉）**、**手動**、以及**助理寫入/破壞性 workflow 或生成式 skill 執行前自動建快照**（`trigger=assistant`，**每個 workflow / 每次 skill 一個**），讓使用者能一鍵回到助理操作前。
+  3. 還原採**就地覆蓋**現況；還原前一律自動先建 `pre_restore` 保命快照（pinned），走 service 層套配額/權限檢查、寫稽核。資料夾子樹/整碟還原時，對「快照當時無、現在才有」的項目由**使用者每次還原選 `keep_new`（保留新增）或 `exact_mirror`（精確鏡像）**。
+  4. 保留策略為**保留最近 N 個**（預設 50，可設），`pinned` 與 `pre_restore` 豁免；超量刪最舊。
+  5. 快照空間**不計入檔案配額**，另設**獨立快照配額**（per-user，可設；預設值待定）。
+  6. 刪快照採 **blob 背景 GC**（依引用計數回收，不阻塞刪除）。
+  7. 分享/協作項目**僅擁有者可還原**（viewer/editor 不可）。前端路由 `/time-machine`。
+- 理由：以新模型表達整碟狀態才能還原刪除/改名/搬移；重用 file_versions + checksum 讓快照便宜；就地還原貼近 Time Machine 行為，pre_restore 快照消除「誤覆蓋無法回頭」風險；獨立快照配額避免快照吃爆使用者檔案空間又能各自控管；保留 N 比 Apple thinning 簡單且足夠；背景 GC 讓刪除操作輕快。
 - 已知取捨：就地還原具破壞性（以 pre_restore + 二次確認緩解）；自動排程與引用計數回收有背景成本；協作/分享項目的還原暫限擁有者。
 - 影響範圍：新增 `app/snapshot/`（router/service/repository/schemas）、`snapshots`/`snapshot_entries` migration、背景排程任務、`app/assistant/`（workflow/skill 執行前建快照串接）、前端時光機頁與 API/hooks、`tests/snapshot/`。詳見 [time-machine-design.md](./time-machine-design.md)。
