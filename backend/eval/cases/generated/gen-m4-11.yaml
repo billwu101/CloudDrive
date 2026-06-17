@@ -3,13 +3,14 @@ name: 'M4 self-authoring #11 (hash_report)'
 prompt: 做一個產生 MD5+SHA1+SHA256 雜湊報告的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: hash_report
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

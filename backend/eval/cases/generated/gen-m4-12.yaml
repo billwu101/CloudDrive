@@ -3,13 +3,14 @@ name: 'M4 self-authoring #12 (base64_encode)'
 prompt: 做一個把檔案做 Base64 編碼的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: base64_encode
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

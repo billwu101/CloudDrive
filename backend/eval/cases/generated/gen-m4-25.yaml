@@ -3,13 +3,14 @@ name: 'M4 self-authoring #25 (pdf_extract_text)'
 prompt: 做一個抽取 PDF 文字的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: pdf_extract_text
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

@@ -3,13 +3,14 @@ name: 'M4 self-authoring #19 (word_frequency)'
 prompt: 做一個統計詞頻的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: word_frequency
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

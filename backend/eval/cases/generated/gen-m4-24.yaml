@@ -3,13 +3,14 @@ name: 'M4 self-authoring #24 (image_thumbnail)'
 prompt: 做一個產生圖片縮圖的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: image_thumbnail
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

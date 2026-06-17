@@ -3,13 +3,14 @@ name: 'M4 self-authoring #14 (csv_to_json)'
 prompt: 做一個把 CSV 轉成 JSON的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: csv_to_json
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

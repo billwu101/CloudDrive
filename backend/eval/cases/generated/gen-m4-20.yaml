@@ -3,13 +3,14 @@ name: 'M4 self-authoring #20 (text_uppercase)'
 prompt: 做一個把文字轉成大寫的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: text_uppercase
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

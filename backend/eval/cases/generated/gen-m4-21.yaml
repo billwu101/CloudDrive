@@ -3,13 +3,14 @@ name: 'M4 self-authoring #21 (rot13_text)'
 prompt: 做一個做 ROT13 轉換的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: rot13_text
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

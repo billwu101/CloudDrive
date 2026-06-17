@@ -3,13 +3,14 @@ name: 'M4 self-authoring #10 (sha1_checksum)'
 prompt: 做一個算 SHA1 雜湊的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: sha1_checksum
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

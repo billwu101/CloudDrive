@@ -80,7 +80,10 @@ M4_SKILLS = [
     ("pdf_extract_text", "抽取 PDF 文字"),
 ]
 # How many M4 cases also run as live browser E2E (wildcard expectation).
-M4_BROWSER_COUNT = 8
+# All of them: the self-authoring batch gets full end-to-end coverage. (M2/M3/M5
+# stay mock-only — their exact-step expectations can't be fairly checked against
+# a non-deterministic real model.)
+M4_BROWSER_COUNT = len(M4_SKILLS)
 
 _SAFE_CODE = (
     "import os\n"

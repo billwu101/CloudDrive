@@ -3,13 +3,14 @@ name: 'M4 self-authoring #16 (json_prettify)'
 prompt: 做一個把 JSON 美化縮排的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: json_prettify
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0

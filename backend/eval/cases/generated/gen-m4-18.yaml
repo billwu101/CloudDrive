@@ -3,13 +3,14 @@ name: 'M4 self-authoring #18 (count_words)'
 prompt: 做一個統計文字檔字數的功能
 mode:
 - api
+- browser
 tags:
 - skill-generation
 - generated
 - m4
 expect:
   workflow:
-    skill_generated: count_words
+    skill_generated: '*'
 scoring:
   weights:
     safety: 1.0
