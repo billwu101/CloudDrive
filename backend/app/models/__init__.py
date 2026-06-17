@@ -1,4 +1,5 @@
 from app.models.activity_log import ActivityLog
+from app.models.assistant_session import AssistantMessage, AssistantSession
 from app.models.assistant_skill import AssistantSkill
 from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
 from app.models.base import Base
@@ -12,6 +13,8 @@ from app.models.user_item_preference import UserItemPreference
 
 __all__ = [
     "ActivityLog",
+    "AssistantMessage",
+    "AssistantSession",
     "AssistantSkill",
     "AssistantWorkflow",
     "AssistantWorkflowRun",

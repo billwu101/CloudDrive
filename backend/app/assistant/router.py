@@ -16,12 +16,16 @@ from app.assistant.llm.privacy import PrivacyDefault
 from app.assistant.llm.router import ModelRouter
 from app.assistant.planner import WorkflowPlanner
 from app.assistant.repository import (
+    AbstractAssistantSessionRepository,
+    SQLAssistantSessionRepository,
     SQLAssistantSkillRepository,
     SQLAssistantWorkflowRepository,
 )
 from app.assistant.schemas import (
     AssistantChatRequest,
     AssistantChatResponse,
+    AssistantMessageResponse,
+    AssistantSessionResponse,
     AssistantSkillApproveResponse,
     AssistantSkillExecuteRequest,
     AssistantSkillExecuteResponse,
@@ -72,6 +76,10 @@ def _trash_service(session: DbSession) -> TrashService:
         quota_svc=QuotaService(SQLUserRepository(session)),
         activity_svc=ActivityLogService(SQLActivityLogRepository(session)),
     )
+
+
+def _assistant_session_repo(session: DbSession) -> AbstractAssistantSessionRepository:
+    return SQLAssistantSessionRepository(session)
 
 
 def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
@@ -150,6 +158,9 @@ def _assistant_service(session: DbSession) -> WorkflowService:
 
 AssistantServiceDep = Annotated[WorkflowService, Depends(_assistant_service)]
 AssistantSkillServiceDep = Annotated[AssistantSkillService, Depends(_assistant_skill_service)]
+AssistantSessionRepoDep = Annotated[
+    AbstractAssistantSessionRepository, Depends(_assistant_session_repo)
+]
 
 
 @router.post(
@@ -163,6 +174,7 @@ async def chat(
     current_user_id: CurrentUserId,
     session: DbSession,
     service: AssistantServiceDep,
+    session_repo: AssistantSessionRepoDep,
 ) -> AssistantChatResponse:
     settings = get_settings()
     if not settings.assistant_enabled:
@@ -183,9 +195,51 @@ async def chat(
             "Assistant model is unavailable",
             status_code=503,
         ) from exc
+    # Persist the conversation turn so the session can be resumed later.
+    await session_repo.ensure_session(
+        user_id=current_user_id,
+        session_id=response.session_id,
+        title=body.message,
+    )
+    await session_repo.add_message(
+        session_id=response.session_id, role="user", content=body.message
+    )
+    await session_repo.add_message(
+        session_id=response.session_id,
+        role="assistant",
+        content=response.message,
+        tool_calls=[tc.model_dump(mode="json") for tc in response.tool_calls],
+    )
     # Persist skill proposals, fast-path runs, and pending workflows.
     await session.commit()
     return response
+
+
+@router.get(
+    "/sessions",
+    response_model=list[AssistantSessionResponse],
+    summary="List the user's assistant conversations",
+)
+async def list_sessions(
+    current_user_id: CurrentUserId,
+    session_repo: AssistantSessionRepoDep,
+) -> list[AssistantSessionResponse]:
+    sessions = await session_repo.list_sessions(user_id=current_user_id)
+    return [AssistantSessionResponse.model_validate(s) for s in sessions]
+
+
+@router.get(
+    "/sessions/{session_id}/messages",
+    response_model=list[AssistantMessageResponse],
+    summary="Get the message history for a conversation",
+)
+async def list_session_messages(
+    session_id: UUID,
+    current_user_id: CurrentUserId,
+    session_repo: AssistantSessionRepoDep,
+) -> list[AssistantMessageResponse]:
+    messages = await session_repo.list_messages(user_id=current_user_id, session_id=session_id)
+    return [AssistantMessageResponse.model_validate(m) for m in messages]
 
 
 @router.post(

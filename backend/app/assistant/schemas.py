@@ -92,6 +92,25 @@ class AssistantChatResponse(BaseModel):
     skill_proposal: AssistantSkillResponse | None = None
 
 
+class AssistantSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssistantMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    role: str
+    content: str
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+
+
 class AssistantWorkflowConfirmResponse(BaseModel):
     workflow_id: UUID
     status: Literal["executed", "cancelled"]

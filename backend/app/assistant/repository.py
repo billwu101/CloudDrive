@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.assistant_session import AssistantMessage, AssistantSession
 from app.models.assistant_skill import AssistantSkill
 from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
 
@@ -122,6 +123,124 @@ class SQLAssistantSkillRepository(AbstractAssistantSkillRepository):  # pragma: 
         skill.updated_at = datetime.now(UTC)
         await self._session.flush()
         return skill
+
+
+class AbstractAssistantSessionRepository(ABC):
+    @abstractmethod
+    async def ensure_session(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        title: str = "",
+    ) -> AssistantSession: ...
+
+    @abstractmethod
+    async def add_message(
+        self,
+        *,
+        session_id: UUID,
+        role: str,
+        content: str,
+        tool_calls: list[dict[str, Any]] | None = None,
+    ) -> AssistantMessage: ...
+
+    @abstractmethod
+    async def list_sessions(self, *, user_id: UUID) -> list[AssistantSession]: ...
+
+    @abstractmethod
+    async def list_messages(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+    ) -> list[AssistantMessage]: ...
+
+
+class SQLAssistantSessionRepository(AbstractAssistantSessionRepository):  # pragma: no cover
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def ensure_session(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        title: str = "",
+    ) -> AssistantSession:
+        now = datetime.now(UTC)
+        result = await self._session.execute(
+            select(AssistantSession).where(
+                AssistantSession.id == session_id,
+                AssistantSession.user_id == user_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            existing.updated_at = now
+            if title and not existing.title:
+                existing.title = title[:200]
+            await self._session.flush()
+            return existing
+        session_row = AssistantSession(
+            id=session_id,
+            user_id=user_id,
+            title=title[:200],
+            created_at=now,
+            updated_at=now,
+        )
+        self._session.add(session_row)
+        await self._session.flush()
+        return session_row
+
+    async def add_message(
+        self,
+        *,
+        session_id: UUID,
+        role: str,
+        content: str,
+        tool_calls: list[dict[str, Any]] | None = None,
+    ) -> AssistantMessage:
+        message = AssistantMessage(
+            id=uuid4(),
+            session_id=session_id,
+            role=role,
+            content=content,
+            tool_calls=tool_calls or [],
+            created_at=datetime.now(UTC),
+        )
+        self._session.add(message)
+        await self._session.flush()
+        return message
+
+    async def list_sessions(self, *, user_id: UUID) -> list[AssistantSession]:
+        result = await self._session.execute(
+            select(AssistantSession)
+            .where(AssistantSession.user_id == user_id)
+            .order_by(AssistantSession.updated_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def list_messages(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+    ) -> list[AssistantMessage]:
+        owns = await self._session.execute(
+            select(AssistantSession.id).where(
+                AssistantSession.id == session_id,
+                AssistantSession.user_id == user_id,
+            )
+        )
+        if owns.scalar_one_or_none() is None:
+            return []
+        result = await self._session.execute(
+            select(AssistantMessage)
+            .where(AssistantMessage.session_id == session_id)
+            .order_by(AssistantMessage.created_at.asc())
+        )
+        return list(result.scalars().all())
 
 
 class AbstractAssistantWorkflowRepository(ABC):
