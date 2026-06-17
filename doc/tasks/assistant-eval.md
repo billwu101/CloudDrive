@@ -48,6 +48,9 @@
 
 ## E5：執行驗證模式（實際跑 skill、驗產出內容）
 
+> 測試 prompt 與**出過問題的 prompt** 集中記在 [eval-prompt-log.md](../eval-prompt-log.md)；出問題的一律也做成 eval case 以便自動回歸。
+
+
 - [x] **不只驗「有沒有生成提案」,而是實際執行 skill 並驗產出內容**。新增 `--mode exec`：`eval/exec_runner.py` 把案例的參考實作 `expect.execute.code` 丟進**真實 `SkillSandbox`** 對 `eval/fixtures/` 的 fixture 執行,收集產出檔與內容;`verifier.verify_execution` 斷言 `execution` 維度（執行無誤、產出檔數、檔名含、**內容含**、指定檔名）。決定性、免 LLM/後端,可進 CI。
 - [x] 沙箱補 **Pillow + pypdf** 依賴（重建後端映像 + 本地 `uv sync`）,讓 image/pdf skill 真的能跑。
 - [x] 4 個執行案例（`eval/cases/exec/`,內容正確性斷言）：hash 報告（驗 SHA256 hex 正確）、untar（驗解出 `alpha.txt`+`docs/beta.txt`）、縮圖（Pillow 64→32px 產出檔）、PDF 抽字（pypdf 驗抽出 "Hello PDF Eval"）。`--mode exec` **4/4 PASS**,fixtures 由 `eval/fixtures/make_fixtures.py` 決定性產生。
