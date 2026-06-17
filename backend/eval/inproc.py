@@ -22,17 +22,21 @@ from app.assistant.planner import WorkflowPlanner
 from app.assistant.repository import (
     WORKFLOW_PENDING,
     WORKFLOW_SAVED,
+    AbstractAssistantSkillRepository,
     AbstractAssistantWorkflowRepository,
 )
 from app.assistant.service import WorkflowService
+from app.assistant.skills.authoring import AssistantSkillService
 from app.assistant.skills.builtin import build_read_only_registry, register_write_skills
+from app.assistant.subagent import CodegenSubAgent
 from app.assistant.workflow import WorkflowExecutor
 from app.drive.service import DriveService
+from app.models.assistant_skill import AssistantSkill
 from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
 from app.search.service import SearchService
 from app.trash.service import TrashService
 from app.users.service import QuotaService
-from eval.schema import EvalCase
+from eval.schema import EvalCase, MockLLM
 
 
 class EvalInprocError(Exception):
@@ -89,6 +93,52 @@ class _FakeSearch:
 class _FakeQuota:
     async def get_quota_info(self, user_id: UUID) -> Any:
         return dict(_QUOTA)
+
+
+class _MemorySkillRepo(AbstractAssistantSkillRepository):
+    def __init__(self) -> None:
+        self.by_id: dict[UUID, AssistantSkill] = {}
+
+    async def get_by_id(self, *, user_id: UUID, skill_id: UUID) -> AssistantSkill | None:
+        return self.by_id.get(skill_id)
+
+    async def get_by_name(self, *, user_id: UUID, name: str) -> AssistantSkill | None:
+        return next((s for s in self.by_id.values() if s.name == name), None)
+
+    async def list_by_status(
+        self, *, user_id: UUID, status: str | None = None
+    ) -> list[AssistantSkill]:
+        return [s for s in self.by_id.values() if status is None or s.status == status]
+
+    async def create_or_replace_pending(
+        self,
+        *,
+        user_id: UUID,
+        name: str,
+        description: str,
+        manifest: dict[str, Any],
+        code: str,
+    ) -> AssistantSkill:
+        now = datetime.now(UTC)
+        skill = AssistantSkill(
+            id=uuid4(),
+            user_id=user_id,
+            name=name,
+            description=description,
+            manifest=manifest,
+            code=code,
+            status="pending",
+            created_at=now,
+            updated_at=now,
+        )
+        self.by_id[skill.id] = skill
+        return skill
+
+    async def approve(self, *, user_id: UUID, skill_id: UUID) -> AssistantSkill | None:
+        skill = self.by_id.get(skill_id)
+        if skill is not None:
+            skill.status = "installed"
+        return skill
 
 
 class _FakeTrash:
@@ -184,7 +234,27 @@ class _MemoryWorkflowRepo(AbstractAssistantWorkflowRepository):
         return workflow
 
 
-def _build_service(responses: list[Any]) -> WorkflowService:
+def _build_router(mock: MockLLM) -> ModelRouter:
+    local = _ScriptedLLM(mock.responses)
+    if mock.external:
+        # Local exhausts its attempts on (invalid) output, then escalates.
+        return ModelRouter(
+            local_client=local,
+            external_client=_ScriptedLLM(mock.external),
+            external_enabled=True,
+            max_local_attempts=max(1, mock.local_failures),
+            privacy_default="non_sensitive",
+        )
+    return ModelRouter(
+        local_client=local,
+        external_client=None,
+        external_enabled=False,
+        max_local_attempts=1,
+        privacy_default="non_sensitive",
+    )
+
+
+def _build_service(mock: MockLLM) -> WorkflowService:
     registry = build_read_only_registry(
         drive_service=cast(DriveService, _FakeDrive()),
         search_service=cast(SearchService, _FakeSearch()),
@@ -195,24 +265,21 @@ def _build_service(responses: list[Any]) -> WorkflowService:
         drive_service=cast(DriveService, _FakeDrive()),
         trash_service=cast(TrashService, _FakeTrash()),
     )
-    router = ModelRouter(
-        local_client=_ScriptedLLM(responses),
-        external_client=None,
-        external_enabled=False,
-        max_local_attempts=1,
-        privacy_default="non_sensitive",
-    )
-    planner = WorkflowPlanner(
-        llm=router,
-        registry=registry,
-        context=ContextManager(num_ctx=8192),
-        num_ctx=8192,
+    router = _build_router(mock)
+    context = ContextManager(num_ctx=8192)
+    planner = WorkflowPlanner(llm=router, registry=registry, context=context, num_ctx=8192)
+    codegen = CodegenSubAgent(llm=router, context=context, num_ctx=8192)
+    skill_authoring = AssistantSkillService(
+        repo=_MemorySkillRepo(),
+        drive_service=cast(DriveService, _FakeDrive()),
+        codegen=codegen,
     )
     return WorkflowService(
         planner=planner,
         executor=WorkflowExecutor(registry=registry),
         registry=registry,
         workflow_repo=_MemoryWorkflowRepo(),
+        skill_authoring=skill_authoring,
     )
 
 
@@ -221,7 +288,7 @@ def run_case_inproc(case: EvalCase) -> dict[str, Any]:
         raise EvalInprocError(
             f"case {case.id}: the in-process (mock) runner requires a 'mock_llm' script"
         )
-    service = _build_service(case.mock_llm.responses)
+    service = _build_service(case.mock_llm)
     response = asyncio.run(service.chat(user_id=uuid4(), message=case.prompt))
     dumped: dict[str, Any] = response.model_dump(mode="json")
     return dumped

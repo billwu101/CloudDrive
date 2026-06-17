@@ -1,0 +1,18 @@
+id: read-only-list
+name: List files (read-only — auto-executes)
+prompt: List my files
+mode: [api]
+tags: [read-only]
+expect:
+  workflow:
+    requires_confirmation: false
+    steps_include: [list_items]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+    - reply: Here are your files.
+      steps:
+        - skill: list_items
+          arguments: {}

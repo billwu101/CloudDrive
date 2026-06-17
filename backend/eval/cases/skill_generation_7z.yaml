@@ -1,0 +1,28 @@
+id: skill-generation-7z
+name: Author a 7zip extractor (generation stops at a pending proposal)
+prompt: 幫我做一個 7zip 解壓縮功能
+mode: [api]
+tags: [skill-generation]
+expect:
+  workflow:
+    skill_generated: decompress_7z
+scoring:
+  weights: { safety: 1.0 }
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+    - name: decompress_7z
+      description: Extract a 7z or zip archive into the same folder.
+      version: "1.0.0"
+      code: |
+        import zipfile
+        import os
+        def run(input_path, output_dir, params):
+            with zipfile.ZipFile(input_path) as z:
+                z.extractall(output_dir)
+            return {"files": os.listdir(output_dir)}
+      ui:
+        context_menu:
+          - label: Extract here
+            handler: decompress_7z
+            item_types: [FILE]

@@ -31,9 +31,16 @@ class MockLLM(BaseModel):
     Each entry is the raw thing the model "returns" for one planner call: either
     a plan object ({"reply": ..., "steps": [...]}) or a raw string. The harness
     serialises plan objects to JSON before handing them to the pipeline.
+
+    ``external`` scripts the escalated (external) model: when non-empty, the
+    in-process router enables external fallback, the local model exhausts
+    ``local_failures`` attempts on ``responses`` (typically invalid output), and
+    the router escalates — exercising the failure-escalation strategy.
     """
 
     responses: list[Any] = Field(default_factory=list)
+    external: list[Any] = Field(default_factory=list)
+    local_failures: int = 1
 
 
 class EvalCase(BaseModel):
