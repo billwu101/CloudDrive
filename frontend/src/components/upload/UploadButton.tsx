@@ -1,14 +1,34 @@
 import { Upload } from 'lucide-react'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 
 interface UploadButtonProps {
   onFiles: (files: File[]) => void
+  /** When true, the picker selects a whole folder (preserving its structure). */
+  directory?: boolean
   className?: string
   children?: React.ReactNode
 }
 
-export function UploadButton({ onFiles, className, children }: UploadButtonProps) {
+export function UploadButton({
+  onFiles,
+  directory = false,
+  className,
+  children,
+}: UploadButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // `webkitdirectory` is non-standard, so set it imperatively (not a JSX attr).
+  useEffect(() => {
+    const input = inputRef.current
+    if (!input) return
+    if (directory) {
+      input.setAttribute('webkitdirectory', '')
+      input.setAttribute('directory', '')
+    } else {
+      input.removeAttribute('webkitdirectory')
+      input.removeAttribute('directory')
+    }
+  }, [directory])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])

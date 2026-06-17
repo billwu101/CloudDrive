@@ -1,4 +1,4 @@
-import { ArrowLeft, FolderOpen } from 'lucide-react'
+import { ArrowLeft, FolderOpen, FolderUp } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -28,7 +28,7 @@ import { UploadQueue } from '@/components/upload/UploadQueue'
 import { useAssistantSkills, useExecuteAssistantSkill } from '@/hooks/useAssistant'
 import { useCreateFolder, useDriveItems, useFolderAncestors, useFolderItem, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
 import { useDragSelect } from '@/hooks/useDragSelect'
-import { useUploadFiles } from '@/hooks/useUpload'
+import { useUploadFiles, useUploadFolders } from '@/hooks/useUpload'
 import { useUIStore } from '@/stores/uiStore'
 
 interface SingleContextMenuState {
@@ -82,6 +82,7 @@ export function DrivePage() {
   const executeAssistantSkill = useExecuteAssistantSkill()
 
   const { upload } = useUploadFiles(folderId)
+  const { uploadFolders } = useUploadFolders(folderId)
 
   const fileListRef = useRef<HTMLDivElement>(null)
   const [showCreateFolder, setShowCreateFolder] = useState(false)
@@ -205,7 +206,7 @@ export function DrivePage() {
   }
 
   return (
-    <UploadDropzone onFiles={upload}>
+    <UploadDropzone onFiles={upload} onFolders={uploadFolders}>
       <div className="flex h-full flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -222,6 +223,10 @@ export function DrivePage() {
           </div>
           <div className="flex items-center gap-2">
             <UploadButton onFiles={upload} />
+            <UploadButton onFiles={uploadFolders} directory>
+              <FolderUp className="size-4" aria-hidden="true" />
+              Upload folder
+            </UploadButton>
             <DriveToolbar
               selectedCount={selectedIds.size}
               onNewFolder={() => setShowCreateFolder(true)}
