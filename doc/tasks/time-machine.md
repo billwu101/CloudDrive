@@ -29,9 +29,9 @@
 ## S3：保留、配額與排程
 
 - [ ] `SnapshotService.prune`：保留最近 N（預設 50），pinned / pre_restore 豁免。
-- [ ] 獨立快照配額：建快照前檢查快照配額（不佔檔案配額），超過先 prune 騰空間、仍不夠則排程跳過/手動回錯誤。
+- [ ] 獨立快照配額（**預設 = 檔案配額的一半**）：建快照前檢查快照配額（不佔檔案配額），超過先 prune 騰空間、仍不夠則排程跳過/手動回錯誤。
 - [ ] blob 背景 GC：背景任務依 checksum 引用計數回收不再被引用的內容（刪快照只移除 metadata）。
-- [ ] 背景排程任務：定期 `create(trigger="scheduled")` + prune（**預設開、每小時**，可設）；無變更可跳過。
+- [ ] 背景排程任務：定期 `create(trigger="scheduled")` + prune（**預設開、每小時**，可設）；**以 activity_logs 判定無寫入則跳過**。
 - [ ] `GET/PUT /snapshots/settings`：保留 N、排程開關/間隔、獨立快照配額上限（per-user）。
 - [ ] 測試：prune 保留 N 與豁免、快照配額超限處理、GC 引用計數回收、排程任務觸發、設定讀寫。
 
@@ -45,9 +45,9 @@
 
 - [ ] `api/snapshotApi.ts` + `hooks/useSnapshots.ts`。
 - [ ] 側欄「時光機」入口 + `/time-machine` 路由 + lazy page。
-- [ ] `TimeMachinePage`（快照清單、立即建立、保留/排程/快照配額設定）。
-- [ ] `SnapshotBrowser`（唯讀瀏覽當時 drive，沿用 FileGrid/FileTable）。
-- [ ] `RestoreConfirmDialog`（明示覆蓋 + 已建保命快照 + 選 subtree_mode）→ 還原後 invalidate `['drive']`。
+- [ ] `TimeMachinePage`（快照清單**依日期分組折疊 + 分頁**、立即建立、保留/排程/快照配額設定）。
+- [ ] `SnapshotBrowser`（唯讀瀏覽當時 drive，沿用 FileGrid/FileTable，**多選勾選**）。
+- [ ] `RestoreConfirmDialog`（明示覆蓋 + 已建保命快照 + 選 subtree_mode；「還原選取項」/「還原整個快照」）→ 還原後 invalidate `['drive']`。
 - [ ] 測試：清單、瀏覽、還原確認流程（含 subtree_mode 選擇）。
 
 ## 測試/驗證任務
