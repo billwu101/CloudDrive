@@ -137,6 +137,10 @@ MVP 指第一版可展示與可使用的核心版本。
 
 核心 28 模組之後新增的對話式 AI 助理（自然語言操作檔案、計畫確認、現場生成技能、技能管理、工作流程重用）。完整規格見 **§33**。
 
+### 5.6 擴充功能：時光機（Snapshots）
+
+類 Apple Time Machine 的整碟時間點還原：定期/手動/助理操作前自動建快照，可瀏覽過去某時間點的硬碟並就地還原。完整規格見 **§34**。
+
 ## 6. 使用者角色
 
 ### 6.1 一般使用者
@@ -1723,8 +1727,33 @@ frontend/e2e/assistant/assistant-eval.spec.ts  frontend/playwright.eval.config.t
 - 後端 `tests/assistant/`、前端 `components/assistant/*.test.tsx`。
 - 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
 
-## 34. 結論
+## 34. 擴充功能：時光機（Snapshots）
+
+類 Apple Time Machine 的整碟時間點還原。完整設計見 [time-machine-design.md](./time-machine-design.md)，決策見 DEC-024。**狀態：設計階段，尚未實作。**
+
+### 34.1 功能範圍
+
+- **快照**：整個雲端硬碟在某時間點的狀態（哪些檔案/資料夾存在、名稱、位置、版本）。增量儲存——未變更檔案以 `checksum_sha256` 共用既有內容，不重複存。
+- **三種觸發**：(1) 自動排程（背景任務，間隔可設）；(2) 手動「立即建立快照」；(3) **助理執行寫入/破壞性 workflow 或生成式 skill 前自動建快照**，可一鍵回到助理操作前。
+- **時間軸瀏覽**：依時間列出快照，點任一快照唯讀瀏覽當時的硬碟。
+- **就地還原**：把單檔／資料夾子樹／整碟還原到所選時間點，**覆蓋現況**（救回被刪檔、回復改名/搬移/內容）。還原前自動先建「還原前保命快照」，可再倒回；走 service 層套配額與權限。
+- **保留策略**：保留最近 N 個快照（預設 50，可設）；釘選與保命快照豁免；超量刪最舊。
+
+### 34.2 重用既有模組
+
+建立在既有元件之上：`file_versions`（內容層）、`drive_items` 的名稱/父層/刪除旗標（可還原改名/搬移/刪除）、Trash（互補）、`activity_logs`（稽核）、Storage 的 checksum 去重、背景任務（排程與縮減）、Assistant（執行前快照）。
+
+### 34.3 新增資料表與 API（摘要）
+
+- 新表 `snapshots`、`snapshot_entries`（見設計文件 §7）。
+- 端點：`POST/GET /snapshots`、`GET /snapshots/{id}/items`、`POST /snapshots/{id}/restore`、`PATCH/DELETE /snapshots/{id}`、`GET/PUT /snapshots/settings`。
+
+### 34.4 前端頁面
+
+側欄「時光機」入口（`/timeline`）：快照時間軸、進入快照唯讀瀏覽、還原確認流程（明示覆蓋且已建保命快照）、保留數與排程設定。
+
+## 35. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 
-建議第一版先完成穩定的 MVP：登入、我的硬碟、資料夾、上傳、下載、搜尋、垃圾桶與容量統計。待核心流程穩定後，再加入分享連結、檔案版本、分片上傳、預覽、背景任務與管理後台。其後再以「In-App AI Assistant」（§33）擴充對話式操作與自我撰寫技能能力。
+建議第一版先完成穩定的 MVP：登入、我的硬碟、資料夾、上傳、下載、搜尋、垃圾桶與容量統計。待核心流程穩定後，再加入分享連結、檔案版本、分片上傳、預覽、背景任務與管理後台。其後再以「In-App AI Assistant」（§33）與「時光機」（§34）擴充對話式操作、自我撰寫技能與時間點還原能力。

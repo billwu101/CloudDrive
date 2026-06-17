@@ -55,6 +55,10 @@
 - [x] [Frontend Assistant](./frontend-assistant.md) — 聊天面板、計畫確認、技能核可/code review、動態右鍵選單、已存 workflow 重跑、側欄 Skills 管理頁（列表/編輯/刪除）。
 - [x] [Assistant 驗證與評分 Harness](./assistant-eval.md) — E1 API/in-process mock runner + verifier/scoring/report + state/safety 斷言 + 多次執行通過率/變異、E2 Playwright browser runner、E3 LLM judge + `--llm real` + baseline 回歸、E4 案例覆蓋。全部完成。設計見 [assistant-eval-design.md](../assistant-eval-design.md)。
 
+## 擴充模組：時光機（Snapshots）（設計完成，尚未實作）
+
+- [ ] [時光機 Snapshots](./time-machine.md) — 類 Apple Time Machine 的整碟時間點還原：自動排程/手動/助理操作前快照、時間軸瀏覽、就地還原（含保命快照）、保留最近 N。設計見 [time-machine-design.md](../time-machine-design.md)，決策 DEC-024。
+
 ## 建議執行順序
 
 - [x] 第一階段：Project Setup、Backend Core、Database。

@@ -224,3 +224,17 @@
 - 理由：兼顧本地隱私優先與「真的做不出來時有退路」；隱私永遠優先於升級。
 - 已知取捨：啟用外部時部分資料可能（經去識別化後）外送，需使用者明確開啟並信任外部端點；維護隱私分類/去識別化有成本且非完美，故預設保守（檔案內容預設視為隱私）、外部預設關閉。
 - 影響範圍：`app/assistant/llm/{router,external,privacy}.py`、config（EXTERNAL_LLM_*/MAX_LOCAL_ATTEMPTS/PRIVACY_DEFAULT）、hooks 稽核、eval 的 `model-escalation` 案例。
+
+## DEC-024：新增「時光機（Snapshots）」整碟時間點還原
+
+- 日期：2026-06-17
+- 狀態：Accepted（設計階段，尚未實作）
+- 背景：使用者希望有類 Apple Time Machine 的能力——把整個雲端硬碟倒帶到過去某時間點瀏覽與還原。既有 `file_versions` 只記每檔版本，無法表達「整碟在時間 T 的狀態」（哪些檔存在、名稱、位置、是否被刪）。
+- 決策：
+  1. 新增 `snapshots` / `snapshot_entries` 兩表記錄整碟時間點；**內容層引用既有 `file_versions` 並以 `checksum_sha256` 去重**，不重複存 blob（增量、省空間）。
+  2. 快照三種觸發：**自動排程**（背景任務，間隔可設）、**手動**、以及**助理寫入/破壞性 workflow 或生成式 skill 執行前自動建快照**（`trigger=assistant`），讓使用者能一鍵回到助理操作前。
+  3. 還原採**就地覆蓋**現況；還原前一律自動先建 `pre_restore` 保命快照（pinned），並走 service 層套配額/權限檢查、寫稽核。
+  4. 保留策略為**保留最近 N 個**（預設 50，可設），`pinned` 與 `pre_restore` 豁免；超量刪最舊，blob 依引用計數回收。
+- 理由：以新模型表達整碟狀態才能還原刪除/改名/搬移；重用 file_versions + checksum 讓快照便宜；就地還原貼近 Time Machine 行為，pre_restore 快照消除「誤覆蓋無法回頭」風險；保留 N 比 Apple thinning 簡單且足夠。
+- 已知取捨：就地還原具破壞性（以 pre_restore + 二次確認緩解）；自動排程與引用計數回收有背景成本；協作/分享項目的還原暫限擁有者。
+- 影響範圍：新增 `app/snapshot/`（router/service/repository/schemas）、`snapshots`/`snapshot_entries` migration、背景排程任務、`app/assistant/`（workflow/skill 執行前建快照串接）、前端時光機頁與 API/hooks、`tests/snapshot/`。詳見 [time-machine-design.md](./time-machine-design.md)。
