@@ -37,6 +37,7 @@ from app.assistant.schemas import (
 from app.assistant.service import WorkflowService
 from app.assistant.skills.authoring import AssistantSkillService
 from app.assistant.skills.builtin import build_read_only_registry, register_write_skills
+from app.assistant.subagent import CodegenSubAgent
 from app.assistant.workflow import WorkflowExecutor
 from app.core.config import get_settings
 from app.core.dependencies import CurrentUserId, DbSession
@@ -146,6 +147,7 @@ def _assistant_service(session: DbSession) -> WorkflowService:
         num_ctx=settings.llm_num_ctx,
     )
     executor = WorkflowExecutor(registry=registry, hooks=default_hook_registry())
+    codegen = CodegenSubAgent(llm=model_router, context=context, num_ctx=settings.llm_num_ctx)
     return WorkflowService(
         planner=planner,
         executor=executor,
@@ -154,6 +156,7 @@ def _assistant_service(session: DbSession) -> WorkflowService:
         skill_authoring=AssistantSkillService(
             repo=SQLAssistantSkillRepository(session),
             drive_service=drive_service,
+            codegen=codegen,
         ),
     )
 
