@@ -4,6 +4,7 @@ from app.models.assistant_skill import AssistantSkill
 from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRun
 from app.models.base import Base
 from app.models.drive_item import DriveItem
+from app.models.file_search_index import FileSearchIndex
 from app.models.file_version import FileVersion
 from app.models.refresh_token import RefreshToken
 from app.models.share import Share
@@ -21,6 +22,7 @@ __all__ = [
     "AssistantWorkflowRun",
     "Base",
     "DriveItem",
+    "FileSearchIndex",
     "FileVersion",
     "RefreshToken",
     "Share",
