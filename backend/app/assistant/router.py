@@ -50,7 +50,7 @@ from app.drive.service import DriveService
 from app.file_version.repository import SQLFileVersionRepository
 from app.permission.repository import SQLShareRepository
 from app.permission.service import PermissionService
-from app.search.indexer import SearchIndexService, SQLSearchIndexRepository
+from app.search.factory import build_search_index_service
 from app.search.repository import SQLSearchRepository
 from app.search.service import SearchService
 from app.share.repository import SQLShareLinkRepository
@@ -103,7 +103,7 @@ def _upload_service(session: DbSession) -> UploadService:
             item_repo=SQLDriveItemRepository(session),
         ),
         quota_svc=QuotaService(SQLUserRepository(session)),
-        search_indexer=SearchIndexService(SQLSearchIndexRepository(session)),
+        search_indexer=build_search_index_service(session, get_settings()),
     )
 
 

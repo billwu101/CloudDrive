@@ -27,7 +27,7 @@
 - [x] [Backend Download](./backend-download.md)
 - [x] [Backend Preview](./backend-preview.md)
 - [x] [Backend Trash](./backend-trash.md)
-- [x] [Backend Search](./backend-search.md) — 含全文內容搜尋第一階段：上傳時抽取文字（text/PDF）建 `file_search_index`（tsvector GIN），搜尋比對檔名 + 內容。語意/embedding 搜尋為第二階段待辦。
+- [x] [Backend Search](./backend-search.md) — 檔名搜尋 + 全文內容搜尋（`file_search_index` tsvector）+ 語意搜尋（`file_embeddings` pgvector，Ollama embedding，`GET /search/semantic`，預設關）。待後續：舊檔 backfill、chunking、前端語意搜尋 UI。
 - [x] [Backend Share](./backend-share.md)
 - [x] [Backend FileVersion](./backend-file-version.md)
 - [x] [Backend ActivityLog](./backend-activity-log.md)

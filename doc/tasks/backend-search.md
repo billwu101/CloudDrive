@@ -47,3 +47,15 @@
 - [x] 搜尋查詢改寫：`SQLSearchRepository` LEFT JOIN `file_search_index`，比對「檔名 ILIKE OR 內容 ILIKE（涵蓋 CJK）OR 英文 tsvector @@ plainto_tsquery」。
 - [x] 測試：extract 各型別/截斷/壞檔、indexer upsert/清舊、整合測試「檔名不含關鍵字、僅內容含」可搜到（Postgres）。
 - 註：第二階段（語意/embedding 向量搜尋）待辦——抽取 pipeline 已可共用。舊檔 backfill 與搜尋結果命中片段高亮亦待後續。
+
+## 延伸：語意搜尋（第二階段，2026-06-18）
+
+- [x] `app/search/embedding.py`：`EmbeddingClient` 協定 + `OllamaEmbeddingClient`（POST `/api/embeddings`，httpx transport 可注入、逾時、auth）；失敗丟 `EmbeddingError`。
+- [x] `file_embeddings` 表（model + Alembic 0012）：`item_id`(PK, FK CASCADE)、`embedding vector(768)`、`model`、`updated_at`；`CREATE EXTENSION vector` + hnsw cosine index。隨 drive_item cascade。新依賴 `pgvector`（mypy override 忽略缺 stub）。
+- [x] `app/search/semantic.py`：`SQLFileEmbeddingRepository`（upsert / delete / `semantic_search` 用 `embedding.cosine_distance(query)` 排序）+ `SemanticSearchService`（embed query → 最近鄰 → score = 1 − cosine 距離）。
+- [x] 索引整合：`SearchIndexService` 注入選用 embedding client/repo，上傳抽文字後**同時**寫全文 + embedding（截斷 8000 字）；embedding 失敗不影響全文與上傳；不支援型別連同 embedding 一起清掉。
+- [x] `app/search/factory.py`：依 `embedding_enabled` 建 client / index service / semantic service（關閉時 semantic 為 None）。upload + assistant router 共用。
+- [x] `GET /search/semantic?q=&limit=`：回傳 `[{item, score}]`；功能關閉或 embedding 服務不可用回 503。
+- [x] 設定：`embedding_enabled`(預設 False)、`embedding_model`(nomic-embed-text)、`embedding_base_url`(空則用 llm_base_url)、`embedding_dim`(768)。docker-compose 換 `pgvector/pgvector:pg16` + `EMBEDDING_*` env。
+- [x] 測試：embedding client（MockTransport 解析/錯誤）、SemanticSearchService（距離→分數、空 query 不 embed）、SearchIndexService（同寫 embedding、失敗容錯、清舊）、router（關閉 503 / 命中 / 服務掛 503）。**真 pgvector 驗證**：臨時 pgvector 容器跑 migration 0001→0012 成功、cosine `<=>` 排序正確。
+- 待後續：舊檔 backfill（重算既有檔的 embedding）、chunking（長文件切塊多向量）、前端「語意搜尋」切換 UI。

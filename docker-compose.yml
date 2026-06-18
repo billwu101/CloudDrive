@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector image (Postgres 16 + the `vector` extension) for semantic search.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-cloud_drive}
       POSTGRES_USER: ${POSTGRES_USER:-cloud_drive}
@@ -34,6 +35,10 @@ services:
       LLM_NUM_CTX: ${LLM_NUM_CTX:-65536}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
       LLM_KEEP_ALIVE: ${LLM_KEEP_ALIVE:-15m}
+      # Semantic search (optional). Needs an embedding model on the Ollama above.
+      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-false}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

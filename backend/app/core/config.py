@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     snapshot_gc_interval_minutes: int = 360  # how often to run blob GC
     snapshot_gc_grace_minutes: int = 60  # protect blobs newer than this from GC
 
+    # Semantic search (embeddings via Ollama + pgvector). Off by default so
+    # uploads don't block on an embedding model that may not be installed.
+    embedding_enabled: bool = False
+    embedding_model: str = "nomic-embed-text"
+    embedding_base_url: str = ""  # falls back to llm_base_url when empty
+    # Must match the model's output dimension AND the vector() column width in
+    # migration 0012 (default nomic-embed-text = 768).
+    embedding_dim: int = 768
+
 
 @lru_cache
 def get_settings() -> Settings:

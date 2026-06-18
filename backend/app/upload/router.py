@@ -11,7 +11,7 @@ from app.file_version.repository import SQLFileVersionRepository
 from app.permission.repository import SQLShareRepository
 from app.permission.service import PermissionService
 from app.schemas.common import DriveItemResponse
-from app.search.indexer import SearchIndexService, SQLSearchIndexRepository
+from app.search.factory import build_search_index_service
 from app.storage.factory import get_storage_provider
 from app.upload.service import UploadService
 from app.users.repository import SQLUserRepository
@@ -33,7 +33,7 @@ def _upload_service(session: DbSession) -> UploadService:
             item_repo=SQLDriveItemRepository(session),
         ),
         quota_svc=QuotaService(repo=SQLUserRepository(session)),
-        search_indexer=SearchIndexService(SQLSearchIndexRepository(session)),
+        search_indexer=build_search_index_service(session, settings),
     )
 
 
