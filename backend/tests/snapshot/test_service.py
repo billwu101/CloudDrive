@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.drive.schemas import ItemType
 from app.models.drive_item import DriveItem
 from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
@@ -14,6 +16,7 @@ from app.snapshot.service import (
     TRIGGER_SCHEDULED,
     SnapshotService,
 )
+from app.storage.base import StoredObject
 
 
 def _item(
@@ -157,6 +160,17 @@ class MemSnapshotRepo(AbstractSnapshotRepository):
                 if e.checksum_sha256 is not None:
                     sizes[e.checksum_sha256] = max(sizes.get(e.checksum_sha256, 0), e.size_bytes)
         return sum(sizes.values())
+
+    async def referenced_storage_keys(self) -> set[str]:
+        keys: set[str] = set()
+        for item in self.items.values():
+            if item.storage_key:
+                keys.add(item.storage_key)
+        for entries in self.entries.values():
+            for e in entries:
+                if e.storage_key:
+                    keys.add(e.storage_key)
+        return keys
 
     async def get_snapshot(self, *, user_id: UUID, snapshot_id: UUID) -> Snapshot | None:
         snap = self.snapshots.get(snapshot_id)
@@ -428,3 +442,67 @@ async def test_run_scheduled_snapshot_skips_when_disabled_or_empty() -> None:
         quota_bytes=None,
     )
     assert await SnapshotService(repo=repo).run_scheduled_snapshot(user_id=user) is None
+
+
+# ── blob garbage collection ──────────────────────────────────────────────────
+
+
+class _FakeStorage:
+    def __init__(self, objects: list[StoredObject]) -> None:
+        self._objects = {o.key: o for o in objects}
+        self.deleted: list[str] = []
+
+    async def list_objects(self) -> list[StoredObject]:
+        return list(self._objects.values())
+
+    async def delete(self, key: str) -> None:
+        self._objects.pop(key, None)
+        self.deleted.append(key)
+
+    # Unused by GC, present only to satisfy the StorageProvider protocol.
+    async def save(self, key: str, data: Any, *, size: int | None = None) -> None:
+        raise NotImplementedError
+
+    def open_read(self, key: str) -> Any:
+        raise NotImplementedError
+
+    async def exists(self, key: str) -> bool:
+        return key in self._objects
+
+    async def get_size(self, key: str) -> int:
+        return self._objects[key].size
+
+
+async def test_collect_garbage_deletes_only_old_orphans() -> None:
+    user = uuid4()
+    f = _item(user, name="a.txt")
+    f.storage_key = "blob-a"
+    repo = MemSnapshotRepo([f])
+    now = datetime.now(UTC)
+    storage = _FakeStorage(
+        [
+            # Referenced by the live item (and its snapshot entry) → keep.
+            StoredObject(key="blob-a", size=100, modified_at=(now - timedelta(days=1)).timestamp()),
+            # Orphan older than the grace window → delete.
+            StoredObject(
+                key="orphan-old", size=200, modified_at=(now - timedelta(hours=2)).timestamp()
+            ),
+            # Orphan but written just now (inside grace) → skip this sweep.
+            StoredObject(key="orphan-new", size=50, modified_at=now.timestamp()),
+        ]
+    )
+    svc = SnapshotService(repo=repo, storage=storage)
+    await svc.create(user_id=user)  # snapshot entry also references blob-a
+
+    out = await svc.collect_garbage(grace_minutes=60, now=now)
+
+    assert out.deleted == 1
+    assert out.freed_bytes == 200
+    assert out.skipped_recent == 1
+    assert storage.deleted == ["orphan-old"]
+
+
+async def test_collect_garbage_requires_storage() -> None:
+    svc = SnapshotService(repo=MemSnapshotRepo([]))
+    with pytest.raises(RuntimeError):
+        await svc.collect_garbage()

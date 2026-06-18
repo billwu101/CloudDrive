@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.drive_item import DriveItem
+from app.models.file_version import FileVersion
 from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
 from app.models.user import User
 
@@ -81,6 +82,11 @@ class AbstractSnapshotRepository(ABC):
     @abstractmethod
     async def used_snapshot_bytes(self, user_id: UUID) -> int:
         """Space the user's snapshots occupy, deduped by content checksum."""
+
+    @abstractmethod
+    async def referenced_storage_keys(self) -> set[str]:
+        """Every storage_key still referenced by any drive item, file version, or
+        snapshot entry (across all users) — the live set for blob GC."""
 
 
 class SQLSnapshotRepository(AbstractSnapshotRepository):  # pragma: no cover
@@ -252,3 +258,14 @@ class SQLSnapshotRepository(AbstractSnapshotRepository):  # pragma: no cover
         )
         result = await self._session.execute(select(func.coalesce(func.sum(per_blob.c.sz), 0)))
         return int(result.scalar_one())
+
+    async def referenced_storage_keys(self) -> set[str]:
+        keys: set[str] = set()
+        for column in (
+            DriveItem.storage_key,
+            FileVersion.storage_key,
+            SnapshotEntry.storage_key,
+        ):
+            result = await self._session.execute(select(column).where(column.is_not(None)))
+            keys.update(row for (row,) in result.all() if row)
+        return keys

@@ -32,11 +32,17 @@
 
 - [x] `SnapshotService.prune`：保留最近 N（預設 50），pinned / pre_restore 豁免；`create()` 後自動呼叫。
 - [x] 獨立快照配額（**預設 = 檔案配額的一半**，`quota_bytes=NULL` 即 auto）：以 distinct checksum 去重計算用量，超量時由最舊的非豁免快照開始刪到符合上限（永遠保留最新一筆）。
-- [ ] blob 背景 GC：背景任務依 checksum 引用計數回收不再被引用的內容（刪快照只移除 metadata）。**未做**。
+- [x] blob 背景 GC 邏輯：`StorageProvider.list_objects()`（列實體 blob + mtime）+ `repository.referenced_storage_keys()`（drive_items ∪ file_versions ∪ snapshot_entries 的 storage_key 聯集）+ `SnapshotService.collect_garbage(grace_minutes)`：刪掉不在 live set、且早於 grace 窗的孤兒 blob，回傳刪除數/釋放位元組/略過數。仍未做：呼叫它的背景週期 runner、以及把 trash 永久刪除改為「只刪 metadata、blob 交給 GC」（見下方註記）。
 - [x] 排程「是否該建」判定 `run_scheduled_snapshot(now)`：排程開、距上次快照已過間隔、且現有檔案>0 才建 `scheduled`（**預設開、每小時**，可設）。
 - [ ] 呼叫上述判定的背景週期 runner / cron。**未做**（判定函式已就緒）。
 - [x] `snapshot_settings` model + Alembic 0010；`GET/PUT /snapshots/settings`：保留 N、排程開關/間隔、獨立快照配額上限（per-user），回傳 effective_quota_bytes / used_bytes。
-- [x] 測試：prune 保留 N 與豁免、快照配額超限由最舊刪起、設定讀寫 + auto 配額解析、排程間隔/停用/空碟跳過。
+- [x] 測試：prune 保留 N 與豁免、快照配額超限由最舊刪起、設定讀寫 + auto 配額解析、排程間隔/停用/空碟跳過、GC 只刪舊孤兒（引用中與 grace 內保留）。
+
+> ⚠️ **待處理的交互風險（資料安全）**：`app/trash/service.py` 的 `permanent_delete` →
+> `_free_file_storage` 會**直接呼叫 `storage.delete(version.storage_key)`**，完全沒檢查該 blob
+> 是否仍被某快照引用。情境：建快照 S1 引用檔案 A 的 blob → 永久刪除 A → blob 被刪 → 還原 S1 時讀不到內容。
+> 正解：把永久刪除改為「只刪 metadata（versions+item 列、扣配額），blob 一律交給 `collect_garbage` 依
+> 引用計數回收」。此改動會動到 trash 的測試與配額語意，故獨立於本次 GC 變更，待後續處理。
 
 ## S4：Assistant 整合
 

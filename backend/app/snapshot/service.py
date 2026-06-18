@@ -9,6 +9,7 @@ from uuid import UUID
 from app.drive.schemas import ItemType
 from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
 from app.snapshot.repository import AbstractSnapshotRepository
+from app.storage.base import StorageProvider
 
 # Snapshot trigger kinds.
 TRIGGER_SCHEDULED = "scheduled"
@@ -31,6 +32,13 @@ class RestoreOutcome:
     trashed: int
 
 
+@dataclass(frozen=True)
+class GcOutcome:
+    deleted: int
+    freed_bytes: int
+    skipped_recent: int  # within the grace period, left for a later sweep
+
+
 class SnapshotService:
     """Time Machine — capture and browse point-in-time snapshots of a drive."""
 
@@ -39,11 +47,14 @@ class SnapshotService:
         *,
         repo: AbstractSnapshotRepository,
         activity: Any | None = None,
+        storage: StorageProvider | None = None,
     ) -> None:
         self._repo = repo
         # ActivityLogService (optional — swallows its own failures); duck-typed
         # to avoid a hard module dependency.
         self._activity = activity
+        # Needed only for blob garbage collection.
+        self._storage = storage
 
     async def create(
         self,
@@ -219,6 +230,46 @@ class SnapshotService:
             return None
 
         return await self.create(user_id=user_id, trigger=TRIGGER_SCHEDULED, label="Scheduled")
+
+    # ----- blob garbage collection ---------------------------------------
+
+    async def collect_garbage(
+        self, *, grace_minutes: int = 60, now: datetime | None = None
+    ) -> GcOutcome:
+        """Reclaim content blobs no longer referenced by any live item, file
+        version, or snapshot entry.
+
+        Snapshots and items are content-addressed: deleting a snapshot or item
+        only removes metadata, leaving the underlying blob in place because other
+        snapshots/items may still reference it. This sweep computes the live set
+        of ``storage_key``s across all reference sources and deletes any stored
+        blob outside it.
+
+        A ``grace_minutes`` window protects blobs written very recently (e.g. an
+        upload whose DB row isn't committed/visible yet at sweep time) from being
+        mistaken for orphans. This is a cross-user, global operation.
+        """
+
+        if self._storage is None:
+            raise RuntimeError("collect_garbage requires a storage provider")
+
+        referenced = await self._repo.referenced_storage_keys()
+        cutoff = (now or datetime.now(UTC)).timestamp() - grace_minutes * 60
+
+        deleted = 0
+        freed_bytes = 0
+        skipped_recent = 0
+        for blob in await self._storage.list_objects():
+            if blob.key in referenced:
+                continue
+            if blob.modified_at >= cutoff:
+                skipped_recent += 1  # too new to be sure it's an orphan
+                continue
+            await self._storage.delete(blob.key)
+            deleted += 1
+            freed_bytes += blob.size
+
+        return GcOutcome(deleted=deleted, freed_bytes=freed_bytes, skipped_recent=skipped_recent)
 
     async def browse(
         self, *, user_id: UUID, snapshot_id: UUID, parent_item_id: UUID | None

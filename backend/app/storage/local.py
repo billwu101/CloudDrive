@@ -9,6 +9,8 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import IO
 
+from app.storage.base import StoredObject
+
 
 class PathTraversalError(ValueError):
     pass
@@ -97,6 +99,22 @@ class LocalStorageProvider:
             return path.stat().st_size
 
         return await asyncio.to_thread(_size)
+
+    async def list_objects(self) -> list[StoredObject]:
+        def _walk() -> list[StoredObject]:
+            objects: list[StoredObject] = []
+            for path in self._root.rglob("*"):
+                if not path.is_file():
+                    continue
+                # Skip in-flight atomic-write temp files (".tmp-*").
+                if path.name.startswith(".tmp-"):
+                    continue
+                stat = path.stat()
+                key = path.relative_to(self._root).as_posix()
+                objects.append(StoredObject(key=key, size=stat.st_size, modified_at=stat.st_mtime))
+            return objects
+
+        return await asyncio.to_thread(_walk)
 
 
 def _cleanup_empty_parents(directory: Path, stop_at: Path) -> None:

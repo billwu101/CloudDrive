@@ -15,6 +15,7 @@ from app.models.file_version import FileVersion
 from app.models.share import Share
 from app.models.user import User
 from app.permission.service import PermissionService
+from app.storage.base import StoredObject
 from app.upload.service import UploadService
 from app.users.service import QuotaService
 from tests.drive.test_service import MemDriveItemRepo, _item
@@ -51,6 +52,9 @@ class MemStorage:
 
     async def get_size(self, key: str) -> int:
         return len(self._data.get(key, b""))
+
+    async def list_objects(self) -> list[StoredObject]:
+        return [StoredObject(key=k, size=len(v), modified_at=0.0) for k, v in self._data.items()]
 
 
 async def _stream(data: bytes) -> AsyncGenerator[bytes, None]:
