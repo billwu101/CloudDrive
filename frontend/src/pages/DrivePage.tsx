@@ -1,4 +1,4 @@
-import { ArrowLeft, FolderOpen, FolderUp } from 'lucide-react'
+import { ArrowLeft, FolderOpen } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -22,7 +22,7 @@ import { MoveDialog } from '@/components/drive/MoveDialog'
 import { MultiFileContextMenu } from '@/components/drive/MultiFileContextMenu'
 import { RenameDialog } from '@/components/drive/RenameDialog'
 import { PreviewDialog } from '@/components/preview/PreviewDialog'
-import { UploadButton } from '@/components/upload/UploadButton'
+import { UploadMenu } from '@/components/upload/UploadMenu'
 import { UploadDropzone } from '@/components/upload/UploadDropzone'
 import { UploadQueue } from '@/components/upload/UploadQueue'
 import { useAssistantSkills, useExecuteAssistantSkill } from '@/hooks/useAssistant'
@@ -222,11 +222,7 @@ export function DrivePage() {
             <Breadcrumbs ancestors={ancestors} current={currentFolderName} />
           </div>
           <div className="flex items-center gap-2">
-            <UploadButton onFiles={upload} />
-            <UploadButton onFiles={uploadFolders} directory>
-              <FolderUp className="size-4" aria-hidden="true" />
-              Upload folder
-            </UploadButton>
+            <UploadMenu onFiles={upload} onFolders={uploadFolders} />
             <DriveToolbar
               selectedCount={selectedIds.size}
               onNewFolder={() => setShowCreateFolder(true)}
