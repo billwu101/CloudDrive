@@ -89,7 +89,7 @@ def _prompt(parts: list[str]) -> str:
 def _write_first_prompt(write_phrase: str, query_phrases: list[str]) -> str:
     # Lead with the write action so the real model reliably plans a write
     # (pending-approval) step; query tools are secondary context.
-    return f"幫我{write_phrase}（過程中可先{'、'.join(query_phrases)}）"  # noqa: RUF001
+    return f"幫我{write_phrase}（過程中可先{'、'.join(query_phrases)}）"
 
 
 def _scoring(dim: str = "correctness") -> dict[str, Any]:
@@ -99,29 +99,114 @@ def _scoring(dim: str = "correctness") -> dict[str, Any]:
     return {"weights": {dim: 1.0}, "pass_threshold": 1.0, "min_pass_rate": 0.6}
 
 
-def _query_combos() -> list[list[str]]:
-    combos: list[list[str]] = []
-    for r in (5, 4, 3):
-        combos += [list(c) for c in itertools.combinations(QUERY_TOOLS, r)]
-    return combos  # 16
+# Real tasks a user would actually ask, each of which genuinely needs ALL FIVE
+# read-only tools (search / list_items / get_info / recent / storage_quota) —
+# rather than stringing the tool names together. `tools` is the natural order the
+# task implies; `reason` explains why those five (and why in that order).
+M2_SCENARIOS: list[dict[str, Any]] = [
+    {
+        "key": "cleanup_space",
+        "title": "清理空間",
+        "tools": ["storage_quota", "list_items", "search", "recent", "get_info"],
+        "reason": (
+            "清理空間需要五個視角：先看用量了解為何快滿（storage_quota）→ 盤點根目錄"
+            "分佈（list_items）→ 定位佔空間的特定主題檔（search）→ 辨識最近還在用、"
+            "不該刪的檔（recent）→ 確認候選檔的實際大小再決定（get_info）。"
+        ),
+        "prompt": (
+            "我的雲端空間快滿了，幫我先看目前容量用了多少、列出根目錄有哪些檔案、"
+            "搜尋跟「{t}」有關的大型檔案、看看我最近還在用哪些檔（這些先留著），"
+            "最後把其中一個檔的詳細大小列出來，我想清理空間。"
+        ),
+    },
+    {
+        "key": "resume_work",
+        "title": "接續工作",
+        "tools": ["recent", "list_items", "search", "get_info", "storage_quota"],
+        "reason": (
+            "回到工作現場：從最近開過的檔找回接續點（recent）→ 重新熟悉目前結構"
+            "（list_items）→ 定位該主題的檔（search）→ 確認關鍵檔的細節（get_info）→ "
+            "確認容量是否夠存新版本（storage_quota）。"
+        ),
+        "prompt": (
+            "我想接續之前在處理的「{t}」，幫我看我最近開過哪些檔、列一下根目錄目前的"
+            "結構、搜尋「{t}」相關的檔案、打開最相關的那個看它的詳情，順便確認容量還"
+            "夠不夠再存新版本。"
+        ),
+    },
+    {
+        "key": "handover_project",
+        "title": "交接專案",
+        "tools": ["list_items", "search", "get_info", "recent", "storage_quota"],
+        "reason": (
+            "交接盤點：列出整體結構（list_items）→ 搜出專案相關檔（search）→ 查主要檔"
+            "的詳情（get_info）→ 確認最近哪些有更新（recent）→ 估整體佔用規模"
+            "（storage_quota），據以寫交接清單。"
+        ),
+        "prompt": (
+            "我要把「{t}」交接給同事，幫我列出根目錄、搜尋這個專案的相關檔案、查看其中"
+            "主要檔案的詳情、確認最近哪些檔有被更新過、以及整體佔用多少空間，好讓我寫"
+            "交接清單。"
+        ),
+    },
+    {
+        "key": "find_lost_file",
+        "title": "找回舊檔",
+        "tools": ["search", "recent", "list_items", "get_info", "storage_quota"],
+        "reason": (
+            "找一份忘記位置的檔：先用關鍵字搜尋（search）→ 從最近開過的檔回想"
+            "（recent）→ 瀏覽根目錄找（list_items）→ 找到後看大小與修改時間確認是它"
+            "（get_info）→ 順帶掌握容量狀況（storage_quota）。"
+        ),
+        "prompt": (
+            "我記得有一份「{t}」的檔但忘了放在哪，幫我搜尋看看、列出我最近開過的檔、"
+            "也看一下根目錄有沒有，找到後給我它的大小與修改時間，順便看一下我的容量狀況。"
+        ),
+    },
+    {
+        "key": "monthly_audit",
+        "title": "月底盤點",
+        "tools": ["storage_quota", "list_items", "recent", "search", "get_info"],
+        "reason": (
+            "定期盤點：總量（storage_quota）→ 分佈（list_items）→ 本期異動（recent）→ "
+            "主題彙整（search）→ 抽樣細節（get_info），產出月度整理。"
+        ),
+        "prompt": (
+            "月底了幫我做個盤點：先看容量用了多少、列出根目錄有哪些東西、這個月最近"
+            "更新過哪些檔、搜尋「{t}」相關的檔案、並挑一個看它的詳情，我要寫月度整理。"
+        ),
+    },
+]
+
+# 20 realistic things a user would look for; 5 scenarios x 20 topics = 100.
+M2_TOPICS = [
+    "報告", "發票", "照片", "草稿", "預算", "會議記錄", "合約", "履歷", "簡報", "收據",
+    "報稅", "旅遊", "專案計畫", "備份", "使用手冊", "設計稿", "論文", "訂單", "帳單", "課程筆記",
+]
 
 
 def build_m2() -> list[dict[str, Any]]:
-    combos = _query_combos()
+    """M2 = read-only tasks that each genuinely use all five query tools.
+
+    Cases are real scenarios (cleanup / resume work / handover / find a lost file
+    / monthly audit) parametrised by topic, not arbitrary tool combinations.
+    """
     cases = []
     n = 0
-    for term in _SEARCH_TERMS:  # 7 terms x 16 combos = 112 -> take 100
-        for tools in combos:
+    for scenario in M2_SCENARIOS:
+        tools = scenario["tools"]
+        for topic in M2_TOPICS:
             n += 1
             if n > PER_LEVEL:
                 break
             cases.append(
                 {
                     "id": f"gen-m2-{n:03d}",
-                    "name": f"M2 read-only multi-query #{n} ({'+'.join(tools)})",
-                    "prompt": _prompt([_QUERY_PHRASE[t] for t in tools]),
+                    "name": f"M2 {scenario['title']}：{topic}（{'+'.join(tools)}）",
+                    "rationale": scenario["reason"],
+                    "prompt": scenario["prompt"].format(t=topic),
                     "mode": ["api", "browser"],
-                    "tags": ["read-only", "generated", "m2"],
+                    "tags": ["read-only", "generated", "m2", f"scenario:{scenario['key']}"],
                     "expect": {
                         "workflow": {"requires_confirmation": False, "steps_include": tools}
                     },
@@ -129,8 +214,8 @@ def build_m2() -> list[dict[str, Any]]:
                     "mock_llm": {
                         "responses": [
                             {
-                                "reply": "好的,我幫你查。",
-                                "steps": [_query_step(t, term) for t in tools],
+                                "reply": "好的，我幫你查。",
+                                "steps": [_query_step(t, topic) for t in tools],
                             }
                         ]
                     },

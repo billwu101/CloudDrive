@@ -1,6 +1,8 @@
 id: gen-m2-068
-name: 'M2 read-only multi-query #68 (search+list_items+recent+storage_quota)'
-prompt: 幫我搜尋檔案、列出根目錄檔案、看最近開啟的檔案、查目前容量用量
+name: M2 找回舊檔：履歷（search+recent+list_items+get_info+storage_quota）
+rationale: 找一份忘記位置的檔：先用關鍵字搜尋（search）→ 從最近開過的檔回想（recent）→ 瀏覽根目錄找（list_items）→ 找到後看大小與修改時間確認是它（get_info）→
+  順帶掌握容量狀況（storage_quota）。
+prompt: 我記得有一份「履歷」的檔但忘了放在哪，幫我搜尋看看、列出我最近開過的檔、也看一下根目錄有沒有，找到後給我它的大小與修改時間，順便看一下我的容量狀況。
 mode:
 - api
 - browser
@@ -8,13 +10,15 @@ tags:
 - read-only
 - generated
 - m2
+- scenario:find_lost_file
 expect:
   workflow:
     requires_confirmation: false
     steps_include:
     - search
-    - list_items
     - recent
+    - list_items
+    - get_info
     - storage_quota
 scoring:
   weights:
@@ -23,14 +27,17 @@ scoring:
   min_pass_rate: 0.6
 mock_llm:
   responses:
-  - reply: 好的,我幫你查。
+  - reply: 好的，我幫你查。
     steps:
     - skill: search
       arguments:
-        q: '2024'
-    - skill: list_items
-      arguments: {}
+        q: 履歷
     - skill: recent
       arguments: {}
+    - skill: list_items
+      arguments: {}
+    - skill: get_info
+      arguments:
+        item_id: 11111111-1111-1111-1111-111111111111
     - skill: storage_quota
       arguments: {}

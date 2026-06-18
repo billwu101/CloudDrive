@@ -71,6 +71,8 @@ known-first-party = ["app", "eval"]
 # Env vars (LOCAL_STORAGE_PATH) must be set before app imports; get_settings()
 # is @lru_cache, so these imports are intentionally not at module top.
 "tests/integration/conftest.py" = ["E402"]
+# Eval cases are Chinese prompts; fullwidth punctuation （）「」 is intentional.
+"eval/generate_cases.py" = ["RUF001", "RUF002"]
 
 [tool.ruff.format]
 quote-style = "double"

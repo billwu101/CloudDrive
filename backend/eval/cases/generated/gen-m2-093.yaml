@@ -1,6 +1,7 @@
 id: gen-m2-093
-name: 'M2 read-only multi-query #93 (list_items+get_info+recent)'
-prompt: 幫我列出根目錄檔案、查看某個項目的詳情、看最近開啟的檔案
+name: M2 月底盤點：專案計畫（storage_quota+list_items+recent+search+get_info）
+rationale: 定期盤點：總量（storage_quota）→ 分佈（list_items）→ 本期異動（recent）→ 主題彙整（search）→ 抽樣細節（get_info），產出月度整理。
+prompt: 月底了幫我做個盤點：先看容量用了多少、列出根目錄有哪些東西、這個月最近更新過哪些檔、搜尋「專案計畫」相關的檔案、並挑一個看它的詳情，我要寫月度整理。
 mode:
 - api
 - browser
@@ -8,13 +9,16 @@ tags:
 - read-only
 - generated
 - m2
+- scenario:monthly_audit
 expect:
   workflow:
     requires_confirmation: false
     steps_include:
+    - storage_quota
     - list_items
-    - get_info
     - recent
+    - search
+    - get_info
 scoring:
   weights:
     correctness: 1.0
@@ -22,12 +26,17 @@ scoring:
   min_pass_rate: 0.6
 mock_llm:
   responses:
-  - reply: 好的,我幫你查。
+  - reply: 好的，我幫你查。
     steps:
+    - skill: storage_quota
+      arguments: {}
     - skill: list_items
       arguments: {}
+    - skill: recent
+      arguments: {}
+    - skill: search
+      arguments:
+        q: 專案計畫
     - skill: get_info
       arguments:
         item_id: 11111111-1111-1111-1111-111111111111
-    - skill: recent
-      arguments: {}

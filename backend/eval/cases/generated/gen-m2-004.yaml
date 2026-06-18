@@ -1,6 +1,8 @@
 id: gen-m2-004
-name: 'M2 read-only multi-query #4 (search+list_items+recent+storage_quota)'
-prompt: 幫我搜尋檔案、列出根目錄檔案、看最近開啟的檔案、查目前容量用量
+name: M2 清理空間：草稿（storage_quota+list_items+search+recent+get_info）
+rationale: 清理空間需要五個視角：先看用量了解為何快滿（storage_quota）→ 盤點根目錄分佈（list_items）→ 定位佔空間的特定主題檔（search）→ 辨識最近還在用、不該刪的檔（recent）→
+  確認候選檔的實際大小再決定（get_info）。
+prompt: 我的雲端空間快滿了，幫我先看目前容量用了多少、列出根目錄有哪些檔案、搜尋跟「草稿」有關的大型檔案、看看我最近還在用哪些檔（這些先留著），最後把其中一個檔的詳細大小列出來，我想清理空間。
 mode:
 - api
 - browser
@@ -8,14 +10,16 @@ tags:
 - read-only
 - generated
 - m2
+- scenario:cleanup_space
 expect:
   workflow:
     requires_confirmation: false
     steps_include:
-    - search
-    - list_items
-    - recent
     - storage_quota
+    - list_items
+    - search
+    - recent
+    - get_info
 scoring:
   weights:
     correctness: 1.0
@@ -23,14 +27,17 @@ scoring:
   min_pass_rate: 0.6
 mock_llm:
   responses:
-  - reply: 好的,我幫你查。
+  - reply: 好的，我幫你查。
     steps:
-    - skill: search
-      arguments:
-        q: report
-    - skill: list_items
-      arguments: {}
-    - skill: recent
-      arguments: {}
     - skill: storage_quota
       arguments: {}
+    - skill: list_items
+      arguments: {}
+    - skill: search
+      arguments:
+        q: 草稿
+    - skill: recent
+      arguments: {}
+    - skill: get_info
+      arguments:
+        item_id: 11111111-1111-1111-1111-111111111111
