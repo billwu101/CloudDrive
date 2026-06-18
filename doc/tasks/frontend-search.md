@@ -35,3 +35,10 @@
 - [x] 測試搜尋結果開啟預覽。
 - [x] 測試無結果狀態。
 
+
+## 延伸：語意搜尋 UI（2026-06-18）
+
+- [x] `searchApi.semanticSearch` + `useSemanticSearch` hook（`GET /search/semantic`，retry:false 避免 503 重試）。
+- [x] SearchPage 加 Keyword／Semantic 模式切換 pills；語意模式依相關度排序（標示「Sorted by relevance」）、隱藏類型過濾與分頁。
+- [x] 語意搜尋未啟用（503）顯示引導訊息，而非一般錯誤。
+- [x] 測試：searchApi 語意端點 + 503 傳遞；SearchPage 預設關鍵字結果、切換語意顯示結果、503 提示。

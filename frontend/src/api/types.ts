@@ -260,3 +260,8 @@ export interface UpdateSnapshotSettingsRequest {
   schedule_interval_minutes: number
   quota_bytes: number | null
 }
+
+export interface SemanticHitResponse {
+  item: DriveItemResponse
+  score: number
+}
