@@ -243,3 +243,19 @@
 - 理由：以新模型表達整碟狀態才能還原刪除/改名/搬移；重用 file_versions + checksum 讓快照便宜；就地還原貼近 Time Machine 行為，pre_restore 快照消除「誤覆蓋無法回頭」風險；獨立快照配額避免快照吃爆使用者檔案空間又能各自控管；保留 N 比 Apple thinning 簡單且足夠；背景 GC 讓刪除操作輕快。
 - 已知取捨：就地還原具破壞性（以 pre_restore + 二次確認緩解）；自動排程與引用計數回收有背景成本；協作/分享項目的還原暫限擁有者。
 - 影響範圍：新增 `app/snapshot/`（router/service/repository/schemas）、`snapshots`/`snapshot_entries` migration、背景排程任務、`app/assistant/`（workflow/skill 執行前建快照串接）、前端時光機頁與 API/hooks、`tests/snapshot/`。詳見 [time-machine-design.md](./time-machine-design.md)。
+
+## DEC-025：部署規範 —— 一行啟動、前端同源反向代理、選用功能預設關
+
+- 日期：2026-06-18
+- 狀態：Accepted
+- 背景：要求「把 code 拉下來、填最少環境參數、一行指令就能跑」，且部署到任何主機都不該手動調設定。原本前端把 API 網址編譯時寫死 `localhost:8000`，換主機即失效；缺根層 `.env.example`；compose 帶未使用的 redis、LLM 預設指向私有 IP。
+- 決策：
+  1. **一行啟動**：`scripts/start.sh` 首次由 `.env.example` 建 `.env` 並產生隨機 `JWT_SECRET_KEY`，偵測 `docker compose`/`docker-compose`，`up --build -d`。後端容器啟動自動 `alembic upgrade head`。
+  2. **前端同源 + nginx 反代 `/api` → backend**：前端建置預設 `VITE_API_BASE_URL=/api/v1`（相對）。部署到任何主機免重建前端、無 CORS。
+  3. **選用功能預設關、不阻擋核心**：`ASSISTANT_ENABLED`、`EMBEDDING_ENABLED` 預設 false；關閉時檔案/分享/搜尋/時光機照常。`SNAPSHOT_SCHEDULER_ENABLED` 在 compose（單 worker）預設開。
+  4. **根層 `.env.example`** 列出所有 compose 變數 + 安全預設 + 註解；`.env` 不進版控。
+  5. **清理**：移除未使用的 redis 服務與 `REDIS_URL`；LLM 預設改 `host.docker.internal:11434` + `extra_hosts: host-gateway` 以連主機 Ollama。
+  6. postgres 採 `pgvector/pgvector:pg16`（語意搜尋需要 `vector` 擴充）。
+- 理由：同源反代是讓「部署到任意主機零設定」最省事且最穩的做法；選用功能預設關，確保沒有 Ollama/embedding 模型的人仍能一行跑起核心。
+- 已知取捨：in-process 排程器假設單一 worker（多副本須關閉並改用外部 cron）；同源反代下 dev 直連模式仍靠 CORS 白名單。
+- 影響範圍：`scripts/start.sh`、根 `.env.example`、`docker-compose.yml`、`frontend/{Dockerfile,nginx.conf}`、`README.md`。詳見 [deployment.md](./deployment.md)。

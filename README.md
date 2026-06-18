@@ -101,3 +101,5 @@ npm run playwright:install
 所有可調環境變數見 [`.env.example`](.env.example)。`.env` 不會進版控。
 
 **部署到正式環境時務必覆寫**：`JWT_SECRET_KEY`（用 `openssl rand -hex 32`）、`POSTGRES_PASSWORD`；Compose 內的預設值只供本機使用。
+
+部署架構、運維注意事項（多 worker、資料保留、選用功能、Ollama 連線等）詳見 [doc/deployment.md](doc/deployment.md)。
