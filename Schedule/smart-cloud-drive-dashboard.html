@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Cloud Drive · 架構儀表板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#283040;
+    --text:#e6edf3; --muted:#8b949e; --accent:#3b82f6; --green:#3fb950;
+    --amber:#d29922; --red:#f85149; --purple:#a371f7; --cyan:#39c5cf;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.5;max-width:1380px;margin:0 auto;padding:26px 30px 50px}
+  header{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  h1{font-size:25px;font-weight:800;letter-spacing:.5px}
+  h1 .dot{color:var(--purple)}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px}
+  .stamp{color:var(--muted);font-size:12px}
+  .grid{display:grid;gap:15px;margin-top:16px}
+  .kpis{grid-template-columns:repeat(5,1fr)}
+  .cols2{grid-template-columns:1fr 1fr}.cols3{grid-template-columns:repeat(3,1fr)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+  .card h3{font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:11px;text-transform:uppercase;letter-spacing:.6px}
+  .card h3 .tag{float:right;text-transform:none;letter-spacing:0}
+  .kpi .v{font-size:21px;font-weight:800;line-height:1.15}
+  .kpi .l{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .bar{border-top:3px solid var(--purple)}
+  .section-title{font-size:15px;font-weight:700;margin:26px 0 2px;display:flex;align-items:center;gap:9px}
+  .section-title .n{width:23px;height:23px;border-radius:7px;background:var(--purple);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10.5px;font-weight:700;white-space:nowrap}
+  .g{background:rgba(63,185,80,.15);color:var(--green)}.a{background:rgba(210,153,34,.15);color:var(--amber)}
+  .r{background:rgba(248,81,73,.15);color:var(--red)}.b{background:rgba(59,130,246,.15);color:var(--accent)}
+  .pu{background:rgba(163,113,247,.15);color:var(--purple)}.cy{background:rgba(57,197,207,.15);color:var(--cyan)}
+
+  /* ===== ARCHITECTURE DIAGRAM ===== */
+  .arch{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start}
+  .archmain{display:flex;flex-direction:column;gap:0}
+  .node{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:12px 15px}
+  .node .t{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:7px}
+  .node .t .ic{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+  .node .d{color:var(--muted);font-size:11.5px;margin-top:3px}
+  .down{text-align:center;color:var(--muted);font-size:13px;padding:5px 0;font-weight:600;letter-spacing:.5px}
+  .down small{color:var(--muted);font-weight:400}
+  .node.client{border-color:#2a4a78;background:rgba(59,130,246,.08)}
+  .node.backend{border-color:#2d3850;background:rgba(59,130,246,.04);padding-bottom:14px}
+  .subrow{display:flex;gap:9px;margin-top:10px}
+  .sub-b{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:11.5px}
+  .sub-b .bt{font-weight:700;font-size:12px;color:#cdd8e3}
+  .sub-b .bd{color:var(--muted);font-size:11px;margin-top:2px}
+  .agentrow{display:flex;align-items:stretch;gap:10px;margin-top:2px}
+  .agentrow .half{flex:1}
+  .node.agent{border-color:#3f6d8c;background:rgba(57,197,207,.06)}
+  .node.harness{border-color:var(--purple);background:rgba(163,113,247,.10)}
+  .node.harness ul{list-style:none;margin-top:7px}
+  .node.harness li{font-size:11px;color:#d3c8ec;padding-left:14px;position:relative;margin:4px 0}
+  .node.harness li:before{content:"▸";position:absolute;left:0;color:var(--purple)}
+  .midarr{display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--purple);font-size:11px;font-weight:700;gap:2px}
+  .node.tool{border-color:#2f5d3a;background:rgba(63,185,80,.06)}
+  .node.gdrive{border-color:#6e5a1f;background:rgba(210,153,34,.08)}
+  .rail{display:flex;flex-direction:column;gap:12px}
+  .rail .node{height:auto}
+  .rail .store li,.rail .worker li{list-style:none;font-size:11px;color:#c9d4e0;padding-left:13px;position:relative;margin:4px 0}
+  .rail .store li:before{content:"·";position:absolute;left:3px;color:var(--cyan);font-weight:700}
+  .rail .worker li:before{content:"·";position:absolute;left:3px;color:var(--amber);font-weight:700}
+  .node.store{border-color:#1f5a60;background:rgba(57,197,207,.05)}
+  .node.worker{border-color:#6e5a1f;background:rgba(210,153,34,.05)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:12px;padding-top:11px;border-top:1px solid var(--border)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
+  code{background:#1f2733;border:1px solid var(--border);border-radius:4px;padding:0 5px;font-size:11px;color:#cbb7f0;font-family:"SF Mono",Menlo,monospace}
+  ul.bul{list-style:none}
+  ul.bul li{font-size:12.5px;color:#d3dbe4;padding-left:18px;position:relative;margin:6px 0}
+  ul.bul li:before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:700}
+  .deflist{display:flex;flex-direction:column;gap:0}
+  .deflist .row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+  .deflist .row:last-child{border:none}
+  .deflist .k{flex:none;width:92px;font-weight:700;color:#cdd8e3}
+  .deflist .v{color:#c2ccd6}
+  footer{margin-top:30px;color:var(--muted);font-size:11px;text-align:center;padding-top:14px;border-top:1px solid var(--border)}
+  @media(max-width:1050px){.kpis{grid-template-columns:repeat(2,1fr)}.cols2,.cols3{grid-template-columns:1fr}.arch{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Smart Cloud Drive <span class="dot">●</span> 架構儀表板</h1>
+    <div class="sub">多租戶網站 · 讓使用者透過 AI 管理自己的 Google Drive · 含安全 harness</div>
+  </div>
+  <div class="stamp">2026-06-17 · 設計定案版 · 配套說明見 smart-cloud-drive-summary.html</div>
+</header>
+
+<!-- KPI: 定案決策 -->
+<div class="grid kpis">
+  <div class="card kpi bar"><div class="v">Google Drive</div><div class="l">首個整合（REST API 直連）</div></div>
+  <div class="card kpi"><div class="v">直接 SDK</div><div class="l">操作方式 · 非 CLI / 非 MCP</div></div>
+  <div class="card kpi"><div class="v">Harness</div><div class="l">提議/裁決 · 工具逐一把關</div></div>
+  <div class="card kpi"><div class="v">TOTP 2FA</div><div class="l">不可逆動作 · 免費開放標準</div></div>
+  <div class="card kpi"><div class="v">無狀態</div><div class="l">per-user 情境 · 水平擴展</div></div>
+</div>
+
+<!-- ARCHITECTURE -->
+<div class="section-title"><span class="n">1</span>完整系統架構</div>
+<div class="card">
+  <div class="arch">
+    <!-- main column -->
+    <div class="archmain">
+      <div class="node client">
+        <div class="t"><span class="ic" style="background:rgba(59,130,246,.25)">🖥️</span>使用者瀏覽器 · React</div>
+        <div class="d">檔案瀏覽 / 指令框 / workflow 管理 / 設定（連結 Google、啟用 2FA）</div>
+      </div>
+      <div class="down">│ &nbsp;<small>你自己的 JWT 登入（+ 2FA）</small> &nbsp;▼</div>
+
+      <div class="node backend">
+        <div class="t"><span class="ic" style="background:rgba(59,130,246,.18)">⚙️</span>FastAPI 後端</div>
+        <div class="subrow">
+          <div class="sub-b"><div class="bt">身分層</div><div class="bd">你的帳號 (users, JWT)</div></div>
+          <div class="sub-b"><div class="bt">Google OAuth</div><div class="bd">每人授權 → 加密存 refresh token</div></div>
+        </div>
+        <div class="subrow">
+          <div class="sub-b" style="border-color:#2f5d3a"><div class="bt" style="color:#bfe6c8">(a) 直接操作（非 AI）</div><div class="bd">瀏覽 / 搜尋 / 搬移 → 直接打 Drive API · <b>不碰 LLM</b></div></div>
+          <div class="sub-b" style="border-color:#5a3f8a"><div class="bt" style="color:#d7c4f5">(b) AI 入口</div><div class="bd">自然語言 / workflow → 進 agent</div></div>
+        </div>
+      </div>
+      <div class="down">│ <small>(b)</small> ▼</div>
+
+      <div class="agentrow">
+        <div class="half node agent">
+          <div class="t"><span class="ic" style="background:rgba(57,197,207,.22)">🤖</span>Agent 迴圈 (LLM)</div>
+          <div class="d">提議結構化 tool call：<br><code>{tool:"delete_file", args:{file_id}}</code></div>
+          <div class="d" style="margin-top:6px;color:#8aa0b4">↑ 結果回灌，繼續迴圈</div>
+        </div>
+        <div class="midarr">提議 ▶<br>◀ 裁決</div>
+        <div class="half node harness">
+          <div class="t"><span class="ic" style="background:rgba(163,113,247,.25)">🛡️</span>HARNESS 政策層</div>
+          <ul>
+            <li>工具白名單（不在 → 拒絕）</li>
+            <li>參數 / 範圍驗證</li>
+            <li>風險分級 → 確認 / 2FA</li>
+            <li>注入「這個 user」的 token</li>
+            <li>步數 / token 預算 / 稽核</li>
+          </ul>
+        </div>
+      </div>
+      <div class="down">│ <small>harness 准許後，由你的程式組真正的型別化呼叫</small> ▼</div>
+
+      <div class="node tool">
+        <div class="t"><span class="ic" style="background:rgba(63,185,80,.2)">🧰</span>Drive 工具（型別化 SDK / function-calling）</div>
+        <div class="d"><code>drive.files().delete(fileId="X").execute()</code> — 參數是資料，無命令字串。(a) 與 harness 都匯流到這。</div>
+      </div>
+      <div class="down">▼</div>
+
+      <div class="node gdrive">
+        <div class="t"><span class="ic" style="background:rgba(210,153,34,.22)">☁️</span>Google Drive（使用者自己的）</div>
+        <div class="d">每次呼叫帶該 user 的 OAuth token → A 碰不到 B 的檔案</div>
+      </div>
+    </div>
+
+    <!-- side rail -->
+    <div class="rail">
+      <div class="node store">
+        <div class="t"><span class="ic" style="background:rgba(57,197,207,.18)">🗄️</span>PostgreSQL</div>
+        <ul class="store" style="margin-top:7px">
+          <li>users · 你的帳號身分</li>
+          <li>oauth_tokens（加密）</li>
+          <li>workflows · 宣告式 spec / 範本</li>
+          <li>auth_challenges · 2FA</li>
+          <li>activity_log · 全程稽核</li>
+          <li>drive metadata 快取 + pgvector 語意索引</li>
+        </ul>
+      </div>
+      <div class="node worker">
+        <div class="t"><span class="ic" style="background:rgba(210,153,34,.18)">⏱️</span>Job / Workflow Worker</div>
+        <ul class="worker" style="margin-top:7px">
+          <li>排程觸發（每週…）</li>
+          <li>長任務 / 批次</li>
+          <li>無狀態，從佇列拉任務</li>
+          <li>Arq / Celery / RQ</li>
+        </ul>
+      </div>
+      <div class="node">
+        <div class="t" style="font-size:12.5px"><span class="ic" style="background:rgba(163,113,247,.18)">🧠</span>LLM 供應商</div>
+        <div class="d">OpenAI / Gemini API · 每人 token 預算</div>
+      </div>
+    </div>
+  </div>
+  <div class="legend">
+    <span><i style="background:#2a4a78"></i>前端</span>
+    <span><i style="background:#3f6d8c"></i>Agent (LLM)</span>
+    <span><i style="background:var(--purple)"></i>Harness（決定論把關）</span>
+    <span><i style="background:#2f5d3a"></i>純程式 / 工具</span>
+    <span><i style="background:#6e5a1f"></i>外部 / 非同步</span>
+    <span><i style="background:#1f5a60"></i>狀態儲存</span>
+  </div>
+</div>
+
+<!-- 2 harness defense + decisions -->
+<div class="section-title"><span class="n">2</span>Harness 安全分層 & 關鍵決策</div>
+<div class="grid cols2">
+  <div class="card">
+    <h3>Harness 四層防線 + 安全網</h3>
+    <table>
+      <tr><th>層</th><th>機制</th></tr>
+      <tr><td><span class="pill pu">①</span> 工具 allowlist</td><td>agent 只看得到白名單工具（harness 強制，非 prompt）</td></tr>
+      <tr><td><span class="pill pu">②</span> 執行層裁決</td><td>每次呼叫決定論檢查 ← 越獄也擋得住</td></tr>
+      <tr><td><span class="pill b">③</span> 可逆寫入</td><td>顯示計畫 → 確認才執行</td></tr>
+      <tr><td><span class="pill r">④</span> 不可逆動作</td><td>TOTP 2FA（帶外、綁定動作）</td></tr>
+      <tr><td colspan="2" style="color:#bfe6c8"><b>安全網：</b>trash + 版本可回復、activity_log 可稽核</td></tr>
+    </table>
+    <p style="font-size:11.5px;color:var(--muted);margin-top:9px">核心：<b style="color:#fff">模型提議、harness 裁決</b>。安全機制全在 model 之外。</p>
+  </div>
+  <div class="card">
+    <h3>關鍵決策與理由</h3>
+    <div class="deflist">
+      <div class="row"><div class="k">操作方式</div><div class="v"><b>直接 SDK</b> — REST API 無命令字串，結構上無法夾帶危險指令</div></div>
+      <div class="row"><div class="k">不用 MCP</div><div class="v">只接一家 Drive，直接型別化工具最簡單、控制最緊；多家整合再上 MCP</div></div>
+      <div class="row"><div class="k">不用 CLI</div><div class="v">命令字串是唯一會被夾帶執行的介面，把關難</div></div>
+      <div class="row"><div class="k">AI 範圍</div><div class="v">只做自然語言/模糊層；確定性操作走純程式（省錢、快、穩）</div></div>
+      <div class="row"><div class="k">統計/彙總</div><div class="v"><b>LLM 產資料、程式算結果</b> — 統計不寫成 skill；LLM 抽成固定 schema 存起來，計數加總交給程式 → 格式恆定、之後 0 LLM</div></div>
+      <div class="row"><div class="k">2FA</div><div class="v">TOTP 開放標準、免費、不依賴 Google；只卡不可逆動作</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 3 cost + workflow + scaling -->
+<div class="section-title"><span class="n">3</span>AI 成本策略 · Workflow 分層 · 擴展性</div>
+<div class="grid cols3">
+  <div class="card">
+    <h3>成本：編譯期 vs 執行期</h3>
+    <div class="chart-wrap" style="position:relative;height:150px"><canvas id="cost"></canvas></div>
+    <p style="font-size:11.5px;color:var(--muted);margin-top:8px">LLM 只在「沒見過的自然語言」第一次花一次，凍結成 spec/範本；制式步驟、重跑、執行期一律決定論。</p>
+    <p style="font-size:11.5px;color:#d7c4f5;margin-top:7px;border-top:1px solid var(--border);padding-top:7px"><b>更深一層：LLM 產資料、程式算結果。</b>抽取一次成 schema 存起來，統計/彙總由程式跑 → 格式恆定、之後 0 LLM。</p>
+  </div>
+  <div class="card">
+    <h3>Workflow 三層</h3>
+    <ul class="bul" style="margin-top:2px">
+      <li><b>Skill</b> — 能力（做一件事）</li>
+      <li><b>Workflow 引擎</b> — 編排：觸發/控制流/狀態/生命週期（純程式）</li>
+      <li><b>LLM 編譯器</b> — 只把人話→計畫，不負責執行</li>
+    </ul>
+    <p style="font-size:11.5px;color:var(--muted);margin-top:8px">光靠 skill 不夠：觸發/選取/彙總都不是 skill。<b style="color:#d7c4f5">借 n8n 的骨，不要它的皮</b>。</p>
+  </div>
+  <div class="card">
+    <h3>能服務多少人？</h3>
+    <ul class="bul" style="margin-top:2px">
+      <li>harness = 共用程式 + per-user 情境</li>
+      <li>無狀態 app server，狀態進 DB</li>
+      <li>async I/O + 水平擴展</li>
+    </ul>
+    <p style="font-size:11.5px;color:var(--muted);margin-top:8px">瓶頸不是 harness，是 <b style="color:var(--amber)">LLM 成本 & Google 配額</b> → 每人預算 + 退避重試 + job 佇列。</p>
+  </div>
+</div>
+
+<!-- 4 roadmap -->
+<div class="section-title"><span class="n">4</span>建議落地順序</div>
+<div class="card">
+  <table>
+    <tr><th>階段</th><th>內容</th><th>為什麼先做</th></tr>
+    <tr><td><span class="pill g">1</span> 連接與直接操作</td><td>Google OAuth + 直接打 Drive API 的瀏覽/搜尋/搬移（非 AI）</td><td>隨時有可用產品，AI 出問題也不影響核心</td></tr>
+    <tr><td><span class="pill b">2</span> Agent + Harness</td><td>型別化 Drive 工具 + harness 把關 + 唯讀/可逆 skill</td><td>先把安全骨架立起來再加危險動作</td></tr>
+    <tr><td><span class="pill a">3</span> 2FA + 不可逆動作</td><td>TOTP 綁定、challenge 表、step-up 流程</td><td>有了閘門才開放永久刪除/分享</td></tr>
+    <tr><td><span class="pill pu">4</span> Workflow 引擎</td><td>宣告式 spec + 執行器 + 計畫確認 + 範本/快取</td><td>自然語言自動化是亮點，最後做</td></tr>
+    <tr><td><span class="pill cy">5</span> 語意搜尋 / 校正 Skill</td><td>pgvector 長在現有 Postgres；OpenCV 校正當選用 Skill</td><td>加值能力，可逐步插拔</td></tr>
+  </table>
+</div>
+
+<footer>Smart Cloud Drive 架構儀表板 · 2026-06-17 設計定案 · 詳細理由見 smart-cloud-drive-summary.html</footer>
+
+<script>
+Chart.defaults.color = '#8b949e';
+Chart.defaults.font.family = "-apple-system, 'Noto Sans TC', sans-serif";
+new Chart(cost,{
+  type:'doughnut',
+  data:{labels:['範本/快取命中 · 0 LLM','全新輸入 · 編譯一次'],
+    datasets:[{data:[80,20],backgroundColor:['#3fb950','#a371f7'],borderColor:'#161b22',borderWidth:3}]},
+  options:{cutout:'62%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}}}
+});
+</script>
+</body>
+</html>
