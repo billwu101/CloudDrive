@@ -1,4 +1,4 @@
-import type { DriveItemResponse, Page, SemanticHitResponse } from './types'
+import type { BackfillResponse, DriveItemResponse, Page, SemanticHitResponse } from './types'
 import { api } from './client'
 
 export interface SearchParams {
@@ -21,4 +21,8 @@ export const searchApi = {
     api.get<Page<DriveItemResponse>>('/search', { params, signal }),
   semanticSearch: ({ q, limit, signal }: SemanticSearchParams) =>
     api.get<SemanticHitResponse[]>('/search/semantic', { params: { q, limit }, signal }),
+  backfillEmbeddings: (batchSize = 50) =>
+    api.post<BackfillResponse>('/search/embeddings/backfill', null, {
+      params: { batch_size: batchSize },
+    }),
 }

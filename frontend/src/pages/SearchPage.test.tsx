@@ -41,7 +41,12 @@ const server = setupServer(
     }),
   ),
   http.get(`${BASE}/search/semantic`, () =>
-    HttpResponse.json([{ item: file('semantic_hit.pdf'), score: 0.92 }]),
+    HttpResponse.json([
+      { item: file('semantic_hit.pdf'), score: 0.92, snippet: 'a relevant passage about budgets' },
+    ]),
+  ),
+  http.post(`${BASE}/search/embeddings/backfill`, () =>
+    HttpResponse.json({ indexed: 5, remaining: 0 }),
   ),
   http.post(`${BASE}/auth/refresh`, () =>
     HttpResponse.json({ code: 'UNAUTHORIZED' }, { status: 401 }),
@@ -85,6 +90,19 @@ describe('SearchPage', () => {
 
     expect(await screen.findByText('semantic_hit.pdf')).toBeInTheDocument()
     expect(screen.getByText(/sorted by relevance/i)).toBeInTheDocument()
+    expect(screen.getByText(/92% match/i)).toBeInTheDocument() // relevance score
+    expect(screen.getByText(/relevant passage/i)).toBeInTheDocument() // snippet
+  })
+
+  it('backfills embeddings for older files', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(screen.getByRole('button', { name: /semantic/i }))
+    await screen.findByText('semantic_hit.pdf')
+
+    await user.click(screen.getByRole('button', { name: /index older files/i }))
+
+    expect(await screen.findByText(/indexed 5 file/i)).toBeInTheDocument()
   })
 
   it('shows a guidance message when semantic search is disabled (503)', async () => {

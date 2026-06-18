@@ -264,4 +264,10 @@ export interface UpdateSnapshotSettingsRequest {
 export interface SemanticHitResponse {
   item: DriveItemResponse
   score: number
+  snippet: string
+}
+
+export interface BackfillResponse {
+  indexed: number
+  remaining: number
 }

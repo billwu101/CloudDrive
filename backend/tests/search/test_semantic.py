@@ -7,8 +7,9 @@ from app.models.drive_item import DriveItem
 from app.search.embedding import EmbeddingClient
 from app.search.semantic import (
     AbstractFileEmbeddingRepository,
+    ChunkEmbedding,
     SemanticSearchService,
-    embeddable_text,
+    chunk_text,
 )
 from tests.snapshot.test_service import _item
 
@@ -23,36 +24,36 @@ class _FakeEmbed(EmbeddingClient):
 
 
 class _MemEmbeddingRepo(AbstractFileEmbeddingRepository):
-    def __init__(self, results: list[tuple[DriveItem, float]] | None = None) -> None:
+    def __init__(self, results: list[tuple[DriveItem, float, str]] | None = None) -> None:
         self.results = results or []
-        self.upserts: dict[UUID, list[float]] = {}
+        self.chunks: dict[UUID, list[ChunkEmbedding]] = {}
         self.deleted: list[UUID] = []
 
-    async def upsert(
-        self, *, item_id: UUID, embedding: list[float], model: str, updated_at: datetime
+    async def replace_chunks(
+        self, *, item_id: UUID, chunks: list[ChunkEmbedding], model: str, updated_at: datetime
     ) -> None:
-        self.upserts[item_id] = embedding
+        self.chunks[item_id] = chunks
 
     async def delete(self, item_id: UUID) -> None:
         self.deleted.append(item_id)
 
     async def semantic_search(
         self, *, user_id: UUID, query: list[float], limit: int
-    ) -> list[tuple[DriveItem, float]]:
+    ) -> list[tuple[DriveItem, float, str]]:
         return self.results[:limit]
 
 
-async def test_search_maps_distance_to_similarity_score() -> None:
+async def test_search_maps_distance_to_similarity_and_returns_snippet() -> None:
     item = _item(uuid4(), name="quarterly.txt")
-    svc = SemanticSearchService(
-        embedding_client=_FakeEmbed(), repo=_MemEmbeddingRepo([(item, 0.2)])
-    )
+    repo = _MemEmbeddingRepo([(item, 0.2, "the snippet text")])
+    svc = SemanticSearchService(embedding_client=_FakeEmbed(), repo=repo)
 
     hits = await svc.search(user_id=uuid4(), query="revenue")
 
     assert len(hits) == 1
     assert hits[0].item is item
     assert abs(hits[0].score - 0.8) < 1e-9  # score = 1 - cosine distance
+    assert hits[0].snippet == "the snippet text"
 
 
 async def test_blank_query_returns_empty_without_embedding() -> None:
@@ -63,5 +64,17 @@ async def test_blank_query_returns_empty_without_embedding() -> None:
     assert embed.calls == []  # never hit the embedding service
 
 
-def test_embeddable_text_is_truncated() -> None:
-    assert len(embeddable_text("x" * 10_000)) == 8_000
+def test_chunk_text_short_text_is_single_chunk() -> None:
+    assert chunk_text("hello world") == ["hello world"]
+
+
+def test_chunk_text_splits_long_text_with_overlap() -> None:
+    text = "x" * 2500
+    chunks = chunk_text(text, size=1000, overlap=100)
+    assert len(chunks) == 3  # 0-1000, 900-1900, 1800-2500
+    assert all(len(c) <= 1000 for c in chunks)
+    assert chunks[1][:100] == text[900:1000]  # overlap carried over
+
+
+def test_chunk_text_blank_returns_empty() -> None:
+    assert chunk_text("   ") == []

@@ -30,6 +30,7 @@ SearchServiceDep = Annotated[SearchService, Depends(_search_service)]
 class SemanticHitResponse(BaseModel):
     item: DriveItemResponse
     score: float
+    snippet: str
 
 
 class BackfillResponse(BaseModel):
@@ -76,7 +77,10 @@ async def semantic_search(
         hits = await service.search(user_id=current_user_id, query=q, limit=limit)
     except EmbeddingError as exc:
         raise HTTPException(status_code=503, detail="Embedding service is unavailable") from exc
-    return [SemanticHitResponse(item=_to_response(h.item), score=h.score) for h in hits]
+    return [
+        SemanticHitResponse(item=_to_response(h.item), score=h.score, snippet=h.snippet)
+        for h in hits
+    ]
 
 
 @router.post(

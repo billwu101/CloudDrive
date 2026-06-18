@@ -60,4 +60,7 @@
 - [x] 測試：embedding client（MockTransport 解析/錯誤）、SemanticSearchService（距離→分數、空 query 不 embed）、SearchIndexService（同寫 embedding、失敗容錯、清舊）、router（關閉 503 / 命中 / 服務掛 503）。**真 pgvector 驗證**：臨時 pgvector 容器跑 migration 0001→0012 成功、cosine `<=>` 排序正確。
 - [x] 前端「語意搜尋」切換 UI：SearchPage 加 Keyword／Semantic 模式切換（`useSemanticSearch` → `GET /search/semantic`），語意模式依相關度排序、隱藏類型過濾/分頁，503 顯示「未啟用」提示。測試：searchApi semantic 端點 + 503、SearchPage 模式切換/語意結果/503 提示。
 - [x] 舊檔 backfill：`app/search/backfill.py`（`EmbeddingBackfillService` + `SQLEmbeddingBackfillRepository` 找「有全文索引、無 embedding」的檔）；`POST /search/embeddings/backfill?batch_size=`（**per-user**、分批、回 `{indexed, remaining}`、可重複呼叫至 0；embedding 服務掛 503）。測試：service 分批/一次跑完/服務掛 fail-fast、router 關閉 503/回數/服務掛 503；真 pgvector 驗證 join 查詢可執行。
-- 待後續：chunking（長文件切塊多向量）、命中片段高亮、語意結果顯示相似度分數、前端 backfill 觸發入口。
+- [x] chunking：長文件切成重疊 chunks（每塊 1000 字、重疊 100、上限 50 塊），每塊一向量；`file_embeddings` 改 multi-row（`id` PK、`chunk_index`、`snippet` 欄）+ migration 0013；`semantic_search` 以 `DISTINCT ON (item_id)` 取每檔最近 chunk。indexer/backfill 改用 `embed_chunks` + `replace_chunks`。真 pgvector 驗證 DISTINCT ON 取最近 chunk + 回對應 snippet。
+- [x] 命中片段 + 相似度分數：`/search/semantic` 回 `{item, score, snippet}`（snippet = 最近 chunk 文字）；前端語意結果用 `SemanticResultList` 顯示分數 badge（% match）+ snippet（query 詞高亮）。
+- [x] 前端 backfill 觸發入口：語意模式「Index older files」按鈕（`useBackfillEmbeddings`），顯示 indexed/remaining，可重複點到補完。
+- 待後續：backfill 背景自動化（目前手動觸發）。

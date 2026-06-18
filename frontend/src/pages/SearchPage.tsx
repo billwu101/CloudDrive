@@ -1,4 +1,4 @@
-import { Search, Sparkles } from 'lucide-react'
+import { Loader2, Search, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -7,8 +7,10 @@ import type { DriveItemResponse } from '@/api/types'
 import { FileGrid } from '@/components/drive/FileGrid'
 import { FileTable } from '@/components/drive/FileTable'
 import { PreviewDialog } from '@/components/preview/PreviewDialog'
+import { SemanticResultList } from '@/components/search/SemanticResultList'
 import {
   type SearchFilters,
+  useBackfillEmbeddings,
   useDebounce,
   useSearchItems,
   useSemanticSearch,
@@ -45,11 +47,12 @@ export function SearchPage() {
   const semantic = useSemanticSearch(debouncedQuery, 20, mode === 'semantic')
   const active = mode === 'keyword' ? keyword : semantic
   const star = useSetStarred()
+  const backfill = useBackfillEmbeddings()
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
 
-  const items: DriveItemResponse[] =
-    mode === 'keyword'
-      ? (keyword.data?.items ?? [])
-      : (semantic.data?.map((h) => h.item) ?? [])
+  const items: DriveItemResponse[] = keyword.data?.items ?? []
+  const semanticHits = semantic.data ?? []
+  const resultCount = mode === 'keyword' ? items.length : semanticHits.length
   const totalPages = mode === 'keyword' ? (keyword.data?.pages ?? 1) : 1
   const isLoading = active.isLoading
   // A 503 means semantic search isn't enabled on the server — show guidance,
@@ -91,6 +94,20 @@ export function SearchPage() {
   const handleTypeFilter = (value: SearchFilters['itemType']) => {
     setFilters((f) => ({ ...f, itemType: value }))
     setPage(1)
+  }
+
+  const handleBackfill = async () => {
+    setBackfillMsg(null)
+    try {
+      const r = await backfill.mutateAsync(undefined)
+      setBackfillMsg(
+        r.remaining > 0
+          ? `Indexed ${r.indexed} file(s); ${r.remaining} still to go — run again.`
+          : `Indexed ${r.indexed} file(s). All files are now searchable by meaning.`,
+      )
+    } catch {
+      setBackfillMsg('Could not index files (is the embedding service running?).')
+    }
   }
 
   return (
@@ -138,8 +155,23 @@ export function SearchPage() {
         </div>
       </div>
 
-      {query && mode === 'semantic' && !semanticDisabled && (
-        <p className="-mt-1 text-xs text-muted-foreground">Sorted by relevance to your query.</p>
+      {mode === 'semantic' && !semanticDisabled && (
+        <div className="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {query && (
+            <p className="text-xs text-muted-foreground">Sorted by relevance to your query.</p>
+          )}
+          <button
+            type="button"
+            onClick={() => void handleBackfill()}
+            disabled={backfill.isPending}
+            className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+            title="Generate embeddings for files uploaded before semantic search was enabled"
+          >
+            {backfill.isPending && <Loader2 className="size-3 animate-spin" aria-hidden="true" />}
+            Index older files
+          </button>
+          {backfillMsg && <span className="text-xs text-muted-foreground">{backfillMsg}</span>}
+        </div>
       )}
 
       {!query && (
@@ -168,14 +200,21 @@ export function SearchPage() {
         </div>
       )}
 
-      {query && !semanticDisabled && !isLoading && !isError && items.length === 0 && (
+      {query && !semanticDisabled && !isLoading && !isError && resultCount === 0 && (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
           <Search className="size-12" aria-hidden="true" />
           <p className="text-sm">No results found</p>
         </div>
       )}
 
-      {query && !semanticDisabled && !isLoading && !isError && items.length > 0 && (
+      {/* Semantic results — meaning-ranked, with score + snippet */}
+      {query && mode === 'semantic' && !isLoading && !isError && semanticHits.length > 0 && (
+        <div className="flex-1 overflow-auto">
+          <SemanticResultList hits={semanticHits} query={query} onOpen={handleDoubleClick} />
+        </div>
+      )}
+
+      {query && mode === 'keyword' && !isLoading && !isError && items.length > 0 && (
         <>
           <div onClick={() => clearSelection()} className="flex-1 overflow-auto">
             {viewMode === 'list' ? (

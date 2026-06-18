@@ -164,7 +164,7 @@ async def test_semantic_search_returns_hits(
     class _FakeSemanticService:
         async def search(self, *, user_id: UUID, query: str, limit: int) -> list[SemanticHit]:
             # _to_response reads the same attributes off a DriveItemResponse.
-            return [SemanticHit(item=hit_item, score=0.91)]  # type: ignore[arg-type]
+            return [SemanticHit(item=hit_item, score=0.91, snippet="the matching passage")]  # type: ignore[arg-type]
 
     monkeypatch.setattr(
         "app.search.router.build_semantic_search_service",
@@ -180,6 +180,7 @@ async def test_semantic_search_returns_hits(
     assert len(body) == 1
     assert body[0]["item"]["name"] == "thesis.pdf"
     assert abs(body[0]["score"] - 0.91) < 1e-6
+    assert body[0]["snippet"] == "the matching passage"
 
 
 async def test_semantic_search_embedding_down_returns_503(

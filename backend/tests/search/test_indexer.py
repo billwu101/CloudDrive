@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from app.models.drive_item import DriveItem
 from app.search.embedding import EmbeddingClient, EmbeddingError
 from app.search.indexer import AbstractSearchIndexRepository, SearchIndexService
-from app.search.semantic import AbstractFileEmbeddingRepository
+from app.search.semantic import AbstractFileEmbeddingRepository, ChunkEmbedding
 
 
 class MemSearchIndexRepo(AbstractSearchIndexRepository):
@@ -22,21 +22,21 @@ class MemSearchIndexRepo(AbstractSearchIndexRepository):
 
 class _MemEmbeddingRepo(AbstractFileEmbeddingRepository):
     def __init__(self) -> None:
-        self.vectors: dict[UUID, list[float]] = {}
+        self.chunks: dict[UUID, list[ChunkEmbedding]] = {}
         self.deleted: list[UUID] = []
 
-    async def upsert(
-        self, *, item_id: UUID, embedding: list[float], model: str, updated_at: datetime
+    async def replace_chunks(
+        self, *, item_id: UUID, chunks: list[ChunkEmbedding], model: str, updated_at: datetime
     ) -> None:
-        self.vectors[item_id] = embedding
+        self.chunks[item_id] = chunks
 
     async def delete(self, item_id: UUID) -> None:
-        self.vectors.pop(item_id, None)
+        self.chunks.pop(item_id, None)
         self.deleted.append(item_id)
 
     async def semantic_search(
         self, *, user_id: UUID, query: list[float], limit: int
-    ) -> list[tuple[DriveItem, float]]:
+    ) -> list[tuple[DriveItem, float, str]]:
         return []
 
 
@@ -90,7 +90,10 @@ async def test_index_file_also_writes_embedding_when_enabled() -> None:
     )
 
     assert repo.content[item_id] == "hello text"
-    assert emb_repo.vectors[item_id] == [0.5, 0.5]
+    chunks = emb_repo.chunks[item_id]
+    assert len(chunks) == 1  # short text → one chunk
+    assert chunks[0].vector == [0.5, 0.5]
+    assert chunks[0].snippet == "hello text"
 
 
 async def test_embedding_failure_does_not_break_full_text_index() -> None:
@@ -110,13 +113,13 @@ async def test_embedding_failure_does_not_break_full_text_index() -> None:
 
     assert indexed is True
     assert repo.content[item_id] == "hello text"  # full-text still written
-    assert item_id not in emb_repo.vectors  # embedding skipped, no crash
+    assert item_id not in emb_repo.chunks  # embedding skipped, no crash
 
 
 async def test_unsupported_type_clears_embedding_too() -> None:
     repo = MemSearchIndexRepo()
     emb_repo = _MemEmbeddingRepo()
-    emb_repo.vectors[(item_id := uuid4())] = [1.0]
+    emb_repo.chunks[(item_id := uuid4())] = []
     svc = SearchIndexService(
         repo, embedding_client=_FakeEmbed(), embedding_repo=emb_repo, embedding_model="m"
     )

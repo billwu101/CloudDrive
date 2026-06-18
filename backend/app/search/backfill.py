@@ -7,17 +7,18 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.drive_item import DriveItem
 from app.models.file_embedding import FileEmbedding
 from app.models.file_search_index import FileSearchIndex
 from app.search.embedding import EmbeddingClient
-from app.search.semantic import AbstractFileEmbeddingRepository, embeddable_text
+from app.search.semantic import AbstractFileEmbeddingRepository, embed_chunks
 
 
 @dataclass(frozen=True)
 class BackfillResult:
-    indexed: int  # embeddings produced in this run
+    indexed: int  # files embedded in this run
     remaining: int  # files still missing an embedding afterwards
 
 
@@ -31,6 +32,13 @@ class AbstractEmbeddingBackfillRepository(ABC):
     async def count_pending(self, *, user_id: UUID) -> int: ...
 
 
+def _no_embedding() -> ColumnElement[bool]:
+    # No embedding chunk exists for this file yet.
+    return (
+        ~select(FileEmbedding.id).where(FileEmbedding.item_id == FileSearchIndex.item_id).exists()
+    )
+
+
 class SQLEmbeddingBackfillRepository(AbstractEmbeddingBackfillRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -39,11 +47,10 @@ class SQLEmbeddingBackfillRepository(AbstractEmbeddingBackfillRepository):  # pr
         stmt = (
             select(FileSearchIndex.item_id, FileSearchIndex.content)
             .join(DriveItem, DriveItem.id == FileSearchIndex.item_id)
-            .outerjoin(FileEmbedding, FileEmbedding.item_id == FileSearchIndex.item_id)
             .where(
                 DriveItem.owner_id == user_id,
                 DriveItem.is_deleted.is_(False),
-                FileEmbedding.item_id.is_(None),
+                _no_embedding(),
             )
             .limit(limit)
         )
@@ -55,11 +62,10 @@ class SQLEmbeddingBackfillRepository(AbstractEmbeddingBackfillRepository):  # pr
             select(func.count())
             .select_from(FileSearchIndex)
             .join(DriveItem, DriveItem.id == FileSearchIndex.item_id)
-            .outerjoin(FileEmbedding, FileEmbedding.item_id == FileSearchIndex.item_id)
             .where(
                 DriveItem.owner_id == user_id,
                 DriveItem.is_deleted.is_(False),
-                FileEmbedding.item_id.is_(None),
+                _no_embedding(),
             )
         )
         result = await self._session.execute(stmt)
@@ -90,10 +96,10 @@ class EmbeddingBackfillService:
         for item_id, content in pending:
             # Fail fast: an embedding error here means the service is down, so
             # there's no point hammering the rest of the batch.
-            vector = await self._client.embed(embeddable_text(content))
-            await self._embedding.upsert(
+            chunks = await embed_chunks(self._client, content)
+            await self._embedding.replace_chunks(
                 item_id=item_id,
-                embedding=vector,
+                chunks=chunks,
                 model=self._model,
                 updated_at=datetime.now(UTC),
             )

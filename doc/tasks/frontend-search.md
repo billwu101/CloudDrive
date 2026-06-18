@@ -42,3 +42,10 @@
 - [x] SearchPage 加 Keyword／Semantic 模式切換 pills；語意模式依相關度排序（標示「Sorted by relevance」）、隱藏類型過濾與分頁。
 - [x] 語意搜尋未啟用（503）顯示引導訊息，而非一般錯誤。
 - [x] 測試：searchApi 語意端點 + 503 傳遞；SearchPage 預設關鍵字結果、切換語意顯示結果、503 提示。
+
+## 延伸：語意結果片段/分數 + backfill 入口（2026-06-18）
+
+- [x] `SemanticResultList` 元件：每筆顯示檔名、相似度 badge（% match）、命中片段 snippet（query 詞 `<mark>` 高亮）；點擊開資料夾/預覽。
+- [x] SearchPage 語意模式改用 `SemanticResultList`（取代共用 FileTable/FileGrid）；keyword 模式維持原表格 + 分頁。
+- [x] `useBackfillEmbeddings` + 語意模式「Index older files」按鈕：呼叫 `POST /search/embeddings/backfill`，顯示 indexed/remaining，可重複點到 remaining=0。
+- [x] 測試：searchApi backfill、SearchPage 顯示分數/片段、backfill 按鈕流程。

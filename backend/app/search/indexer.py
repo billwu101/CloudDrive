@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.file_search_index import FileSearchIndex
 from app.search.embedding import EmbeddingClient
 from app.search.extract import extract_text
-from app.search.semantic import AbstractFileEmbeddingRepository, embeddable_text
+from app.search.semantic import AbstractFileEmbeddingRepository, embed_chunks
 
 logger = logging.getLogger("app.search.indexer")
 
@@ -88,10 +88,10 @@ class SearchIndexService:
         if self._embedding_client is None or self._embedding_repo is None:
             return
         try:
-            vector = await self._embedding_client.embed(embeddable_text(text))
-            await self._embedding_repo.upsert(
+            chunks = await embed_chunks(self._embedding_client, text)
+            await self._embedding_repo.replace_chunks(
                 item_id=item_id,
-                embedding=vector,
+                chunks=chunks,
                 model=self._embedding_model,
                 updated_at=datetime.now(UTC),
             )

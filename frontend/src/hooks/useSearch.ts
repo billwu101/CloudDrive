@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 
 import { searchApi } from '@/api/searchApi'
@@ -62,5 +62,17 @@ export function useSemanticSearch(query: string, limit = 20, enabled = true) {
     enabled: enabled && trimmed.length > 0,
     staleTime: 10_000,
     retry: false, // a 503 (feature disabled / model down) shouldn't be retried
+  })
+}
+
+export function useBackfillEmbeddings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (batchSize?: number) =>
+      searchApi.backfillEmbeddings(batchSize).then((r) => r.data),
+    onSuccess: () => {
+      // Newly embedded files should now turn up in semantic results.
+      void queryClient.invalidateQueries({ queryKey: ['search-semantic'] })
+    },
   })
 }

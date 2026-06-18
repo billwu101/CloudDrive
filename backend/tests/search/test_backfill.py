@@ -11,7 +11,7 @@ from app.search.backfill import (
     EmbeddingBackfillService,
 )
 from app.search.embedding import EmbeddingClient, EmbeddingError
-from app.search.semantic import AbstractFileEmbeddingRepository
+from app.search.semantic import AbstractFileEmbeddingRepository, ChunkEmbedding
 
 
 class _FakeEmbed(EmbeddingClient):
@@ -40,21 +40,21 @@ class _MemBackfillRepo(AbstractEmbeddingBackfillRepository):
 class _MemEmbeddingRepo(AbstractFileEmbeddingRepository):
     def __init__(self, backfill: _MemBackfillRepo) -> None:
         self.backfill = backfill
-        self.vectors: dict[UUID, list[float]] = {}
+        self.chunks: dict[UUID, list[ChunkEmbedding]] = {}
 
-    async def upsert(
-        self, *, item_id: UUID, embedding: list[float], model: str, updated_at: datetime
+    async def replace_chunks(
+        self, *, item_id: UUID, chunks: list[ChunkEmbedding], model: str, updated_at: datetime
     ) -> None:
-        self.vectors[item_id] = embedding
+        self.chunks[item_id] = chunks
         # Once embedded, it's no longer pending — mirror real behaviour.
         self.backfill.pending.pop(item_id, None)
 
     async def delete(self, item_id: UUID) -> None:
-        self.vectors.pop(item_id, None)
+        self.chunks.pop(item_id, None)
 
     async def semantic_search(
         self, *, user_id: UUID, query: list[float], limit: int
-    ) -> list[tuple[DriveItem, float]]:
+    ) -> list[tuple[DriveItem, float, str]]:
         return []
 
 
@@ -80,7 +80,7 @@ async def test_backfill_embeds_pending_and_reports_remaining() -> None:
 
     assert result.indexed == 2  # processed one batch
     assert result.remaining == 1  # one still pending
-    assert len(emb.vectors) == 2
+    assert len(emb.chunks) == 2
 
 
 async def test_backfill_run_until_empty() -> None:
@@ -91,7 +91,7 @@ async def test_backfill_run_until_empty() -> None:
 
     assert first.indexed == 3
     assert first.remaining == 0
-    assert len(emb.vectors) == 3
+    assert len(emb.chunks) == 3
 
 
 async def test_backfill_raises_when_embedding_service_down() -> None:
@@ -100,4 +100,4 @@ async def test_backfill_raises_when_embedding_service_down() -> None:
     with pytest.raises(EmbeddingError):
         await svc.run(user_id=uuid4())
 
-    assert emb.vectors == {}  # nothing written
+    assert emb.chunks == {}  # nothing written
