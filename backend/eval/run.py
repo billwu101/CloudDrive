@@ -71,6 +71,12 @@ def main() -> int:
         "repeats a case to measure pass-rate/variance against a real model",
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a Markdown table")
+    parser.add_argument(
+        "--browser-timeout",
+        type=float,
+        default=1800.0,
+        help="Playwright suite timeout in seconds for --mode browser (large batches need more)",
+    )
     args = parser.parse_args()
 
     cases = [case for case in load_cases(args.cases) if args.mode in case.mode]
@@ -83,6 +89,7 @@ def main() -> int:
             cases,
             base_url=args.frontend_url,
             api_base_url=args.base_url,
+            timeout=args.browser_timeout,
         )
 
     judge = _build_judge(args)
