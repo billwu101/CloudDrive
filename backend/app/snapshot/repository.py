@@ -88,6 +88,10 @@ class AbstractSnapshotRepository(ABC):
         """Every storage_key still referenced by any drive item, file version, or
         snapshot entry (across all users) — the live set for blob GC."""
 
+    @abstractmethod
+    async def is_referenced_by_snapshot(self, storage_key: str) -> bool:
+        """Whether any snapshot entry still points at this blob."""
+
 
 class SQLSnapshotRepository(AbstractSnapshotRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
@@ -269,3 +273,9 @@ class SQLSnapshotRepository(AbstractSnapshotRepository):  # pragma: no cover
             result = await self._session.execute(select(column).where(column.is_not(None)))
             keys.update(row for (row,) in result.all() if row)
         return keys
+
+    async def is_referenced_by_snapshot(self, storage_key: str) -> bool:
+        result = await self._session.execute(
+            select(SnapshotEntry.id).where(SnapshotEntry.storage_key == storage_key).limit(1)
+        )
+        return result.first() is not None

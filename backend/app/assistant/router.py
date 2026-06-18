@@ -84,6 +84,7 @@ def _trash_service(session: DbSession) -> TrashService:
         storage=get_storage_provider(get_settings()),
         quota_svc=QuotaService(SQLUserRepository(session)),
         activity_svc=ActivityLogService(SQLActivityLogRepository(session)),
+        snapshot_refs=SQLSnapshotRepository(session),
     )
 
 

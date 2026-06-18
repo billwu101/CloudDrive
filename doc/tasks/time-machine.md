@@ -32,17 +32,14 @@
 
 - [x] `SnapshotService.prune`：保留最近 N（預設 50），pinned / pre_restore 豁免；`create()` 後自動呼叫。
 - [x] 獨立快照配額（**預設 = 檔案配額的一半**，`quota_bytes=NULL` 即 auto）：以 distinct checksum 去重計算用量，超量時由最舊的非豁免快照開始刪到符合上限（永遠保留最新一筆）。
-- [x] blob 背景 GC 邏輯：`StorageProvider.list_objects()`（列實體 blob + mtime）+ `repository.referenced_storage_keys()`（drive_items ∪ file_versions ∪ snapshot_entries 的 storage_key 聯集）+ `SnapshotService.collect_garbage(grace_minutes)`：刪掉不在 live set、且早於 grace 窗的孤兒 blob，回傳刪除數/釋放位元組/略過數。仍未做：呼叫它的背景週期 runner、以及把 trash 永久刪除改為「只刪 metadata、blob 交給 GC」（見下方註記）。
+- [x] blob 背景 GC 邏輯：`StorageProvider.list_objects()`（列實體 blob + mtime）+ `repository.referenced_storage_keys()`（drive_items ∪ file_versions ∪ snapshot_entries 的 storage_key 聯集）+ `SnapshotService.collect_garbage(grace_minutes)`：刪掉不在 live set、且早於 grace 窗的孤兒 blob，回傳刪除數/釋放位元組/略過數。仍未做：呼叫它的背景週期 runner。
 - [x] 排程「是否該建」判定 `run_scheduled_snapshot(now)`：排程開、距上次快照已過間隔、且現有檔案>0 才建 `scheduled`（**預設開、每小時**，可設）。
 - [ ] 呼叫上述判定的背景週期 runner / cron。**未做**（判定函式已就緒）。
 - [x] `snapshot_settings` model + Alembic 0010；`GET/PUT /snapshots/settings`：保留 N、排程開關/間隔、獨立快照配額上限（per-user），回傳 effective_quota_bytes / used_bytes。
 - [x] 測試：prune 保留 N 與豁免、快照配額超限由最舊刪起、設定讀寫 + auto 配額解析、排程間隔/停用/空碟跳過、GC 只刪舊孤兒（引用中與 grace 內保留）。
 
-> ⚠️ **待處理的交互風險（資料安全）**：`app/trash/service.py` 的 `permanent_delete` →
-> `_free_file_storage` 會**直接呼叫 `storage.delete(version.storage_key)`**，完全沒檢查該 blob
-> 是否仍被某快照引用。情境：建快照 S1 引用檔案 A 的 blob → 永久刪除 A → blob 被刪 → 還原 S1 時讀不到內容。
-> 正解：把永久刪除改為「只刪 metadata（versions+item 列、扣配額），blob 一律交給 `collect_garbage` 依
-> 引用計數回收」。此改動會動到 trash 的測試與配額語意，故獨立於本次 GC 變更，待後續處理。
+- [x] **trash 永久刪除改為 dedup-aware（資料安全修正）**：`permanent_delete` 先刪 metadata（versions+item 列）並立即扣配額（依 `version.size_bytes`，配額是邏輯擁有權），再對候選 `storage_key` 做即時回收——透過注入的窄協定 `SnapshotReferenceChecker.is_referenced_by_snapshot(key)` 檢查：**仍被任何快照引用的 blob 留給 GC**，已完全孤兒的才立即 `storage.delete`。`TrashService(snapshot_refs=...)` 由兩個 router（trash、assistant）注入 `SQLSnapshotRepository`。測試：被快照引用的 blob 永久刪除後仍在、配額仍立即釋放；無引用時立即刪（既有斷言）。
+>  （修正前的 bug：永久刪除會直接刪 blob、不檢查快照引用，導致還原引用同一 blob 的快照時讀不到內容。）
 
 ## S4：Assistant 整合
 

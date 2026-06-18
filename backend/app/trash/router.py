@@ -10,6 +10,7 @@ from app.drive.repository import SQLDriveItemRepository
 from app.file_version.repository import SQLFileVersionRepository
 from app.permission.repository import SQLShareRepository
 from app.schemas.common import DriveItemResponse, Page
+from app.snapshot.repository import SQLSnapshotRepository
 from app.storage.factory import get_storage_provider
 from app.trash.repository import SQLTrashRepository
 from app.trash.service import TrashService
@@ -30,6 +31,7 @@ def _trash_service(session: DbSession) -> TrashService:
         share_repo=SQLShareRepository(session),
         storage=get_storage_provider(settings),
         quota_svc=QuotaService(repo=SQLUserRepository(session)),
+        snapshot_refs=SQLSnapshotRepository(session),
     )
 
 

@@ -172,6 +172,11 @@ class MemSnapshotRepo(AbstractSnapshotRepository):
                     keys.add(e.storage_key)
         return keys
 
+    async def is_referenced_by_snapshot(self, storage_key: str) -> bool:
+        return any(
+            e.storage_key == storage_key for entries in self.entries.values() for e in entries
+        )
+
     async def get_snapshot(self, *, user_id: UUID, snapshot_id: UUID) -> Snapshot | None:
         snap = self.snapshots.get(snapshot_id)
         return snap if snap and snap.user_id == user_id else None
