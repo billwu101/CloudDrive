@@ -259,3 +259,18 @@
 - 理由：同源反代是讓「部署到任意主機零設定」最省事且最穩的做法；選用功能可關閉，確保沒有 Ollama/embedding 模型的人仍能一行跑起核心。
 - 已知取捨：in-process 排程器假設單一 worker（多副本須關閉並改用外部 cron）；同源反代下 dev 直連模式仍靠 CORS 白名單。
 - 影響範圍：`scripts/start.sh`、根 `.env.example`、`docker-compose.yml`、`frontend/{Dockerfile,nginx.conf}`、`README.md`。詳見 [deployment.md](./deployment.md)。
+
+## DEC-026：外部模型接入（Codex 訂閱制 / OpenAI API）——執行升級與 eval 考官
+
+- 日期：2026-06-19
+- 狀態：Accepted（設計階段，尚未實作）
+- 背景：本地 Gemma 4 對部分任務反覆做不出可接受結果時，希望能切換到 GPT-5.5；同時希望 eval harness 的考官可選用更強模型評斷 skill 的正確性與效果。使用者需在 profile 綁定自己的外部模型憑證才可使用。延伸自 DEC-023。
+- 決策：
+  1. **兩條認證路徑，訂閱制優先、API key 備援**：路徑 A = Codex 訂閱制（優先）；路徑 B = OpenAI API key（穩定備援）。provider 抽象成同一介面；訂閱制不可用時自動退回 API key，功能不中斷。
+  2. ⚠️ **明列訂閱制風險**：ChatGPT/Codex 訂閱制無穩定官方程式化 API，程式化管道屬非官方、易失效、可能牴觸 ToS；定位為 best-effort，以 API key 確保可交付。
+  3. **per-user 憑證、加密 at rest**：新表 `user_external_credentials`，對稱加密（`CREDENTIAL_ENCRYPTION_KEY`）儲存 token/key，API 只回遮罩、永不回明文；**絕不存明文密碼**，OAuth 路徑只存可撤銷 token。
+  4. **執行升級延用 DEC-023**：`MAX_LOCAL_ATTEMPTS` 連續本地失敗才升級；隱私閘、權限/沙箱/確認閘、稽核全部沿用；external client 改依使用者 profile 憑證動態建立。
+  5. **eval 考官預設 Gemma 4、可切 Codex/GPT**：考官憑證走開發者 env/CLI（非終端使用者）；評斷涵蓋「生成正確性」+「效果符合使用者期待」；考官與被考者分離。
+- 理由：尊重「訂閱制優先」的成本考量，同時以 API key 備援與介面抽象確保不被非官方管道綁死；per-user 加密憑證兼顧「自帶額度」與安全；考官用更強模型更接近人類判斷。
+- 已知取捨：訂閱制管道穩定性不可控（以備援與抽象化緩解）；儲存可解密憑證有風險（以加密 at rest、遮罩、不入 log 緩解）；外部升級涉資料外送（沿用 DEC-023 隱私閘、預設關閉、使用者明確啟用）。
+- 影響範圍：新 `user_external_credentials` 表 + profile 端點、`app/assistant/llm/`（router/external 依 per-user 憑證）、`backend/eval/judge.py`（OpenAI/Codex 考官 + provider 選項）、config（`CREDENTIAL_ENCRYPTION_KEY` 等）。詳見 [external-model-integration.md](./external-model-integration.md)。

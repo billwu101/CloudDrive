@@ -59,6 +59,10 @@
 
 - [x] [時光機 Snapshots](./time-machine.md) — 類 Apple Time Machine 的整碟時間點還原。**已完成**：S1 資料層 + 手動快照、S2 就地還原（含 pre_restore 保命快照、subtree_mode）、S3 保留最近 N + 獨立快照配額（auto=檔案配額一半）+ `snapshot_settings` + `GET/PUT /snapshots/settings` + blob 背景 GC（`collect_garbage`）+ 背景排程 runner（`SnapshotScheduler`，lifespan 啟動、服務預設關、compose 單 worker 可開）、S4 Assistant workflow/skill 寫入前自動建 `assistant` 快照、trash 永久刪除改為 dedup-aware（不再誤刪快照引用的 blob）、S5 前端（日期分組、設定 UI、資料夾導覽、多選逐項還原、整碟/逐項還原）。**非阻擋限制**：還原時硬配額檢查待補強（還原已寫 activity log）。設計見 [time-machine-design.md](../time-machine-design.md)，決策 DEC-024。
 
+## 擴充模組：外部模型接入（Codex/OpenAI）（設計完成、待實作）
+
+- [ ] [外部模型接入](../external-model-integration.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5（**Codex 訂閱制優先、OpenAI API key 備援**）、使用者於 profile 綁定 **per-user 加密憑證**（`user_external_credentials`，加密 at rest、永不回明文）、eval 考官可選 Gemma/Codex（預設 Gemma、評斷 skill 生成正確性 + 效果）。**目前僅設計**（DEC-026），尚未實作。
+
 ## 建議執行順序
 
 - [x] 第一階段：Project Setup、Backend Core、Database。
@@ -82,4 +86,5 @@
 | 核心合計 | 28 | 28 |
 | 擴充：AI Assistant | 3 | 3 |
 | 擴充：時光機 Snapshots | 1 | 1 |
-| 總合計 | 32 | 32 |
+| 擴充：外部模型接入（待實作） | 0 | 1 |
+| 總合計 | 32 | 33 |
