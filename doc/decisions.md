@@ -267,7 +267,7 @@
 - 背景：本地 Gemma 4 對部分任務反覆做不出可接受結果時，希望能切換到 GPT-5.5；同時希望 eval harness 的考官可選用更強模型評斷 skill 的正確性與效果。使用者需在 profile 綁定自己的外部模型憑證才可使用。延伸自 DEC-023。
 - 決策：
   1. **兩條認證路徑，訂閱制優先、API key 備援**：路徑 A = Codex 訂閱制（優先）；路徑 B = OpenAI API key（穩定備援）。provider 抽象成同一介面；訂閱制不可用時自動退回 API key，功能不中斷。
-  2. ⚠️ **明列訂閱制風險**：ChatGPT/Codex 訂閱制無穩定官方程式化 API，程式化管道屬非官方、易失效、可能牴觸 ToS；定位為 best-effort，以 API key 確保可交付。
+  2. **訂閱制管道參考 openclaw 的做法**：不自己刻 ChatGPT OAuth，而是**橋接官方 Codex CLI**（`@zed-industries/codex-acp`，讀 `CODEX_HOME/auth.json`，OAuth 與 token refresh 委派官方 CLI；見 external-model-integration.md §2.1）。仍屬非官方整合層，故 API key（路徑 B）為穩定保證。**待定部署模式**：(a) 自架單人（後端讀部署機 auth.json，最貼近 openclaw）或 (b) 多使用者集中式（使用者自行 OAuth 後 token 加密存 profile、refresh 自理）。
   3. **per-user 憑證、加密 at rest**：新表 `user_external_credentials`，對稱加密（`CREDENTIAL_ENCRYPTION_KEY`）儲存 token/key，API 只回遮罩、永不回明文；**絕不存明文密碼**，OAuth 路徑只存可撤銷 token。
   4. **執行升級延用 DEC-023**：`MAX_LOCAL_ATTEMPTS` 連續本地失敗才升級；隱私閘、權限/沙箱/確認閘、稽核全部沿用；external client 改依使用者 profile 憑證動態建立。
   5. **eval 考官預設 Gemma 4、可切 Codex/GPT**：考官憑證走開發者 env/CLI（非終端使用者）；評斷涵蓋「生成正確性」+「效果符合使用者期待」；考官與被考者分離。

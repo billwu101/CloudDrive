@@ -22,14 +22,26 @@
 
 依使用者決定：**Codex 訂閱制優先、OpenAI API key 備援**。設計上把「provider」抽象成介面，兩條路徑都實作同一個 `ExternalChatClient` 協定，升級/考官只依賴介面。
 
-### 2.1 路徑 A — Codex 訂閱制（優先）
+### 2.1 路徑 A — Codex 訂閱制（優先，參考 openclaw 的做法）
 
-- 使用者在 profile 綁定其 ChatGPT/Codex 訂閱帳號，後端用訂閱額度呼叫 GPT-5.5。
-- ⚠️ **重大技術風險（務必知悉）**：ChatGPT/Codex 訂閱制**沒有穩定的官方程式化 Chat API**。可行的程式化管道（ChatGPT session token、Codex CLI 的 OAuth token 等）屬**非官方、易隨對方改版失效，且可能牴觸服務條款**。因此：
-  - 本路徑定位為「**盡力而為（best-effort）**」，不保證長期可用。
-  - **登入後只保存可撤銷的存取 token（加密），絕不長期保存帳號明文密碼**（見 §3 安全）。
-  - 一旦訂閱制管道失效，系統自動退回路徑 B（API key），功能不中斷。
-- 待確認（§7）：實際採哪種訂閱制 token 取得流程。
+採用 **openclaw**（github.com/openclaw/openclaw）已驗證的做法：**不自己實作 ChatGPT OAuth，而是橋接官方 Codex CLI**，把 OAuth 登入與 token refresh 委派給官方工具。
+
+openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確認）：
+
+1. 使用者用**官方 `codex login`**（OAuth 訂閱）登入，憑證存在 `CODEX_HOME`（預設 `~/.codex/auth.json`），結構含 `tokens` 與 `last_refresh`；**token refresh 由 Codex CLI 自己負責**。
+2. 透過 **`@zed-industries/codex-acp`**（ACP = Agent Client Protocol）以 wrapper 啟動 codex 來呼叫訂閱額度，而非直接打非官方端點。
+3. 把 `CODEX_HOME` 的 auth 狀態複製到**隔離的 plugin-local home**，避免污染使用者本機設定。
+4. 支援 `CODEX_API_KEY` / `OPENAI_API_KEY` 環境變數作為備援（即本文件路徑 B）。
+5. 診斷/log 對 token、secret 做大量**遮罩**。
+
+採用理由：把脆弱的 OAuth/refresh 交給官方 CLI，比自己刻 ChatGPT session 穩健；仍屬非官方整合層（依賴 Codex CLI 行為），故路徑 B 仍為穩定保證。
+
+⚠️ **情境差異（必須處理）**：openclaw 是**個人單機 CLI**——它跑在使用者自己的機器，直接讀本機 `~/.codex/auth.json`。本專案是**多使用者集中式 web server**，server 端沒有、也不該有每位使用者的本機 `~/.codex`。因此直接套用前要先選部署模式（§7-1）：
+
+- **(a) 自架單人 / self-host**：可幾乎照搬 openclaw——後端讀「部署該機器上」的 `CODEX_HOME/auth.json`（使用者先在該機 `codex login`）。最貼近 openclaw，最省事。
+- **(b) 多使用者集中式**：OAuth 需使用者瀏覽器互動，無法在 server 代跑 `codex login`。使用者需自行完成 Codex OAuth 後，把產生的 token（`auth.json` 內容）交給 server，**加密存入其 profile**（§3）；token refresh 需我們以 refresh token 自行續期，或定期請使用者重新授權。
+
+無論 (a)/(b)，**絕不保存帳號明文密碼**；只持有可撤銷的 OAuth token（見 §3）。訂閱制管道失效時自動退回路徑 B。
 
 ### 2.2 路徑 B — OpenAI API key（備援，穩定）
 
@@ -101,7 +113,7 @@
 
 ## 7. 待確認 / 風險
 
-1. **訂閱制程式化管道**：Codex/ChatGPT 訂閱制實際以何種 token 流程程式化呼叫？是否存在可接受（不違 ToS、夠穩定）的方式？若無 → 路徑 A 降為實驗性、以路徑 B 為主交付。
+1. **訂閱制程式化管道 + 部署模式**：方向已定（參考 openclaw：橋接官方 Codex CLI / `codex-acp`，委派 OAuth 與 refresh 給官方 CLI，見 §2.1）。**仍待你決定**：採 **(a) 自架單人**（後端直接讀部署機 `CODEX_HOME/auth.json`，最貼近 openclaw）還是 **(b) 多使用者集中式**（使用者自行 OAuth 後把 token 交 server 加密存、refresh 自理）。這會大幅影響 profile 憑證 UX 與 token refresh 設計。需引入 `@zed-industries/codex-acp` + 官方 `codex` CLI 為執行期相依。
 2. **加密金鑰管理**：`CREDENTIAL_ENCRYPTION_KEY` 用部署 env 即可，或需 KMS／金鑰輪替？
 3. **考官用 Codex 時的憑證來源**：固定走開發者 env，還是也允許 per-user？（目前定為開發者 env。）
 4. **全域 env 金鑰與 per-user 憑證的優先序**：兩者並存時誰優先。
