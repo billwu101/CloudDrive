@@ -62,6 +62,17 @@
 - 原因：**模型限制**——「某個項目」是模糊指代、無 item_id，gemma4 偶爾跳過該步；非 harness/斷言問題。
 - 判定 + 下次驗證：重跑即過；`--runs 3` 下 `gen-m2-007` **3/3 PASS**，遠超 case 既有 `min_pass_rate=0.6`。**未放寬任何斷言**，純靠多次執行通過率門檻評估。flaky 案例平時用 `--runs N`。
 
+### 2.6 M2 重設計為真實 5-工具情境（2026-06-19）
+
+- 動機：原 M2 是把工具名串成短語（「搜尋檔案、列出根目錄、查看詳情…」），是工具清單而非任務，缺乏參考價值。重設計成 **5 個真實任務情境 × 20 主題 = 100**，每個情境本身就需要全部 5 個唯讀工具，且工具順序反映真實思考流程；每個 case 帶 `rationale` 欄位（EvalCase 忽略額外鍵，純人類可讀）。
+  - `cleanup_space` 清理空間：storage_quota → list_items → search → recent → get_info
+  - `resume_work` 接續工作：recent → list_items → search → get_info → storage_quota
+  - `handover_project` 交接專案：list_items → search → get_info → recent → storage_quota
+  - `find_lost_file` 找回舊檔：search → recent → list_items → get_info → storage_quota
+  - `monthly_audit` 月底盤點：storage_quota → list_items → recent → search → get_info
+- 結果：**Mock 411/411**（決定性）；**Browser 全 100/100 PASS**（真 gemma4-26b 能從敘事 prompt 規劃出全 5 工具，比舊版工具清單 99/100 更穩——敘事任務反而語意更明確）。
+- 注意：敘事 prompt 較長、模型規劃較久，全 100 browser 一輪超過 runner 預設 1800s；已給 `eval/run.py` 加 `--browser-timeout`（本次用 5400s）。M3-M5 全量 browser 同理需放大此值。
+
 ---
 
 ## 3. 新增「出問題的 prompt」要怎麼記（流程）
