@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from app.activity_log.repository import SQLActivityLogRepository
 from app.activity_log.service import ActivityLogService
 from app.assistant.context import ContextManager
-from app.assistant.hooks import default_hook_registry
+from app.assistant.hooks import default_hook_registry, snapshot_before_write_hook
 from app.assistant.llm.client import LLMClientError
 from app.assistant.llm.external import ExternalLLMClient
 from app.assistant.llm.ollama import OllamaLLMClient
@@ -54,6 +54,8 @@ from app.search.repository import SQLSearchRepository
 from app.search.service import SearchService
 from app.share.repository import SQLShareLinkRepository
 from app.share.service import ShareLinkService
+from app.snapshot.repository import SQLSnapshotRepository
+from app.snapshot.service import SnapshotService
 from app.storage.factory import get_storage_provider
 from app.trash.repository import SQLTrashRepository
 from app.trash.service import TrashService
@@ -102,6 +104,13 @@ def _upload_service(session: DbSession) -> UploadService:
     )
 
 
+def _build_snapshot_service(session: DbSession) -> SnapshotService:
+    return SnapshotService(
+        repo=SQLSnapshotRepository(session),
+        activity=ActivityLogService(SQLActivityLogRepository(session)),
+    )
+
+
 def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
     settings = get_settings()
     return AssistantSkillService(
@@ -110,6 +119,7 @@ def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
         sandbox=SkillSandbox(timeout_sec=settings.assistant_sandbox_timeout_sec),
         uploads=_upload_service(session),
         storage=get_storage_provider(settings),
+        snapshot_service=_build_snapshot_service(session),
     )
 
 
@@ -167,7 +177,12 @@ def _assistant_service(session: DbSession) -> WorkflowService:
         context=context,
         num_ctx=settings.llm_num_ctx,
     )
-    executor = WorkflowExecutor(registry=registry, hooks=default_hook_registry())
+    hooks = default_hook_registry()
+    hooks.register(
+        "before_execution",
+        snapshot_before_write_hook(_build_snapshot_service(session)),
+    )
+    executor = WorkflowExecutor(registry=registry, hooks=hooks)
     codegen = CodegenSubAgent(llm=model_router, context=context, num_ctx=settings.llm_num_ctx)
     return WorkflowService(
         planner=planner,
@@ -178,6 +193,7 @@ def _assistant_service(session: DbSession) -> WorkflowService:
             repo=SQLAssistantSkillRepository(session),
             drive_service=drive_service,
             codegen=codegen,
+            snapshot_service=_build_snapshot_service(session),
         ),
     )
 

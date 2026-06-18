@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 from app.drive.schemas import ItemType
 from app.models.drive_item import DriveItem
-from app.models.snapshot import Snapshot, SnapshotEntry
+from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
 from app.snapshot.repository import AbstractSnapshotRepository
-from app.snapshot.service import TRIGGER_MANUAL, TRIGGER_PRE_RESTORE, SnapshotService
+from app.snapshot.service import (
+    TRIGGER_MANUAL,
+    TRIGGER_PRE_RESTORE,
+    TRIGGER_SCHEDULED,
+    SnapshotService,
+)
 
 
 def _item(
@@ -42,10 +47,13 @@ def _item(
 
 
 class MemSnapshotRepo(AbstractSnapshotRepository):
-    def __init__(self, items: list[DriveItem]) -> None:
+    def __init__(self, items: list[DriveItem], *, user_quota: int = 0) -> None:
         self.items: dict[UUID, DriveItem] = {i.id: i for i in items}
         self.snapshots: dict[UUID, Snapshot] = {}
         self.entries: dict[UUID, list[SnapshotEntry]] = {}
+        self.settings: dict[UUID, SnapshotSettings] = {}
+        self.user_quota = user_quota
+        self._seq = 0
 
     async def list_owner_items(self, owner_id: UUID) -> list[DriveItem]:
         return [i for i in self.items.values() if i.owner_id == owner_id and not i.is_deleted]
@@ -99,6 +107,8 @@ class MemSnapshotRepo(AbstractSnapshotRepository):
             total_bytes=total_bytes,
             created_at=datetime.now(UTC),
         )
+        self._seq += 1
+        snap._seq = self._seq  # type: ignore[attr-defined]  # newest-first ordering helper
         self.snapshots[snap.id] = snap
         self.entries[snap.id] = [
             SnapshotEntry(id=uuid4(), snapshot_id=snap.id, **e) for e in entries
@@ -106,7 +116,47 @@ class MemSnapshotRepo(AbstractSnapshotRepository):
         return snap
 
     async def list_snapshots(self, user_id: UUID) -> list[Snapshot]:
-        return [s for s in self.snapshots.values() if s.user_id == user_id]
+        owned = [s for s in self.snapshots.values() if s.user_id == user_id]
+        return sorted(owned, key=lambda s: s._seq, reverse=True)  # type: ignore[attr-defined]
+
+    async def delete_snapshot(self, snapshot_id: UUID) -> None:
+        self.snapshots.pop(snapshot_id, None)
+        self.entries.pop(snapshot_id, None)
+
+    async def get_settings(self, user_id: UUID) -> SnapshotSettings | None:
+        return self.settings.get(user_id)
+
+    async def upsert_settings(
+        self,
+        *,
+        user_id: UUID,
+        retention_n: int,
+        schedule_enabled: bool,
+        schedule_interval_minutes: int,
+        quota_bytes: int | None,
+    ) -> SnapshotSettings:
+        settings = SnapshotSettings(
+            user_id=user_id,
+            retention_n=retention_n,
+            schedule_enabled=schedule_enabled,
+            schedule_interval_minutes=schedule_interval_minutes,
+            quota_bytes=quota_bytes,
+        )
+        self.settings[user_id] = settings
+        return settings
+
+    async def get_user_quota_bytes(self, user_id: UUID) -> int:
+        return self.user_quota
+
+    async def used_snapshot_bytes(self, user_id: UUID) -> int:
+        sizes: dict[str, int] = {}
+        for snap in self.snapshots.values():
+            if snap.user_id != user_id:
+                continue
+            for e in self.entries.get(snap.id, []):
+                if e.checksum_sha256 is not None:
+                    sizes[e.checksum_sha256] = max(sizes.get(e.checksum_sha256, 0), e.size_bytes)
+        return sum(sizes.values())
 
     async def get_snapshot(self, *, user_id: UUID, snapshot_id: UUID) -> Snapshot | None:
         snap = self.snapshots.get(snapshot_id)
@@ -247,3 +297,134 @@ async def test_restore_unknown_snapshot_returns_none() -> None:
     user = uuid4()
     svc = SnapshotService(repo=MemSnapshotRepo([_item(user)]))
     assert await svc.restore(user_id=user, snapshot_id=uuid4()) is None
+
+
+class _FakeActivity:
+    def __init__(self) -> None:
+        self.logged: list[dict[str, Any]] = []
+
+    async def log(self, **kwargs: Any) -> None:
+        self.logged.append(kwargs)
+        return None
+
+
+async def test_restore_writes_activity_log() -> None:
+    user = uuid4()
+    repo = MemSnapshotRepo([_item(user, name="a.txt")])
+    activity = _FakeActivity()
+    svc = SnapshotService(repo=repo, activity=activity)
+    snap = await svc.create(user_id=user)
+
+    await svc.restore(user_id=user, snapshot_id=snap.id)
+
+    restore_logs = [e for e in activity.logged if e["action"] == "snapshot.restore"]
+    assert len(restore_logs) == 1
+    assert restore_logs[0]["metadata"]["snapshot_id"] == str(snap.id)
+
+
+# ── retention / quota / settings ─────────────────────────────────────────────
+
+
+async def test_prune_keeps_newest_n_and_exempt() -> None:
+    user = uuid4()
+    repo = MemSnapshotRepo([_item(user)])
+    await repo.upsert_settings(
+        user_id=user,
+        retention_n=2,
+        schedule_enabled=True,
+        schedule_interval_minutes=60,
+        quota_bytes=None,
+    )
+    svc = SnapshotService(repo=repo)
+
+    s1 = await svc.create(user_id=user, trigger=TRIGGER_MANUAL)
+    s2 = await svc.create(user_id=user, trigger=TRIGGER_MANUAL, pinned=True)
+    s3 = await svc.create(user_id=user, trigger=TRIGGER_MANUAL)
+    s4 = await svc.create(user_id=user, trigger=TRIGGER_MANUAL)
+    s5 = await svc.create(user_id=user, trigger=TRIGGER_MANUAL)
+
+    ids = set(repo.snapshots)
+    assert s2.id in ids  # pinned never pruned
+    assert s4.id in ids and s5.id in ids  # newest two
+    assert s1.id not in ids and s3.id not in ids  # pruned
+
+
+async def test_prune_enforces_quota_dropping_oldest() -> None:
+    user = uuid4()
+    repo = MemSnapshotRepo([])
+    await repo.upsert_settings(
+        user_id=user,
+        retention_n=100,  # high, so quota is the binding constraint
+        schedule_enabled=True,
+        schedule_interval_minutes=60,
+        quota_bytes=250,
+    )
+    svc = SnapshotService(repo=repo)
+
+    def _add_unique(name: str, checksum: str) -> None:
+        f = _item(user, name=name, size=100)
+        f.checksum_sha256 = checksum
+        repo.items[f.id] = f
+
+    _add_unique("a", "ca")
+    s1 = await svc.create(user_id=user)  # used = 100
+    repo.items.clear()
+    _add_unique("b", "cb")
+    s2 = await svc.create(user_id=user)  # used = 200
+    repo.items.clear()
+    _add_unique("c", "cc")
+    s3 = await svc.create(user_id=user)  # used would be 300 > 250 → prune oldest
+
+    assert s1.id not in repo.snapshots  # oldest dropped to fit quota
+    assert s2.id in repo.snapshots and s3.id in repo.snapshots
+    assert await repo.used_snapshot_bytes(user) == 200
+
+
+async def test_update_settings_persists_and_resolves_auto_quota() -> None:
+    user = uuid4()
+    repo = MemSnapshotRepo([_item(user)], user_quota=1000)
+    svc = SnapshotService(repo=repo)
+
+    settings = await svc.update_settings(
+        user_id=user,
+        retention_n=10,
+        schedule_enabled=False,
+        schedule_interval_minutes=30,
+        quota_bytes=None,
+    )
+    assert settings.retention_n == 10
+    assert settings.schedule_enabled is False
+    # quota_bytes None → auto = half the user's file quota
+    assert await svc.resolve_quota_bytes(user_id=user) == 500
+
+
+async def test_run_scheduled_snapshot_respects_interval_and_state() -> None:
+    user = uuid4()
+    repo = MemSnapshotRepo([_item(user)])
+    svc = SnapshotService(repo=repo)
+
+    first = await svc.run_scheduled_snapshot(user_id=user)
+    assert first is not None and first.trigger == TRIGGER_SCHEDULED
+
+    # Just created — interval (60m) not elapsed yet.
+    assert await svc.run_scheduled_snapshot(user_id=user) is None
+
+    # Two hours later it's due again.
+    future = datetime.now(UTC) + timedelta(hours=2)
+    assert await svc.run_scheduled_snapshot(user_id=user, now=future) is not None
+
+
+async def test_run_scheduled_snapshot_skips_when_disabled_or_empty() -> None:
+    user = uuid4()
+    empty_repo = MemSnapshotRepo([])
+    assert await SnapshotService(repo=empty_repo).run_scheduled_snapshot(user_id=user) is None
+
+    repo = MemSnapshotRepo([_item(user)])
+    await repo.upsert_settings(
+        user_id=user,
+        retention_n=50,
+        schedule_enabled=False,
+        schedule_interval_minutes=60,
+        quota_bytes=None,
+    )
+    assert await SnapshotService(repo=repo).run_scheduled_snapshot(user_id=user) is None

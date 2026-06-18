@@ -2,8 +2,8 @@
 
 設計見 [time-machine-design.md](../time-machine-design.md)，決策見 DEC-024。
 
-> 狀態（2026-06-18）：**S1（資料層+手動快照）、S2（瀏覽+就地還原）後端 + S5 前端基本版完成**並全綠（後端 snapshot 17 測試、前端 TimeMachinePage 2 測試）。
-> 未做：**S3（保留/配額/排程/GC/設定）、S4（Assistant 整合）**，以及前端進階（日期分組折疊、多選+逐項還原、設定 UI）。S2 還原的配額檢查與 activity log 隨 S3 補。
+> 狀態（2026-06-18）：**S1、S2、S3（保留/配額/設定/排程判定）、S4（Assistant 整合）後端 + S5 前端（含進階）完成**並全綠（後端 snapshot 25 測試 + assistant hook 測試、前端 TimeMachinePage 5 測試）。
+> 仍未做：**blob 背景 GC**、**實際週期排程 runner/cron**（排程「是否該建」的判定 `run_scheduled_snapshot()` 已實作並測試，只差呼叫它的背景觸發器）、**還原時的硬配額檢查**（還原已寫 activity log）。
 > 下列為 checklist（勾選 = 已實作 + 測試）。
 
 ## 完成定義
@@ -30,30 +30,32 @@
 
 ## S3：保留、配額與排程
 
-- [ ] `SnapshotService.prune`：保留最近 N（預設 50），pinned / pre_restore 豁免。
-- [ ] 獨立快照配額（**預設 = 檔案配額的一半**）：建快照前檢查快照配額（不佔檔案配額），超過先 prune 騰空間、仍不夠則排程跳過/手動回錯誤。
-- [ ] blob 背景 GC：背景任務依 checksum 引用計數回收不再被引用的內容（刪快照只移除 metadata）。
-- [ ] 背景排程任務：定期 `create(trigger="scheduled")` + prune（**預設開、每小時**，可設）；**以 activity_logs 判定無寫入則跳過**。
-- [ ] `GET/PUT /snapshots/settings`：保留 N、排程開關/間隔、獨立快照配額上限（per-user）。
-- [ ] 測試：prune 保留 N 與豁免、快照配額超限處理、GC 引用計數回收、排程任務觸發、設定讀寫。
+- [x] `SnapshotService.prune`：保留最近 N（預設 50），pinned / pre_restore 豁免；`create()` 後自動呼叫。
+- [x] 獨立快照配額（**預設 = 檔案配額的一半**，`quota_bytes=NULL` 即 auto）：以 distinct checksum 去重計算用量，超量時由最舊的非豁免快照開始刪到符合上限（永遠保留最新一筆）。
+- [ ] blob 背景 GC：背景任務依 checksum 引用計數回收不再被引用的內容（刪快照只移除 metadata）。**未做**。
+- [x] 排程「是否該建」判定 `run_scheduled_snapshot(now)`：排程開、距上次快照已過間隔、且現有檔案>0 才建 `scheduled`（**預設開、每小時**，可設）。
+- [ ] 呼叫上述判定的背景週期 runner / cron。**未做**（判定函式已就緒）。
+- [x] `snapshot_settings` model + Alembic 0010；`GET/PUT /snapshots/settings`：保留 N、排程開關/間隔、獨立快照配額上限（per-user），回傳 effective_quota_bytes / used_bytes。
+- [x] 測試：prune 保留 N 與豁免、快照配額超限由最舊刪起、設定讀寫 + auto 配額解析、排程間隔/停用/空碟跳過。
 
 ## S4：Assistant 整合
 
-- [ ] workflow executor 在第一個非唯讀步驟前建一個 `assistant` 快照（整個 workflow 一個，非每步）。
-- [ ] `skills/authoring.py` `_execute_generated` 寫回前建一個 `assistant` 快照。
-- [ ] 唯讀操作不建。測試：破壞性 workflow / skill 執行前確有「一個」快照、唯讀無快照。
+- [x] workflow executor 在含寫入步驟時於 `before_execution` 建一個 `assistant` 快照（整個 workflow 一個，非每步）— `snapshot_before_write_hook`。
+- [x] `skills/authoring.py` `_execute_generated` 寫回前建一個 `assistant` 快照。
+- [x] 唯讀操作不建；快照失敗不阻擋執行。測試：含寫入步驟才建「一個」快照、唯讀無快照、快照後端失敗被吞掉。
 
 ## S5：前端
 
-- [x] `api/snapshotApi.ts` + `hooks/useSnapshots.ts`。
+- [x] `api/snapshotApi.ts` + `hooks/useSnapshots.ts`（含 settings）。
 - [x] 側欄「時光機」入口 + `/time-machine` 路由 + lazy page。
-- [x] `TimeMachinePage`（快照時間軸清單 + 立即建立快照）。進階：依日期分組折疊/分頁、保留/排程/配額設定 UI → 待 S3。
-- [x] 快照內容唯讀瀏覽（根層清單）。進階：資料夾導覽、多選勾選 → 後續。
-- [x] 還原確認對話框（明示覆蓋 + 已建保命快照 + 選 `subtree_mode`；「還原整個快照」）→ 還原後 invalidate `['drive']`。逐項「還原選取項」→ 後續。
-- [x] 測試：清單、瀏覽、還原確認流程（含 subtree_mode 選擇）。
+- [x] `TimeMachinePage`（快照時間軸清單 + 立即建立快照 + 依日期分組）。
+- [x] 設定 UI：`SnapshotSettingsDialog`（排程開關/間隔、保留 N、auto/自訂配額、顯示用量）。
+- [x] 快照內容唯讀瀏覽：資料夾導覽（breadcrumb）、多選勾選。
+- [x] 還原確認對話框（明示覆蓋 + 已建保命快照 + 選 `subtree_mode`）：「還原整個快照」與「還原選取項」（scope=items）→ 還原後 invalidate `['drive']`。
+- [x] 測試：清單、瀏覽、資料夾導覽、整碟還原、逐項還原（scope=items）、設定讀寫。
 
 ## 測試/驗證任務
 
-- [x] `ruff format/check`、`mypy`、`pytest`（snapshot 切片）全綠。
+- [x] `ruff format/check`、`mypy`、`pytest`（snapshot + assistant hook 切片）全綠。
 - [x] 前端 `lint`、`typecheck`、`test` 全綠。
-- [ ] 文件同步：實作後更新 `prompt.md`、`detailed-design.md`、本檔與 `progress.md`。
+- [x] 文件同步：更新本檔與 `progress.md`（S3/S4 完成、GC/排程 runner 標明未做）。

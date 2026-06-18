@@ -1,9 +1,21 @@
-import { AlertTriangle, Camera, File, Folder, History, Loader2, Pin, RotateCcw } from 'lucide-react'
-import { useState } from 'react'
+import {
+  AlertTriangle,
+  Camera,
+  ChevronRight,
+  File,
+  Folder,
+  History,
+  Loader2,
+  Pin,
+  RotateCcw,
+  Settings,
+} from 'lucide-react'
+import { Fragment, useMemo, useState } from 'react'
 
 import { isApiError } from '@/api/client'
 import type { RestoreRequest, SnapshotResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { SnapshotSettingsDialog } from '@/components/timemachine/SnapshotSettingsDialog'
 import {
   useCreateSnapshot,
   useRestoreSnapshot,
@@ -23,6 +35,30 @@ const TRIGGER_LABEL: Record<string, string> = {
   manual: 'Manual',
   assistant: 'Before assistant action',
   pre_restore: 'Before restore',
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const that = new Date(d)
+  that.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((today.getTime() - that.getTime()) / 86_400_000)
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+/** Group snapshots (assumed newest-first) into ordered day buckets. */
+function groupByDay(snapshots: SnapshotResponse[]): { label: string; items: SnapshotResponse[] }[] {
+  const groups: { label: string; items: SnapshotResponse[] }[] = []
+  for (const s of snapshots) {
+    const label = dayLabel(s.created_at)
+    const last = groups[groups.length - 1]
+    if (last && last.label === label) last.items.push(s)
+    else groups.push({ label, items: [s] })
+  }
+  return groups
 }
 
 function SnapshotRow({
@@ -45,7 +81,7 @@ function SnapshotRow({
       <div className="min-w-0">
         <div className="flex items-center gap-1.5 text-sm font-medium">
           {snapshot.pinned && <Pin className="size-3 text-amber-600" aria-hidden="true" />}
-          {new Date(snapshot.created_at).toLocaleString()}
+          {new Date(snapshot.created_at).toLocaleTimeString()}
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
           {TRIGGER_LABEL[snapshot.trigger] ?? snapshot.trigger} · {snapshot.item_count} items ·{' '}
@@ -62,21 +98,51 @@ export function TimeMachinePage() {
   const restore = useRestoreSnapshot()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [confirming, setConfirming] = useState(false)
+  // Folder navigation stack inside the selected snapshot (root = empty).
+  const [path, setPath] = useState<{ id: string; name: string }[]>([])
+  // Per-item multi-select (item_ids) across the whole snapshot.
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [confirming, setConfirming] = useState<null | 'whole' | 'selected'>(null)
   const [mode, setMode] = useState<'keep_new' | 'exact_mirror'>('keep_new')
+  const [showSettings, setShowSettings] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string | null>(null)
 
-  const { data: items, isLoading: itemsLoading } = useSnapshotItems(selectedId)
+  const currentParentId = path.length ? path[path.length - 1].id : undefined
+  const { data: items, isLoading: itemsLoading } = useSnapshotItems(selectedId, currentParentId)
+
+  const groups = useMemo(() => groupByDay(snapshots ?? []), [snapshots])
+
+  const selectSnapshot = (id: string) => {
+    setSelectedId(id)
+    setPath([])
+    setPicked(new Set())
+    setResult(null)
+  }
+
+  const togglePick = (itemId: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(itemId)) next.delete(itemId)
+      else next.add(itemId)
+      return next
+    })
+  }
 
   const handleRestore = async () => {
-    if (!selectedId) return
+    if (!selectedId || confirming === null) return
     setError(null)
-    const body: RestoreRequest = { scope: 'whole', subtree_mode: mode }
+    const body: RestoreRequest =
+      confirming === 'selected'
+        ? { scope: 'items', item_ids: [...picked], subtree_mode: mode }
+        : { scope: 'whole', subtree_mode: mode }
     try {
       const res = await restore.mutateAsync({ snapshotId: selectedId, body })
-      setConfirming(false)
-      setResult(`Restored ${res.restored} item(s)` + (res.trashed ? `, trashed ${res.trashed}` : ''))
+      setConfirming(null)
+      setPicked(new Set())
+      setResult(
+        `Restored ${res.restored} item(s)` + (res.trashed ? `, trashed ${res.trashed}` : ''),
+      )
     } catch (err) {
       setError(isApiError(err) ? err.message : 'Restore failed.')
     }
@@ -94,46 +160,62 @@ export function TimeMachinePage() {
             Browse past snapshots of your drive and restore to any point in time.
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={() => void createSnapshot.mutateAsync(undefined)}
-          disabled={createSnapshot.isPending}
-        >
-          {createSnapshot.isPending ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          ) : (
-            <Camera className="size-4" aria-hidden="true" />
-          )}
-          Create snapshot
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowSettings(true)}
+            aria-label="Time Machine settings"
+          >
+            <Settings className="size-4" aria-hidden="true" />
+            Settings
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void createSnapshot.mutateAsync(undefined)}
+            disabled={createSnapshot.isPending}
+          >
+            {createSnapshot.isPending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Camera className="size-4" aria-hidden="true" />
+            )}
+            Create snapshot
+          </Button>
+        </div>
       </header>
 
       {result && (
-        <p role="status" className="mb-4 rounded-md bg-emerald-600/10 px-3 py-2 text-sm text-emerald-700">
+        <p
+          role="status"
+          className="mb-4 rounded-md bg-emerald-600/10 px-3 py-2 text-sm text-emerald-700"
+        >
           {result}
         </p>
       )}
 
       <div className="grid gap-6 md:grid-cols-[20rem_1fr]">
         {/* Timeline */}
-        <section aria-label="Snapshot timeline" className="space-y-2">
+        <section aria-label="Snapshot timeline" className="space-y-3">
           <h2 className="text-sm font-medium text-muted-foreground">Timeline</h2>
           {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
           {!isLoading && (snapshots?.length ?? 0) === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No snapshots yet. Create one to start.
-            </p>
+            <p className="text-sm text-muted-foreground">No snapshots yet. Create one to start.</p>
           )}
-          {snapshots?.map((s) => (
-            <SnapshotRow
-              key={s.id}
-              snapshot={s}
-              selected={s.id === selectedId}
-              onSelect={() => {
-                setSelectedId(s.id)
-                setResult(null)
-              }}
-            />
+          {groups.map((group) => (
+            <div key={group.label} className="space-y-2">
+              <h3 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.label}
+              </h3>
+              {group.items.map((s) => (
+                <SnapshotRow
+                  key={s.id}
+                  snapshot={s}
+                  selected={s.id === selectedId}
+                  onSelect={() => selectSnapshot(s.id)}
+                />
+              ))}
+            </div>
           ))}
         </section>
 
@@ -145,40 +227,95 @@ export function TimeMachinePage() {
             </div>
           ) : (
             <>
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-medium text-muted-foreground">Snapshot contents (read-only)</h2>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => {
-                    setError(null)
-                    setConfirming(true)
-                  }}
-                >
-                  <RotateCcw className="size-3.5" aria-hidden="true" />
-                  Restore whole snapshot
-                </Button>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-medium text-muted-foreground">
+                  Snapshot contents (read-only)
+                </h2>
+                <div className="flex gap-2">
+                  {picked.size > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setError(null)
+                        setConfirming('selected')
+                      }}
+                    >
+                      <RotateCcw className="size-3.5" aria-hidden="true" />
+                      Restore selected ({picked.size})
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      setError(null)
+                      setConfirming('whole')
+                    }}
+                  >
+                    <RotateCcw className="size-3.5" aria-hidden="true" />
+                    Restore whole snapshot
+                  </Button>
+                </div>
               </div>
+
+              {/* Breadcrumb */}
+              <nav className="mb-2 flex flex-wrap items-center gap-1 text-sm" aria-label="Breadcrumb">
+                <button
+                  type="button"
+                  className="rounded px-1 hover:bg-accent"
+                  onClick={() => setPath([])}
+                >
+                  Root
+                </button>
+                {path.map((crumb, idx) => (
+                  <Fragment key={crumb.id}>
+                    <ChevronRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    <button
+                      type="button"
+                      className="rounded px-1 hover:bg-accent"
+                      onClick={() => setPath(path.slice(0, idx + 1))}
+                    >
+                      {crumb.name}
+                    </button>
+                  </Fragment>
+                ))}
+              </nav>
+
               {itemsLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
               <ul className="divide-y rounded-lg border">
                 {items?.map((e) => (
                   <li key={e.item_id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={picked.has(e.item_id)}
+                      onChange={() => togglePick(e.item_id)}
+                      aria-label={`Select ${e.name}`}
+                    />
                     {e.item_type === 'FOLDER' ? (
-                      <Folder className="size-4 text-primary" aria-hidden="true" />
+                      <button
+                        type="button"
+                        className="flex min-w-0 items-center gap-2 text-left hover:underline"
+                        onClick={() => setPath([...path, { id: e.item_id, name: e.name }])}
+                      >
+                        <Folder className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                        <span className="truncate">{e.name}</span>
+                      </button>
                     ) : (
-                      <File className="size-4 text-muted-foreground" aria-hidden="true" />
-                    )}
-                    <span className="truncate">{e.name}</span>
-                    {e.item_type === 'FILE' && (
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {formatBytes(e.size_bytes)}
-                      </span>
+                      <>
+                        <File className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span className="truncate">{e.name}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {formatBytes(e.size_bytes)}
+                        </span>
+                      </>
                     )}
                   </li>
                 ))}
                 {!itemsLoading && (items?.length ?? 0) === 0 && (
-                  <li className="px-3 py-2 text-sm text-muted-foreground">(empty at root)</li>
+                  <li className="px-3 py-2 text-sm text-muted-foreground">(empty folder)</li>
                 )}
               </ul>
             </>
@@ -186,10 +323,10 @@ export function TimeMachinePage() {
         </section>
       </div>
 
-      {confirming && selectedId && (
+      {confirming !== null && selectedId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setConfirming(false)}
+          onClick={() => setConfirming(null)}
         >
           <div
             role="dialog"
@@ -204,11 +341,13 @@ export function TimeMachinePage() {
               </div>
               <div>
                 <h2 id="restore-title" className="text-sm font-semibold">
-                  Restore whole snapshot?
+                  {confirming === 'selected'
+                    ? `Restore ${picked.size} selected item(s)?`
+                    : 'Restore whole snapshot?'}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  This overwrites your current drive. A safety snapshot is taken first, so you can
-                  undo it.
+                  This overwrites the affected items in your current drive. A safety snapshot is
+                  taken first, so you can undo it.
                 </p>
               </div>
             </div>
@@ -236,20 +375,23 @@ export function TimeMachinePage() {
                   className="mt-1"
                 />
                 <span>
-                  <span className="font-medium">Exact mirror</span> — items added since the
-                  snapshot are moved to trash.
+                  <span className="font-medium">Exact mirror</span> — items added since the snapshot
+                  are moved to trash.
                 </span>
               </label>
             </fieldset>
 
             {error && (
-              <p role="alert" className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <p
+                role="alert"
+                className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              >
                 {error}
               </p>
             )}
 
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(null)}>
                 Cancel
               </Button>
               <Button
@@ -270,6 +412,8 @@ export function TimeMachinePage() {
           </div>
         </div>
       )}
+
+      {showSettings && <SnapshotSettingsDialog onClose={() => setShowSettings(false)} />}
     </div>
   )
 }

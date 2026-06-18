@@ -244,3 +244,19 @@ export interface RestoreResponse {
   restored: number
   trashed: number
 }
+
+export interface SnapshotSettingsResponse {
+  retention_n: number
+  schedule_enabled: boolean
+  schedule_interval_minutes: number
+  quota_bytes: number | null
+  effective_quota_bytes: number
+  used_bytes: number
+}
+
+export interface UpdateSnapshotSettingsRequest {
+  retention_n: number
+  schedule_enabled: boolean
+  schedule_interval_minutes: number
+  quota_bytes: number | null
+}

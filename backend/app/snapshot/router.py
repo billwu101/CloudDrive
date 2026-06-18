@@ -5,6 +5,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
+from app.activity_log.repository import SQLActivityLogRepository
+from app.activity_log.service import ActivityLogService
 from app.core.dependencies import CurrentUserId, DbSession
 from app.core.exceptions import NotFoundError
 from app.snapshot.repository import SQLSnapshotRepository
@@ -14,6 +16,8 @@ from app.snapshot.schemas import (
     RestoreResponse,
     SnapshotEntryResponse,
     SnapshotResponse,
+    SnapshotSettingsResponse,
+    UpdateSnapshotSettingsRequest,
 )
 from app.snapshot.service import TRIGGER_MANUAL, SnapshotService
 
@@ -21,7 +25,10 @@ router = APIRouter(prefix="/snapshots", tags=["time-machine"])
 
 
 def _snapshot_service(session: DbSession) -> SnapshotService:
-    return SnapshotService(repo=SQLSnapshotRepository(session))
+    return SnapshotService(
+        repo=SQLSnapshotRepository(session),
+        activity=ActivityLogService(SQLActivityLogRepository(session)),
+    )
 
 
 SnapshotServiceDep = Annotated[SnapshotService, Depends(_snapshot_service)]
@@ -39,6 +46,54 @@ async def create_snapshot(
     )
     await session.commit()
     return SnapshotResponse.model_validate(snapshot)
+
+
+async def _settings_payload(service: SnapshotService, user_id: UUID) -> SnapshotSettingsResponse:
+    settings = await service.get_settings(user_id=user_id)
+    effective = await service.resolve_quota_bytes(user_id=user_id, settings=settings)
+    used = await service.used_bytes(user_id=user_id)
+    return SnapshotSettingsResponse(
+        retention_n=settings.retention_n,
+        schedule_enabled=settings.schedule_enabled,
+        schedule_interval_minutes=settings.schedule_interval_minutes,
+        quota_bytes=settings.quota_bytes,
+        effective_quota_bytes=effective,
+        used_bytes=used,
+    )
+
+
+@router.get(
+    "/settings",
+    response_model=SnapshotSettingsResponse,
+    summary="Get Time Machine settings",
+)
+async def get_settings(
+    current_user_id: CurrentUserId,
+    service: SnapshotServiceDep,
+) -> SnapshotSettingsResponse:
+    return await _settings_payload(service, current_user_id)
+
+
+@router.put(
+    "/settings",
+    response_model=SnapshotSettingsResponse,
+    summary="Update Time Machine settings",
+)
+async def update_settings(
+    body: UpdateSnapshotSettingsRequest,
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    service: SnapshotServiceDep,
+) -> SnapshotSettingsResponse:
+    await service.update_settings(
+        user_id=current_user_id,
+        retention_n=body.retention_n,
+        schedule_enabled=body.schedule_enabled,
+        schedule_interval_minutes=body.schedule_interval_minutes,
+        quota_bytes=body.quota_bytes,
+    )
+    await session.commit()
+    return await _settings_payload(service, current_user_id)
 
 
 @router.get("", response_model=list[SnapshotResponse], summary="List snapshots (timeline)")

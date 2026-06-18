@@ -3,6 +3,8 @@ import type {
   RestoreResponse,
   SnapshotEntryResponse,
   SnapshotResponse,
+  SnapshotSettingsResponse,
+  UpdateSnapshotSettingsRequest,
 } from './types'
 import { api } from './client'
 
@@ -15,4 +17,7 @@ export const snapshotApi = {
     }),
   restore: (snapshotId: string, body: RestoreRequest) =>
     api.post<RestoreResponse>(`/snapshots/${snapshotId}/restore`, body),
+  getSettings: () => api.get<SnapshotSettingsResponse>('/snapshots/settings'),
+  updateSettings: (body: UpdateSnapshotSettingsRequest) =>
+    api.put<SnapshotSettingsResponse>('/snapshots/settings', body),
 }

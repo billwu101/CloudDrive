@@ -193,6 +193,7 @@ class AssistantSkillService:
         sandbox: SkillSandbox | None = None,
         uploads: UploadService | None = None,
         storage: StorageProvider | None = None,
+        snapshot_service: Any | None = None,
     ) -> None:
         self._repo = repo
         self._drive = drive_service
@@ -200,6 +201,9 @@ class AssistantSkillService:
         self._sandbox = sandbox
         self._uploads = uploads
         self._storage = storage
+        # SnapshotService (duck-typed) — used to take a Time Machine snapshot
+        # before a generated skill writes new files into the drive.
+        self._snapshot = snapshot_service
 
     async def handle_authoring_message(
         self,
@@ -380,6 +384,14 @@ class AssistantSkillService:
         item = await self._drive.get_raw_item(user_id=user_id, item_id=item_id)
         if item.item_type != ItemType.FILE or not item.storage_key:
             raise AppError(ErrorCode.INVALID_OPERATION, "This skill runs on a file")
+
+        # Safety net: snapshot the drive before this skill ingests new files.
+        if self._snapshot is not None:
+            await self._snapshot.create(
+                user_id=user_id,
+                trigger="assistant",
+                label=f"Before skill '{skill.name}'",
+            )
 
         run_root = Path(tempfile.mkdtemp(prefix="skill_input_"))
         input_path = run_root / _safe_input_name(item.name)

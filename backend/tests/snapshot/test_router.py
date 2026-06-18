@@ -14,7 +14,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.dependencies import get_db
 from app.core.exceptions import AppError
 from app.core.security import create_access_token
-from app.models.snapshot import Snapshot, SnapshotEntry
+from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
 from app.snapshot.router import _snapshot_service
 from app.snapshot.router import router as snapshot_router
 from app.snapshot.service import RestoreOutcome, SnapshotService
@@ -144,6 +144,59 @@ async def test_restore_unknown_snapshot_returns_404(user_id: UUID, headers: dict
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.post(f"/snapshots/{uuid4()}/restore", json={}, headers=headers)
     assert resp.status_code == 404
+
+
+async def test_get_settings(user_id: UUID, headers: dict[str, str]) -> None:
+    svc = AsyncMock(spec=SnapshotService)
+    svc.get_settings.return_value = SnapshotSettings(
+        user_id=user_id,
+        retention_n=50,
+        schedule_enabled=True,
+        schedule_interval_minutes=60,
+        quota_bytes=None,
+    )
+    svc.resolve_quota_bytes.return_value = 1024
+    svc.used_bytes.return_value = 256
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get("/snapshots/settings", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["retention_n"] == 50
+    assert body["effective_quota_bytes"] == 1024
+    assert body["used_bytes"] == 256
+    assert body["quota_bytes"] is None
+
+
+async def test_update_settings(user_id: UUID, headers: dict[str, str]) -> None:
+    svc = AsyncMock(spec=SnapshotService)
+    svc.get_settings.return_value = SnapshotSettings(
+        user_id=user_id,
+        retention_n=10,
+        schedule_enabled=False,
+        schedule_interval_minutes=30,
+        quota_bytes=2048,
+    )
+    svc.resolve_quota_bytes.return_value = 2048
+    svc.used_bytes.return_value = 0
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.put(
+            "/snapshots/settings",
+            json={
+                "retention_n": 10,
+                "schedule_enabled": False,
+                "schedule_interval_minutes": 30,
+                "quota_bytes": 2048,
+            },
+            headers=headers,
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["retention_n"] == 10
+    assert body["schedule_enabled"] is False
+    assert body["quota_bytes"] == 2048
+    svc.update_settings.assert_awaited_once()
 
 
 async def test_snapshots_require_auth(user_id: UUID) -> None:

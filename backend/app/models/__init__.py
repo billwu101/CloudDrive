@@ -8,7 +8,7 @@ from app.models.file_version import FileVersion
 from app.models.refresh_token import RefreshToken
 from app.models.share import Share
 from app.models.share_link import ShareLink
-from app.models.snapshot import Snapshot, SnapshotEntry
+from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
 from app.models.user import User
 from app.models.user_item_preference import UserItemPreference
 
@@ -27,6 +27,7 @@ __all__ = [
     "ShareLink",
     "Snapshot",
     "SnapshotEntry",
+    "SnapshotSettings",
     "User",
     "UserItemPreference",
 ]

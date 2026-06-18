@@ -5,11 +5,12 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.drive_item import DriveItem
-from app.models.snapshot import Snapshot, SnapshotEntry
+from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
+from app.models.user import User
 
 
 class AbstractSnapshotRepository(ABC):
@@ -56,6 +57,30 @@ class AbstractSnapshotRepository(ABC):
 
     @abstractmethod
     async def set_deleted(self, *, item_id: UUID, deleted: bool) -> None: ...
+
+    @abstractmethod
+    async def delete_snapshot(self, snapshot_id: UUID) -> None: ...
+
+    @abstractmethod
+    async def get_settings(self, user_id: UUID) -> SnapshotSettings | None: ...
+
+    @abstractmethod
+    async def upsert_settings(
+        self,
+        *,
+        user_id: UUID,
+        retention_n: int,
+        schedule_enabled: bool,
+        schedule_interval_minutes: int,
+        quota_bytes: int | None,
+    ) -> SnapshotSettings: ...
+
+    @abstractmethod
+    async def get_user_quota_bytes(self, user_id: UUID) -> int: ...
+
+    @abstractmethod
+    async def used_snapshot_bytes(self, user_id: UUID) -> int:
+        """Space the user's snapshots occupy, deduped by content checksum."""
 
 
 class SQLSnapshotRepository(AbstractSnapshotRepository):  # pragma: no cover
@@ -177,3 +202,53 @@ class SQLSnapshotRepository(AbstractSnapshotRepository):  # pragma: no cover
             item.is_deleted = deleted
             item.deleted_at = datetime.now(UTC) if deleted else None
             await self._session.flush()
+
+    async def delete_snapshot(self, snapshot_id: UUID) -> None:
+        # snapshot_entries cascade via the FK ondelete="CASCADE".
+        await self._session.execute(delete(Snapshot).where(Snapshot.id == snapshot_id))
+        await self._session.flush()
+
+    async def get_settings(self, user_id: UUID) -> SnapshotSettings | None:
+        result = await self._session.execute(
+            select(SnapshotSettings).where(SnapshotSettings.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def upsert_settings(
+        self,
+        *,
+        user_id: UUID,
+        retention_n: int,
+        schedule_enabled: bool,
+        schedule_interval_minutes: int,
+        quota_bytes: int | None,
+    ) -> SnapshotSettings:
+        settings = await self.get_settings(user_id)
+        if settings is None:
+            settings = SnapshotSettings(user_id=user_id)
+            self._session.add(settings)
+        settings.retention_n = retention_n
+        settings.schedule_enabled = schedule_enabled
+        settings.schedule_interval_minutes = schedule_interval_minutes
+        settings.quota_bytes = quota_bytes
+        await self._session.flush()
+        return settings
+
+    async def get_user_quota_bytes(self, user_id: UUID) -> int:
+        result = await self._session.execute(select(User.quota_bytes).where(User.id == user_id))
+        return int(result.scalar_one_or_none() or 0)
+
+    async def used_snapshot_bytes(self, user_id: UUID) -> int:
+        # One row per distinct content checksum across the user's snapshots.
+        per_blob = (
+            select(func.max(SnapshotEntry.size_bytes).label("sz"))
+            .join(Snapshot, SnapshotEntry.snapshot_id == Snapshot.id)
+            .where(
+                Snapshot.user_id == user_id,
+                SnapshotEntry.checksum_sha256.is_not(None),
+            )
+            .group_by(SnapshotEntry.checksum_sha256)
+            .subquery()
+        )
+        result = await self._session.execute(select(func.coalesce(func.sum(per_blob.c.sz), 0)))
+        return int(result.scalar_one())

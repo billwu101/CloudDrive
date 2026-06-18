@@ -38,6 +38,26 @@ class SnapshotResponse(BaseModel):
     created_at: datetime
 
 
+class UpdateSnapshotSettingsRequest(BaseModel):
+    retention_n: int = Field(ge=1, le=10_000)
+    schedule_enabled: bool = True
+    schedule_interval_minutes: int = Field(ge=1, le=100_000)
+    # None = auto (half the user's file quota).
+    quota_bytes: int | None = Field(default=None, ge=0)
+
+
+class SnapshotSettingsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    retention_n: int
+    schedule_enabled: bool
+    schedule_interval_minutes: int
+    quota_bytes: int | None
+    # Resolved cap actually enforced (auto-computed when quota_bytes is None).
+    effective_quota_bytes: int
+    used_bytes: int
+
+
 class SnapshotEntryResponse(BaseModel):
     """One item as it existed in a snapshot — shaped for a read-only browser."""
 

@@ -25,6 +25,21 @@ class Snapshot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class SnapshotSettings(Base):
+    """Per-user Time Machine settings. ``quota_bytes`` NULL = auto (half the
+    user's file quota), computed at check time."""
+
+    __tablename__ = "snapshot_settings"
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    retention_n: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    schedule_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    schedule_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+
 class SnapshotEntry(Base):
     """One file/folder as it existed in a snapshot. ``item_id`` is the original
     drive_items.id but is NOT a foreign key — entries must survive item deletion

@@ -4,7 +4,12 @@ from collections.abc import Mapping
 from typing import Any
 from uuid import uuid4
 
-from app.assistant.hooks import HookContext, HookRegistry, default_hook_registry
+from app.assistant.hooks import (
+    HookContext,
+    HookRegistry,
+    default_hook_registry,
+    snapshot_before_write_hook,
+)
 from app.assistant.permissions import classify_steps
 from app.assistant.skills.registry import RegisteredSkill, SkillContext, SkillRegistry
 from app.assistant.workflow import (
@@ -102,6 +107,54 @@ async def test_executor_fires_lifecycle_hooks_including_on_error() -> None:
     assert names.count("before_execution") == 1
     assert ("before_step", "list_items") in events
     assert ("on_error", "trash_item") in events  # the failing destructive step fired on_error
+
+
+class _RecordingSnapshotService:
+    def __init__(self) -> None:
+        self.created: list[dict[str, Any]] = []
+
+    async def create(self, **kwargs: Any) -> None:
+        self.created.append(kwargs)
+        return None
+
+
+async def test_snapshot_hook_fires_only_when_workflow_has_write_step() -> None:
+    registry = _registry()
+    snap = _RecordingSnapshotService()
+    hook = snapshot_before_write_hook(snap)
+    uid = uuid4()
+
+    read_only = classify_steps([PlannedStep(skill="list_items", arguments={})], registry)
+    await hook(HookContext(user_id=uid, steps=read_only))
+    assert snap.created == []  # read-only workflow → no snapshot
+
+    with_write = classify_steps(
+        [
+            PlannedStep(skill="list_items", arguments={}),
+            PlannedStep(skill="trash_item", arguments={}),
+        ],
+        registry,
+    )
+    await hook(HookContext(user_id=uid, steps=with_write))
+    assert len(snap.created) == 1
+    assert snap.created[0]["trigger"] == "assistant"
+    assert snap.created[0]["user_id"] == uid
+
+
+async def test_snapshot_hook_swallows_snapshot_failure() -> None:
+    registry = _registry()
+
+    class _Boom:
+        async def create(self, **kwargs: Any) -> None:
+            raise RuntimeError("snapshot backend down")
+
+    hook = snapshot_before_write_hook(_Boom())
+    with_write = classify_steps(
+        [PlannedStep(skill="trash_item", arguments={})],
+        registry,
+    )
+    # Must not raise — a snapshot failure can never block the workflow.
+    await hook(HookContext(user_id=uuid4(), steps=with_write))
 
 
 def test_permission_gate_keeps_destructive_and_install_out_of_fast_path() -> None:

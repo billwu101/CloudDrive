@@ -55,6 +55,26 @@ async def _audit_hook(context: HookContext) -> None:
     logger.info("assistant workflow event: %s", detail)
 
 
+def snapshot_before_write_hook(snapshot_service: Any) -> Hook:
+    """A ``before_execution`` hook that takes a Time Machine snapshot when the
+    workflow contains any write (approval-requiring) step. Read-only workflows
+    don't trigger a snapshot. Snapshot failures never block execution."""
+
+    async def _hook(context: HookContext) -> None:
+        if not any(step.requires_approval for step in context.steps):
+            return
+        try:
+            await snapshot_service.create(
+                user_id=context.user_id,
+                trigger="assistant",
+                label="Before assistant workflow",
+            )
+        except Exception:
+            logger.exception("Failed to create pre-action assistant snapshot")
+
+    return _hook
+
+
 def default_hook_registry() -> HookRegistry:
     registry = HookRegistry()
     registry.register("before_execution", _audit_hook)

@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { snapshotApi } from '@/api/snapshotApi'
-import type { RestoreRequest } from '@/api/types'
+import type { RestoreRequest, UpdateSnapshotSettingsRequest } from '@/api/types'
 
 export const snapshotKeys = {
   all: ['snapshots'] as const,
   list: () => [...snapshotKeys.all, 'list'] as const,
   items: (id: string, parentId?: string) =>
     [...snapshotKeys.all, 'items', id, parentId ?? 'root'] as const,
+  settings: () => [...snapshotKeys.all, 'settings'] as const,
 }
 
 export function useSnapshots() {
@@ -43,6 +44,26 @@ export function useRestoreSnapshot() {
     onSuccess: () => {
       // A restore mutates the drive and creates a pre-restore snapshot.
       void queryClient.invalidateQueries({ queryKey: ['drive'] })
+      void queryClient.invalidateQueries({ queryKey: snapshotKeys.list() })
+    },
+  })
+}
+
+export function useSnapshotSettings() {
+  return useQuery({
+    queryKey: snapshotKeys.settings(),
+    queryFn: () => snapshotApi.getSettings().then((r) => r.data),
+  })
+}
+
+export function useUpdateSnapshotSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: UpdateSnapshotSettingsRequest) =>
+      snapshotApi.updateSettings(body).then((r) => r.data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: snapshotKeys.settings() })
+      // Tightening retention/quota may have pruned snapshots.
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.list() })
     },
   })
