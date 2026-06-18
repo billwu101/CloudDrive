@@ -29,7 +29,7 @@
 - [x] 建立 frontend Dockerfile。
 - [x] 建立 `docker-compose.yml`。
 - [x] 加入 PostgreSQL service。
-- [x] 視開發需要保留 Redis service。
+- [x] 不保留未使用的 Redis service；背景需求由現有 service / scheduler 處理，未來需要 queue 時再新增。
 - [x] 建立 PostgreSQL volume。
 - [x] 建立 `.gitignore`。
 - [x] 建立前端 lint 指令。

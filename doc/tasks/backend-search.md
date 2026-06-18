@@ -46,7 +46,7 @@
 - [x] 上傳整合：`UploadService` 注入 `search_indexer`，上傳成功後就地索引（已有 bytes，不必回讀 storage）。兩個 router（upload、assistant）皆注入。
 - [x] 搜尋查詢改寫：`SQLSearchRepository` LEFT JOIN `file_search_index`，比對「檔名 ILIKE OR 內容 ILIKE（涵蓋 CJK）OR 英文 tsvector @@ plainto_tsquery」。
 - [x] 測試：extract 各型別/截斷/壞檔、indexer upsert/清舊、整合測試「檔名不含關鍵字、僅內容含」可搜到（Postgres）。
-- 註：第二階段（語意/embedding 向量搜尋）待辦——抽取 pipeline 已可共用。舊檔 backfill 與搜尋結果命中片段高亮亦待後續。
+- 註：第二階段（語意/embedding 向量搜尋）已完成，並重用本階段的抽取 pipeline；舊檔手動 backfill、chunking、命中片段與相似度分數見下方第二階段 checklist。
 
 ## 延伸：語意搜尋（第二階段，2026-06-18）
 

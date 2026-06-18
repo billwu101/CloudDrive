@@ -526,7 +526,7 @@ chore: complete cloud drive implementation
 
 完成後執行完整後端品質閘門（ruff/mypy/pytest），LLM 一律 mock，提交 Stage 12。
 
-目前狀態（2026-06-17）：Stage 12 已完成 M1 後端引擎骨架切片，包含 assistant 設定、LLMClient/Ollama/External/Privacy/ModelRouter、ContextManager、system prompt、AgentLoop、唯讀內建技能 registry，以及 `POST /assistant/chat` 註冊。Docker 預設接本地 Gemma 4 Ollama (`LLM_BASE_URL=http://192.168.10.75:11434`, `ASSISTANT_MODEL=gemma4:26b`, `LLM_NUM_CTX=65536`, `LLM_TIMEOUT_SECONDS=300`, `LLM_KEEP_ALIVE=15m`)。另完成第一個技能/manifest 持久化切片：`assistant_skills` migration/model/repository、`inspect_item_details` pending proposal、技能 approve/install/list/execute API。尚未完成 M2 workflow 計畫確認、完整 workflow DB、任意 codegen sandbox。
+M1 完成紀錄（2026-06-17）：Stage 12 完成後端引擎骨架切片，包含 assistant 設定、LLMClient/Ollama/External/Privacy/ModelRouter、ContextManager、system prompt、AgentLoop、唯讀內建技能 registry，以及 `POST /assistant/chat` 註冊。Docker 當時接本地 Gemma 4 Ollama (`LLM_BASE_URL=http://192.168.10.75:11434`, `ASSISTANT_MODEL=gemma4:26b`, `LLM_NUM_CTX=65536`, `LLM_TIMEOUT_SECONDS=300`, `LLM_KEEP_ALIVE=15m`)。另完成第一個技能/manifest 持久化切片：`assistant_skills` migration/model/repository、`inspect_item_details` pending proposal、技能 approve/install/list/execute API。後續 M2-M4 已完成 workflow、持久化與 codegen sandbox，見下方更新紀錄。
 
 M2/M3 更新（2026-06-17）：Stage 12 完成 M2 workflow 管線（planner→validate/repair→permissions→read fast-path | 非 read 持久化 pending→confirm/cancel，migration `0006`）與 M3 持久化/技能框架：`models/assistant_session.py` + migration `0007`（sessions/messages）、`assistant_workflows.name` + migration `0008`（命名儲存）、`assistant/skills/manifest.py`（嚴格 `SkillManifest` + `validate_manifest`，接撰寫草稿與安裝閘）、寫入技能 `create_folder`/`rename_item`/`move_item`/`star_item`/`trash_item`/`restore_item`/`share_item`/`organize_by_type`（皆走計畫確認）、workflow 命名儲存＋一鍵重跑 endpoint、對話 sessions/messages endpoint。可組合技能（步驟輸出引用）讓批次操作免設專用技能。測試含 `test_workflow.py`/`test_write_skills.py`/`test_manifest.py`/`test_router.py` 與 hypothesis property fuzz（`test_pipeline_properties.py`）。
 
@@ -572,7 +572,7 @@ M4/M5 + Skill 管理頁更新（2026-06-17）：完成計畫確認卡 `WorkflowP
 
 完成後以 mock LLM 的 API 模式案例進 CI，提交 Stage 14。
 
-目前狀態（2026-06-17）：Stage 14 完成 E1（`run.py --llm mock` in-process 決定性 runner + verifier/scoring/report，property-based 不變量）、E4（10/10 mock 案例涵蓋全 tag）、**E2 Browser runner**（`runner_browser.py` 橋接 → Playwright `assistant-eval.spec.ts` 驅動真實 UI 並擷取 `/assistant/chat`，`run.py --mode browser` 整批跑一次再以同一套 verifier/scoring 計分；對 Docker 全棧 + 真實 Gemma 實測 3/3 PASS）、**E3**（`judge.py` rubric→0–1 連續分數 + `HttpJudgeModel` 獨立評審模型、`--llm real` 打 live 後端、`baseline.py` 回歸比較與非零退出；judge/real/baseline 皆 live 實測）。E1 尚餘 state/safety 斷言與多次執行通過率/變異統計。
+目前狀態（2026-06-17）：Stage 14 已完成 E1（`run.py --llm mock` in-process 決定性 runner + verifier/scoring/report、state/safety 斷言、多次執行通過率/變異、property-based 不變量）、E4（10/10 mock 案例涵蓋全 tag）、**E2 Browser runner**（`runner_browser.py` 橋接 → Playwright `assistant-eval.spec.ts` 驅動真實 UI 並擷取 `/assistant/chat`，`run.py --mode browser` 整批跑一次再以同一套 verifier/scoring 計分；對 Docker 全棧 + 真實 Gemma 實測 3/3 PASS）、**E3**（`judge.py` rubric→0–1 連續分數 + `HttpJudgeModel` 獨立評審模型、`--llm real` 打 live 後端、`baseline.py` 回歸比較與非零退出；judge/real/baseline 皆 live 實測）。Stage 14 全數完成。
 
 ## 檔案所有權原則
 

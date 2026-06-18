@@ -23,7 +23,7 @@
 
 ## S2：瀏覽 + 還原
 
-- [x] `GET /snapshots/{id}/items?parent_id=`：唯讀瀏覽快照內某層（分頁）。
+- [x] `GET /snapshots/{id}/items?parent_id=`：唯讀瀏覽快照內某層。
 - [x] `SnapshotService.restore(snapshot_id, scope, subtree_mode)`：先建 `pre_restore`（pinned）→ 比對快照與現況 → 重建/改名/搬移/回復內容 → 依 `subtree_mode`（`keep_new` / `exact_mirror`）處理現有新增物 → 配額檢查 → 寫 activity log。
 - [x] `POST /snapshots/{id}/restore`（scope = whole | item_ids[]、subtree_mode）。
 - [x] 測試：單檔/子樹/整碟還原、救回已刪檔、回復改名/搬移、`keep_new` 不刪新增物、`exact_mirror` 把新增物移垃圾桶、配額超限拒絕、pre_restore 必建。

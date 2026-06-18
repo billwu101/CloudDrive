@@ -27,7 +27,7 @@
 - [x] [Backend Download](./backend-download.md)
 - [x] [Backend Preview](./backend-preview.md)
 - [x] [Backend Trash](./backend-trash.md)
-- [x] [Backend Search](./backend-search.md) — 檔名搜尋 + 全文內容搜尋（`file_search_index` tsvector）+ 語意搜尋（`file_embeddings` pgvector，Ollama embedding，`GET /search/semantic`，預設關）。待後續：舊檔 backfill、chunking、前端語意搜尋 UI。
+- [x] [Backend Search](./backend-search.md) — 檔名搜尋 + 全文內容搜尋（`file_search_index` tsvector）+ 語意搜尋（`file_embeddings` pgvector，Ollama embedding，`GET /search/semantic`，預設關）、舊檔手動 backfill、chunking、snippet/score 回傳。待後續：backfill 背景自動化。
 - [x] [Backend Share](./backend-share.md)
 - [x] [Backend FileVersion](./backend-file-version.md)
 - [x] [Backend ActivityLog](./backend-activity-log.md)
@@ -57,7 +57,7 @@
 
 ## 擴充模組：時光機（Snapshots）（S1–S5 完成）
 
-- [~] [時光機 Snapshots](./time-machine.md) — 類 Apple Time Machine 的整碟時間點還原。**已完成**：S1 資料層 + 手動快照、S2 就地還原（含 pre_restore 保命快照、subtree_mode）、S3 保留最近 N + 獨立快照配額（auto=檔案配額一半）+ `snapshot_settings` + `GET/PUT /snapshots/settings` + blob 背景 GC（`collect_garbage`）+ 背景排程 runner（`SnapshotScheduler`，lifespan 啟動、預設關、env 可開）、S4 Assistant workflow/skill 寫入前自動建 `assistant` 快照、trash 永久刪除改為 dedup-aware（不再誤刪快照引用的 blob）、S5 前端（日期分組、設定 UI、資料夾導覽、多選逐項還原、整碟/逐項還原）。**唯一未完成（非阻擋）**：還原時硬配額檢查（還原已寫 activity log）。設計見 [time-machine-design.md](../time-machine-design.md)，決策 DEC-024。
+- [x] [時光機 Snapshots](./time-machine.md) — 類 Apple Time Machine 的整碟時間點還原。**已完成**：S1 資料層 + 手動快照、S2 就地還原（含 pre_restore 保命快照、subtree_mode）、S3 保留最近 N + 獨立快照配額（auto=檔案配額一半）+ `snapshot_settings` + `GET/PUT /snapshots/settings` + blob 背景 GC（`collect_garbage`）+ 背景排程 runner（`SnapshotScheduler`，lifespan 啟動、服務預設關、compose 單 worker 可開）、S4 Assistant workflow/skill 寫入前自動建 `assistant` 快照、trash 永久刪除改為 dedup-aware（不再誤刪快照引用的 blob）、S5 前端（日期分組、設定 UI、資料夾導覽、多選逐項還原、整碟/逐項還原）。**非阻擋限制**：還原時硬配額檢查待補強（還原已寫 activity log）。設計見 [time-machine-design.md](../time-machine-design.md)，決策 DEC-024。
 
 ## 建議執行順序
 
@@ -81,4 +81,5 @@
 | 整合與驗收 | 1 | 1 |
 | 核心合計 | 28 | 28 |
 | 擴充：AI Assistant | 3 | 3 |
-| 總合計 | 31 | 31 |
+| 擴充：時光機 Snapshots | 1 | 1 |
+| 總合計 | 32 | 32 |

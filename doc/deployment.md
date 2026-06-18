@@ -53,16 +53,16 @@ docker compose up --build
 
 只有在「API 服務於不同 origin」的特殊情況才需要把 `VITE_API_BASE_URL` 設為絕對網址。
 
-### 設定都有安全預設，AI／背景功能預設關閉
+### 設定都有安全預設，選用功能可關閉
 
 `.env` 留空也能開機。需要留意的設定：
 
 - `JWT_SECRET_KEY` — **正式部署必改**（`start.sh` 首次會自動產生隨機值）。
 - `POSTGRES_PASSWORD` — 任何共享／公開部署都要改。
-- AI 助理與語意搜尋為**選用**，預設關閉時不影響其餘功能：
+- AI 助理與語意搜尋為**選用**，關閉時不影響其餘功能：
   - `ASSISTANT_ENABLED=false` → 沒有 Ollama 也能跑（檔案、分享、搜尋、時光機照常）。
   - `EMBEDDING_ENABLED=false` → 不做語意搜尋（檔名 + 全文關鍵字搜尋仍可用）。
-- `SNAPSHOT_SCHEDULER_ENABLED` — 時光機背景排程（自動快照 + blob GC）。compose 預設開（單 worker 安全）。
+- `SNAPSHOT_SCHEDULER_ENABLED` — 時光機背景排程（自動快照 + blob GC）。compose 預設開（單 worker 安全），多 worker 部署需關閉並改外部 cron。
 
 完整清單見 [`.env.example`](../.env.example)。
 
