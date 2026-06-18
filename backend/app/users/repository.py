@@ -37,6 +37,9 @@ class AbstractUserRepository(ABC):
     @abstractmethod
     async def recalculate_used_bytes(self, user_id: UUID) -> int: ...
 
+    @abstractmethod
+    async def list_all_ids(self) -> list[UUID]: ...
+
 
 class SQLUserRepository(AbstractUserRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
@@ -45,6 +48,10 @@ class SQLUserRepository(AbstractUserRepository):  # pragma: no cover
     async def get_by_id(self, user_id: UUID) -> User | None:
         result = await self._session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
+
+    async def list_all_ids(self) -> list[UUID]:
+        result = await self._session.execute(select(User.id))
+        return [row for (row,) in result.all()]
 
     async def get_by_email(self, email: str) -> User | None:
         result = await self._session.execute(select(User).where(User.email == email))

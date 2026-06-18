@@ -2,8 +2,8 @@
 
 設計見 [time-machine-design.md](../time-machine-design.md)，決策見 DEC-024。
 
-> 狀態（2026-06-18）：**S1、S2、S3（保留/配額/設定/排程判定）、S4（Assistant 整合）後端 + S5 前端（含進階）完成**並全綠（後端 snapshot 25 測試 + assistant hook 測試、前端 TimeMachinePage 5 測試）。
-> 仍未做：**blob 背景 GC**、**實際週期排程 runner/cron**（排程「是否該建」的判定 `run_scheduled_snapshot()` 已實作並測試，只差呼叫它的背景觸發器）、**還原時的硬配額檢查**（還原已寫 activity log）。
+> 狀態（2026-06-18）：**S1–S5 全部完成**並全綠（後端 snapshot 31 測試含 GC/scheduler、trash dedup 測試、assistant hook 測試；前端 TimeMachinePage 5 測試）。後端含保留/配額/設定、blob GC、背景排程 runner（lifespan，預設關）、trash dedup-aware 永久刪除、Assistant 寫入前快照；前端含日期分組、設定 UI、資料夾導覽、多選逐項還原。
+> 仍未做（非阻擋）：**還原時的硬配額檢查**（還原已寫 activity log）。
 > 下列為 checklist（勾選 = 已實作 + 測試）。
 
 ## 完成定義
@@ -32,11 +32,11 @@
 
 - [x] `SnapshotService.prune`：保留最近 N（預設 50），pinned / pre_restore 豁免；`create()` 後自動呼叫。
 - [x] 獨立快照配額（**預設 = 檔案配額的一半**，`quota_bytes=NULL` 即 auto）：以 distinct checksum 去重計算用量，超量時由最舊的非豁免快照開始刪到符合上限（永遠保留最新一筆）。
-- [x] blob 背景 GC 邏輯：`StorageProvider.list_objects()`（列實體 blob + mtime）+ `repository.referenced_storage_keys()`（drive_items ∪ file_versions ∪ snapshot_entries 的 storage_key 聯集）+ `SnapshotService.collect_garbage(grace_minutes)`：刪掉不在 live set、且早於 grace 窗的孤兒 blob，回傳刪除數/釋放位元組/略過數。仍未做：呼叫它的背景週期 runner。
+- [x] blob 背景 GC 邏輯：`StorageProvider.list_objects()`（列實體 blob + mtime）+ `repository.referenced_storage_keys()`（drive_items ∪ file_versions ∪ snapshot_entries 的 storage_key 聯集）+ `SnapshotService.collect_garbage(grace_minutes)`：刪掉不在 live set、且早於 grace 窗的孤兒 blob，回傳刪除數/釋放位元組/略過數。
 - [x] 排程「是否該建」判定 `run_scheduled_snapshot(now)`：排程開、距上次快照已過間隔、且現有檔案>0 才建 `scheduled`（**預設開、每小時**，可設）。
-- [ ] 呼叫上述判定的背景週期 runner / cron。**未做**（判定函式已就緒）。
+- [x] 背景週期 runner：`app/snapshot/scheduler.py` `SnapshotScheduler`——`run_once()` 對每位 user 跑 `run_scheduled_snapshot`、並依自身較慢節奏跑 `collect_garbage`；`run_forever(stop)` 是 loop（吞例外、stop event 可即時喚醒結束）。在 `app/main.py` 的 lifespan 啟動/收尾。設定：`snapshot_scheduler_enabled`（**預設 False**，多 worker 部署請改用外部 cron 呼叫同樣的 service 方法）、`snapshot_scheduler_tick_seconds=300`、`snapshot_gc_interval_minutes=360`、`snapshot_gc_grace_minutes=60`。每位 user 用獨立 session + commit；GC 用單一 session。
 - [x] `snapshot_settings` model + Alembic 0010；`GET/PUT /snapshots/settings`：保留 N、排程開關/間隔、獨立快照配額上限（per-user），回傳 effective_quota_bytes / used_bytes。
-- [x] 測試：prune 保留 N 與豁免、快照配額超限由最舊刪起、設定讀寫 + auto 配額解析、排程間隔/停用/空碟跳過、GC 只刪舊孤兒（引用中與 grace 內保留）。
+- [x] 測試：prune 保留 N 與豁免、快照配額超限由最舊刪起、設定讀寫 + auto 配額解析、排程間隔/停用/空碟跳過、GC 只刪舊孤兒（引用中與 grace 內保留）、scheduler run_once 逐 user 建快照 + GC 首輪跑/間隔內不跑/間隔後再跑、run_forever 收到 stop 乾淨結束。
 
 - [x] **trash 永久刪除改為 dedup-aware（資料安全修正）**：`permanent_delete` 先刪 metadata（versions+item 列）並立即扣配額（依 `version.size_bytes`，配額是邏輯擁有權），再對候選 `storage_key` 做即時回收——透過注入的窄協定 `SnapshotReferenceChecker.is_referenced_by_snapshot(key)` 檢查：**仍被任何快照引用的 blob 留給 GC**，已完全孤兒的才立即 `storage.delete`。`TrashService(snapshot_refs=...)` 由兩個 router（trash、assistant）注入 `SQLSnapshotRepository`。測試：被快照引用的 blob 永久刪除後仍在、配額仍立即釋放；無引用時立即刪（既有斷言）。
 >  （修正前的 bug：永久刪除會直接刪 blob、不檢查快照引用，導致還原引用同一 blob 的快照時讀不到內容。）

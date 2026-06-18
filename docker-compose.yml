@@ -40,6 +40,8 @@ services:
       LLM_NUM_CTX: ${LLM_NUM_CTX:-65536}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
       LLM_KEEP_ALIVE: ${LLM_KEEP_ALIVE:-15m}
+      # Time Machine in-process scheduler — safe here (single uvicorn worker).
+      SNAPSHOT_SCHEDULER_ENABLED: ${SNAPSHOT_SCHEDULER_ENABLED:-true}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

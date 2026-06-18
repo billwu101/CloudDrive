@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     external_llm_api_key: str = ""
     privacy_default: str = "sensitive"
 
+    # Time Machine background scheduler (in-process loop). Off by default — enable
+    # in a single-worker deployment, or run an external cron calling the same
+    # SnapshotService methods for multi-worker setups.
+    snapshot_scheduler_enabled: bool = False
+    snapshot_scheduler_tick_seconds: int = 300  # how often the loop wakes up
+    snapshot_gc_interval_minutes: int = 360  # how often to run blob GC
+    snapshot_gc_grace_minutes: int = 60  # protect blobs newer than this from GC
+
 
 @lru_cache
 def get_settings() -> Settings:
