@@ -52,6 +52,16 @@
 ### 2.4 harness 優化摘要（2026-06-18，commit `86b53c0`）
 讓測試「為對的理由變綠」的四項：①codegen 告知沙箱可用庫（Pillow/pypdf/…）②codegen 非法 JSON 重試 + max_repair↑ ③M3/M5 改寫入優先自然 prompt ④`min_pass_rate=0.6` 多次執行通過率門檻。效果：browser exec 2/4→4/4、M3 修好、M5 多跑穩定。**原則：絕不為了變綠而放寬內容/安全斷言**——真實模型品質問題該以「換更好的庫提示／重試／多跑取通過率」解，不是降標準。
 
+### 2.5 M2 全量 browser 實測（2026-06-19）
+
+- 環境：docker stack（frontend `:8088` / backend `:8001` / `pgvector`）+ Ollama `gemma4-26b`。
+- 指令：`python -m eval.run --cases <100 個 M2> --mode browser --frontend-url http://localhost:8088 --base-url http://localhost:8001/api/v1`（真 assistant 規劃 + Playwright 驅動前端，逐 case 抓 `/assistant/chat` 回應交同一 verifier）。
+- 結果：**單次全量 99/100 PASS**。唯一 FAIL = `gen-m2-007`。
+- **問題 prompt**：「幫我搜尋檔案、列出根目錄檔案、查看某個項目的詳情」（`expect.steps_include: search / list_items / get_info`）。
+- 現象：單次 run 真 LLM 偶爾未規劃出 `get_info`。
+- 原因：**模型限制**——「某個項目」是模糊指代、無 item_id，gemma4 偶爾跳過該步；非 harness/斷言問題。
+- 判定 + 下次驗證：重跑即過；`--runs 3` 下 `gen-m2-007` **3/3 PASS**，遠超 case 既有 `min_pass_rate=0.6`。**未放寬任何斷言**，純靠多次執行通過率門檻評估。flaky 案例平時用 `--runs N`。
+
 ---
 
 ## 3. 新增「出問題的 prompt」要怎麼記（流程）
