@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.search.backfill import EmbeddingBackfillService, SQLEmbeddingBackfillRepository
 from app.search.embedding import EmbeddingClient, OllamaEmbeddingClient
 from app.search.indexer import SearchIndexService, SQLSearchIndexRepository
 from app.search.semantic import SemanticSearchService, SQLFileEmbeddingRepository
@@ -40,3 +41,19 @@ def build_semantic_search_service(
     if client is None:
         return None
     return SemanticSearchService(embedding_client=client, repo=SQLFileEmbeddingRepository(session))
+
+
+def build_embedding_backfill_service(
+    session: AsyncSession, settings: Settings
+) -> EmbeddingBackfillService | None:
+    """Service to backfill embeddings for already-indexed files, or None when
+    embeddings are disabled."""
+    client = build_embedding_client(settings)
+    if client is None:
+        return None
+    return EmbeddingBackfillService(
+        embedding_client=client,
+        backfill_repo=SQLEmbeddingBackfillRepository(session),
+        embedding_repo=SQLFileEmbeddingRepository(session),
+        model=settings.embedding_model,
+    )

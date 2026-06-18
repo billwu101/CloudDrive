@@ -9,7 +9,10 @@ from app.core.config import get_settings
 from app.core.dependencies import CurrentUserId, DbSession
 from app.schemas.common import DriveItemResponse, Page
 from app.search.embedding import EmbeddingError
-from app.search.factory import build_semantic_search_service
+from app.search.factory import (
+    build_embedding_backfill_service,
+    build_semantic_search_service,
+)
 from app.search.repository import SQLSearchRepository
 from app.search.service import SearchService
 from app.upload.service import _to_response
@@ -27,6 +30,11 @@ SearchServiceDep = Annotated[SearchService, Depends(_search_service)]
 class SemanticHitResponse(BaseModel):
     item: DriveItemResponse
     score: float
+
+
+class BackfillResponse(BaseModel):
+    indexed: int
+    remaining: int
 
 
 @router.get("", response_model=Page[DriveItemResponse], summary="Search drive items")
@@ -69,3 +77,25 @@ async def semantic_search(
     except EmbeddingError as exc:
         raise HTTPException(status_code=503, detail="Embedding service is unavailable") from exc
     return [SemanticHitResponse(item=_to_response(h.item), score=h.score) for h in hits]
+
+
+@router.post(
+    "/embeddings/backfill",
+    response_model=BackfillResponse,
+    summary="Backfill embeddings for your files indexed before semantic search",
+    responses={503: {"description": "Semantic search is not enabled / unavailable"}},
+)
+async def backfill_embeddings(
+    current_user_id: CurrentUserId,
+    session: DbSession,
+    batch_size: int = 50,
+) -> BackfillResponse:
+    service = build_embedding_backfill_service(session, get_settings())
+    if service is None:
+        raise HTTPException(status_code=503, detail="Semantic search is not enabled")
+    try:
+        result = await service.run(user_id=current_user_id, batch_size=batch_size)
+    except EmbeddingError as exc:
+        raise HTTPException(status_code=503, detail="Embedding service is unavailable") from exc
+    await session.commit()
+    return BackfillResponse(indexed=result.indexed, remaining=result.remaining)

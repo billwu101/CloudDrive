@@ -200,3 +200,55 @@ async def test_semantic_search_embedding_down_returns_503(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.get("/search/semantic", params={"q": "x"}, headers=headers)
     assert resp.status_code == 503
+
+
+# ── POST /search/embeddings/backfill ────────────────────────────────────────────
+
+
+async def test_backfill_disabled_returns_503(user_id: UUID, headers: dict[str, str]) -> None:
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/search/embeddings/backfill", headers=headers)
+    assert resp.status_code == 503
+
+
+async def test_backfill_returns_counts(
+    monkeypatch: pytest.MonkeyPatch, user_id: UUID, headers: dict[str, str]
+) -> None:
+    from app.search.backfill import BackfillResult
+
+    class _FakeBackfill:
+        async def run(self, *, user_id: UUID, batch_size: int) -> BackfillResult:
+            return BackfillResult(indexed=3, remaining=7)
+
+    monkeypatch.setattr(
+        "app.search.router.build_embedding_backfill_service",
+        lambda session, settings: _FakeBackfill(),
+    )
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/search/embeddings/backfill", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == {"indexed": 3, "remaining": 7}
+
+
+async def test_backfill_embedding_down_returns_503(
+    monkeypatch: pytest.MonkeyPatch, user_id: UUID, headers: dict[str, str]
+) -> None:
+    from app.search.embedding import EmbeddingError
+
+    class _BoomBackfill:
+        async def run(self, *, user_id: UUID, batch_size: int) -> object:
+            raise EmbeddingError("down")
+
+    monkeypatch.setattr(
+        "app.search.router.build_embedding_backfill_service",
+        lambda session, settings: _BoomBackfill(),
+    )
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/search/embeddings/backfill", headers=headers)
+    assert resp.status_code == 503

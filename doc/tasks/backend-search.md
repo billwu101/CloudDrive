@@ -59,4 +59,5 @@
 - [x] 設定：`embedding_enabled`(預設 False)、`embedding_model`(nomic-embed-text)、`embedding_base_url`(空則用 llm_base_url)、`embedding_dim`(768)。docker-compose 換 `pgvector/pgvector:pg16` + `EMBEDDING_*` env。
 - [x] 測試：embedding client（MockTransport 解析/錯誤）、SemanticSearchService（距離→分數、空 query 不 embed）、SearchIndexService（同寫 embedding、失敗容錯、清舊）、router（關閉 503 / 命中 / 服務掛 503）。**真 pgvector 驗證**：臨時 pgvector 容器跑 migration 0001→0012 成功、cosine `<=>` 排序正確。
 - [x] 前端「語意搜尋」切換 UI：SearchPage 加 Keyword／Semantic 模式切換（`useSemanticSearch` → `GET /search/semantic`），語意模式依相關度排序、隱藏類型過濾/分頁，503 顯示「未啟用」提示。測試：searchApi semantic 端點 + 503、SearchPage 模式切換/語意結果/503 提示。
-- 待後續：舊檔 backfill（重算既有檔的 embedding）、chunking（長文件切塊多向量）、命中片段高亮、語意結果顯示相似度分數。
+- [x] 舊檔 backfill：`app/search/backfill.py`（`EmbeddingBackfillService` + `SQLEmbeddingBackfillRepository` 找「有全文索引、無 embedding」的檔）；`POST /search/embeddings/backfill?batch_size=`（**per-user**、分批、回 `{indexed, remaining}`、可重複呼叫至 0；embedding 服務掛 503）。測試：service 分批/一次跑完/服務掛 fail-fast、router 關閉 503/回數/服務掛 503；真 pgvector 驗證 join 查詢可執行。
+- 待後續：chunking（長文件切塊多向量）、命中片段高亮、語意結果顯示相似度分數、前端 backfill 觸發入口。
