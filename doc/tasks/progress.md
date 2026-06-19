@@ -59,9 +59,9 @@
 
 - [x] [時光機 Snapshots](./time-machine.md) — 類 Apple Time Machine 的整碟時間點還原。**已完成**：S1 資料層 + 手動快照、S2 就地還原（含 pre_restore 保命快照、subtree_mode）、S3 保留最近 N + 獨立快照配額（auto=檔案配額一半）+ `snapshot_settings` + `GET/PUT /snapshots/settings` + blob 背景 GC（`collect_garbage`）+ 背景排程 runner（`SnapshotScheduler`，lifespan 啟動、服務預設關、compose 單 worker 可開）、S4 Assistant workflow/skill 寫入前自動建 `assistant` 快照、trash 永久刪除改為 dedup-aware（不再誤刪快照引用的 blob）、S5 前端（日期分組、設定 UI、資料夾導覽、多選逐項還原、整碟/逐項還原）。**非阻擋限制**：還原時硬配額檢查待補強（還原已寫 activity log）。設計見 [time-machine-design.md](../time-machine-design.md)，決策 DEC-024。
 
-## 擴充模組：外部模型接入（Codex/OpenAI）（設計完成、待實作）
+## 擴充模組：外部模型接入（Codex/OpenAI）（E1+E2 完成、E3/E4 待做）
 
-- [ ] [外部模型接入](./external-model.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5（**Codex 訂閱制優先**，參考 openclaw 橋接官方 Codex CLI／`codex-acp`；**OpenAI API key 備援**）、使用者於 profile 綁定 **per-user 加密憑證**（`user_external_credentials`，加密 at rest、永不回明文）、eval 考官可選 Gemma/Codex（預設 Gemma、評斷 skill 生成正確性 + 效果）。**設計完成、尚未實作**（DEC-026）；跨機可用已實機驗證（§9.6）。任務 checklist：[external-model.md](./external-model.md)（E1 共用基礎→E2 API key→E3 Codex 訂閱→E4 考官）；設計全文 [external-model-integration.md](../external-model-integration.md)。
+- [~] [外部模型接入](./external-model.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5。**已完成 E1+E2**：`user_external_credentials` 加密表（Fernet、`CREDENTIAL_ENCRYPTION_KEY`、永不回明文）+ profile 設定/遮罩 UI（Settings 頁）+ ModelRouter per-user 升級接線 + **OpenAI API key 路徑**（複用 `ExternalLLMClient`，gpt-5.5）。**待做 E3**（Codex 訂閱：per-request 隔離 `CODEX_HOME` + `codex-acp` + refresh，跨機可用已 §9.6 實證）、**E4**（eval 考官 provider）。決策 DEC-026；任務 [external-model.md](./external-model.md)；設計 [external-model-integration.md](../external-model-integration.md)。
 
 ## 建議執行順序
 

@@ -4,6 +4,7 @@
 
 > 狀態（2026-06-19）：**設計完成，尚未實作**。Codex 訂閱憑證「跨機可用」已由實機雙容器 demo 驗證通過（external-model-integration.md §9.6；v0.141.0 auth.json 僅 OAuth token、無綁機私鑰、token 可搬）。
 > 交付順序（風險由低到高）：**E1 共用基礎 → E2 路徑 B（API key，先通）→ E3 路徑 A（Codex 訂閱）→ E4 eval 考官 provider**。
+> **進度（2026-06-19）：E1 + E2 已實作並全綠**（後端 543 單元、前端 249；migration 0001→0014 於真 pgvector 驗過）。E3/E4 待做。
 > 下列為 checklist（勾選 = 已實作 + 測試）。
 
 ## 完成定義
@@ -15,19 +16,19 @@
 
 ## E1：共用基礎（憑證 + profile + 升級接線）
 
-- [ ] `user_external_credentials` model + Alembic migration：`(user_id, provider)` 複合 PK、`auth_type`（`api_key`/`oauth_token`）、`secret_encrypted`、`masked_hint`、`status`（`active`/`invalid`）、`updated_at`；FK CASCADE。
-- [ ] 對稱加密工具（Fernet）+ 設定 `CREDENTIAL_ENCRYPTION_KEY`（env，不入版控）：加密 / 解密 / 遮罩（末 4 碼）。
-- [ ] `ExternalCredentialService`：`upsert` / `get_decrypted` / `delete` / `list_masked`；可標記 `status=invalid`。
-- [ ] profile 端點：`GET/PUT/DELETE /users/me/external-credentials`（**只回 masked**，永不回明文）。
-- [ ] 前端 profile 設定 UI：填 API key／貼 Codex token、顯示遮罩與狀態、刪除。
-- [ ] `ExternalChatClient` 協定（`chat(messages, ...) -> response`）+ provider 抽象；`build_external_client(creds)` 工廠（依 §2.3 選 provider）。
-- [ ] ModelRouter 升級接線：`MAX_LOCAL_ATTEMPTS` 連續本地失敗 **且** 資格（憑證可用、`EXTERNAL_LLM_ENABLED`、非隱私鎖定/已去識別化）→ 改用外部；升級事件寫**稽核**（不含憑證）。
-- [ ] 測試：加解密 round-trip + 遮罩、service CRUD、router 升級條件（mock client）、隱私鎖定不外送、端點只回遮罩。
+- [x] `user_external_credentials` model + Alembic migration：`(user_id, provider)` 複合 PK、`auth_type`（`api_key`/`oauth_token`）、`secret_encrypted`、`masked_hint`、`status`（`active`/`invalid`）、`updated_at`；FK CASCADE。
+- [x] 對稱加密工具（Fernet）+ 設定 `CREDENTIAL_ENCRYPTION_KEY`（env，不入版控）：加密 / 解密 / 遮罩（末 4 碼）。
+- [x] `ExternalCredentialService`：`upsert` / `get_decrypted` / `delete` / `list_masked`；可標記 `status=invalid`。
+- [x] profile 端點：`GET/PUT/DELETE /users/me/external-credentials`（**只回 masked**，永不回明文）。
+- [x] 前端 profile 設定 UI：填 API key／貼 Codex token、顯示遮罩與狀態、刪除。
+- [x] `ExternalChatClient` 協定（`chat(messages, ...) -> response`）+ provider 抽象；`build_external_client(creds)` 工廠（依 §2.3 選 provider）。
+- [x] ModelRouter 升級接線：`MAX_LOCAL_ATTEMPTS` 連續本地失敗 **且** 資格（憑證可用、`EXTERNAL_LLM_ENABLED`、非隱私鎖定/已去識別化）→ 改用外部；升級事件寫**稽核**（不含憑證）。
+- [x] 測試：加解密 round-trip + 遮罩、service CRUD、router 升級條件（mock client）、隱私鎖定不外送、端點只回遮罩。
 
 ## E2：路徑 B — OpenAI API key（先通，最穩、確定可交付）
 
-- [ ] `OpenAIChatClient`：官方 chat completions、httpx transport 可注入、逾時、`Bearer` key、`model=gpt-5.5`。
-- [ ] provider 工廠：`auth_type=api_key` → `OpenAIChatClient`。
+- [x] `OpenAIChatClient`：官方 chat completions、httpx transport 可注入、逾時、`Bearer` key、`model=gpt-5.5`。
+- [x] provider 工廠：`auth_type=api_key` → `OpenAIChatClient`。
 - [ ] 失敗 / 額度耗盡處理：標記 `status=invalid`、回報使用者、退回本地失敗。
 - [ ] 測試：MockTransport 解析 / 錯誤 / 401 / 額度耗盡、router 用 API key 升級成功路徑。
 

@@ -271,3 +271,17 @@ export interface BackfillResponse {
   indexed: number
   remaining: number
 }
+
+export interface ExternalCredentialView {
+  provider: string
+  auth_type: string
+  masked_hint: string
+  status: string
+  updated_at: string
+}
+
+export interface ExternalCredentialUpsert {
+  provider: 'openai' | 'codex'
+  auth_type: 'api_key' | 'oauth_token'
+  secret: string
+}
