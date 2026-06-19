@@ -272,6 +272,6 @@
   4. **執行升級延用 DEC-023**：`MAX_LOCAL_ATTEMPTS` 連續本地失敗才升級；隱私閘、權限/沙箱/確認閘、稽核全部沿用；external client 改依使用者 profile 憑證動態建立。
   5. **eval 考官預設 Gemma 4、可切 Codex/GPT**：考官憑證走開發者 env/CLI（非終端使用者）；評斷涵蓋「生成正確性」+「效果符合使用者期待」；考官與被考者分離。
 - 理由：尊重「訂閱制優先」的成本考量，同時以 API key 備援與介面抽象確保不被非官方管道綁死；per-user 加密憑證兼顧「自帶額度」與安全；考官用更強模型更接近人類判斷。
-- 可行性驗證（2026-06-19，原始碼層；見 external-model-integration.md §9）：官方 Codex CLI 的 ChatGPT 訂閱採 **Agent Identity**——access token 綁本機生成的 agent 私鑰（存 auth.json 或 OS keyring）。**單搬 token 無效**，跨機須連私鑰一起搬；**多使用者集中式須在 server 集中保管多位使用者私鑰、可能觸發 ChatGPT 風控、屬非官方代理**。**判定：多使用者集中式的訂閱制路徑技術脆弱、高風險 → 以路徑 B（API key）交付**；訂閱制較適合自架單人。最終可由使用者依 §9.4 實機 100% 確認。
+- 可行性驗證（2026-06-19；原始碼 + 官方文件，見 external-model-integration.md §9）：Codex 訂閱採 **Agent Identity**，但 **agent 私鑰預設就在 `auth.json` 內**；官方文件明確把 auth.json 當密碼、**允許跨機複製**、未提機器綁定。**判定修正：跨機技術上可行**（先前「技術脆弱不可行」過度悲觀，予以更正）；例外是開啟 `SecretAuthStorage`（私鑰進 keyring）則不可搬。多使用者集中式的**剩餘問題為風險權衡而非技術硬傷**：集中保管多人憑證的安全責任、多人同 server IP 的風控灰區、代呼叫合規。已備一鍵雙機 demo（`experiments/codex-cross-machine-demo/`）供實證；最終由使用者跑 demo 100% 確認。
 - 已知取捨：訂閱制管道穩定性不可控（以備援與抽象化緩解）；儲存可解密憑證有風險（以加密 at rest、遮罩、不入 log 緩解）；外部升級涉資料外送（沿用 DEC-023 隱私閘、預設關閉、使用者明確啟用）。
 - 影響範圍：新 `user_external_credentials` 表 + profile 端點、`app/assistant/llm/`（router/external 依 per-user 憑證）、`backend/eval/judge.py`（OpenAI/Codex 考官 + provider 選項）、config（`CREDENTIAL_ENCRYPTION_KEY` 等）。詳見 [external-model-integration.md](./external-model-integration.md)。
