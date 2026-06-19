@@ -2204,6 +2204,25 @@ Assistant 的使用入口位於登入後 CloudDrive shell，而不是 Swagger/AP
 
 E1 in-process mock 模式 + E4 案例（read-only / daily-ops / skill-generation / safety / workflow-reuse / context / model-escalation）11/11 決定性通過；E2 browser、E3 judge/`--llm real`/baseline、E1 state/safety 斷言與多次執行通過率/變異皆對 Docker 全棧 + 真實 Gemma 實測通過。Assistant 評測 harness（E1–E4）全部完成。
 
+## 18.6 外部模型接入（Codex/OpenAI）
+
+> 狀態：**設計完成、尚未實作**。詳細設計見 [external-model-integration.md](./external-model-integration.md)，決策 DEC-026（延伸 DEC-023）。本節為模組級摘要；任務見 `doc/tasks/external-model.md`。
+
+目的：本地 Gemma 4（harness 引擎執行器）反覆失敗時升級 **GPT-5.5**（Codex 訂閱優先、OpenAI API key 備援）；eval 考官可選 Gemma/Codex。憑證為**使用者自帶**、加密儲存於 profile。
+
+| 元件 | 職責 |
+| --- | --- |
+| `user_external_credentials`（model + migration） | per-user 外部憑證：`(user_id, provider)` PK、`auth_type`、`secret_encrypted`、`masked_hint`、`status`、`updated_at`；FK CASCADE。 |
+| 加密工具 + `CREDENTIAL_ENCRYPTION_KEY` | 對稱加密（Fernet）at rest；解密只在呼叫前於記憶體進行；對外只回遮罩（末 4 碼）。 |
+| `ExternalCredentialService` | 憑證 upsert / get_decrypted / delete / list_masked；驗證並標記 `status`。 |
+| profile 端點 `*/users/me/external-credentials` | `GET/PUT/DELETE`，只回 masked，永不回明文。 |
+| `ExternalChatClient`（協定）+ provider 工廠 | 統一外部呼叫介面；`OpenAIChatClient`（API key）、`CodexSubscriptionClient`（訂閱）；選擇邏輯：訂閱優先 → API key → 不外送。 |
+| `CodexSubscriptionClient` | 每次呼叫建臨時隔離 `CODEX_HOME` + 寫入解密 token，經官方 `codex`/`@zed-industries/codex-acp` 呼叫、用畢即焚；token refresh 自理（refresh token 走 OpenAI token endpoint）。 |
+| `ModelRouter` 升級接線（既有） | `MAX_LOCAL_ATTEMPTS` 連續本地失敗 + 資格（憑證可用、外部啟用、非隱私鎖定）→ 改用 per-user 外部憑證；隱私閘/權限/沙箱/確認閘/稽核沿用 DEC-023。 |
+| `eval/judge.py`（既有，擴充） | 考官可配置 provider（`--judge-provider {gemma|codex|openai}`，預設 gemma）；評斷 skill 生成正確性 + 效果符合期待；考官憑證走開發者 env。 |
+
+**安全**：絕不存明文密碼/金鑰；OAuth 路徑只存可撤銷 token；憑證不入 log/回應/稽核 metadata；外部預設關閉、使用者明確啟用。**可行性**：Codex 訂閱憑證「跨機可用」已由 `experiments/codex-cross-machine-demo/` 實機驗證（§9.6）。交付分階段：E1 共用基礎 → E2 API key → E3 訂閱 → E4 考官。
+
 ## 19. 結論
 
 本詳細設計將系統拆分為 Auth、User/Quota、DriveItem、Permission、Storage、Upload、Download、Preview、Trash、Search、Share、FileVersion、ActivityLog 與前端對應模組。模組之間透過明確接口互動，避免彼此直接耦合。

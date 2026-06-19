@@ -61,7 +61,7 @@
 
 ## 擴充模組：外部模型接入（Codex/OpenAI）（設計完成、待實作）
 
-- [ ] [外部模型接入](../external-model-integration.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5（**Codex 訂閱制優先**，參考 openclaw 橋接官方 Codex CLI／`codex-acp`、**多使用者集中式各自帳號**；**OpenAI API key 備援**）、使用者於 profile 綁定 **per-user 加密憑證**（`user_external_credentials`，加密 at rest、永不回明文）、eval 考官可選 Gemma/Codex（預設 Gemma、評斷 skill 生成正確性 + 效果）。**目前僅設計**（DEC-026），尚未實作。
+- [ ] [外部模型接入](./external-model.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5（**Codex 訂閱制優先**，參考 openclaw 橋接官方 Codex CLI／`codex-acp`；**OpenAI API key 備援**）、使用者於 profile 綁定 **per-user 加密憑證**（`user_external_credentials`，加密 at rest、永不回明文）、eval 考官可選 Gemma/Codex（預設 Gemma、評斷 skill 生成正確性 + 效果）。**設計完成、尚未實作**（DEC-026）；跨機可用已實機驗證（§9.6）。任務 checklist：[external-model.md](./external-model.md)（E1 共用基礎→E2 API key→E3 Codex 訂閱→E4 考官）；設計全文 [external-model-integration.md](../external-model-integration.md)。
 
 ## 建議執行順序
 

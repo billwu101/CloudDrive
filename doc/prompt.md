@@ -150,6 +150,19 @@
 3. 自我撰寫技能須「核可 → 沙箱 → 稽核」，絕不自動執行未審核程式碼（DEC-019）。
 4. 執行模型為 Workflow 管線 + 計畫確認（DEC-021）；功能正確性由驗證/評分 harness 把關（DEC-022）。
 
+### 擴充範圍：外部模型接入（Codex/OpenAI）（Assistant 之後新增）
+
+本地 Gemma 4 反覆失敗時升級 GPT-5.5（設計見 `doc/external-model-integration.md`，決策 DEC-026，延伸 DEC-023）。以下列任務文件為範圍，對應 Stage 15~17（**設計完成、尚未實作**）：
+
+- `doc/tasks/external-model.md`（E1 共用基礎 → E2 路徑 B API key → E3 路徑 A Codex 訂閱 → E4 eval 考官 provider）
+
+擴充原則：
+1. 憑證為**使用者自帶**、加密 at rest（`CREDENTIAL_ENCRYPTION_KEY`），對外只回遮罩；**絕不存明文密碼**、不入 log/回應。
+2. 升級延用 DEC-023：`MAX_LOCAL_ATTEMPTS` 連續本地失敗 + 隱私閘/權限/沙箱/確認閘/稽核；外部預設關閉。
+3. 認證雙路徑、**訂閱制優先、API key 備援**，behind 同一 `ExternalChatClient` 介面；訂閱制橋接官方 Codex CLI（per-request 隔離 `CODEX_HOME` + `codex-acp`，用畢即焚）。跨機可用已實機驗證（§9.6）。
+4. eval 考官可選 Gemma/Codex（預設 Gemma），考官憑證走開發者 env，考官與被考者分離。
+5. 檔案所有權：新增 `app/external_model/`（或併入 `app/assistant/llm/`）、`user_external_credentials` model/migration、profile 端點、`eval/judge.py` 擴充、前端 profile 憑證 UI；實作時避免與既有 `assistant/llm` 共享檔案衝突，必要時順序執行。
+
 ## 自主決策規則
 
 全程不得等待人工回答。
