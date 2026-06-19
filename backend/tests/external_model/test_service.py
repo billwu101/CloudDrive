@@ -3,13 +3,21 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import pytest
 from cryptography.fernet import Fernet
 
+from app.assistant.llm.client import (
+    ExternalAuthError,
+    LLMMessage,
+    LLMResponse,
+    LLMToolDefinition,
+    LLMUnavailableError,
+)
 from app.assistant.llm.external import ExternalLLMClient
 from app.core.config import get_settings
 from app.external_model.crypto import CredentialCipher
 from app.external_model.repository import AbstractExternalCredentialRepository
-from app.external_model.service import ExternalCredentialService
+from app.external_model.service import ExternalCredentialService, _CredentialTrackingClient
 from app.models.user_external_credential import UserExternalCredential
 
 
@@ -79,9 +87,12 @@ async def test_build_chat_client_openai_api_key() -> None:
 
     client = await svc.build_chat_client(user)
 
-    assert isinstance(client, ExternalLLMClient)
-    assert client._api_key == "sk-key-9999"  # decrypted for use
-    assert client._model == get_settings().external_chat_model
+    # Wrapped so a credential rejection can mark it invalid; inner is the real client.
+    assert isinstance(client, _CredentialTrackingClient)
+    inner = client._inner
+    assert isinstance(inner, ExternalLLMClient)
+    assert inner._api_key == "sk-key-9999"  # decrypted for use
+    assert inner._model == get_settings().external_chat_model
 
 
 async def test_build_chat_client_none_without_credentials() -> None:
@@ -124,5 +135,91 @@ async def test_subscription_preferred_falls_back_to_openai_until_e3() -> None:
     await svc.upsert(user_id=user, provider="openai", auth_type="api_key", secret="sk-fallback")
 
     client = await svc.build_chat_client(user)
-    assert isinstance(client, ExternalLLMClient)
-    assert client._api_key == "sk-fallback"
+    assert isinstance(client, _CredentialTrackingClient)
+    assert isinstance(client._inner, ExternalLLMClient)
+    assert client._inner._api_key == "sk-fallback"
+
+
+# ── credential-tracking wrapper (auto-mark invalid on rejection) ──────────────
+
+
+class _BoomAuth:
+    async def chat(
+        self, messages: list[LLMMessage], tools: list[LLMToolDefinition], *, num_ctx: int
+    ) -> LLMResponse:
+        raise ExternalAuthError("credential rejected")
+
+
+class _BoomTransient:
+    async def chat(
+        self, messages: list[LLMMessage], tools: list[LLMToolDefinition], *, num_ctx: int
+    ) -> LLMResponse:
+        raise LLMUnavailableError("temporary outage")
+
+
+class _Ok:
+    async def chat(
+        self, messages: list[LLMMessage], tools: list[LLMToolDefinition], *, num_ctx: int
+    ) -> LLMResponse:
+        return LLMResponse(content="ok")
+
+
+async def test_tracking_marks_invalid_on_auth_error() -> None:
+    called: list[bool] = []
+
+    async def on_err() -> None:
+        called.append(True)
+
+    client = _CredentialTrackingClient(_BoomAuth(), on_auth_error=on_err)
+    with pytest.raises(ExternalAuthError):
+        await client.chat([], [], num_ctx=10)
+    assert called == [True]  # credential marked invalid
+
+
+async def test_tracking_does_not_mark_on_transient_error() -> None:
+    called: list[bool] = []
+
+    async def on_err() -> None:
+        called.append(True)
+
+    client = _CredentialTrackingClient(_BoomTransient(), on_auth_error=on_err)
+    with pytest.raises(LLMUnavailableError):
+        await client.chat([], [], num_ctx=10)
+    assert called == []  # transient outage must NOT invalidate the key
+
+
+async def test_tracking_passes_through_success() -> None:
+    called: list[bool] = []
+
+    async def on_err() -> None:
+        called.append(True)
+
+    client = _CredentialTrackingClient(_Ok(), on_auth_error=on_err)
+    resp = await client.chat([], [], num_ctx=10)
+    assert resp.content == "ok"
+    assert called == []
+
+
+async def test_build_chat_client_wraps_with_invalidate_callback() -> None:
+    invalidated: list[tuple[UUID, str]] = []
+
+    async def on_invalidate(user_id: UUID, provider: str) -> None:
+        invalidated.append((user_id, provider))
+
+    repo = MemCredentialRepo()
+    svc = ExternalCredentialService(
+        repo=repo,
+        cipher=CredentialCipher(Fernet.generate_key().decode()),
+        settings=get_settings(),
+        on_invalidate=on_invalidate,
+    )
+    user = uuid4()
+    await svc.upsert(user_id=user, provider="openai", auth_type="api_key", secret="sk-x")
+    client = await svc.build_chat_client(user)
+    assert isinstance(client, _CredentialTrackingClient)
+
+    # Force the wrapped client to see a credential rejection.
+    client._inner = _BoomAuth()
+    with pytest.raises(ExternalAuthError):
+        await client.chat([], [], num_ctx=10)
+    assert invalidated == [(user, "openai")]

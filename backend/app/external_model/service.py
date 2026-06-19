@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
-from app.assistant.llm.client import LLMClient
+from app.assistant.llm.client import (
+    ExternalAuthError,
+    LLMClient,
+    LLMMessage,
+    LLMResponse,
+    LLMToolDefinition,
+)
 from app.assistant.llm.external import ExternalLLMClient
 from app.core.config import Settings
 from app.external_model.crypto import CredentialCipher, CredentialCipherError, mask_secret
@@ -18,6 +25,29 @@ logger = logging.getLogger("app.external_model.service")
 _PROVIDER_PREFERENCE = ("codex", "openai")
 
 
+class _CredentialTrackingClient:
+    """Wraps an external client; when a call is rejected for the credential
+    itself (invalid key / exhausted quota), marks that credential invalid so the
+    user sees it in settings, then re-raises. Transient outages don't mark it."""
+
+    def __init__(self, inner: LLMClient, *, on_auth_error: Callable[[], Awaitable[None]]) -> None:
+        self._inner = inner
+        self._on_auth_error = on_auth_error
+
+    async def chat(
+        self,
+        messages: list[LLMMessage],
+        tools: list[LLMToolDefinition],
+        *,
+        num_ctx: int,
+    ) -> LLMResponse:
+        try:
+            return await self._inner.chat(messages, tools, num_ctx=num_ctx)
+        except ExternalAuthError:
+            await self._on_auth_error()
+            raise
+
+
 class ExternalCredentialService:
     """Manages a user's encrypted external-model credentials and builds an
     LLM client from them for execution upgrade."""
@@ -28,11 +58,15 @@ class ExternalCredentialService:
         repo: AbstractExternalCredentialRepository,
         cipher: CredentialCipher | None,
         settings: Settings,
+        on_invalidate: Callable[[UUID, str], Awaitable[None]] | None = None,
     ) -> None:
         self._repo = repo
         # None when CREDENTIAL_ENCRYPTION_KEY isn't configured (feature disabled).
         self._cipher = cipher
         self._settings = settings
+        # Called (out of band, own session) to mark a credential invalid when the
+        # provider rejects it during an actual upgrade call.
+        self._on_invalidate = on_invalidate
 
     @property
     def enabled(self) -> bool:
@@ -85,10 +119,20 @@ class ExternalCredentialService:
                 except CredentialCipherError:
                     logger.exception("failed to decrypt openai credential for user %s", user_id)
                     continue
-                return ExternalLLMClient(
+                inner = ExternalLLMClient(
                     base_url=self._settings.external_api_base_url,
                     model=self._settings.external_chat_model,
                     api_key=key,
                 )
+                return self._track(inner, user_id, "openai")
             # provider == "codex" → E3 (Codex subscription) not implemented yet.
         return None
+
+    def _track(self, inner: LLMClient, user_id: UUID, provider: str) -> LLMClient:
+        """Wrap so a credential rejection during an upgrade call marks it invalid."""
+
+        async def _on_auth_error() -> None:
+            if self._on_invalidate is not None:
+                await self._on_invalidate(user_id, provider)
+
+        return _CredentialTrackingClient(inner, on_auth_error=_on_auth_error)

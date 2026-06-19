@@ -47,9 +47,7 @@ from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.drive.repository import SQLDriveItemRepository, SQLUserItemPreferenceRepository
 from app.drive.service import DriveService
-from app.external_model.crypto import CredentialCipher
-from app.external_model.repository import SQLExternalCredentialRepository
-from app.external_model.service import ExternalCredentialService
+from app.external_model.factory import build_credential_service
 from app.file_version.repository import SQLFileVersionRepository
 from app.permission.repository import SQLShareRepository
 from app.permission.service import PermissionService
@@ -166,15 +164,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
             api_key=settings.external_llm_api_key,
         )
     # Per-user credential (DEC-026) takes precedence over the global client.
-    credential_service = ExternalCredentialService(
-        repo=SQLExternalCredentialRepository(session),
-        cipher=(
-            CredentialCipher(settings.credential_encryption_key)
-            if settings.credential_encryption_key
-            else None
-        ),
-        settings=settings,
-    )
+    credential_service = build_credential_service(session, settings)
     per_user_external = await credential_service.build_chat_client(current_user_id)
     if per_user_external is not None:
         external_client = per_user_external

@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from app.assistant.llm.client import (
+    ExternalAuthError,
     LLMInvalidResponseError,
     LLMMessage,
     LLMResponse,
@@ -24,11 +25,13 @@ class ExternalLLMClient:
         model: str,
         api_key: str,
         timeout: float = 45.0,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key = api_key
         self._timeout = timeout
+        self._transport = transport
 
     async def chat(
         self,
@@ -46,13 +49,36 @@ class ExternalLLMClient:
 
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, headers=headers) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, headers=headers, transport=self._transport
+            ) as client:
                 response = await client.post(f"{self._base_url}/chat/completions", json=payload)
                 response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if _is_credential_error(exc.response):
+                raise ExternalAuthError("External credential was rejected") from exc
+            raise LLMUnavailableError("External assistant model is unavailable") from exc
         except httpx.HTTPError as exc:
             raise LLMUnavailableError("External assistant model is unavailable") from exc
 
         return _parse_openai_response(response.json(), self._model)
+
+
+def _is_credential_error(response: httpx.Response) -> bool:
+    """True when the provider rejected the credential itself: an invalid key
+    (401/403) or an exhausted quota (429 with type/code mentioning quota/billing).
+    A plain 429 rate-limit is transient and not treated as a credential error."""
+    status = response.status_code
+    if status in (401, 403):
+        return True
+    if status == 429:
+        try:
+            error = response.json().get("error", {})
+        except (ValueError, AttributeError):
+            return False
+        marker = f"{error.get('type', '')} {error.get('code', '')}".lower()
+        return "quota" in marker or "billing" in marker or "insufficient" in marker
+    return False
 
 
 def _to_openai_tool(tool: LLMToolDefinition) -> dict[str, Any]:

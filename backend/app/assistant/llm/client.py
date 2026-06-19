@@ -44,6 +44,12 @@ class LLMInvalidResponseError(LLMClientError):
     """Raised when a provider response cannot be parsed."""
 
 
+class ExternalAuthError(LLMClientError):
+    """Raised when an external provider rejects the credential itself — an invalid
+    key or an exhausted quota — as opposed to a transient outage. Signals that the
+    stored credential should be marked invalid."""
+
+
 class LLMClient(Protocol):
     async def chat(
         self,

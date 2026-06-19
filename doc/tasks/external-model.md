@@ -4,7 +4,7 @@
 
 > 狀態（2026-06-19）：**設計完成，尚未實作**。Codex 訂閱憑證「跨機可用」已由實機雙容器 demo 驗證通過（external-model-integration.md §9.6；v0.141.0 auth.json 僅 OAuth token、無綁機私鑰、token 可搬）。
 > 交付順序（風險由低到高）：**E1 共用基礎 → E2 路徑 B（API key，先通）→ E3 路徑 A（Codex 訂閱）→ E4 eval 考官 provider**。
-> **進度（2026-06-19）：E1 + E2 已實作並全綠**（後端 543 單元、前端 249；migration 0001→0014 於真 pgvector 驗過）。E3/E4 待做。
+> **進度（2026-06-19）：E1 + E2 完成並全綠**（後端 553 單元、前端 249；migration 0001→0014 於真 pgvector 驗過）。含失敗/額度耗盡自動標記憑證 invalid。E3/E4 待做。
 > 下列為 checklist（勾選 = 已實作 + 測試）。
 
 ## 完成定義
@@ -29,8 +29,8 @@
 
 - [x] `OpenAIChatClient`：官方 chat completions、httpx transport 可注入、逾時、`Bearer` key、`model=gpt-5.5`。
 - [x] provider 工廠：`auth_type=api_key` → `OpenAIChatClient`。
-- [ ] 失敗 / 額度耗盡處理：標記 `status=invalid`、回報使用者、退回本地失敗。
-- [ ] 測試：MockTransport 解析 / 錯誤 / 401 / 額度耗盡、router 用 API key 升級成功路徑。
+- [x] 失敗 / 額度耗盡處理：標記 `status=invalid`、回報使用者、退回本地失敗。
+- [x] 測試：MockTransport 解析 / 錯誤 / 401 / 額度耗盡、router 用 API key 升級成功路徑。
 
 ## E3：路徑 A — Codex 訂閱制（疊上 E2 之後）
 

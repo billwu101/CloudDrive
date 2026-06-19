@@ -82,6 +82,12 @@ export function ExternalModelSettings() {
         </div>
       )}
 
+      {openai?.status === 'invalid' && (
+        <p className="text-xs text-destructive">
+          This key was rejected (invalid or out of quota). Replace it to keep using GPT-5.5 fallback.
+        </p>
+      )}
+
       <div>
         <label htmlFor="openai-api-key" className="mb-1 block text-sm font-medium">
           OpenAI API key

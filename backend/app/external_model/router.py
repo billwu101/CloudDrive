@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.config import get_settings
 from app.core.dependencies import CurrentUserId, DbSession
-from app.external_model.crypto import CredentialCipher, CredentialCipherError
-from app.external_model.repository import SQLExternalCredentialRepository
+from app.external_model.crypto import CredentialCipherError
+from app.external_model.factory import build_credential_service
 from app.external_model.schemas import ExternalCredentialUpsert, ExternalCredentialView
 from app.external_model.service import ExternalCredentialService
 
@@ -15,15 +15,7 @@ router = APIRouter(prefix="/users/me/external-credentials", tags=["external-mode
 
 
 def _credential_service(session: DbSession) -> ExternalCredentialService:
-    settings = get_settings()
-    cipher = (
-        CredentialCipher(settings.credential_encryption_key)
-        if settings.credential_encryption_key
-        else None
-    )
-    return ExternalCredentialService(
-        repo=SQLExternalCredentialRepository(session), cipher=cipher, settings=settings
-    )
+    return build_credential_service(session, get_settings())
 
 
 ServiceDep = Annotated[ExternalCredentialService, Depends(_credential_service)]
