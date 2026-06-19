@@ -118,20 +118,24 @@ def main() -> int:
                 exec_output = run_execution_case(case)
                 checks = verify_execution(case, exec_output)
                 if judge is not None:
-                    checks = checks + judge_execution(case, exec_output, judge)
+                    checks = checks + judge_execution(
+                        case, exec_output, judge, fallback_rubric=True
+                    )
             elif args.mode == "browser" and case.expect.execute is not None:
                 # Browser execution: the spec generated/approved/ran the skill on
                 # the fixture and reported produced files + downloaded text.
                 exec_output = browser_responses.get(case.id, {})
                 checks = verify_execution(case, exec_output)
                 if judge is not None:
-                    checks = checks + judge_execution(case, exec_output, judge)
+                    checks = checks + judge_execution(
+                        case, exec_output, judge, fallback_rubric=True
+                    )
             else:
                 response = _run_case(case, args, browser_responses)
                 # Browser/real plans are non-deterministic — don't gate on exact steps.
                 checks = verify(case, response, strict_steps=args.mode != "browser")
                 if judge is not None:
-                    checks = checks + judge_case(case, response, judge)
+                    checks = checks + judge_case(case, response, judge, fallback_rubric=True)
                 checks = checks + _state_checks(case, args)
             run_scores.append(score_case(case, checks))
         scores.append(aggregate_runs(case, run_scores))

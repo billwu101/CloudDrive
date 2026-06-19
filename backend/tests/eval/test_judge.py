@@ -55,6 +55,30 @@ def test_parse_verdict_rejects_garbage() -> None:
         parse_verdict('{"score": "high"}')
 
 
+def test_parse_verdict_extracts_strengths_and_weaknesses() -> None:
+    v = parse_verdict('{"score": 0.8, "strengths": "正確列出檔案", "weaknesses": "未排序"}')
+    assert v.score == 0.8
+    assert v.strengths == "正確列出檔案"
+    assert v.weaknesses == "未排序"
+
+
+def test_judge_detail_includes_pros_and_cons() -> None:
+    judge = _FakeJudge('{"score": 0.9, "strengths": "好", "weaknesses": "壞"}')
+    checks = judge_case(_case("must list"), {"message": "x"}, judge)
+    assert "優點: 好" in checks[0].detail
+    assert "缺點: 壞" in checks[0].detail
+
+
+def test_fallback_rubric_judges_case_without_rubric() -> None:
+    reply = '{"score": 0.7, "strengths": "s", "weaknesses": "w"}'
+    # No rubric + fallback → scored against the default rubric (judge all cases).
+    checks = judge_case(_case(None), {"message": "x"}, _FakeJudge(reply), fallback_rubric=True)
+    assert len(checks) == 1
+    assert checks[0].score == 0.7
+    # No rubric, no fallback → still skipped (backward compatible).
+    assert judge_case(_case(None), {"message": "x"}, _FakeJudge(reply)) == []
+
+
 def test_build_judge_prompt_includes_rubric_and_summary() -> None:
     prompt = build_judge_prompt(
         rubric="must list files",

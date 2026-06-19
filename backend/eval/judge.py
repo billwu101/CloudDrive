@@ -23,7 +23,8 @@ class JudgeError(Exception):
 @dataclass(frozen=True)
 class JudgeVerdict:
     score: float
-    reasoning: str
+    strengths: str
+    weaknesses: str
 
 
 class JudgeModel(Protocol):
@@ -37,9 +38,14 @@ class JudgeModel(Protocol):
 _SYSTEM = (
     "You are a strict evaluator of an AI file-assistant. Judge ONLY against the "
     "given rubric. Reply with a single JSON object: "
-    '{"score": <float 0..1>, "reasoning": "<one sentence>"}. '
-    "1.0 = fully satisfies the rubric, 0.0 = fails it. No prose outside the JSON."
+    '{"score": <float 0..1>, "strengths": "<what it did well>", '
+    '"weaknesses": "<what was lacking or wrong>"}. '
+    "1.0 = fully satisfies the rubric, 0.0 = fails it. Always give both strengths "
+    "and weaknesses (use an empty string only if truly none). No prose outside the JSON."
 )
+
+# Appended to each judge prompt to pin the output shape.
+_JSON_HINT = 'Return JSON only, e.g. {"score": 0.9, "strengths": "...", "weaknesses": "..."}.'
 
 
 def build_judge_prompt(*, rubric: str, prompt: str, response: dict[str, Any]) -> str:
@@ -61,10 +67,10 @@ def build_judge_prompt(*, rubric: str, prompt: str, response: dict[str, Any]) ->
         "plan_skills": skills,
         "proposed_skill": proposed,
     }
+    body = json.dumps(summary, ensure_ascii=False, indent=2)
     return (
         f"{_SYSTEM}\n\nRUBRIC:\n{rubric}\n\n"
-        f"ASSISTANT RESPONSE (summarised):\n{json.dumps(summary, ensure_ascii=False, indent=2)}\n\n"
-        'Return JSON only, e.g. {"score": 0.9, "reasoning": "..."}.'
+        f"ASSISTANT RESPONSE (summarised):\n{body}\n\n{_JSON_HINT}"
     )
 
 
@@ -99,8 +105,7 @@ def build_exec_judge_prompt(*, rubric: str, prompt: str, exec_output: dict[str, 
     body = json.dumps(summary, ensure_ascii=False, indent=2)
     return (
         f"{_SYSTEM}\n\nRUBRIC:\n{rubric}\n\n"
-        f"SKILL EXECUTION RESULT (summarised):\n{body}\n\n"
-        'Return JSON only, e.g. {"score": 0.9, "reasoning": "..."}.'
+        f"SKILL EXECUTION RESULT (summarised):\n{body}\n\n{_JSON_HINT}"
     )
 
 
@@ -122,8 +127,9 @@ def parse_verdict(text: str) -> JudgeVerdict:
     except (TypeError, ValueError) as exc:
         raise JudgeError(f"judge score is not a number: {data.get('score')!r}") from exc
     score = max(0.0, min(1.0, score))
-    reasoning = str(data.get("reasoning", "")).strip()
-    return JudgeVerdict(score=score, reasoning=reasoning)
+    strengths = str(data.get("strengths", "")).strip()
+    weaknesses = str(data.get("weaknesses", "")).strip()
+    return JudgeVerdict(score=score, strengths=strengths, weaknesses=weaknesses)
 
 
 def _run_judge(model: JudgeModel, prompt: str, threshold: float, name: str) -> list[CheckResult]:
@@ -131,15 +137,26 @@ def _run_judge(model: JudgeModel, prompt: str, threshold: float, name: str) -> l
     CheckResult carrying the continuous rubric score (scoring averages it like
     any other dimension)."""
     verdict = parse_verdict(model.complete(prompt))
+    detail = f"score={verdict.score:.2f}"
+    if verdict.strengths:
+        detail += f" | 優點: {verdict.strengths}"
+    if verdict.weaknesses:
+        detail += f" | 缺點: {verdict.weaknesses}"
     return [
         CheckResult(
             dimension=JUDGE_DIMENSION,
             name=name,
             ok=verdict.score >= threshold,
-            detail=f"score={verdict.score:.2f} — {verdict.reasoning}",
+            detail=detail,
             score=verdict.score,
         )
     ]
+
+
+def _default_rubric(case: EvalCase) -> str:
+    """Fallback rubric so the judge can score *every* case, not only those with an
+    explicit rubric: did the assistant correctly and usefully fulfil the request?"""
+    return f"助理的回應是否正確、完整且實用地達成使用者請求的意圖。\n使用者請求：{case.prompt}"
 
 
 def judge_case(
@@ -148,9 +165,11 @@ def judge_case(
     model: JudgeModel,
     *,
     threshold: float = _DEFAULT_THRESHOLD,
+    fallback_rubric: bool = False,
 ) -> list[CheckResult]:
-    """Judge a chat case against its rubric (plan/message). No rubric → no checks."""
-    rubric = case.expect.rubric
+    """Judge a chat case (plan/message). With ``fallback_rubric`` a case without an
+    explicit rubric is scored against a default one; otherwise no rubric → no checks."""
+    rubric = case.expect.rubric or (_default_rubric(case) if fallback_rubric else None)
     if not rubric:
         return []
     prompt = build_judge_prompt(rubric=rubric, prompt=case.prompt, response=response)
@@ -163,11 +182,12 @@ def judge_execution(
     model: JudgeModel,
     *,
     threshold: float = _DEFAULT_THRESHOLD,
+    fallback_rubric: bool = False,
 ) -> list[CheckResult]:
-    """Judge a skill's *actual execution output* against its rubric (the effect,
-    not just the plan). No rubric → no checks, so non-rubric exec cases are
-    unaffected."""
-    rubric = case.expect.rubric
+    """Judge a skill's *actual execution output* (the effect, not just the plan).
+    With ``fallback_rubric`` a case without an explicit rubric is scored against a
+    default one; otherwise no rubric → no checks."""
+    rubric = case.expect.rubric or (_default_rubric(case) if fallback_rubric else None)
     if not rubric:
         return []
     prompt = build_exec_judge_prompt(rubric=rubric, prompt=case.prompt, exec_output=exec_output)

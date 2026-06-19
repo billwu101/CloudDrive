@@ -74,6 +74,9 @@ known-first-party = ["app", "eval"]
 "tests/integration/conftest.py" = ["E402"]
 # Eval cases are Chinese prompts; fullwidth punctuation （）「」 is intentional.
 "eval/generate_cases.py" = ["RUF001", "RUF002"]
+# Judge rubrics / report headings are Traditional Chinese (fullwidth ，：／).
+"eval/judge.py" = ["RUF001", "RUF002"]
+"eval/report.py" = ["RUF001", "RUF002"]
 
 [tool.ruff.format]
 quote-style = "double"
