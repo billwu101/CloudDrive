@@ -122,7 +122,7 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 
 ## 7. 待確認 / 風險
 
-1. **訂閱制跨機可行性 → 已做原始碼層驗證，結論見 §9**。重點：Codex 訂閱 token 綁「agent 私鑰」，多使用者集中式代呼叫須集中保管使用者私鑰且可能觸發風控，**技術脆弱、高風險；建議改以路徑 B（API key）交付**。剩餘只差使用者「實機 100% 確認」（§9 步驟）。
+1. **訂閱制跨機可行性 → 已實機 demo 證實「跨機可用」（§9.6）**。v0.141.0 的 auth.json 只含 OAuth tokens、無綁機私鑰，搬到他機（不同 hostname、乾淨環境）可直接呼叫 gpt-5.5。剩餘是**風險權衡**（集中保管多人 token 的安全責任、多人同 server IP 的風控灰區、代呼叫合規），非技術硬傷；**跨機 refresh 尚未實測**（低風險，refresh token 在 auth.json 內）。
 2. **加密金鑰管理**：`CREDENTIAL_ENCRYPTION_KEY` 用部署 env 即可，或需 KMS／金鑰輪替？
 3. **考官用 Codex 時的憑證來源**：固定走開發者 env，還是也允許 per-user？（目前定為開發者 env。）
 4. **全域 env 金鑰與 per-user 憑證的優先序**：兩者並存時誰優先。
@@ -151,12 +151,12 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 
 **官方文件佐證**（developers.openai.com/codex/auth）：明確把 `auth.json` 當密碼、說它**含 access tokens**，並**允許跨機複製**（"Treat `~/.codex/auth.json` like a password… Don't… share it in chat."），**未提任何機器綁定限制**；headless/容器可用 `codex login --device-auth`（需先在 ChatGPT 開啟 device code login）。
 
-### 9.3 結論（修正先前過度悲觀的判斷）
+### 9.3 結論（已實機 demo 證實，見 §9.6）
 
-- **單搬 token 無效，但搬整個 `auth.json`（含私鑰）可行**：access token 綁 agent 私鑰，而**私鑰預設就在 auth.json 內**，故複製整份 auth.json 即自足——**官方背書可跨機**。例外：若使用者開了 `SecretAuthStorage`（私鑰進 OS keyring），auth.json 不自足 → 不可搬。
-- **跨機技術可行性：傾向可行**（官方文件 + 原始碼一致）。先前「技術脆弱不可行」的判斷**過度悲觀，予以修正**。
-- **多使用者集中式的剩餘考量（非技術硬傷，是風險權衡）**：(a) server 端**集中保管多位使用者的 auth.json = 集中保管多人密碼/身分私鑰**，安全責任重；(b) 多人從**同一 server IP** 用各自 identity 發請求，是否觸發 ChatGPT 風控屬**灰區**（官方未明文禁止，但非典型用法）；(c) 以 CLI/codex-acp 代多人呼叫的**合規**需自行確認。
-- **可行但需謹慎**：技術上做得到（待 §9.5 demo 實證）；是否採用是上述 (a)(b)(c) 的權衡，而非「能不能」。
+- **跨機可用：已實證**。雙容器 demo 中，把 machine-a 的 `auth.json` 搬到從未登入、不同 hostname 的 machine-b 後，成功呼叫 gpt-5.5（exit 0、無重新登入）。先前「技術脆弱不可行」的判斷**過度悲觀，正式更正**。
+- **實際 auth.json 結構（v0.141.0）**：只含 OAuth tokens（`access_token` / `id_token` / `refresh_token` / `account_id`）+ `auth_mode` / `last_refresh`，**無 agent_identity 私鑰**。我先前從舊原始碼推測的「綁機私鑰」在此版**不存在**，token 是**可搬移的標準 OAuth 憑證**。
+- **多使用者集中式的剩餘考量（非技術硬傷，是風險權衡）**：(a) server 端**集中保管多位使用者的 OAuth token**，安全責任重；(b) 多人從**同一 server IP** 發請求，是否觸發 ChatGPT 風控屬**灰區**；(c) 以 CLI 代多人呼叫的**合規**需自行確認。
+- **可行但需謹慎**：技術上做得到（已證實）；是否採用是上述 (a)(b)(c) 的權衡，而非「能不能」。
 
 ### 9.4 使用者實機 100% 確認步驟（速查；完整自動化見 §9.5）
 
@@ -171,3 +171,12 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 - 你要做的只有「在 a 完成那次 OAuth 登入」（需真 Codex 訂閱帳號；token 不進對話、`.gitignore` 已排除）。
 - demo 能證實/排除**綁機（技術硬傷）**；**測不到**多地多 IP 的 ChatGPT 風控（兩容器同宿主同出口 IP）。
 - 跑法與判讀見該目錄 `README.md`。
+
+### 9.6 實機 demo 結果（2026-06-19）✅ 跨機可用
+
+- 環境：上述雙容器（machine-a / machine-b，**不同 hostname**），Codex CLI **v0.141.0**。
+- machine-a `codex login --device-auth` 成功；auth.json 僅含 OAuth tokens（`access_token` / `id_token` / `refresh_token` / `account_id`）+ `auth_mode` / `last_refresh`，**無 agent 私鑰**。
+- 把該 auth.json 搬到**從未登入、不同 hostname 的 machine-b**後，`codex exec --skip-git-repo-check` **成功呼叫 gpt-5.5**、回 `CROSS_MACHINE_OK`、**exit 0、未被要求重新登入、無 401/403**（消耗約 3 萬 tokens 訂閱額度）。
+- **判定：跨機可用已證實——token 不綁機、可搬。** 多使用者集中式在「技術可搬性」這關**通過**。
+- 過程插曲（非授權問題）：首次失敗是 codex 的「Not inside a trusted directory」目錄檢查，加 `--skip-git-repo-check` 後即正常——印證「環境/用法錯 ≠ 綁機」。
+- 尚未實測：① **refresh 未觸發**（token 仍新、`last_refresh` 未變）；refresh token 在 auth.json 內、屬標準 OAuth 續期，預期可跨機（低風險）。② 多地多 IP 的 ChatGPT 風控。
