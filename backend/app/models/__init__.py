@@ -12,6 +12,7 @@ from app.models.share import Share
 from app.models.share_link import ShareLink
 from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
 from app.models.user import User
+from app.models.user_external_credential import UserExternalCredential
 from app.models.user_item_preference import UserItemPreference
 
 __all__ = [
@@ -33,5 +34,6 @@ __all__ = [
     "SnapshotEntry",
     "SnapshotSettings",
     "User",
+    "UserExternalCredential",
     "UserItemPreference",
 ]

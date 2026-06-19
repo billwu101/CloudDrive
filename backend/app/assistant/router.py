@@ -9,7 +9,7 @@ from app.activity_log.repository import SQLActivityLogRepository
 from app.activity_log.service import ActivityLogService
 from app.assistant.context import ContextManager
 from app.assistant.hooks import default_hook_registry, snapshot_before_write_hook
-from app.assistant.llm.client import LLMClientError
+from app.assistant.llm.client import LLMClient, LLMClientError
 from app.assistant.llm.external import ExternalLLMClient
 from app.assistant.llm.ollama import OllamaLLMClient
 from app.assistant.llm.privacy import PrivacyDefault
@@ -47,6 +47,9 @@ from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.drive.repository import SQLDriveItemRepository, SQLUserItemPreferenceRepository
 from app.drive.service import DriveService
+from app.external_model.crypto import CredentialCipher
+from app.external_model.repository import SQLExternalCredentialRepository
+from app.external_model.service import ExternalCredentialService
 from app.file_version.repository import SQLFileVersionRepository
 from app.permission.repository import SQLShareRepository
 from app.permission.service import PermissionService
@@ -126,7 +129,7 @@ def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
     )
 
 
-def _assistant_service(session: DbSession) -> WorkflowService:
+async def _assistant_service(session: DbSession, current_user_id: CurrentUserId) -> WorkflowService:
     settings = get_settings()
     drive_service = _drive_service(session)
     search_service = SearchService(SQLSearchRepository(session))
@@ -153,13 +156,29 @@ def _assistant_service(session: DbSession) -> WorkflowService:
         api_key=settings.llm_api_key,
         keep_alive=settings.llm_keep_alive,
     )
-    external_client = None
+    # Global env-configured external client (DEC-023), used when a user has no
+    # per-user credential.
+    external_client: ExternalLLMClient | LLMClient | None = None
     if settings.external_llm_enabled and settings.external_llm_base_url and settings.external_model:
         external_client = ExternalLLMClient(
             base_url=settings.external_llm_base_url,
             model=settings.external_model,
             api_key=settings.external_llm_api_key,
         )
+    # Per-user credential (DEC-026) takes precedence over the global client.
+    credential_service = ExternalCredentialService(
+        repo=SQLExternalCredentialRepository(session),
+        cipher=(
+            CredentialCipher(settings.credential_encryption_key)
+            if settings.credential_encryption_key
+            else None
+        ),
+        settings=settings,
+    )
+    per_user_external = await credential_service.build_chat_client(current_user_id)
+    if per_user_external is not None:
+        external_client = per_user_external
+
     privacy_default = cast(
         PrivacyDefault,
         settings.privacy_default
@@ -169,7 +188,10 @@ def _assistant_service(session: DbSession) -> WorkflowService:
     model_router = ModelRouter(
         local_client=local_client,
         external_client=external_client,
-        external_enabled=settings.external_llm_enabled,
+        # Enabled whenever an external client exists — a per-user credential is
+        # itself the user's explicit opt-in; the global client already gated on
+        # external_llm_enabled when constructed.
+        external_enabled=external_client is not None,
         max_local_attempts=settings.max_local_attempts,
         privacy_default=privacy_default,
     )

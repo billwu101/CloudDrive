@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     external_llm_api_key: str = ""
     privacy_default: str = "sensitive"
 
+    # Per-user external model credentials (DEC-026). CREDENTIAL_ENCRYPTION_KEY is a
+    # urlsafe-base64 Fernet key (generate: Fernet.generate_key()); empty disables
+    # per-user credentials. Path B (OpenAI API key) calls external_api_base_url
+    # with external_chat_model.
+    credential_encryption_key: str = ""
+    external_api_base_url: str = "https://api.openai.com/v1"
+    external_chat_model: str = "gpt-5.5"
+
     # Time Machine background scheduler (in-process loop). Off by default — enable
     # in a single-worker deployment, or run an external cron calling the same
     # SnapshotService methods for multi-worker setups.
