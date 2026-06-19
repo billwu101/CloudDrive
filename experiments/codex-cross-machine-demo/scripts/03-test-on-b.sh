@@ -26,9 +26,9 @@ before=$(jq -r '.last_refresh // "none"' "$AUTH" 2>/dev/null || echo none)
 echo "last_refresh(before call): $before"
 echo "--- 在 machine-b 用搬來的憑證實際呼叫（消耗一次訂閱額度）---"
 
-# codex exec runs a one-shot non-interactive task. If your codex version uses a
-# different invocation, adjust this single line.
-out=$(codex exec "Reply with exactly: CROSS_MACHINE_OK" 2>&1)
+# codex exec runs a one-shot non-interactive task. --skip-git-repo-check avoids
+# codex's "trusted directory" guard (an environment check, unrelated to auth).
+out=$(codex exec --skip-git-repo-check "Reply with exactly: CROSS_MACHINE_OK" 2>&1)
 rc=$?
 echo "$out" | tail -25
 echo "exit code: $rc"
@@ -42,8 +42,10 @@ if [ "$rc" -eq 0 ] && echo "$out" | grep -q "CROSS_MACHINE_OK"; then
   if [ "$after" != "$before" ]; then
     echo "  （access token 在非原機成功 refresh：last_refresh 有更新）"
   fi
-elif echo "$out" | grep -qiE 'log ?in|unauthor|401|expired|re-?authenticate|sign ?in'; then
-  echo "RESULT: DEVICE-BOUND / FAILED（被要求重新登入或未授權 → 憑證綁原機）"
+elif echo "$out" | grep -qiE 'log ?in|unauthor|401|403|expired|re-?authenticate|sign ?in|invalid.*token|token.*invalid'; then
+  echo "RESULT: DEVICE-BOUND / FAILED（明確的授權失敗 → 憑證可能綁原機）"
+elif echo "$out" | grep -qiE 'trusted directory|skip-git-repo-check|usage:|unexpected argument|unknown option|no such|command not found'; then
+  echo "RESULT: INCONCLUSIVE（環境/指令用法問題，與授權無關 —— 調整指令後重試）"
 else
-  echo "RESULT: DEVICE-BOUND / FAILED（呼叫未成功，原因見上方輸出）"
+  echo "RESULT: INCONCLUSIVE（呼叫未成功，但非明確授權失敗；原因見上方輸出）"
 fi
