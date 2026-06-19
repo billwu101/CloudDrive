@@ -122,7 +122,7 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 
 ## 7. 待確認 / 風險
 
-1. **訂閱制程式化管道（部署模式已定：多使用者集中式）**：方向已定（參考 openclaw：橋接官方 Codex CLI / `codex-acp`；見 §2.1），部署模式已選 **(b) 多使用者集中式、各自帳號**。實作前**需以實機驗證**的兩個前提：① `codex login` 產生的 `auth.json` token 能否被「非原機」的 codex-acp 直接使用（是否綁裝置）；② refresh token 的 endpoint/參數。若 token 綁原機無法跨機 → 訂閱制路徑對多使用者不可行，以路徑 B（API key）交付。需引入 `@zed-industries/codex-acp` + 官方 `codex` 為執行期相依。
+1. **訂閱制跨機可行性 → 已做原始碼層驗證，結論見 §9**。重點：Codex 訂閱 token 綁「agent 私鑰」，多使用者集中式代呼叫須集中保管使用者私鑰且可能觸發風控，**技術脆弱、高風險；建議改以路徑 B（API key）交付**。剩餘只差使用者「實機 100% 確認」（§9 步驟）。
 2. **加密金鑰管理**：`CREDENTIAL_ENCRYPTION_KEY` 用部署 env 即可，或需 KMS／金鑰輪替？
 3. **考官用 Codex 時的憑證來源**：固定走開發者 env，還是也允許 per-user？（目前定為開發者 env。）
 4. **全域 env 金鑰與 per-user 憑證的優先序**：兩者並存時誰優先。
@@ -133,3 +133,33 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 - 實作（本文件僅設計）。
 - 去識別化演算法本身（沿用 DEC-023 既有設計）。
 - 非 OpenAI 的其他外部供應商。
+
+## 9. 訂閱制跨機可行性驗證（2026-06-19，原始碼層）
+
+> 目的：在不進專案、不需真帳號的前提下，先判斷「`codex login` 的 token 能否跨機用 + refresh」，以決定「多使用者集中式 + Codex 訂閱制」是否可行。
+
+### 9.1 方法
+
+讀**官方 Codex CLI 原始碼**（`github.com/openai/codex`，`codex-rs/login/src/auth/{storage,agent_identity,manager}.rs`、`core/src/config/auth_keyring.rs`）。
+
+### 9.2 發現（高信心）
+
+1. **ChatGPT 訂閱認證採「Agent Identity」**：登入時**本機生成 agent 金鑰對（PKCS8 私鑰）並向 ChatGPT authapi 註冊**（`generate_agent_key_material` / `register_agent_identity`）；access token 是**綁該 identity 的 JWT**（`CodexAccessToken::AgentIdentityJwt`），並有 `ManagedChatGptAgentIdentityBinding`。
+2. **`$CODEX_HOME/auth.json`（`AuthDotJson`）結構**：`tokens`（access/refresh）、`last_refresh`、**`agent_identity`（含 `agent_private_key`）**、`OPENAI_API_KEY`、`personal_access_token` 等。
+3. **私鑰位置取決於 backend**：預設 `Direct` → 私鑰**存在 auth.json**（軟體金鑰、可複製）；啟用 `SecretAuthStorage` feature → 私鑰改存 **OS keyring**（macOS Keychain / Linux secret service），**無法從 auth.json 匯出**。
+4. **refresh**：存在 `ChatgptAuthTokensRefresh`，但 refresh 與 agent identity（私鑰）綁定。
+
+### 9.3 結論
+
+- **單搬 token 無效**：access token 綁 agent 私鑰，跨機必須**連私鑰一起搬**。
+- **能否跨機取決於私鑰存哪**：在 auth.json（Direct）→ 搬整包理論可跨機 + refresh；在 keyring（SecretAuthStorage）→ **不可行**。
+- **對「多使用者集中式」的判定（負面）**：即使私鑰可搬，集中式仍須：(a) 在 server **集中保管多位使用者的 agent 私鑰**（敏感度遠高於單純 token，等於託管其訂閱身分金鑰）、(b) 從同一 server IP 用多個異地註冊的 agent identity 發請求，**可能觸發 ChatGPT 風控**、(c) 屬**非官方代理**（ToS 風險）。Codex 的 Agent Identity 顯然為「個人在自己機器使用」而設計（openclaw 亦是個人單機）。
+- **建議**：**多使用者集中式的 Codex 訂閱制路徑技術脆弱且高風險 → 以路徑 B（API key）交付**；訂閱制若要支援，較適合「自架單人」模式（使用者在部署機自己 `codex login`，後端讀本機 `CODEX_HOME`，比照 openclaw）。
+
+### 9.4 使用者實機 100% 確認步驟（選用，token 不外流、不需給我）
+
+1. A 機 `codex login` 後，檢查 `~/.codex/auth.json` 是否有 `agent_identity.agent_private_key`：**有** → 軟體私鑰、可搬；**無**（在 keyring）→ 不可搬，集中式訂閱制直接判不可行。
+2. 把**整個 auth.json**（含私鑰）複製到 B 機的乾淨 `CODEX_HOME`，`export CODEX_HOME=<該目錄>`，跑一個簡單 `codex` 請求：**成功** → 可跨機；**要求重新登入/失敗** → 綁機、集中式不可行。
+3. 在 B 機讓 token 過期或強制 refresh，確認能否在非原機 refresh。
+
+> 任一步失敗即確立「多使用者集中式訂閱制不可行」，改走 API key。三步皆過則訂閱制集中式技術可行，但 §9.3 的私鑰託管與風控風險仍在，需你權衡是否接受。
