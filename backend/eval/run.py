@@ -23,7 +23,7 @@ from eval.judge import (
     judge_case,
     judge_execution,
 )
-from eval.report import aggregates_to_json, aggregates_to_markdown
+from eval.report import aggregates_to_json, aggregates_to_markdown, verbose_markdown
 from eval.runner import run_case_http
 from eval.runner_browser import run_browser_suite
 from eval.schema import EvalCase, load_cases
@@ -87,6 +87,14 @@ def main() -> int:
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a Markdown table")
     parser.add_argument(
+        "--tag", default="", help="Only run cases carrying this tag (e.g. m2, m4, safety)"
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Per-case detail: input prompt, produced result, judge score + 優點/缺點",
+    )
+    parser.add_argument(
         "--browser-timeout",
         type=float,
         default=1800.0,
@@ -94,7 +102,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    cases = [case for case in load_cases(args.cases) if args.mode in case.mode]
+    cases = [
+        case
+        for case in load_cases(args.cases)
+        if args.mode in case.mode and (not args.tag or args.tag in case.tags)
+    ]
 
     # Browser mode drives the real UI for the whole batch in one Playwright run,
     # then scores the captured /assistant/chat responses with the same verifier.
@@ -110,9 +122,12 @@ def main() -> int:
     judge = _build_judge(args)
 
     scores: list[AggregateScore] = []
+    verbose_rows: list[tuple[EvalCase, str, list[CheckResult]]] = []
     for case in cases:
         runs = args.runs if args.runs > 0 else max(1, case.runs)
         run_scores = []
+        result_summary = ""
+        last_checks: list[CheckResult] = []
         for _ in range(runs):
             if args.mode == "exec":
                 exec_output = run_execution_case(case)
@@ -121,6 +136,7 @@ def main() -> int:
                     checks = checks + judge_execution(
                         case, exec_output, judge, fallback_rubric=True
                     )
+                result_summary = _summarise_exec(exec_output)
             elif args.mode == "browser" and case.expect.execute is not None:
                 # Browser execution: the spec generated/approved/ran the skill on
                 # the fixture and reported produced files + downloaded text.
@@ -130,6 +146,7 @@ def main() -> int:
                     checks = checks + judge_execution(
                         case, exec_output, judge, fallback_rubric=True
                     )
+                result_summary = _summarise_exec(exec_output)
             else:
                 response = _run_case(case, args, browser_responses)
                 # Browser/real plans are non-deterministic — don't gate on exact steps.
@@ -137,9 +154,15 @@ def main() -> int:
                 if judge is not None:
                     checks = checks + judge_case(case, response, judge, fallback_rubric=True)
                 checks = checks + _state_checks(case, args)
+                result_summary = _summarise_response(response)
+            last_checks = checks
             run_scores.append(score_case(case, checks))
         scores.append(aggregate_runs(case, run_scores))
+        verbose_rows.append((case, result_summary, last_checks))
 
+    if args.verbose:
+        print(verbose_markdown(verbose_rows))
+        print()
     print(aggregates_to_json(scores) if args.json else aggregates_to_markdown(scores))
 
     if args.save_baseline:
@@ -155,6 +178,40 @@ def main() -> int:
 
     passed = bool(scores) and all(score.passed for score in scores)
     return 0 if passed and not regressed else 1
+
+
+def _summarise_response(response: dict[str, Any]) -> str:
+    """One-line summary of a chat response for --verbose: message + plan skills."""
+    plan = response.get("plan") or {}
+    steps = plan.get("steps", []) if isinstance(plan, dict) else []
+    skills = [s.get("skill") for s in steps if isinstance(s, dict)]
+    parts = []
+    message = str(response.get("message", "")).strip()
+    if message:
+        parts.append(f"訊息: {message}")
+    if skills:
+        parts.append(f"計畫步驟: {skills}")
+    proposal = response.get("skill_proposal") or {}
+    if isinstance(proposal, dict) and proposal.get("name"):
+        parts.append(f"提議技能: {proposal['name']}")
+    return " | ".join(parts) or "（無內容）"
+
+
+def _summarise_exec(exec_output: dict[str, Any]) -> str:
+    """One-line summary of a skill's execution output for --verbose."""
+    files = exec_output.get("produced_files", [])
+    outputs = exec_output.get("outputs") or {}
+    snippets = []
+    if isinstance(outputs, dict):
+        for name, content in outputs.items():
+            if content is None:
+                snippets.append(f"{name}=<binary>")
+            else:
+                flat = " ".join(str(content)[:80].split())  # collapse newlines/runs
+                snippets.append(f"{name}={flat}")
+    if not files:
+        return f"執行 ok={exec_output.get('ok')} error={exec_output.get('error')}"
+    return f"產出檔: {files} | 內容: {'; '.join(snippets)}"
 
 
 def _state_checks(case: EvalCase, args: argparse.Namespace) -> list[CheckResult]:

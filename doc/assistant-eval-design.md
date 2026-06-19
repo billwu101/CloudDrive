@@ -85,8 +85,14 @@ CLI 旗標選模式：
 uv run python -m eval.run --mode api      --cases backend/eval/cases --llm mock|real --runs 3
 uv run python -m eval.run --mode browser  --cases backend/eval/cases --runs 1
 uv run python -m eval.run --mode api --baseline backend/eval/baseline.json   # 回歸比較
+uv run python -m eval.run --mode api --tag m4 --judge --verbose              # 篩 tag + 逐案詳情
 ```
 （`--mode` 即「需不需要跑瀏覽器」的開關。）
+
+**`--tag` / `--verbose`**：
+- `--tag mX` 只跑帶該 tag 的案例（也可篩 `safety`/`read-only` 等任意 tag）。
+- `--verbose` 對每案印**輸入 prompt + 輸出結果 + judge 評分 + 優點/缺點 + 確定性守門**。
+- **M 分級事實**：案例分級是 `m2`–`m5`（**無 m1**），且這些 generated 案例是 **`api`/`browser` 模式**（chat），**不是 `exec`**；`--mode exec` 只有 4 個 `m4` 案例（`eval/cases/exec/`）。要跑某 M 級用 `--mode api --tag mX`。
 
 ## 5. 驗證（Verifier）
 

@@ -3,7 +3,29 @@ from __future__ import annotations
 import json
 
 from eval.judge import JUDGE_DIMENSION
+from eval.schema import EvalCase
 from eval.scoring import AggregateScore, CaseScore
+from eval.verifier import CheckResult
+
+
+def verbose_markdown(rows: list[tuple[EvalCase, str, list[CheckResult]]]) -> str:
+    """Per-case detail for --verbose: input prompt, produced result, the judge's
+    score + strengths/weaknesses, and the deterministic correctness gate."""
+    lines: list[str] = []
+    for case, result_summary, checks in rows:
+        judge_detail = next(
+            (c.detail for c in checks if c.dimension == JUDGE_DIMENSION), "（未評分）"
+        )
+        gate_ok = all(c.ok for c in checks if c.dimension != JUDGE_DIMENSION)
+        lines += [
+            f"### {case.id}",
+            f"- **輸入 prompt**：{case.prompt}",
+            f"- **輸出結果**：{result_summary}",
+            f"- **評分／理由**：{judge_detail}",
+            f"- **確定性守門**：{'✓' if gate_ok else '✗'}",
+            "",
+        ]
+    return "\n".join(lines)
 
 
 def _judge_summary(score: AggregateScore) -> tuple[float | None, str]:
