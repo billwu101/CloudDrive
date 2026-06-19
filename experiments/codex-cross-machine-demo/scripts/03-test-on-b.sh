@@ -12,9 +12,11 @@ if [ ! -f "$AUTH" ]; then
   exit 0
 fi
 
-has_pk=$(jq -r 'if (.agent_identity.agent_private_key // "") != "" then "yes" else "no" end' "$AUTH" 2>/dev/null || echo unknown)
+has_pk=$(jq -r '[paths(scalars) as $p | ($p[-1]|tostring|ascii_downcase) | select(test("priv|pkcs8|secret_key|jwk"))] | if length>0 then "yes" else "no" end' "$AUTH" 2>/dev/null || echo unknown)
 has_tokens=$(jq -r 'if .tokens then "yes" else "no" end' "$AUTH" 2>/dev/null || echo unknown)
-echo "auth.json: agent_private_key=$has_pk, tokens=$has_tokens"
+echo "auth.json: suspected_private_key=$has_pk, tokens=$has_tokens"
+# Only bail early if there's truly nothing usable. tokens alone may suffice if the
+# token isn't device-bound — the real call below is the ground truth either way.
 if [ "$has_pk" = "no" ] && [ "$has_tokens" = "no" ]; then
   echo "RESULT: PRIVATE KEY NOT IN auth.json"
   exit 0
