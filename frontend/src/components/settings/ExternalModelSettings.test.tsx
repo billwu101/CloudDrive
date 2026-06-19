@@ -66,7 +66,7 @@ describe('ExternalModelSettings', () => {
   it('saves a new OpenAI API key', async () => {
     const user = userEvent.setup()
     renderIt()
-    await user.type(screen.getByLabelText(/openai api key/i), 'sk-mytestkey123')
+    await user.type(screen.getByLabelText(/^api key$/i), 'sk-mytestkey123')
     await user.click(screen.getByRole('button', { name: /save key/i }))
 
     expect(await screen.findByText(/saved/i)).toBeInTheDocument()
@@ -92,13 +92,39 @@ describe('ExternalModelSettings', () => {
     expect(await screen.findByText(/removed/i)).toBeInTheDocument()
   })
 
+  it('saves a Codex subscription credential', async () => {
+    server.use(
+      http.put(PATH, async ({ request }) => {
+        lastPut = await request.json()
+        return HttpResponse.json({
+          provider: 'codex',
+          auth_type: 'oauth_token',
+          masked_hint: '…NEW',
+          status: 'active',
+          updated_at: '2026-06-19T00:00:00Z',
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderIt()
+    await user.type(screen.getByLabelText(/auth\.json/i), 'codex-token-blob')
+    await user.click(screen.getByRole('button', { name: /save subscription/i }))
+
+    expect(await screen.findByText(/codex subscription saved/i)).toBeInTheDocument()
+    expect(lastPut).toMatchObject({
+      provider: 'codex',
+      auth_type: 'oauth_token',
+      secret: 'codex-token-blob',
+    })
+  })
+
   it('explains when the server has not enabled external credentials (503)', async () => {
     server.use(
       http.put(PATH, () => HttpResponse.json({ detail: 'not configured' }, { status: 503 })),
     )
     const user = userEvent.setup()
     renderIt()
-    await user.type(screen.getByLabelText(/openai api key/i), 'sk-x')
+    await user.type(screen.getByLabelText(/^api key$/i), 'sk-x')
     await user.click(screen.getByRole('button', { name: /save key/i }))
 
     expect(await screen.findByText(/not enabled external credentials/i)).toBeInTheDocument()

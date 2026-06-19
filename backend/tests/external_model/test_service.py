@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -15,9 +16,14 @@ from app.assistant.llm.client import (
 )
 from app.assistant.llm.external import ExternalLLMClient
 from app.core.config import get_settings
+from app.external_model.codex_client import CodexSubscriptionClient
 from app.external_model.crypto import CredentialCipher
 from app.external_model.repository import AbstractExternalCredentialRepository
-from app.external_model.service import ExternalCredentialService, _CredentialTrackingClient
+from app.external_model.service import (
+    ExternalCredentialService,
+    _CredentialTrackingClient,
+    _FallbackClient,
+)
 from app.models.user_external_credential import UserExternalCredential
 
 
@@ -125,19 +131,73 @@ async def test_build_chat_client_skips_invalid_status() -> None:
     assert await svc.build_chat_client(user) is None
 
 
-async def test_subscription_preferred_falls_back_to_openai_until_e3() -> None:
-    # A user with both a (not-yet-implemented) codex token and an openai key gets
-    # the openai client for now — codex (E3) is skipped, not an error.
+async def test_build_chat_client_codex_only() -> None:
     repo = MemCredentialRepo()
     svc = _service(repo)
     user = uuid4()
-    await svc.upsert(user_id=user, provider="codex", auth_type="oauth_token", secret="tok")
-    await svc.upsert(user_id=user, provider="openai", auth_type="api_key", secret="sk-fallback")
+    await svc.upsert(
+        user_id=user, provider="codex", auth_type="oauth_token", secret='{"tokens":{}}'
+    )
 
     client = await svc.build_chat_client(user)
     assert isinstance(client, _CredentialTrackingClient)
-    assert isinstance(client._inner, ExternalLLMClient)
-    assert client._inner._api_key == "sk-fallback"
+    assert isinstance(client._inner, CodexSubscriptionClient)
+
+
+async def test_subscription_first_chains_to_openai_fallback() -> None:
+    # With both a Codex subscription and an OpenAI key, the subscription is tried
+    # first and the key is the fallback (§2.3).
+    repo = MemCredentialRepo()
+    svc = _service(repo)
+    user = uuid4()
+    await svc.upsert(
+        user_id=user, provider="codex", auth_type="oauth_token", secret='{"tokens":{}}'
+    )
+    await svc.upsert(user_id=user, provider="openai", auth_type="api_key", secret="sk-fallback")
+
+    client = await svc.build_chat_client(user)
+    assert isinstance(client, _FallbackClient)
+    assert isinstance(client._primary, _CredentialTrackingClient)
+    assert isinstance(client._primary._inner, CodexSubscriptionClient)  # codex tried first
+    assert isinstance(client._secondary, _CredentialTrackingClient)
+    assert isinstance(client._secondary._inner, ExternalLLMClient)
+    assert client._secondary._inner._api_key == "sk-fallback"  # api key is the fallback
+
+
+async def test_codex_refresh_flows_back_to_on_refresh() -> None:
+    # A token refreshed by the CLI mid-call is handed to the service's on_refresh.
+    refreshed: list[tuple[UUID, str, str]] = []
+
+    async def on_refresh(user_id: UUID, provider: str, secret: str) -> None:
+        refreshed.append((user_id, provider, secret))
+
+    repo = MemCredentialRepo()
+    svc = ExternalCredentialService(
+        repo=repo,
+        cipher=CredentialCipher(Fernet.generate_key().decode()),
+        settings=get_settings(),
+        on_refresh=on_refresh,
+    )
+    user = uuid4()
+    await svc.upsert(
+        user_id=user,
+        provider="codex",
+        auth_type="oauth_token",
+        secret='{"tokens":{"access_token":"OLD"}}',
+    )
+    client = await svc.build_chat_client(user)
+    assert isinstance(client, _CredentialTrackingClient)
+    codex = client._inner
+    assert isinstance(codex, CodexSubscriptionClient)
+
+    async def runner(cmd: list[str], env: dict[str, str], timeout: float) -> tuple[int, str]:
+        with open(os.path.join(env["CODEX_HOME"], "auth.json"), "w", encoding="utf-8") as fh:
+            fh.write('{"tokens":{"access_token":"NEW"}}')
+        return 0, "x\ncodex\nok\ntokens used 1"
+
+    codex._runner = runner
+    await client.chat([LLMMessage(role="user", content="x")], [], num_ctx=10)
+    assert refreshed == [(user, "codex", '{"tokens":{"access_token":"NEW"}}')]
 
 
 # ── credential-tracking wrapper (auto-mark invalid on rejection) ──────────────
@@ -223,3 +283,30 @@ async def test_build_chat_client_wraps_with_invalidate_callback() -> None:
     with pytest.raises(ExternalAuthError):
         await client.chat([], [], num_ctx=10)
     assert invalidated == [(user, "openai")]
+
+
+# ── subscription-first fallback chain ────────────────────────────────────────
+
+
+async def test_fallback_uses_secondary_on_transient_failure() -> None:
+    client = _FallbackClient(_BoomTransient(), _Ok())
+    resp = await client.chat([], [], num_ctx=10)
+    assert resp.content == "ok"
+
+
+async def test_fallback_uses_secondary_on_auth_error() -> None:
+    client = _FallbackClient(_BoomAuth(), _Ok())
+    resp = await client.chat([], [], num_ctx=10)
+    assert resp.content == "ok"
+
+
+async def test_fallback_returns_primary_when_it_succeeds() -> None:
+    class _OkPrimary:
+        async def chat(
+            self, messages: list[LLMMessage], tools: list[LLMToolDefinition], *, num_ctx: int
+        ) -> LLMResponse:
+            return LLMResponse(content="primary")
+
+    client = _FallbackClient(_OkPrimary(), _Ok())
+    resp = await client.chat([], [], num_ctx=10)
+    assert resp.content == "primary"  # secondary not used
