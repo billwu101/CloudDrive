@@ -44,7 +44,7 @@ services:
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
       EXTERNAL_API_BASE_URL: ${EXTERNAL_API_BASE_URL:-https://api.openai.com/v1}
       EXTERNAL_CHAT_MODEL: ${EXTERNAL_CHAT_MODEL:-gpt-5.5}
-      # Path A (Codex subscription, E3). To enable, build the backend image with
+      # Path A (Codex subscription, EM3). To enable, build the backend image with
       # --build-arg INSTALL_CODEX=1 so the `codex` CLI is present.
       CODEX_BIN: ${CODEX_BIN:-codex}
     ports:

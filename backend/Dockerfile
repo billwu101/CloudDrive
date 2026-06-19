@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Path A (Codex subscription, DEC-026 / E3): the official `codex` CLI is required
+# Path A (Codex subscription, DEC-026 / EM3): the official `codex` CLI is required
 # at runtime to bridge a user's subscription. Only needed when per-user Codex
 # credentials are enabled; build with --build-arg INSTALL_CODEX=1 to include it.
 ARG INSTALL_CODEX=0

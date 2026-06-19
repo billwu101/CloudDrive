@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     external_api_base_url: str = "https://api.openai.com/v1"
     external_chat_model: str = "gpt-5.5"
     # Path A (Codex subscription): the official `codex` CLI binary used to bridge
-    # a user's subscription (E3). Must be installed in the runtime image.
+    # a user's subscription (EM3). Must be installed in the runtime image.
     codex_bin: str = "codex"
 
     # Time Machine background scheduler (in-process loop). Off by default — enable
