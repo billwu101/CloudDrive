@@ -8,6 +8,7 @@ import pytest
 from eval.judge import (
     JUDGE_DIMENSION,
     CodexJudgeModel,
+    CodexRunner,
     HttpJudgeModel,
     JudgeError,
     _extract_codex_reply,
@@ -125,7 +126,7 @@ _CODEX_FRAMED = (
 )
 
 
-def _codex_runner(output: str, rc: int = 0):
+def _codex_runner(output: str, rc: int = 0) -> CodexRunner:
     def run(cmd: list[str], timeout: float) -> tuple[int, str]:
         return rc, output
 
