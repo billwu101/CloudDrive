@@ -66,7 +66,20 @@
 - [ ] judge 可配置 provider（`--judge-provider {gemma|codex|openai}`，**預設 gemma**）；新增 OpenAI/Codex 考官實作（包成 `JudgeModel`），憑證走**開發者 env / CLI**（非終端使用者 profile）。
 - [ ] rubric 評斷 skill：**生成正確性**（程式碼/manifest、codeguard、沙箱、結構化輸出）+ **效果符合期待**（接 `--mode exec` 產出斷言 + judge 語意層判定）。
 - [ ] 考官與被考者分離（引擎跑 Gemma、考官可為更強模型）。
+- [ ] **Codex 考官防呆**：跑前讀 `$CODEX_HOME/auth.json` 的 `account_id`，印出「考官帳號 = …」當稽核提示；無 token 時給明確「請先 `codex login`」訊息（顯示用途，非強制隔離）。
 - [ ] 測試：judge provider 切換、verdict 解析、考官維度計入 scoring。
+
+### 考官憑證模型（Codex provider）
+
+Codex 考官的憑證模型與 EM3（使用者功能）刻意不同——因為它是**單一開發者本機**跑，不是多使用者 server：
+
+- **憑證來源**：開發者本機 `codex login` 的 `~/.codex/auth.json`（或 `CODEX_HOME`），**不入 app DB**。
+- **不需 per-request 隔離**：EM3 的「臨時隔離 `CODEX_HOME` + 用畢即焚」是為了多使用者 server 同時託管多人 token；E6 單一開發者直接用本機預設 `~/.codex` 即可。
+- **登入一次即持久**：CLI 自動以 `refresh_token` 續期；僅在 refresh token 被撤銷／過期／輪替失效時才需重登。
+- **判定機制（重要）**：codex 唯一的判定是「**`CODEX_HOME/auth.json` 有沒有有效 token**」，**不辨識「誰」在用**。
+- **不同開發者各自登入 = 預設不共享的結果，非系統強制**：不同機器／OS 帳號 → 預設指向不同 `~/.codex` → 各自那份要各自填。**沒有**「偵測到別的開發者就要求重登」這種邏輯。
+- **預設不共享 ≠ 強制隔離**：刻意複製 `auth.json` 即可共用（cross-machine demo 已證可搬），但**消耗的是原帳號的訂閱額度**；系統不阻止，靠團隊紀律（各用自己帳號、不共用 auth.json）。
+- **可選防呆**：`account_id` 存在 auth.json，可讀出顯示「目前考官帳號」當提示／稽核，但僅是顯示，codex 不拿它擋人。
 
 ## 測試/驗證任務
 
