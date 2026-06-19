@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -164,3 +167,72 @@ class HttpJudgeModel:
         if not isinstance(content, str):
             raise JudgeError("judge response content must be a string")
         return content
+
+
+# (cmd, timeout) -> (returncode, combined stdout+stderr). Injectable for tests.
+CodexRunner = Callable[[list[str], float], tuple[int, str]]
+
+
+def _default_codex_runner(cmd: list[str], timeout: float) -> tuple[int, str]:
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise JudgeError(f"codex judge subprocess failed: {exc}") from exc
+    return proc.returncode, proc.stdout + proc.stderr
+
+
+def _extract_codex_reply(output: str) -> str:
+    """Pull the assistant reply out of `codex exec` output — the CLI frames it
+    after a ``codex`` line and before a ``tokens used`` line. Necessary because
+    the prompt itself contains JSON; without trimming, parse_verdict would latch
+    onto the echoed prompt. (Same framing as external_model.codex_client.)"""
+    if "\ncodex\n" in output:
+        tail = output.rsplit("\ncodex\n", 1)[-1]
+        return re.split(r"\ntokens used\b", tail)[0].strip()
+    return output.strip()
+
+
+def codex_auth_account(codex_home: str | None = None) -> str:
+    """Read ``account_id`` from the developer's local codex ``auth.json`` for an
+    audit hint. Raises :class:`JudgeError` (telling the dev to ``codex login``)
+    when no token is present — the only "judge identity" check there is: codex
+    keys off whether ``$CODEX_HOME/auth.json`` holds a token, not who you are."""
+    home = codex_home or os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    auth_path = os.path.join(home, "auth.json")
+    if not os.path.exists(auth_path):
+        raise JudgeError(f"no codex login at {auth_path} — run `codex login` first")
+    try:
+        with open(auth_path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise JudgeError(f"cannot read codex auth.json: {exc}") from exc
+    tokens = data.get("tokens") if isinstance(data.get("tokens"), dict) else {}
+    account = data.get("account_id") or tokens.get("account_id")
+    return str(account) if account else "<unknown>"
+
+
+class CodexJudgeModel:
+    """Judge backed by a developer's local Codex subscription (`codex login`).
+
+    Single-developer / local: uses the machine's ``~/.codex`` (or ``CODEX_HOME``)
+    directly via ``codex exec`` — no per-request isolation, encryption, or async
+    (those are EM3 multi-tenant concerns). Synchronous, to match the rest of the
+    eval harness."""
+
+    def __init__(
+        self,
+        *,
+        codex_bin: str = "codex",
+        timeout: float = 120.0,
+        runner: CodexRunner | None = None,
+    ) -> None:
+        self._codex_bin = codex_bin
+        self._timeout = timeout
+        self._runner = runner or _default_codex_runner
+
+    def complete(self, prompt: str) -> str:
+        cmd = [self._codex_bin, "exec", "--skip-git-repo-check", prompt]
+        returncode, output = self._runner(cmd, self._timeout)
+        if returncode != 0:
+            raise JudgeError(f"codex judge exited {returncode}: {output[:200]!r}")
+        return _extract_codex_reply(output)

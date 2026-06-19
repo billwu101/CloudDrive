@@ -61,13 +61,15 @@
 
 ## E6：考官 provider（judge provider）選配增強
 
-> 開發者 eval 工具，不是使用者功能。疊在 E3 已建的 judge（`eval/judge.py`）之上，讓**考官模型**可換更強的 provider。實作上重用 external-model 的 `ExternalLLMClient`（OpenAI）與 `CodexSubscriptionClient`（Codex 訂閱）；但憑證走**開發者 env / CLI**，與終端使用者 profile 無關（原列為 external-model EM4，因範疇不同移來此）。
+> 開發者 eval 工具，不是使用者功能。疊在 E3 已建的 judge（`eval/judge.py`）之上，讓**考官模型**可換更強的 provider；憑證走**開發者 env / CLI**，與終端使用者 profile 無關（原列為 external-model EM4，因範疇不同移來此）。
+> **狀態（2026-06-19）：provider 切換 + Codex 考官 + 防呆 + 測試已完成**；rubric 評斷 exec 產出效果待做。
+> 實作刻意保持 judge 整條**同步**（urllib/subprocess，獨立於 async 的 assistant LLM stack）：gemma/openai 共用既有 `HttpJudgeModel`（OpenAI 相容 HTTP，差在 base_url/model/key），codex 用新的 `CodexJudgeModel`（同步跑本機 `codex exec`）——**未**重用 EM2/EM3 的 async client。
 
-- [ ] judge 可配置 provider（`--judge-provider {gemma|codex|openai}`，**預設 gemma**）；新增 OpenAI/Codex 考官實作（包成 `JudgeModel`），憑證走**開發者 env / CLI**（非終端使用者 profile）。
-- [ ] rubric 評斷 skill：**生成正確性**（程式碼/manifest、codeguard、沙箱、結構化輸出）+ **效果符合期待**（接 `--mode exec` 產出斷言 + judge 語意層判定）。
-- [ ] 考官與被考者分離（引擎跑 Gemma、考官可為更強模型）。
-- [ ] **Codex 考官防呆**：跑前讀 `$CODEX_HOME/auth.json` 的 `account_id`，印出「考官帳號 = …」當稽核提示；無 token 時給明確「請先 `codex login`」訊息（顯示用途，非強制隔離）。
-- [ ] 測試：judge provider 切換、verdict 解析、考官維度計入 scoring。
+- [x] judge 可配置 provider（`--judge-provider {gemma|codex|openai}`，**預設 gemma**）：gemma/openai → `HttpJudgeModel`（provider 設預設端點/模型，flag 可 override）；codex → `CodexJudgeModel`（同步 `codex exec`，runner 可注入測試）。憑證走開發者 env / CLI。
+- [ ] rubric 評斷 skill：**生成正確性**（程式碼/manifest、codeguard、沙箱、結構化輸出）+ **效果符合期待**（接 `--mode exec` 產出斷言 + judge 語意層判定）。**未做**：judge 目前評 plan/message，尚未把 `--mode exec` 的產出餵進 judge prompt。
+- [x] 考官與被考者分離（引擎跑 Gemma、考官可為更強模型）。
+- [x] **Codex 考官防呆**：建 codex judge 前讀 `$CODEX_HOME/auth.json` 的 `account_id`，印 `[judge] provider=codex, account=…`；無 token → `JudgeError`「請先 `codex login`」+ CLI 退出 2（顯示用途，非強制隔離）。
+- [x] 測試：provider 切換、verdict 解析、考官維度計入 scoring（`tests/eval/test_judge.py`：codex 回應萃取/非零退出、`account_id` 讀取/fallback/無 token、工廠 gemma/openai/codex 分派與防呆）。
 
 ### 考官憑證模型（Codex provider）
 

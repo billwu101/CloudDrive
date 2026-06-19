@@ -14,7 +14,14 @@ from eval.baseline import (
 )
 from eval.exec_runner import run_execution_case
 from eval.inproc import run_case_inproc
-from eval.judge import HttpJudgeModel, JudgeModel, judge_case
+from eval.judge import (
+    CodexJudgeModel,
+    HttpJudgeModel,
+    JudgeError,
+    JudgeModel,
+    codex_auth_account,
+    judge_case,
+)
 from eval.report import aggregates_to_json, aggregates_to_markdown
 from eval.runner import run_case_http
 from eval.runner_browser import run_browser_suite
@@ -44,12 +51,19 @@ def main() -> int:
     parser.add_argument(
         "--judge",
         action="store_true",
-        help="Run the LLM judge on cases that declare an `expect.rubric` (needs --judge-base-url)",
+        help="Run the LLM judge on cases that declare an `expect.rubric`",
+    )
+    parser.add_argument(
+        "--judge-provider",
+        choices=["gemma", "codex", "openai"],
+        default=os.environ.get("JUDGE_PROVIDER", "gemma"),
+        help="Judge provider (default gemma). codex uses the developer's local "
+        "`codex login`; openai/gemma use OpenAI-compatible HTTP.",
     )
     parser.add_argument(
         "--judge-base-url",
         default=os.environ.get("JUDGE_BASE_URL", ""),
-        help="OpenAI-compatible base URL for the judge model (recommend a separate model)",
+        help="Override the OpenAI-compatible base URL for gemma/openai judge",
     )
     parser.add_argument("--judge-model", default=os.environ.get("JUDGE_MODEL", ""))
     parser.add_argument("--judge-api-key", default=os.environ.get("JUDGE_API_KEY", ""))
@@ -148,17 +162,34 @@ def _state_checks(case: EvalCase, args: argparse.Namespace) -> list[CheckResult]
 def _build_judge(args: argparse.Namespace) -> JudgeModel | None:
     if not args.judge:
         return None
-    if not args.judge_base_url or not args.judge_model:
-        sys.stderr.write(
-            "error: --judge requires --judge-base-url and --judge-model "
-            "(or JUDGE_BASE_URL / JUDGE_MODEL).\n"
-        )
-        raise SystemExit(2)
-    return HttpJudgeModel(
-        base_url=args.judge_base_url,
-        model=args.judge_model,
-        api_key=args.judge_api_key,
-    )
+
+    provider = args.judge_provider
+    if provider == "codex":
+        # Developer's local `codex login`. Pre-flight: surface which account will
+        # be billed, and fail clearly if nobody is logged in.
+        try:
+            account = codex_auth_account()
+        except JudgeError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            raise SystemExit(2) from exc
+        sys.stderr.write(f"[judge] provider=codex, account={account}\n")
+        return CodexJudgeModel(codex_bin=os.environ.get("CODEX_BIN", "codex"))
+
+    # gemma / openai → OpenAI-compatible HTTP. Provider picks the defaults;
+    # --judge-base-url / --judge-model override them.
+    if provider == "openai":
+        base_url = args.judge_base_url or "https://api.openai.com/v1"
+        model = args.judge_model or "gpt-5.5"
+        if not args.judge_api_key:
+            sys.stderr.write(
+                "error: --judge-provider openai needs --judge-api-key (or JUDGE_API_KEY).\n"
+            )
+            raise SystemExit(2)
+    else:  # gemma (default): a local Ollama OpenAI-compatible endpoint
+        base_url = args.judge_base_url or "http://localhost:11434/v1"
+        model = args.judge_model or "gemma3:12b"
+
+    return HttpJudgeModel(base_url=base_url, model=model, api_key=args.judge_api_key)
 
 
 def _run_case(

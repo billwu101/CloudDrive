@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+from argparse import Namespace
+from pathlib import Path
+
 import pytest
 
 from eval.judge import (
     JUDGE_DIMENSION,
+    CodexJudgeModel,
+    HttpJudgeModel,
     JudgeError,
+    _extract_codex_reply,
     build_judge_prompt,
+    codex_auth_account,
     judge_case,
     parse_verdict,
 )
+from eval.run import _build_judge
 from eval.schema import EvalCase, Expect
 from eval.scoring import score_case
 from eval.verifier import CheckResult, verify
@@ -104,3 +112,107 @@ def test_read_only_case_rubric_judged() -> None:
     base_checks = verify(case, response)
     checks = base_checks + judge_case(case, response, judge)
     assert any(c.dimension == JUDGE_DIMENSION and c.score == 1.0 for c in checks)
+
+
+# ── Codex judge (E6) ─────────────────────────────────────────────────────────
+
+# codex exec output frames the reply after a `codex` line; the prompt itself
+# contains JSON, so the framing must be trimmed before parse_verdict.
+_CODEX_FRAMED = (
+    "OpenAI Codex v0.141\n--------\nworkdir: /x\n--------\n"
+    'user\nRUBRIC...\n{"user_prompt": "List my files"}\n'
+    'codex\n{"score": 0.8, "reasoning": "ok"}\ntokens used 30\n'
+)
+
+
+def _codex_runner(output: str, rc: int = 0):
+    def run(cmd: list[str], timeout: float) -> tuple[int, str]:
+        return rc, output
+
+    return run
+
+
+def test_codex_judge_extracts_reply_past_prompt_echo() -> None:
+    model = CodexJudgeModel(runner=_codex_runner(_CODEX_FRAMED))
+    reply = model.complete("RUBRIC...")
+    assert reply == '{"score": 0.8, "reasoning": "ok"}'  # framing + prompt echo trimmed
+    assert parse_verdict(reply).score == 0.8  # and it parses to the response's score
+
+
+def test_codex_judge_nonzero_exit_raises() -> None:
+    model = CodexJudgeModel(runner=_codex_runner("Error: not logged in", rc=1))
+    with pytest.raises(JudgeError):
+        model.complete("x")
+
+
+def test_extract_codex_reply_without_framing_returns_whole() -> None:
+    assert _extract_codex_reply("plain text") == "plain text"
+
+
+def test_codex_auth_account_reads_account_id(tmp_path: Path) -> None:
+    (tmp_path / "auth.json").write_text('{"account_id": "acct_123", "tokens": {}}')
+    assert codex_auth_account(str(tmp_path)) == "acct_123"
+
+
+def test_codex_auth_account_falls_back_to_tokens(tmp_path: Path) -> None:
+    (tmp_path / "auth.json").write_text('{"tokens": {"account_id": "acct_in_tokens"}}')
+    assert codex_auth_account(str(tmp_path)) == "acct_in_tokens"
+
+
+def test_codex_auth_account_no_login_raises(tmp_path: Path) -> None:
+    with pytest.raises(JudgeError, match="codex login"):
+        codex_auth_account(str(tmp_path))
+
+
+# ── provider factory (--judge-provider) ──────────────────────────────────────
+
+
+def _judge_args(**kw: object) -> Namespace:
+    base: dict[str, object] = {
+        "judge": True,
+        "judge_provider": "gemma",
+        "judge_base_url": "",
+        "judge_model": "",
+        "judge_api_key": "",
+    }
+    base.update(kw)
+    return Namespace(**base)
+
+
+def test_build_judge_disabled_returns_none() -> None:
+    assert _build_judge(_judge_args(judge=False)) is None
+
+
+def test_build_judge_gemma_defaults_to_local_ollama() -> None:
+    judge = _build_judge(_judge_args(judge_provider="gemma"))
+    assert isinstance(judge, HttpJudgeModel)
+    assert judge._model == "gemma3:12b"
+    assert "11434" in judge._url
+
+
+def test_build_judge_openai_requires_api_key() -> None:
+    with pytest.raises(SystemExit):
+        _build_judge(_judge_args(judge_provider="openai"))
+
+
+def test_build_judge_openai_with_key() -> None:
+    judge = _build_judge(_judge_args(judge_provider="openai", judge_api_key="sk-x"))
+    assert isinstance(judge, HttpJudgeModel)
+    assert judge._model == "gpt-5.5"
+    assert "api.openai.com" in judge._url
+
+
+def test_build_judge_codex_no_login_exits(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))  # empty dir → no auth.json
+    with pytest.raises(SystemExit):
+        _build_judge(_judge_args(judge_provider="codex"))
+
+
+def test_build_judge_codex_with_login_prints_account(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "auth.json").write_text('{"account_id": "acct_9"}')
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    judge = _build_judge(_judge_args(judge_provider="codex"))
+    assert isinstance(judge, CodexJudgeModel)
+    assert "account=acct_9" in capsys.readouterr().err  # pre-flight audit hint

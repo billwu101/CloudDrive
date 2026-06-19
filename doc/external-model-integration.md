@@ -119,7 +119,7 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 
 ## 5. Eval harness 考官（judge）
 
-> 範疇註：考官是**開發者 eval 工具**，非終端使用者功能（憑證走開發者 env/CLI）。任務追蹤已移至 `doc/tasks/assistant-eval.md` E6；本節僅保留設計，因考官**重用**本文件的 external client（§2）。
+> 範疇註：考官是**開發者 eval 工具**，非終端使用者功能（憑證走開發者 env/CLI）。任務追蹤已移至 `doc/tasks/assistant-eval.md` E6；本節僅保留設計；codex 考官與 §2 的 Codex 路徑**同源**（`codex exec` + 本機登入），但 judge 自有同步實作（`CodexJudgeModel`），**不共用**本文件的 async client。
 
 - 現有 `backend/eval/judge.py` 已有 `JudgeModel` 協定 + `judge_case`；本設計新增 **OpenAI/Codex 考官實作**，並讓考官可配置。
 - **預設 Gemma 4，可切 Codex/GPT**（`--judge-provider {gemma|codex|openai}`，預設 gemma）。考官憑證來源為**開發者 env / CLI 參數**（eval 由評測者執行，非終端使用者 profile）。
