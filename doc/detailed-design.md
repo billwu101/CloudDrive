@@ -2206,7 +2206,7 @@ E1 in-process mock 模式 + E4 案例（read-only / daily-ops / skill-generation
 
 ## 18.6 外部模型接入（Codex/OpenAI）
 
-> 狀態：**EM1 + EM2 + EM3 已實作並全綠**（EM4 eval 考官 provider 待做）。詳細設計見 [external-model-integration.md](./external-model-integration.md)，決策 DEC-026（延伸 DEC-023）。本節為模組級摘要；任務見 `doc/tasks/external-model.md`。實作落點：`app/external_model/{service,factory,codex_client,crypto,repository,router,schemas}.py`、`app/assistant/llm/external.py`（API key 路徑）。
+> 狀態：**EM1 + EM2 + EM3 已實作並全綠（終端使用者自動升級功能，全數交付）**。考官 provider（原 EM4）屬開發者 eval 工具，見 `doc/tasks/assistant-eval.md` E6。詳細設計見 [external-model-integration.md](./external-model-integration.md)，決策 DEC-026（延伸 DEC-023）。本節為模組級摘要；任務見 `doc/tasks/external-model.md`。實作落點：`app/external_model/{service,factory,codex_client,crypto,repository,router,schemas}.py`、`app/assistant/llm/external.py`（API key 路徑）。
 
 目的：本地 Gemma 4（harness 引擎執行器）反覆失敗時升級 **GPT-5.5**（Codex 訂閱優先、OpenAI API key 備援）；eval 考官可選 Gemma/Codex。憑證為**使用者自帶**、加密儲存於 profile。
 
@@ -2220,9 +2220,9 @@ E1 in-process mock 模式 + E4 案例（read-only / daily-ops / skill-generation
 | `CodexSubscriptionClient` (`codex_client.py`) | 每次呼叫建臨時隔離 `CODEX_HOME` + 寫入解密 token（0600），經官方 `codex exec --skip-git-repo-check` 呼叫、用畢即焚（subprocess runner 可注入測試）。token refresh **採 CLI 自身機制**：呼叫後偵測 `auth.json` 變動 → `on_refresh` 回寫加密（非 server 自打 endpoint）。授權失敗 → `ExternalAuthError` → 標 `invalid`。 |
 | `_FallbackClient` (`service.py`) | provider 選擇/退回：訂閱優先；同時有 OpenAI key 時鏈為「訂閱失敗 → 退回 API key」（§2.3）。 |
 | `ModelRouter` 升級接線（既有） | `MAX_LOCAL_ATTEMPTS` 連續本地失敗 + 資格（憑證可用、外部啟用、非隱私鎖定）→ 改用 per-user 外部憑證；隱私閘/權限/沙箱/確認閘/稽核沿用 DEC-023。 |
-| `eval/judge.py`（既有，擴充） | 考官可配置 provider（`--judge-provider {gemma|codex|openai}`，預設 gemma）；評斷 skill 生成正確性 + 效果符合期待；考官憑證走開發者 env。 |
+| `eval/judge.py`（eval 工具，**非 external-model 範疇**；任務 `assistant-eval.md` E6） | 考官可選 provider（`--judge-provider {gemma|codex|openai}`，預設 gemma），codex/openai 重用本模組的 client；考官憑證走**開發者 env / CLI**。 |
 
-**安全**：絕不存明文密碼/金鑰；OAuth 路徑只存可撤銷 token；憑證不入 log/回應/稽核 metadata；外部預設關閉、使用者明確啟用。**可行性**：Codex 訂閱憑證「跨機可用」已由 `experiments/codex-cross-machine-demo/` 實機驗證（§9.6）。交付分階段：EM1 共用基礎 → EM2 API key → EM3 訂閱 → EM4 考官。
+**安全**：絕不存明文密碼/金鑰；OAuth 路徑只存可撤銷 token；憑證不入 log/回應/稽核 metadata；外部預設關閉、使用者明確啟用。**可行性**：Codex 訂閱憑證「跨機可用」已由 `experiments/codex-cross-machine-demo/` 實機驗證（§9.6）。交付分階段（使用者功能）：EM1 共用基礎 → EM2 API key → EM3 訂閱，全數完成；考官 provider 屬 eval（`assistant-eval.md` E6）。
 
 ## 19. 結論
 

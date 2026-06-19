@@ -2,16 +2,17 @@
 
 設計見 [external-model-integration.md](../external-model-integration.md)，決策見 DEC-026；延伸 DEC-023。
 
-> 狀態（2026-06-19）：**設計完成，尚未實作**。Codex 訂閱憑證「跨機可用」已由實機雙容器 demo 驗證通過（external-model-integration.md §9.6；v0.141.0 auth.json 僅 OAuth token、無綁機私鑰、token 可搬）。
-> 階段代號用 **EM1–EM4**（External Model），刻意別於 eval harness 的 E1–E4（`assistant-eval-design.md`），避免混淆。
-> 交付順序（風險由低到高）：**EM1 共用基礎 → EM2 路徑 B（API key，先通）→ EM3 路徑 A（Codex 訂閱）→ EM4 eval 考官 provider**。
-> **進度（2026-06-19）：EM1 + EM2 + EM3 完成並全綠**（後端 563 單元、前端全綠；migration 0001→0014 於真 pgvector 驗過）。含失敗／額度耗盡自動標記 invalid、Codex 訂閱（隔離 CODEX_HOME + CLI refresh 回寫加密 + 訂閱優先退回 API key）。EM4（eval 考官 provider）待做。
+> 本檔只涵蓋**終端使用者功能**：本地 Gemma 反覆失敗時，自動升級到使用者自己的 GPT-5.5（Codex 訂閱優先、OpenAI key 備援）。Codex 訂閱憑證「跨機可用」已由實機雙容器 demo 驗證通過（external-model-integration.md §9.6；v0.141.0 auth.json 僅 OAuth token、無綁機私鑰、token 可搬）。
+> 階段代號用 **EM1–EM3**（External Model），刻意別於 eval harness 的 E1–E4（`assistant-eval-design.md`），避免混淆。
+> 交付順序（風險由低到高）：**EM1 共用基礎 → EM2 路徑 B（API key，先通）→ EM3 路徑 A（Codex 訂閱）**。
+> **進度（2026-06-19）：EM1 + EM2 + EM3 完成並全綠，使用者自動升級功能全數交付**（後端 563 單元、前端全綠；migration 0001→0014 於真 pgvector 驗過）。含失敗／額度耗盡自動標記 invalid、Codex 訂閱（隔離 CODEX_HOME + CLI refresh 回寫加密 + 訂閱優先退回 API key）。
+> 註：原 EM4「eval 考官 provider」是**開發者 eval 工具**（非使用者功能，且重用 EM2/EM3 的 client），已移至 [assistant-eval.md](./assistant-eval.md) 的 E6。
 > 下列為 checklist（勾選 = 已實作 + 測試）。
 
 ## 完成定義
 
 1. 對應 checklist 完成。
-2. 單元測試通過（憑證加解密、provider 選擇、升級接線、judge provider 以 mock/transport 驗，不需真外部）。
+2. 單元測試通過（憑證加解密、provider 選擇、升級接線，以 mock/transport 驗，不需真外部）。
 3. 隱私閘 / 權限 / 沙箱 / 確認閘 / 稽核沿用 DEC-023，外部回來的計畫/結果與本地同等對待。
 4. 憑證**絕不以明文**落 DB / log / 回應；外部預設關閉，使用者明確啟用。
 
@@ -44,13 +45,6 @@
 - [x] 測試：per-request home 建立／清理、provider 選擇與退回、refresh 流程（runner mock 模擬 CLI refresh）、錯誤分類（授權失敗 vs 暫時）。（跨機可用已由 `experiments/codex-cross-machine-demo/` 實證，§9.6。）
 
 > **EM3 端到端注意**：`codex exec` 輸出解析（`_extract_response`）依實際 CLI 輸出框架；單元層以注入 runner 覆蓋，真實訂閱 + 已安裝 CLI 的端到端跑需在部署環境驗證／微調。
-
-## EM4：eval 考官（judge）provider
-
-- [ ] judge 可配置 provider（`--judge-provider {gemma|codex|openai}`，**預設 gemma**）；新增 OpenAI/Codex 考官實作，憑證走**開發者 env / CLI**（非終端使用者 profile）。
-- [ ] rubric 評斷 skill：**生成正確性**（程式碼/manifest、codeguard、沙箱、結構化輸出）+ **效果符合期待**（接 `--mode exec` 產出斷言 + judge 語意層判定）。
-- [ ] 考官與被考者分離（引擎跑 Gemma、考官可為更強模型）。
-- [ ] 測試：judge provider 切換、verdict 解析、考官維度計入 scoring。
 
 ## 文件同步
 

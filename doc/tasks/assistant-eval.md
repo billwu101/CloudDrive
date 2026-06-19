@@ -59,6 +59,15 @@
 - [x] 測試 `tests/eval/test_exec.py`（bundled exec 案例產出正確、內容錯誤要 fail、沙箱失敗要 fail）;`test_inproc_runner` 改只跑有 `mock_llm` 的 chat 案例。
 - [x] **Browser 執行（真實模型 + UI + 沙箱端到端）**：`--mode browser` 對 execution 案例 → 用 API 把 fixture 種進 drive → 生成 skill → Approve 安裝 → 右鍵 fixture 執行（用 manifest 實際生成的選單標籤）→ 擷取 `/skills/{id}/execute` → 下載產出檔內容 → `verify_execution`（spec 見 `assistant-eval.spec.ts` `runExecutionCase`）。實測 **3/4**：hash 報告 / 縮圖 / untar 模型生成的 skill 端到端產出正確;**pdf 抽字 0.75（執行成功、有產出,但模型 naive PDF 解析器抽出的內容對不上預期文字——真實模型能力限制,非 harness 問題;決定性 exec 用 pypdf 為 4/4）**。browser 執行為盡力而為的真實 smoke,通過數反映模型當下產碼品質。
 
+## E6：考官 provider（judge provider）選配增強
+
+> 開發者 eval 工具，不是使用者功能。疊在 E3 已建的 judge（`eval/judge.py`）之上，讓**考官模型**可換更強的 provider。實作上重用 external-model 的 `ExternalLLMClient`（OpenAI）與 `CodexSubscriptionClient`（Codex 訂閱）；但憑證走**開發者 env / CLI**，與終端使用者 profile 無關（原列為 external-model EM4，因範疇不同移來此）。
+
+- [ ] judge 可配置 provider（`--judge-provider {gemma|codex|openai}`，**預設 gemma**）；新增 OpenAI/Codex 考官實作（包成 `JudgeModel`），憑證走**開發者 env / CLI**（非終端使用者 profile）。
+- [ ] rubric 評斷 skill：**生成正確性**（程式碼/manifest、codeguard、沙箱、結構化輸出）+ **效果符合期待**（接 `--mode exec` 產出斷言 + judge 語意層判定）。
+- [ ] 考官與被考者分離（引擎跑 Gemma、考官可為更強模型）。
+- [ ] 測試：judge provider 切換、verdict 解析、考官維度計入 scoring。
+
 ## 測試/驗證任務
 
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。

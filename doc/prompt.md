@@ -154,7 +154,7 @@
 
 本地 Gemma 4 反覆失敗時升級 GPT-5.5（設計見 `doc/external-model-integration.md`，決策 DEC-026，延伸 DEC-023）。以下列任務文件為範圍，對應 Stage 15~17（**設計完成、尚未實作**）：
 
-- `doc/tasks/external-model.md`（EM1 共用基礎 → EM2 路徑 B API key → EM3 路徑 A Codex 訂閱 → EM4 eval 考官 provider）
+- `doc/tasks/external-model.md`（使用者功能：EM1 共用基礎 → EM2 路徑 B API key → EM3 路徑 A Codex 訂閱）；考官 provider 見 `assistant-eval.md` E6
 
 擴充原則：
 1. 憑證為**使用者自帶**、加密 at rest（`CREDENTIAL_ENCRYPTION_KEY`），對外只回遮罩；**絕不存明文密碼**、不入 log/回應。

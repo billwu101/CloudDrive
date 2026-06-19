@@ -61,7 +61,7 @@
 
 ## 擴充模組：外部模型接入（Codex/OpenAI）（E1+E2 完成、E3/E4 待做）
 
-- [~] [外部模型接入](./external-model.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5。**已完成 E1+E2**：`user_external_credentials` 加密表（Fernet、`CREDENTIAL_ENCRYPTION_KEY`、永不回明文）+ profile 設定/遮罩 UI（Settings 頁）+ ModelRouter per-user 升級接線 + **OpenAI API key 路徑**（複用 `ExternalLLMClient`，gpt-5.5）。**待做 E3**（Codex 訂閱：per-request 隔離 `CODEX_HOME` + `codex-acp` + refresh，跨機可用已 §9.6 實證）、**E4**（eval 考官 provider）。決策 DEC-026；任務 [external-model.md](./external-model.md)；設計 [external-model-integration.md](../external-model-integration.md)。
+- [x] [外部模型接入](./external-model.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5（使用者自帶憑證）。**EM1+EM2+EM3 完成**：`user_external_credentials` 加密表（Fernet、`CREDENTIAL_ENCRYPTION_KEY`、永不回明文）+ profile 設定/遮罩 UI + ModelRouter per-user 升級接線 + **OpenAI API key 路徑**（`ExternalLLMClient`，gpt-5.5；失敗/額度耗盡自動標 invalid）+ **Codex 訂閱路徑**（per-request 隔離 `CODEX_HOME` + CLI refresh 回寫加密 + 訂閱優先退回 API key，跨機可用已 §9.6 實證）。考官 provider（原 E4，開發者 eval 工具）移至 [assistant-eval.md](./assistant-eval.md) E6。決策 DEC-026；任務 [external-model.md](./external-model.md)；設計 [external-model-integration.md](../external-model-integration.md)。
 
 ## 建議執行順序
 
