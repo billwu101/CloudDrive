@@ -21,6 +21,7 @@ from eval.judge import (
     JudgeModel,
     codex_auth_account,
     judge_case,
+    judge_execution,
 )
 from eval.report import aggregates_to_json, aggregates_to_markdown
 from eval.runner import run_case_http
@@ -114,11 +115,17 @@ def main() -> int:
         run_scores = []
         for _ in range(runs):
             if args.mode == "exec":
-                checks = verify_execution(case, run_execution_case(case))
+                exec_output = run_execution_case(case)
+                checks = verify_execution(case, exec_output)
+                if judge is not None:
+                    checks = checks + judge_execution(case, exec_output, judge)
             elif args.mode == "browser" and case.expect.execute is not None:
                 # Browser execution: the spec generated/approved/ran the skill on
                 # the fixture and reported produced files + downloaded text.
-                checks = verify_execution(case, browser_responses.get(case.id, {}))
+                exec_output = browser_responses.get(case.id, {})
+                checks = verify_execution(case, exec_output)
+                if judge is not None:
+                    checks = checks + judge_execution(case, exec_output, judge)
             else:
                 response = _run_case(case, args, browser_responses)
                 # Browser/real plans are non-deterministic — don't gate on exact steps.

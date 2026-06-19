@@ -13,7 +13,7 @@
 | 失敗／額度耗盡 → 標 `invalid` | §2.2 | EM2 | `external.py`（401/403/429-quota 分類）+ `service._CredentialTrackingClient` | ✅ |
 | 路徑 A：Codex 訂閱 | §2.1 | EM3 | `app/external_model/codex_client.py`（`CodexSubscriptionClient`） | ✅ |
 | provider 選擇／退回 | §2.3 | EM3 | `service.build_chat_client` + `_FallbackClient` | ✅ |
-| eval 考官 provider | §5 | E6 | `eval/judge.py`（待擴充） | ⬜ |
+| eval 考官 provider（+ 評 exec 產出） | §5 | E6 | `eval/judge.py`、`eval/run.py`（任務在 `tasks/assistant-eval.md`） | ✅ |
 
 > **設計與實作的兩處刻意偏離**（細節見對應段落）：① Codex 呼叫用 `codex exec --skip-git-repo-check` subprocess，**非** `@zed-industries/codex-acp` wrapper；② token refresh 用 **Codex CLI 自身機制 + 呼叫後回寫加密**，**非** server 自打 OpenAI token endpoint（更穩健、少維護）。
 

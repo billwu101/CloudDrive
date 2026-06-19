@@ -12,9 +12,11 @@ from eval.judge import (
     HttpJudgeModel,
     JudgeError,
     _extract_codex_reply,
+    build_exec_judge_prompt,
     build_judge_prompt,
     codex_auth_account,
     judge_case,
+    judge_execution,
     parse_verdict,
 )
 from eval.run import _build_judge
@@ -113,6 +115,56 @@ def test_read_only_case_rubric_judged() -> None:
     base_checks = verify(case, response)
     checks = base_checks + judge_case(case, response, judge)
     assert any(c.dimension == JUDGE_DIMENSION and c.score == 1.0 for c in checks)
+
+
+# ── judge over execution output (rubric scores the actual effect) ────────────
+
+
+def _exec_case(rubric: str | None) -> EvalCase:
+    return EvalCase(id="e1", prompt="hash the file", expect=Expect(rubric=rubric))
+
+
+def test_build_exec_judge_prompt_includes_outputs() -> None:
+    prompt = build_exec_judge_prompt(
+        rubric="must produce correct sha256",
+        prompt="hash the file",
+        exec_output={
+            "ok": True,
+            "produced_files": ["report.txt"],
+            "outputs": {"report.txt": "sha256: abc123"},
+        },
+    )
+    assert "must produce correct sha256" in prompt
+    assert "report.txt" in prompt
+    assert "sha256: abc123" in prompt  # the actual produced content is shown
+
+
+def test_build_exec_judge_prompt_marks_binary_and_truncates() -> None:
+    long_text = "x" * 600
+    prompt = build_exec_judge_prompt(
+        rubric="r",
+        prompt="p",
+        exec_output={"outputs": {"thumb.png": None, "big.txt": long_text}},
+    )
+    assert "<binary>" in prompt  # undecodable output flagged, not dumped
+    assert "x" * 500 in prompt
+    assert "x" * 600 not in prompt  # long content truncated to keep prompt bounded
+
+
+def test_judge_execution_scores_against_output() -> None:
+    judge = _FakeJudge('{"score": 0.95, "reasoning": "correct hash"}')
+    exec_output = {"ok": True, "produced_files": ["r.txt"], "outputs": {"r.txt": "sha256: x"}}
+    checks = judge_execution(_exec_case("must hash"), exec_output, judge)
+    assert len(checks) == 1
+    assert checks[0].dimension == JUDGE_DIMENSION
+    assert checks[0].score == 0.95
+    assert "r.txt" in judge.prompts[0]  # judged against the execution output, not a plan
+
+
+def test_judge_execution_without_rubric_yields_no_checks() -> None:
+    judge = _FakeJudge('{"score": 1.0}')
+    assert judge_execution(_exec_case(None), {"ok": True}, judge) == []
+    assert judge.prompts == []  # non-rubric exec cases untouched
 
 
 # ── Codex judge (E6) ─────────────────────────────────────────────────────────

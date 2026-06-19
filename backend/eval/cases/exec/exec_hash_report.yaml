@@ -24,6 +24,12 @@ expect:
           out = os.path.join(output_dir, 'hash_report.txt')
           open(out, 'w').write('\n'.join(lines))
           return {'report': 'hash_report.txt'}
+  # Optional semantic check on the *effect* (only runs under --judge): the judge
+  # scores the produced report against this rubric. Weight 0.3 keeps the
+  # deterministic execution check the primary gate.
+  rubric: |
+    產出的雜湊報告應正確包含 sample.txt 的 MD5、SHA1、SHA256 三種十六進位摘要，
+    每行標明演算法名稱，且無多餘或錯誤內容。
 scoring:
-  weights: { execution: 1.0 }
-  pass_threshold: 1.0
+  weights: { execution: 0.7, judge: 0.3 }
+  pass_threshold: 0.8

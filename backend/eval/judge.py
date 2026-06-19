@@ -68,6 +68,42 @@ def build_judge_prompt(*, rubric: str, prompt: str, response: dict[str, Any]) ->
     )
 
 
+_MAX_CONTENT_CHARS = 500
+
+
+def build_exec_judge_prompt(*, rubric: str, prompt: str, exec_output: dict[str, Any]) -> str:
+    """Render a judging prompt from the rubric + a skill's *actual execution
+    output* (produced files and their text), so the judge can score whether the
+    effect matches the user's intent — not just the chat plan. Long file contents
+    are truncated and binary outputs marked, to keep the prompt bounded."""
+
+    raw_outputs = exec_output.get("outputs") or {}
+    file_contents: dict[str, str] = {}
+    if isinstance(raw_outputs, dict):
+        for name, content in raw_outputs.items():
+            if content is None:
+                file_contents[str(name)] = "<binary>"
+            else:
+                text = str(content)
+                truncated = text[:_MAX_CONTENT_CHARS]
+                file_contents[str(name)] = truncated + (
+                    "…" if len(text) > _MAX_CONTENT_CHARS else ""
+                )
+    summary = {
+        "user_prompt": prompt,
+        "execution_ok": exec_output.get("ok"),
+        "error": exec_output.get("error"),
+        "produced_files": exec_output.get("produced_files", []),
+        "file_contents": file_contents,
+    }
+    body = json.dumps(summary, ensure_ascii=False, indent=2)
+    return (
+        f"{_SYSTEM}\n\nRUBRIC:\n{rubric}\n\n"
+        f"SKILL EXECUTION RESULT (summarised):\n{body}\n\n"
+        'Return JSON only, e.g. {"score": 0.9, "reasoning": "..."}.'
+    )
+
+
 def parse_verdict(text: str) -> JudgeVerdict:
     """Pull the {score, reasoning} JSON out of a model reply, tolerating code
     fences or surrounding prose, and clamp the score to [0, 1]."""
@@ -90,6 +126,22 @@ def parse_verdict(text: str) -> JudgeVerdict:
     return JudgeVerdict(score=score, reasoning=reasoning)
 
 
+def _run_judge(model: JudgeModel, prompt: str, threshold: float, name: str) -> list[CheckResult]:
+    """Complete the judge prompt and turn the verdict into one judge-dimension
+    CheckResult carrying the continuous rubric score (scoring averages it like
+    any other dimension)."""
+    verdict = parse_verdict(model.complete(prompt))
+    return [
+        CheckResult(
+            dimension=JUDGE_DIMENSION,
+            name=name,
+            ok=verdict.score >= threshold,
+            detail=f"score={verdict.score:.2f} — {verdict.reasoning}",
+            score=verdict.score,
+        )
+    ]
+
+
 def judge_case(
     case: EvalCase,
     response: dict[str, Any],
@@ -97,28 +149,29 @@ def judge_case(
     *,
     threshold: float = _DEFAULT_THRESHOLD,
 ) -> list[CheckResult]:
-    """Run the LLM judge for a case that declares a rubric.
-
-    Returns a single ``judge``-dimension :class:`CheckResult` carrying the
-    continuous rubric score (so scoring averages it like any other dimension);
-    cases without a rubric yield no checks.
-    """
-
+    """Judge a chat case against its rubric (plan/message). No rubric → no checks."""
     rubric = case.expect.rubric
     if not rubric:
         return []
-
     prompt = build_judge_prompt(rubric=rubric, prompt=case.prompt, response=response)
-    verdict = parse_verdict(model.complete(prompt))
-    return [
-        CheckResult(
-            dimension=JUDGE_DIMENSION,
-            name="rubric judgement",
-            ok=verdict.score >= threshold,
-            detail=f"score={verdict.score:.2f} — {verdict.reasoning}",
-            score=verdict.score,
-        )
-    ]
+    return _run_judge(model, prompt, threshold, "rubric judgement")
+
+
+def judge_execution(
+    case: EvalCase,
+    exec_output: dict[str, Any],
+    model: JudgeModel,
+    *,
+    threshold: float = _DEFAULT_THRESHOLD,
+) -> list[CheckResult]:
+    """Judge a skill's *actual execution output* against its rubric (the effect,
+    not just the plan). No rubric → no checks, so non-rubric exec cases are
+    unaffected."""
+    rubric = case.expect.rubric
+    if not rubric:
+        return []
+    prompt = build_exec_judge_prompt(rubric=rubric, prompt=case.prompt, exec_output=exec_output)
+    return _run_judge(model, prompt, threshold, "rubric judgement (execution)")
 
 
 class HttpJudgeModel:
