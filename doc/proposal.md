@@ -158,7 +158,15 @@ MVP 指第一版可展示與可使用的核心版本。
 11. WebSocket 即時通知。
 12. 桌面或手機同步客戶端。
 
-### 5.4 暫不包含功能
+### 5.4 In-App AI Assistant（核心）
+
+28 模組之後新增的對話式 AI 助理（自然語言操作檔案、計畫確認、現場生成技能、技能管理、工作流程重用）。完整規格見 **§33**。
+
+### 5.5 時光機（Snapshots，核心）
+
+類 Apple Time Machine 的整碟時間點還原：定期/手動/助理操作前自動建快照，可瀏覽過去某時間點的硬碟並就地還原。完整規格見 **§34**。
+
+### 5.6 暫不包含功能
 
 初版不包含：
 
@@ -167,14 +175,6 @@ MVP 指第一版可展示與可使用的核心版本。
 3. 手機 App。
 4. 複雜企業組織權限。
 5. 端對端加密。
-
-### 5.5 擴充功能：In-App AI Assistant
-
-核心 28 模組之後新增的對話式 AI 助理（自然語言操作檔案、計畫確認、現場生成技能、技能管理、工作流程重用）。完整規格見 **§33**。
-
-### 5.6 擴充功能：時光機（Snapshots）
-
-類 Apple Time Machine 的整碟時間點還原：定期/手動/助理操作前自動建快照，可瀏覽過去某時間點的硬碟並就地還原。完整規格見 **§34**。
 
 ## 6. 使用者角色
 
@@ -1144,7 +1144,7 @@ Access token 依安全規範只存在前端記憶體（Zustand store），不寫
 | `frontend/src/api/authApi.ts` | 新增 `authApi.refresh()` 使用 `refreshClient` |
 | `frontend/src/api/client.ts` | 將 `refreshClient` 改為具名匯出（`export const`） |
 
-## 33. 擴充功能：In-App AI Assistant（28 模組之後新增）
+## 33. In-App AI Assistant（28 模組之後新增的核心功能）
 
 原 28 模組完成後，於網頁應用內新增一個**可對話、可自我擴充的 AI 助理**。使用者用自然語言描述需求，助理把需求轉成**可檢視、可確認、可執行、可記錄的 Workflow**，以既有或現場生成的技能完成檔案／資料夾操作。完整設計見 [assistant-design.md](./assistant-design.md)，評測見 [assistant-eval-design.md](./assistant-eval-design.md)，決策見 [decisions.md](./decisions.md) 的 DEC-016～023。
 
@@ -1213,7 +1213,7 @@ frontend/e2e/assistant/assistant-eval.spec.ts  frontend/playwright.eval.config.t
 - 後端 `tests/assistant/`、前端 `components/assistant/*.test.tsx`。
 - 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
 
-## 34. 擴充功能：時光機（Snapshots）
+## 34. 時光機（Snapshots，核心功能）
 
 類 Apple Time Machine 的整碟時間點還原。完整設計見 [time-machine-design.md](./time-machine-design.md)，決策見 DEC-024。**狀態：S1-S5 已實作並測試完成；仍有非阻擋限制：還原時硬配額檢查待補強。**
 
