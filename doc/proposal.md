@@ -368,6 +368,12 @@
 - **Repository**：資料庫查詢、transaction 管理、封裝 SQLAlchemy 操作。
 - **Storage Provider**：儲存／讀取／刪除檔案、建立短效下載 URL。
 
+**模組清單**（每個為 `app/<module>/` 套件）：
+
+- **對外模組**（含 `router.py`）：`auth`、`drive`、`upload`、`download`、`file_version`、`share`、`search`、`trash`、`preview`、`users`、`assistant`、`snapshot`、`external_model`。
+- **內部服務模組**（無對外 router，由其他 service 注入）：`activity_log`（操作紀錄）、`permission`（權限判斷）。
+- **支撐層**：`core`（設定／JWT 安全／例外／錯誤碼／依賴注入）、`db`（session）、`models`（SQLAlchemy ORM）、`schemas`（共用回應型別）、`api/v1/router.py`（聚合各模組 router）、`storage`（StorageProvider 抽象：本地／物件儲存）、`email`（寄信抽象：console／SMTP）。
+
 完整目錄與模組邊界見 [detailed-design.md](./detailed-design.md) §4（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
 
 ## 12. 資料庫設計
