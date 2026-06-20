@@ -543,294 +543,63 @@ frontend/
 
 ## 13. API 設計
 
-API base path 建議為：
-
-```text
-/api/v1
-```
+API base path：`/api/v1`。下表為各端點對應的動作（介面需求）；**完整 request/response 規格見 OpenAPI 匯出（程式碼自動生成）** 與 [detailed-design.md](./detailed-design.md) §8（通用規則：統一錯誤格式、分頁、`DriveItemResponse`、API↔模組對應）。
 
 ### 13.1 Auth API
 
-#### POST /auth/register
-
-註冊使用者。
-
-Request:
-
-```json
-{
-  "email": "user@example.com",
-  "username": "User",
-  "password": "password"
-}
-```
-
-Response:
-
-```json
-{
-  "id": "uuid",
-  "email": "user@example.com",
-  "username": "User"
-}
-```
-
-#### POST /auth/login
-
-登入。
-
-Request:
-
-```json
-{
-  "email": "user@example.com",
-  "password": "password"
-}
-```
-
-Response:
-
-```json
-{
-  "access_token": "jwt",
-  "refresh_token": "jwt",
-  "token_type": "bearer"
-}
-```
-
-#### POST /auth/refresh
-
-刷新 access token。
-
-#### POST /auth/logout
-
-登出並使 refresh token 失效。
-
-#### GET /auth/me
-
-取得目前登入使用者。
+| 端點 | 動作 |
+| --- | --- |
+| `POST /auth/register` | 註冊使用者 |
+| `POST /auth/login` | 登入（回 access token + refresh token） |
+| `POST /auth/refresh` | 刷新 access token |
+| `POST /auth/logout` | 登出並使 refresh token 失效 |
+| `GET /auth/me` | 取得目前登入使用者 |
 
 ### 13.2 Drive API
 
-#### GET /drive/items
-
-取得指定資料夾底下的檔案與資料夾。
-
-Query:
-
-| 參數 | 說明 |
+| 端點 | 動作 |
 | --- | --- |
-| parent_id | 上層資料夾 id，根目錄可省略 |
-| sort | name、updated_at、size |
-| order | asc、desc |
-| page | 頁碼 |
-| page_size | 每頁筆數 |
-
-Response:
-
-```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "name": "report.pdf",
-      "item_type": "file",
-      "mime_type": "application/pdf",
-      "size_bytes": 102400,
-      "is_starred": false,
-      "updated_at": "2026-06-11T14:00:00Z"
-    }
-  ],
-  "total": 1
-}
-```
-
-#### POST /drive/folders
-
-建立資料夾。
-
-Request:
-
-```json
-{
-  "parent_id": "uuid-or-null",
-  "name": "New Folder"
-}
-```
-
-#### PATCH /drive/items/{item_id}/name
-
-重新命名。
-
-Request:
-
-```json
-{
-  "name": "new-name.pdf"
-}
-```
-
-#### PATCH /drive/items/{item_id}/parent
-
-移動檔案或資料夾。
-
-Request:
-
-```json
-{
-  "parent_id": "uuid-or-null"
-}
-```
-
-#### PUT /drive/items/{item_id}/star
-
-設定星號。
-
-Request:
-
-```json
-{
-  "is_starred": true
-}
-```
-
-#### GET /drive/items/{item_id}/download
-
-下載檔案。可直接串流回應，或回傳短效下載 URL。
-
-#### GET /drive/items/{item_id}/preview
-
-取得預覽資訊。
-
-Response:
-
-```json
-{
-  "preview_type": "pdf",
-  "url": "https://example.com/preview/temporary-url",
-  "expires_in": 300
-}
-```
+| `GET /drive/items` | 取得指定資料夾底下的檔案與資料夾（支援 sort/order/分頁） |
+| `POST /drive/folders` | 建立資料夾 |
+| `PATCH /drive/items/{item_id}/name` | 重新命名 |
+| `PATCH /drive/items/{item_id}/parent` | 移動檔案或資料夾 |
+| `PUT /drive/items/{item_id}/star` | 設定星號 |
+| `GET /drive/items/{item_id}/download` | 下載檔案（串流或短效下載 URL） |
+| `GET /drive/items/{item_id}/preview` | 取得預覽資訊 |
 
 ### 13.3 Upload API
 
-#### POST /upload/simple
-
-小檔案直接上傳。適用於初版或小於指定大小的檔案。
-
-Form data:
-
-| 欄位 | 說明 |
+| 端點 | 動作 |
 | --- | --- |
-| parent_id | 上層資料夾 |
-| file | 檔案 |
-
-#### POST /upload/sessions
-
-建立分片上傳工作。
-
-Request:
-
-```json
-{
-  "parent_id": "uuid-or-null",
-  "file_name": "video.mp4",
-  "mime_type": "video/mp4",
-  "total_size_bytes": 104857600,
-  "chunk_size_bytes": 5242880
-}
-```
-
-#### PUT /upload/sessions/{session_id}/chunks/{chunk_index}
-
-上傳單一分片。
-
-#### POST /upload/sessions/{session_id}/complete
-
-合併分片並建立檔案紀錄。
-
-#### DELETE /upload/sessions/{session_id}
-
-取消上傳。
+| `POST /upload/simple` | 小檔案直接上傳 |
+| `POST /upload/sessions` | 建立分片上傳工作 |
+| `PUT /upload/sessions/{session_id}/chunks/{chunk_index}` | 上傳單一分片 |
+| `POST /upload/sessions/{session_id}/complete` | 合併分片並建立檔案紀錄 |
+| `DELETE /upload/sessions/{session_id}` | 取消上傳 |
 
 ### 13.4 Search API
 
-#### GET /search
-
-搜尋檔案。
-
-Query:
-
-| 參數 | 說明 |
+| 端點 | 動作 |
 | --- | --- |
-| q | 關鍵字 |
-| type | file、folder、all |
-| mime_type | MIME type |
-| page | 頁碼 |
-| page_size | 每頁筆數 |
+| `GET /search` | 搜尋檔案 |
 
 ### 13.5 Trash API
 
-#### GET /trash
-
-取得垃圾桶項目。
-
-#### PATCH /trash/{item_id}/restore
-
-還原項目。
-
-#### DELETE /trash/{item_id}
-
-永久刪除項目。
-
-#### DELETE /trash
-
-清空垃圾桶。
+| 端點 | 動作 |
+| --- | --- |
+| `GET /trash` | 取得垃圾桶項目 |
+| `PATCH /trash/{item_id}/restore` | 還原項目 |
+| `DELETE /trash/{item_id}` | 永久刪除項目 |
+| `DELETE /trash` | 清空垃圾桶 |
 
 ### 13.6 Share API
 
-#### POST /share/items/{item_id}/users
-
-分享給指定使用者。
-
-Request:
-
-```json
-{
-  "target_email": "friend@example.com",
-  "permission": "viewer"
-}
-```
-
-#### GET /share/shared-with-me
-
-取得與我分享的檔案。
-
-#### POST /share/items/{item_id}/links
-
-建立公開分享連結。
-
-Request:
-
-```json
-{
-  "permission": "viewer",
-  "password": "optional-password",
-  "expires_at": "2026-12-31T23:59:59Z"
-}
-```
-
-Response:
-
-```json
-{
-  "url": "https://drive.example.com/s/share-token"
-}
-```
-
-#### DELETE /share/links/{link_id}
-
-停用分享連結。
+| 端點 | 動作 |
+| --- | --- |
+| `POST /share/items/{item_id}/users` | 分享給指定使用者 |
+| `GET /share/shared-with-me` | 取得與我分享的檔案 |
+| `POST /share/items/{item_id}/links` | 建立公開分享連結 |
+| `DELETE /share/links/{link_id}` | 停用分享連結 |
 
 ## 14. 前端頁面規劃
 
