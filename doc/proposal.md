@@ -328,120 +328,13 @@ StorageProvider
 3. S3StorageProvider
 4. AzureBlobStorageProvider
 
-## 9. 後端目錄建議
+## 9. 後端目錄結構
 
-```text
-backend/
-  app/
-    main.py
-    core/
-      config.py
-      security.py
-      dependencies.py
-      exceptions.py
-    db/
-      session.py
-      base.py
-      migrations/
-    models/
-      user.py
-      drive_item.py
-      file_version.py
-      share.py
-      upload_session.py
-      activity_log.py
-    schemas/
-      auth.py
-      user.py
-      drive_item.py
-      share.py
-      upload.py
-    routers/
-      auth.py
-      users.py
-      drive.py
-      upload.py
-      share.py
-      search.py
-      trash.py
-    services/
-      auth_service.py
-      drive_service.py
-      storage_service.py
-      share_service.py
-      search_service.py
-      quota_service.py
-    repositories/
-      user_repository.py
-      drive_repository.py
-      share_repository.py
-    storage/
-      base.py
-      local.py
-      minio.py
-      s3.py
-    tasks/
-      thumbnails.py
-      cleanup.py
-      virus_scan.py
-    tests/
-  alembic.ini
-  pyproject.toml
-  Dockerfile
-```
+後端按**模組**組織：每個 domain 為一個自足套件（`app/<module>/`，含 `router.py` / `service.py` / `repository.py` / `schemas.py`），模組之間只透過 service 注入互動、不互相 import 內部。完整目錄與模組邊界見 [detailed-design.md](./detailed-design.md) §4（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
 
-## 10. 前端目錄建議
+## 10. 前端目錄結構
 
-```text
-frontend/
-  src/
-    app/
-      router.tsx
-      providers.tsx
-    api/
-      client.ts
-      authApi.ts
-      driveApi.ts
-      shareApi.ts
-      uploadApi.ts
-    components/
-      layout/
-      drive/
-      upload/
-      preview/
-      share/
-      common/
-    pages/
-      LoginPage.tsx
-      RegisterPage.tsx
-      DrivePage.tsx
-      SharedWithMePage.tsx
-      RecentPage.tsx
-      StarredPage.tsx
-      TrashPage.tsx
-      SettingsPage.tsx
-    hooks/
-      useAuth.ts
-      useDriveItems.ts
-      useUploadQueue.ts
-    stores/
-      authStore.ts
-      uploadStore.ts
-      uiStore.ts
-    types/
-      auth.ts
-      drive.ts
-      share.ts
-    utils/
-      fileIcons.ts
-      formatBytes.ts
-      mime.ts
-    styles/
-      globals.css
-  package.json
-  vite.config.ts
-  Dockerfile
-```
+前端按職責分層：`api/`（axios 包裝）、`app/`（路由與守衛）、`pages/`、`components/`、`hooks/`（TanStack Query 包裝）、`stores/`（Zustand）。完整目錄見 [detailed-design.md](./detailed-design.md) §9（前端詳細）；實際以 `frontend/src/` 程式碼為準。
 
 ## 11. 資料庫設計
 
