@@ -399,44 +399,21 @@
 - **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
 - **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
 
-### 12.2 前端目錄（補充 §8）
-
-```
-src/components/assistant/  AssistantPanel MessageBubble WorkflowPlanCard
-                           SkillApprovalCard SkillApprovalDialog SkillEditDialog
-                           SavedWorkflowsPanel AssistantSkillResultDialog StepResultList
-src/pages/SkillsPage.tsx           # 側欄 Skills 管理頁（/skills）
-src/api/assistantApi.ts  src/hooks/useAssistant.ts
-frontend/e2e/assistant/assistant-eval.spec.ts  frontend/playwright.eval.config.ts
-```
-
-### 12.3 後端目錄（補充 §10）
-
-```
-app/assistant/
-  router.py service.py repository.py context.py schemas.py hooks.py
-  planner.py workflow.py permissions.py subagent.py
-  llm/      client.py ollama.py external.py router.py privacy.py
-  skills/   registry.py manifest.py authoring.py sandbox.py codeguard.py builtin/
-backend/eval/   schema.py runner.py inproc.py runner_browser.py verifier.py
-                judge.py scoring.py baseline.py report.py state.py run.py cases/
-```
-
-### 12.4 前端頁面（補充 §9）
+### 12.2 前端頁面（補充 §9）
 
 - **聊天面板**：浮動於各受保護頁；訊息泡泡、計畫確認卡、技能核可/程式碼審查、已存工作流程清單、使用者訊息複製鈕。
 - **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
 
-### 12.5 環境變數（補充 §21）
+### 12.3 環境變數（補充 §21）
 
 `ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
 
-### 12.6 安全（補充 §17）
+### 12.4 安全（補充 §17）
 
 - 生成程式碼**絕不自動執行**：經 codeguard AST 靜態掃描（拒禁用 import/`eval`/dunder/錯誤簽章）→ 使用者核可 → 受限子行程沙箱（`python -I`、CPU/檔案 rlimit、`addaudithook` 封鎖網路/spawn/越界寫入）。編輯既有技能同樣重跑 codeguard。
 - 沙箱檔案存取限該使用者 storage；所有動作可記入 activity_logs。詳見 DEC-019。
 
-### 12.7 測試與評測（補充 §22）
+### 12.5 測試與評測（補充 §22）
 
 - 前端 `components/assistant/*.test.tsx`、後端 `tests/assistant/`。
 - 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
