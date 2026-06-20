@@ -29,9 +29,8 @@
 - [25. 開發里程碑](#25-開發里程碑)
 - [26. 驗收標準](#26-驗收標準)
 - [27. 後端服務分層](#27-後端服務分層)
-- [28. 推薦資料型別](#28-推薦資料型別)
-- [29. 風險與對策](#29-風險與對策)
-- [30. 結論](#30-結論)
+- [28. 風險與對策](#28-風險與對策)
+- [29. 結論](#29-結論)
 
 ## 1. 文件目的
 
@@ -1078,62 +1077,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 3. 刪除檔案。
 4. 建立短效下載 URL。
 
-## 28. 推薦資料型別
-
-### 28.1 TypeScript
-
-```ts
-export type DriveItemType = "file" | "folder";
-
-export interface DriveItem {
-  id: string;
-  ownerId: string;
-  parentId: string | null;
-  itemType: DriveItemType;
-  name: string;
-  mimeType?: string;
-  extension?: string;
-  sizeBytes: number;
-  isStarred: boolean;
-  isDeleted: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface UploadTask {
-  id: string;
-  file: File;
-  parentId: string | null;
-  progress: number;
-  status: "pending" | "uploading" | "paused" | "completed" | "failed";
-  errorMessage?: string;
-}
-```
-
-### 28.2 Pydantic Schema
-
-```python
-from datetime import datetime
-from uuid import UUID
-from pydantic import BaseModel
-
-
-class DriveItemResponse(BaseModel):
-    id: UUID
-    owner_id: UUID
-    parent_id: UUID | None
-    item_type: str
-    name: str
-    mime_type: str | None = None
-    extension: str | None = None
-    size_bytes: int
-    is_starred: bool
-    is_deleted: bool
-    created_at: datetime
-    updated_at: datetime
-```
-
-## 29. 風險與對策
+## 28. 風險與對策
 
 | 風險 | 影響 | 對策 |
 | --- | --- | --- |
@@ -1145,7 +1089,7 @@ class DriveItemResponse(BaseModel):
 | 預覽生成耗時 | 使用者等待 | 背景任務與快取 |
 | 分享連結外流 | 資料風險 | 密碼、到期時間、撤銷機制 |
 
-## 30. 結論
+## 29. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 
