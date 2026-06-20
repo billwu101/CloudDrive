@@ -621,31 +621,9 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 
 ## 20. 錯誤處理
 
-建議定義標準錯誤格式：
+**需求**：API 採統一錯誤格式 `{ "error": { "code", "message", "details" } }`，前端依 `code` 顯示對應訊息——涵蓋未授權、權限不足、找不到、同層重名、容量不足、檔案過大、分享連結過期/停用等情境。
 
-```json
-{
-  "error": {
-    "code": "QUOTA_EXCEEDED",
-    "message": "Storage quota exceeded",
-    "details": {}
-  }
-}
-```
-
-常見錯誤碼：
-
-| code | 說明 |
-| --- | --- |
-| UNAUTHORIZED | 未登入 |
-| FORBIDDEN | 權限不足 |
-| ITEM_NOT_FOUND | 檔案或資料夾不存在 |
-| DUPLICATE_NAME | 同層已有相同名稱 |
-| QUOTA_EXCEEDED | 容量不足 |
-| FILE_TOO_LARGE | 檔案超過限制 |
-| INVALID_FILE_TYPE | 不允許的檔案類型 |
-| UPLOAD_SESSION_NOT_FOUND | 上傳工作不存在 |
-| SHARE_LINK_EXPIRED | 分享連結已過期 |
+> 錯誤格式見 [detailed-design.md](./detailed-design.md) §8.1；完整錯誤碼表（含 HTTP 狀態碼）見 §11。
 
 ## 21. 背景任務
 
