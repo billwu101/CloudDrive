@@ -6,6 +6,54 @@
 
 本文件可作為後續開發、分工、估時與驗收的基準。
 
+### 1.1 閱讀對象與用途
+
+本文件的主要閱讀對象分為三類：
+
+| 對象 | 關注內容 | 文件用途 |
+| --- | --- | --- |
+| 交付方／審查者 | 功能範圍、使用者流程、API、資料表、部署方式、測試與限制 | 判斷系統是否可驗收、可部署、可維護 |
+| 開發團隊 | 模組邊界、設計取捨、資料一致性、安全模型、待辦與已知限制 | 後續維護、擴充與除錯依據 |
+| 部署／維運人員 | Docker 架構、環境變數、secret 管理、port 暴露、背景任務 | 正式環境安裝與營運參考 |
+
+因此，本文件不是單純的早期需求書，而是逐步轉為「現況式開發文件」：已完成項目以現況描述，未完成或選用項目以狀態標籤標示，不把尚未交付的功能寫成已完成。
+
+### 1.2 交付文件與內部紀錄分工
+
+完整交付不建議只交一份 30 頁以上的單一檔案。較合理的交付套件如下：
+
+| 文件 | 交付方是否需要 | 說明 |
+| --- | --- | --- |
+| 正式開發文件（本文件整理版） | 是 | 放系統總覽、UI、API、ERD、部署、測試、限制，作為主要審查文件 |
+| API 文件 / OpenAPI 匯出 | 是 | 讓交付方能直接對照端點、request/response、錯誤碼 |
+| ERD / 資料表設計 | 是 | 資料保存、權限、搜尋、快照與助理功能的審查依據 |
+| 系統架構圖、部署圖、核心時序圖 | 是 | 幫助非開發者理解資料流與部署邊界 |
+| 測試與 Assistant Eval Harness 報告 | 是 | 證明核心流程、E2E、AI agent 評測有被驗證 |
+| `doc/detailed-design.md` | 視情況附錄 | 偏內部技術設計，交付時可作為技術附錄 |
+| `doc/decisions.md` | 視情況附錄 | 設計決策與取捨，適合審查者追問時引用 |
+| `doc/tasks/progress.md` | 內部紀錄為主 | 任務完成狀態與開發歷程，不宜取代正式驗收文件 |
+| `doc/tasks/*.md` | 內部紀錄為主 | 分工與 checklist，通常不作為主要交付文件 |
+
+也就是說，`detailed-design.md`、`decisions.md`、`progress.md` 可以一起交付，但不應要求交付方先閱讀它們才能理解系統；正式開發文件本身應能獨立說明系統現況。
+
+### 1.3 文件維護方式
+
+若所有內容都塞在單一檔案，交付時容易閱讀，但後續維護成本高；若全部拆散，審查時又不易理解。建議採用「主文件 + 附錄」：
+
+1. 主文件：控制在可審閱的篇幅，放系統總覽、核心流程、API 摘要、ERD、部署、測試與限制。
+2. 附錄：放完整 API 表、完整資料表欄位、環境變數、錯誤碼、路由對照、功能追蹤矩陣。
+3. 內部文件：保留 `tasks/` 與原始設計決策，供開發團隊追溯。
+
+### 1.4 需求差異與 DocTr++ 處理
+
+若原始需求書仍把 DocTr++ 文件校正列為核心功能，正式文件必須明確處理差異。目前依 repo 與 `/doc` 可確認：CloudDrive 主系統已實作雲端硬碟、AI Assistant、Skill、Time Machine、搜尋與測試 harness；但目前沒有 DocTr++ 對應的後端模組、前端頁面、API 或資料表。
+
+因此，正式交付文件不得把 DocTr++ 寫成已完成。建議處理方式：
+
+1. 在「功能追蹤矩陣」列出 DocTr++：狀態標為「未納入本版實作／需求變更待確認」。
+2. 若交付範圍仍要求 DocTr++，需另外建立缺口項目，列出預計 API、資料表、模型流程與排程。
+3. 若本版範圍已改為 Smart Cloud Drive + AI Assistant，需在文件前言說明 DocTr++ 為原始需求項目，但本版已調整範圍，不作為 V0.3 驗收項。
+
 ## 2. 初版假設
 
 以下是假設條件，若專案需求不同，後續可再調整：
@@ -410,6 +458,22 @@ frontend/
 
 ## 11. 資料庫設計
 
+### 11.0 欄位型別與長度原則
+
+資料庫欄位使用 `varchar` 或 `text` 的原則如下：
+
+| 類型 | 建議型別 | 依據 |
+| --- | --- | --- |
+| 枚舉狀態、短代碼 | `varchar(20~100)` | 例如 `status`、`permission`、`item_type`，長度有限且常用於索引或檢查 |
+| Email、username、hash、token hash | `varchar(255)` | 255 是常見帳號識別欄位上限，可避免異常長字串 |
+| 檔名 | `varchar(512)` | 檔案系統與瀏覽器上傳可能出現較長名稱，仍需上限防止濫用 |
+| checksum | `varchar(64)` | SHA-256 hex 固定 64 字元 |
+| MIME type | `varchar(255)` | MIME type 字串長度有限 |
+| 使用者輸入長文、manifest code、storage key、URL、加密 secret | `text` | 長度不固定，不適合硬切；由 service 層與欄位用途控制 |
+| 結構化流程、metadata | `jsonb` | 方便保存 workflow steps、activity metadata、manifest 等半結構化資料 |
+
+長度選擇不是任意值：`50` 多用於狀態/類型，`100~200` 用於技能或 workflow 名稱，`255` 用於帳號、hash 或外部識別字，`512` 用於檔名。正式文件若列資料表欄位，應同時說明這些限制來自「業務意義 + 防止不受控輸入 + 索引效率」。
+
 ### 11.1 users
 
 儲存使用者資料。
@@ -444,7 +508,7 @@ frontend/
 | size_bytes | bigint | 檔案大小 |
 | storage_key | text | 儲存服務中的檔案 key |
 | checksum_sha256 | varchar | 檔案 checksum |
-| is_starred | boolean | 是否加星號 |
+| is_starred | boolean | 歷史相容欄位；正式星號狀態以 `user_item_preferences.is_starred` 為準 |
 | is_deleted | boolean | 是否在垃圾桶 |
 | deleted_at | timestamptz | 刪除時間 |
 | created_by | uuid | 建立者 |
@@ -464,6 +528,21 @@ WHERE is_deleted = false;
 ```
 
 若要支援更高效的資料夾樹查詢，可考慮 PostgreSQL ltree 或 closure table。
+
+### 11.2.1 user_item_preferences
+
+儲存每位使用者對檔案項目的個人化偏好。目前最重要的是星號狀態。
+
+| 欄位 | 型別 | 說明 |
+| --- | --- | --- |
+| id | uuid | 主鍵 |
+| user_id | uuid | 使用者 |
+| item_id | uuid | 對應 drive_items.id |
+| is_starred | boolean | 此使用者是否將項目加星號 |
+| created_at | timestamptz | 建立時間 |
+| updated_at | timestamptz | 更新時間 |
+
+正式行為以 `user_item_preferences` 為準，不以 `drive_items.is_starred` 為準。原因是分享檔案時，每位使用者的星號狀態應互不影響；若只放在 `drive_items`，一位使用者加星號會污染其他使用者看到的狀態。
 
 ### 11.3 file_versions
 
@@ -702,7 +781,7 @@ Request:
 }
 ```
 
-#### PATCH /drive/items/{item_id}/rename
+#### PATCH /drive/items/{item_id}/name
 
 重新命名。
 
@@ -714,7 +793,7 @@ Request:
 }
 ```
 
-#### PATCH /drive/items/{item_id}/move
+#### PATCH /drive/items/{item_id}/parent
 
 移動檔案或資料夾。
 
@@ -722,11 +801,11 @@ Request:
 
 ```json
 {
-  "target_parent_id": "uuid-or-null"
+  "parent_id": "uuid-or-null"
 }
 ```
 
-#### PATCH /drive/items/{item_id}/star
+#### PUT /drive/items/{item_id}/star
 
 設定星號。
 
@@ -1028,6 +1107,13 @@ User selects file
   -> Frontend refreshes file list
 ```
 
+一致性處理：
+
+1. storage key 由系統產生，不使用原始檔名，避免路徑穿越與重名衝突。
+2. 上傳流程先寫入 storage，再建立 `drive_items` 與 `file_versions`；若資料庫流程失敗，service 會嘗試刪除剛寫入的 blob，避免留下孤兒檔案。
+3. 永久刪除時先移除 metadata 與配額，再由 snapshot-aware GC 判斷 blob 是否仍被快照引用；不能確認安全刪除時保留 blob，交由後續 GC 回收。
+4. PostgreSQL transaction 無法包住外部檔案系統，因此正式維運可加週期性 storage audit：找出「storage 有但 DB 無」與「DB 有但 storage 無」的差異並產生修復報告。
+
 ### 16.2 分片上傳流程
 
 ```text
@@ -1247,6 +1333,16 @@ volumes:
 
 正式環境不建議使用 compose 裡的簡易密碼，應改用環境變數或 secret manager。
 
+正式環境 port 暴露原則：
+
+| 服務 | 本機開發 | 正式環境建議 |
+| --- | --- | --- |
+| frontend nginx | 對外開放 `80/443` 或目前展示用 `8088` | 唯一公開入口，終止 TLS，代理 `/api` |
+| backend FastAPI | 可映射 `8000` 方便除錯 | 不直接對外，只允許 nginx 或內部網路存取 |
+| postgres | 可映射 `5432` 方便本機測試 | 不對公網開放，只允許 backend 內網連線 |
+| redis | 目前不使用 | 不需要開放；若未來引入 queue/cache，也應只留內網 |
+| Ollama / LLM | 開發機可用 `11434` | 若使用本地模型，應限制在內網或主機 loopback，不直接暴露公網 |
+
 ## 23. 環境變數
 
 後端建議環境變數：
@@ -1264,6 +1360,12 @@ volumes:
 | MAX_UPLOAD_SIZE_BYTES | 單檔上限 |
 | DEFAULT_USER_QUOTA_BYTES | 預設使用者容量 |
 | CORS_ORIGINS | 前端允許來源 |
+| EMAIL_PROVIDER / SMTP_* | Email provider 與 SMTP 寄信設定；正式環境需由 secret 管理 |
+| ASSISTANT_ENABLED | 是否啟用 AI Assistant |
+| LLM_BASE_URL / LLM_API_KEY / ASSISTANT_MODEL | 本地或相容 API 模型設定；若含密鑰不得提交版控 |
+| EMBEDDING_ENABLED / EMBEDDING_MODEL | 語意搜尋設定 |
+| CREDENTIAL_ENCRYPTION_KEY | 加密使用者外部模型憑證；正式環境必須由 secret manager 或受控環境注入 |
+| EXTERNAL_API_BASE_URL / EXTERNAL_CHAT_MODEL | 外部模型升級設定 |
 
 前端建議環境變數：
 
@@ -1271,6 +1373,13 @@ volumes:
 | --- | --- |
 | VITE_API_BASE_URL | 後端 API 位置 |
 | VITE_APP_NAME | 應用名稱 |
+
+secret 管理原則：
+
+1. 本機開發：可由 `.env` 提供，`.env` 不進版控；`.env.example` 只放可啟動的示範值。
+2. 正式環境：`JWT_SECRET_KEY`、`POSTGRES_PASSWORD`、`SMTP_PASSWORD`、LLM API key、`CREDENTIAL_ENCRYPTION_KEY` 應由 secret manager、CI/CD secret 或受控環境變數注入。
+3. 資料庫內不保存明文 refresh token、share token；只保存 hash。
+4. 使用者外部模型憑證若啟用，保存於 `user_external_credentials.secret_encrypted`，只回傳遮罩提示，不回傳明文。
 
 ## 24. 測試計畫
 

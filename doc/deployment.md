@@ -40,6 +40,18 @@ docker compose up --build
 
 檔案 blob 存於具名 volume `storage_data`（容器內 `/app/storage`）。
 
+上述 port 映射是為了本機開發、展示與除錯方便。正式環境建議的暴露面如下：
+
+| 服務 | 正式環境建議 |
+| --- | --- |
+| frontend/nginx | 唯一對外入口，通常開 `80/443`；展示環境可保留 `8088` |
+| backend | 不直接對公網開放，只允許 nginx 或內部服務連線 |
+| postgres | 不對公網開放，只允許 backend 內網連線 |
+| redis | 目前專案不使用；未來若加入 queue/cache，也應只留內網 |
+| Ollama/LLM | 若使用本地模型，限制於主機或內網，不直接暴露公網 |
+
+若部署平台支援 compose override，production 可移除 backend/postgres 的 `ports`，只保留 service network；或以防火牆/security group 限制來源。
+
 ## 部署友善的關鍵設計
 
 ### 前端同源、nginx 反向代理 `/api`
@@ -65,6 +77,20 @@ docker compose up --build
 - `SNAPSHOT_SCHEDULER_ENABLED` — 時光機背景排程（自動快照 + blob GC）。compose 預設開（單 worker 安全），多 worker 部署需關閉並改外部 cron。
 
 完整清單見 [`.env.example`](../.env.example)。
+
+### Secret 管理
+
+本機開發可使用 `.env`，但 `.env` 不進版控；`.env.example` 只保存可啟動的範例值。正式環境需用 secret manager、CI/CD secrets 或受控環境變數注入下列值：
+
+| Secret | 用途 | 注意事項 |
+| --- | --- | --- |
+| `JWT_SECRET_KEY` | 簽發 access/refresh token | 正式部署必須使用隨機高熵值 |
+| `POSTGRES_PASSWORD` | PostgreSQL 密碼 | 不使用 compose 範例密碼 |
+| `EMAIL_PROVIDER` / `SMTP_*` | 寄送忘記密碼與通知 | 無 SMTP 時可用 console provider；正式寄信需保護 `SMTP_PASSWORD` |
+| `LLM_API_KEY` | OpenAI 相容或私有模型 API key | 若使用 Ollama local dummy key，可不含真實密鑰 |
+| `CREDENTIAL_ENCRYPTION_KEY` | 加密使用者外部模型憑證 | 未設定時 per-user external credentials 應視為關閉 |
+
+系統內部也避免保存明文 token：refresh token、分享連結 token 只存 hash；外部模型使用者憑證存於 `user_external_credentials.secret_encrypted`，API 僅回遮罩提示。
 
 ### 連到主機上的 Ollama
 

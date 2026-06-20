@@ -275,3 +275,35 @@
 - 可行性驗證（2026-06-19；原始碼 + 官方文件，見 external-model-integration.md §9）：Codex 訂閱採 **Agent Identity**，但 **agent 私鑰預設就在 `auth.json` 內**；官方文件明確把 auth.json 當密碼、**允許跨機複製**、未提機器綁定。**判定修正：跨機技術上可行**（先前「技術脆弱不可行」過度悲觀，予以更正）；例外是開啟 `SecretAuthStorage`（私鑰進 keyring）則不可搬。多使用者集中式的**剩餘問題為風險權衡而非技術硬傷**：集中保管多人憑證的安全責任、多人同 server IP 的風控灰區、代呼叫合規。已備一鍵雙機 demo（`experiments/codex-cross-machine-demo/`）並**實測通過**：machine-b（不同 hostname、從未登入）用搬來的 auth.json 成功呼叫 gpt-5.5（§9.6）。v0.141.0 auth.json **僅含 OAuth token、無綁機私鑰**，故 token 可搬。跨機 refresh 尚未實測（低風險）。多使用者集中式的採用與否＝風控/合規/憑證保管的權衡，非技術問題。
 - 已知取捨：訂閱制管道穩定性不可控（以備援與抽象化緩解）；儲存可解密憑證有風險（以加密 at rest、遮罩、不入 log 緩解）；外部升級涉資料外送（沿用 DEC-023 隱私閘、預設關閉、使用者明確啟用）。
 - 影響範圍：新 `user_external_credentials` 表 + profile 端點、`app/assistant/llm/`（router/external 依 per-user 憑證）、`backend/eval/judge.py`（OpenAI/Codex 考官 + provider 選項）、config（`CREDENTIAL_ENCRYPTION_KEY` 等）。詳見 [external-model-integration.md](./external-model-integration.md)。
+
+## DEC-027：資料欄位型別、星號來源與 metadata/storage 一致性
+
+- 日期：2026-06-20
+- 狀態：Accepted
+- 背景：正式文件審查時需能回答三類問題：資料表欄位為何有些用 `text`、有些用 `varchar(50/255/512)`；星號狀態同時出現在 `drive_items.is_starred` 與 `user_item_preferences.is_starred` 時以誰為準；DB metadata 與實體 blob 在上傳/刪除失敗時如何避免不一致。
+- 決策：
+  1. **字串型別規則**：短且有限集合的值使用 `String/varchar` 並依用途給上限：`20~50` 給狀態/類型，`64` 給 SHA-256 hex，`100~200` 給技能或 workflow 名稱，`255` 給 email、hash、token hash、MIME type 等常見識別字，`512` 給檔名。長度不固定或可能很長的內容使用 `Text`，例如 storage key、URL、使用者長文、生成程式碼、加密 secret。半結構化內容使用 `JSON/JSONB`。
+  2. **星號 canonical source**：正式業務邏輯以 `user_item_preferences.is_starred` 為準；`drive_items.is_starred` 是初始 schema 遺留/相容欄位，不作為回應與查詢的權威來源。Drive/Search 回應需依目前使用者 join 或查詢 preferences 後產生 `is_starred`。
+  3. **`assistant_workflows.session_id` 不加 FK**：workflow 是可審核、可確認、可保存重跑的執行計畫；session 是 UI 對話脈絡。為避免刪除或清理對話 session 時連帶破壞已保存 workflow/audit correlation，`session_id` 保留為歷史關聯 UUID，不設外鍵。若 session 不存在，workflow 仍可依 `user_id/status/name` 查詢與重跑。真正的 execution record 由 `assistant_workflow_runs.workflow_id` 指向 workflow，並以 `ON DELETE SET NULL` 保留執行紀錄。
+  4. **上傳一致性**：上傳時先寫 blob 到 storage，再建立 `drive_items`/`file_versions`/quota metadata；若 DB 階段失敗，service 立即刪除剛建立的 blob。因檔案系統不在 PostgreSQL transaction 內，仍需接受「補償式一致性」而非真正分散式交易。
+  5. **刪除一致性**：永久刪除時先移除 metadata 與配額，再依 snapshot reference 判斷 blob 是否可刪；若 blob 仍被快照引用或無法證明安全刪除，保留給 GC 後續回收。此策略優先避免誤刪仍可還原的內容。
+  6. **營運補強**：正式環境可加入定期 storage audit，產生孤兒 blob 與缺失 blob 報告；activity_logs 屬輔助稽核，不阻塞主要業務流程（見 DEC-010）。
+- 理由：資料欄位上限可避免不受控輸入與索引膨脹；星號個人化必須避免共享檔案互相污染；workflow 與 session 解耦可保留可重跑計畫與 audit；metadata/blob 一致性採補償與 GC 是單一 DB + 外部檔案儲存架構下最務實的做法。
+- 已知取捨：保留 `drive_items.is_starred` 會讓 schema 看起來有兩個來源，需在文件明確標成非權威欄位；補償式一致性仍可能在極端中斷時留下孤兒 blob，因此需要 audit/GC。
+- 影響範圍：資料庫設計文件、Drive/Search 回應、UploadService、TrashService、Snapshot GC、Assistant workflow schema。
+
+## DEC-028：正式環境暴露面與 Secret 管理
+
+- 日期：2026-06-20
+- 狀態：Accepted
+- 背景：本機 `docker-compose.yml` 為了展示和測試，把 frontend、backend、postgres 都映射到 host port；但正式環境若直接公開 backend/database，會增加攻擊面。另需明確說明 JWT、DB、SMTP、LLM 等 secret 應放在哪裡。
+- 決策：
+  1. 正式環境唯一對外入口應是 frontend/nginx（通常為 `80/443`，展示環境可用 `8088`），由 nginx 反向代理 `/api` 到 backend。
+  2. backend FastAPI 不直接公開到公網；只允許 nginx、內網 service 或受控管理網段存取。
+  3. postgres 不對公網開放；僅允許 backend 內網連線。compose 中的 `POSTGRES_PORT` 映射只作本機開發/測試用途。
+  4. 目前 Redis 已移除且不是必要服務；若未來加入 queue/cache，也必須只留在內網。
+  5. `.env.example` 只提供本機可啟動示範值；正式部署的 `JWT_SECRET_KEY`、`POSTGRES_PASSWORD`、SMTP 密碼、LLM API key、`CREDENTIAL_ENCRYPTION_KEY` 應由 secret manager、CI/CD secrets 或受控環境變數注入，不進版控、不寫入文件。
+  6. refresh token 與 share token 只存 hash；使用者外部模型憑證保存於 `user_external_credentials.secret_encrypted`，需設定 `CREDENTIAL_ENCRYPTION_KEY` 才啟用。
+- 理由：同源 nginx 入口最容易部署也最容易收斂 CORS/HTTPS/cookie 行為；DB 與 backend 留內網可降低暴露面；secret 與範例設定分離可避免把 demo 設定誤當正式安全設定。
+- 已知取捨：本機展示時為了方便仍會看到 `8000/5432` port 映射；正式部署需用防火牆、安全群組或 compose override 移除/限制這些映射。
+- 影響範圍：`docker-compose.yml`、`.env.example`、`doc/deployment.md`、正式部署手冊。

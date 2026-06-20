@@ -461,7 +461,7 @@ class DriveService:
         self,
         user_id: UUID,
         item_id: UUID,
-        target_parent_id: UUID | None,
+        new_parent_id: UUID | None,
     ) -> DriveItem
 
     async def set_starred(
@@ -497,8 +497,12 @@ class DriveItemRepository:
     async def create(self, item: DriveItemCreate) -> DriveItem
     async def update_name(self, item_id: UUID, name: str, updated_by: UUID) -> DriveItem
     async def update_parent(self, item_id: UUID, parent_id: UUID | None, updated_by: UUID) -> DriveItem
-    async def update_starred(self, item_id: UUID, is_starred: bool) -> DriveItem
     async def exists_name_in_parent(self, owner_id: UUID, parent_id: UUID | None, name: str) -> bool
+
+class UserItemPreferenceRepository:
+    async def get_preference(self, user_id: UUID, item_id: UUID) -> UserItemPreference | None
+    async def upsert_preference(self, user_id: UUID, item_id: UUID, *, is_starred: bool) -> UserItemPreference
+    async def get_starred_ids(self, user_id: UUID, item_ids: list[UUID]) -> set[UUID]
 ```
 
 ### 6.4.4 驗證規則
@@ -519,10 +523,10 @@ class DriveItemRepository:
 | create folder | owner 或 editor |
 | rename | owner 或 editor |
 | move | owner 或 editor |
-| set starred | viewer，但星號狀態屬於使用者個人化時需另建表 |
+| set starred | viewer；星號屬於使用者個人偏好 |
 | delete to trash | owner 或 editor |
 
-目前 `drive_items.is_starred` 是 item 欄位，表示星號不區分使用者。若未來分享檔案也要讓每位使用者有自己的星號狀態，需拆出 `user_item_preferences`。
+正式星號狀態以 `user_item_preferences.is_starred` 為準；`drive_items.is_starred` 僅為初始 schema 遺留/相容欄位，不作為回應與查詢的權威來源。這樣共享檔案時，每位使用者可有自己的星號狀態，不會互相污染。
 
 ### 6.4.6 可獨立測試項
 
@@ -1264,7 +1268,7 @@ extension varchar null
 size_bytes bigint not null default 0
 storage_key text null
 checksum_sha256 varchar null
-is_starred boolean not null default false
+is_starred boolean not null default false -- legacy compatibility; canonical source is user_item_preferences
 is_deleted boolean not null default false
 deleted_at timestamptz null
 created_by uuid not null references users(id)
@@ -1294,6 +1298,20 @@ CREATE UNIQUE INDEX uq_drive_items_same_folder_name
 ON drive_items(owner_id, parent_id, lower(name))
 WHERE is_deleted = false;
 ```
+
+### 7.3.1 user_item_preferences
+
+```text
+id uuid primary key
+user_id uuid not null references users(id) on delete cascade
+item_id uuid not null references drive_items(id) on delete cascade
+is_starred boolean not null default false
+created_at timestamptz not null
+updated_at timestamptz not null
+unique(user_id, item_id)
+```
+
+此表是星號狀態的 canonical source。Drive/Search 回應中的 `is_starred` 需依目前使用者查詢此表後填入。
 
 ### 7.4 file_versions
 
