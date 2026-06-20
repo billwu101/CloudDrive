@@ -2092,10 +2092,11 @@ Assistant 後端位於 `backend/app/assistant/`，目標是可測、可替換、
 | 檔案 | 職責 |
 | --- | --- |
 | `assistant/router.py` | `POST /api/v1/assistant/chat`，以及技能 `GET /skills`、`POST /skills/{id}/approve`、`POST /skills/{id}/execute`。 |
+| `assistant/schemas.py` | Pydantic I/O schemas（chat / plan / skill / workflow 請求與回應）。 |
 | `assistant/service.py` | AgentLoop：組 prompt、呼叫模型、執行 tool calls、回填 tool result、以 iteration 上限防止無限迴圈；技能 authoring request 可先走 deterministic proposal fast-path。 |
 | `assistant/repository.py` | `assistant_skills` CRUD，支援 pending proposal、installed manifest 列表與核可。 |
 | `assistant/context.py` | 依 `LLM_NUM_CTX` 估算字元預算，保留 system prompt 與最新對話。 |
-| `assistant/prompt.py` | 組穩定 system prompt，列出 registry 中可用技能。 |
+| system prompt（**無獨立 `prompt.py`**） | 穩定 system prompt 各 agent 自組：`planner.build_planner_prompt`（列 registry 可用技能）、`subagent.build_codegen_prompt`（codegen 規則）。 |
 | `assistant/llm/client.py` | `LLMClient` protocol 與 `LLMMessage`/`LLMResponse`/`LLMToolCall` 結構。 |
 | `assistant/llm/ollama.py` | 呼叫本地 Ollama `/api/chat`，解析 Ollama tool call 格式。 |
 | `assistant/llm/external.py` | OpenAI-compatible `/chat/completions` 外部 fallback client。 |

@@ -1678,7 +1678,7 @@ Access token 依安全規範只存在前端記憶體（Zustand store），不寫
 
 ```
 app/assistant/
-  router.py service.py repository.py context.py prompt.py hooks.py
+  router.py service.py repository.py context.py schemas.py hooks.py
   planner.py workflow.py permissions.py subagent.py
   llm/      client.py ollama.py external.py router.py privacy.py
   skills/   registry.py manifest.py authoring.py sandbox.py codeguard.py builtin/

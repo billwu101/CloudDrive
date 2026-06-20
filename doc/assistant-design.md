@@ -193,7 +193,7 @@ WorkflowRun {
 | 04 | sub-agents | 單層子代理（主要用於 codegen、平行/有界子任務），獨立 context、回傳結果。 | `subagent.py` |
 | 05 | built-in skills | 出廠技能目錄（5.1）+ `author_skill`，經 service 層、帶 user_id。 | `skills/builtin/` |
 | 06 | session persistence | sessions/messages/skills/workflows 持久化；啟動載入使用者技能與已存工作流程。 | `repository.py` |
-| 07 | system prompt assembly | 動態組裝：人設+安全規則+可用技能清單+語境（穩定前綴在前、無隨機/時間戳）。 | `prompt.py` |
+| 07 | system prompt assembly | 動態組裝：人設+安全規則+可用技能清單+語境（穩定前綴在前、無隨機/時間戳）。**無獨立 `prompt.py`**——各 agent 自組。 | `planner.py`（`build_planner_prompt`）、`subagent.py`（`build_codegen_prompt`） |
 | 08 | lifecycle hooks | session/tool/skill/code-exec/error 節點；稽核、權限閘、計畫顯示、安裝前驗證。 | `hooks.py` |
 | 09 | permissions & safety | 多租戶 user_id 綁定；分層權限（唯讀自動/破壞性確認/安裝+執行碼核可）；沙箱（資源/路徑/網路限制、參數化）；稽核。 | `permissions.py`、`skills/sandbox.py` |
 
@@ -205,28 +205,32 @@ WorkflowRun {
 app/assistant/
   __init__.py
   router.py            # /assistant/chat、計畫確認、技能核可/安裝、工作流程儲存/重跑、技能 handler 觸發
+  schemas.py           # Pydantic I/O schemas（chat / plan / skill / workflow）
   service.py           # 01 AgentLoop
-  planner.py           # 階段 2-3：NL → 候選 Workflow（結構化輸出 + 驗證）
+  planner.py           # 階段 2-3：NL → 候選 Workflow（結構化輸出 + 驗證）；+ 07 build_planner_prompt
   workflow.py          # Workflow/WorkflowRun 模型、執行器（階段 8）、相依與錯誤策略
   context.py           # 02
-  prompt.py            # 07
+  # 07 system prompt：無獨立 prompt.py，內嵌於 planner / subagent 各自的 build_*_prompt
   hooks.py             # 08
   permissions.py       # 09
-  subagent.py          # 04
+  subagent.py          # 04；+ 07 build_codegen_prompt
   repository.py        # 06（sessions/messages/skills/workflows）
   llm/
     client.py          # LLMClient 協定（本地與外部共用介面）
     ollama.py          # 本地 Gemma via Ollama / OpenAI 相容（httpx）
-    external.py        # 外部大型模型 API 執行器（可設定、可關閉）
+    external.py        # 外部大型模型 API 執行器（OpenAI API key 路徑；EM2）
     router.py          # 1.3 模型策略：隱私閘 + 複雜度路由 + 失敗升級
     privacy.py         # 隱私分類 + 去識別化（升級前置）
   skills/
     registry.py        # 03
     manifest.py        # 03
     authoring.py       # 03 + 3.1 生成子流程
+    codeguard.py       # 09 生成碼靜態安全驗證（網路/subprocess/eval 禁用等）
     sandbox.py         # 09
     builtin/           # 05 技能目錄
 ```
+
+> per-user 外部模型升級（Codex 訂閱 / OpenAI key）的憑證與 client 建構在獨立模組 `app/external_model/`，由 `llm/router` 在失敗升級時接用；見 [external-model-integration.md](./external-model-integration.md)（EM1–EM3）。
 
 ## 9. 資料模型（新增表，Alembic migration）
 

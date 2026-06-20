@@ -530,7 +530,7 @@ chore: complete cloud drive implementation
 
 此 Agent 負責建立：
 
-1. `app/assistant/`：`service.py`(01 迴圈)、`planner.py`、`workflow.py`、`context.py`、`prompt.py`、`hooks.py`、`permissions.py`、`subagent.py`、`repository.py`。
+1. `app/assistant/`：`service.py`(01 迴圈)、`planner.py`、`workflow.py`、`context.py`、`schemas.py`、`hooks.py`、`permissions.py`、`subagent.py`、`repository.py`（system prompt 07 內嵌於 planner/subagent，無獨立 `prompt.py`）。
 2. `app/assistant/llm/`：`client.py`、`ollama.py`(本地 Gemma)、`external.py`、`router.py`(隱私閘+複雜度+失敗升級)、`privacy.py`。
 3. `app/assistant/skills/`：`registry.py`、`manifest.py`、`authoring.py`、`sandbox.py`、`builtin/`(檔案/批次內建技能 + `author_skill`)。
 4. Alembic migration：`assistant_sessions`/`assistant_messages`/`assistant_skills`/`assistant_workflows`/`assistant_workflow_runs`。

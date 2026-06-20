@@ -18,7 +18,7 @@
 - [x] `llm/privacy.py`：隱私分類 + 去識別化（升級前置；去識別化失敗則禁止外送）。
 - [x] `llm/router.py`：模型策略（隱私閘 + 複雜度路由 + 失敗升級）—— 追蹤 `local_attempts`，連續 `MAX_LOCAL_ATTEMPTS` 次仍不可接受且符合隱私條件時升級外部；不符資格則不外送、回報失敗；升級事件寫稽核 hook。
 - [x] `context.py`：token 預算、裁切/摘要、輸出瘦身。
-- [x] `prompt.py`：動態 system prompt（穩定前綴、無隨機/時間戳）。
+- [x] 動態 system prompt（穩定前綴、無隨機/時間戳）—— **無獨立 `prompt.py`**，內嵌於 `planner.build_planner_prompt` 與 `subagent.build_codegen_prompt`。
 - [x] `service.py`：AgentLoop（停止條件、上限、hook 點）。
 - [x] `skills/registry.py` + `skills/builtin/`：唯讀內建技能 `list_items`/`get_info`/`search`/`recent`/`storage_quota`。
 - [x] `router.py`：`POST /assistant/chat`；無 key/停用回 503；註冊進 api/v1。
