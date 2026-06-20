@@ -312,6 +312,53 @@
 
 後端內含對話式 **AI 助理引擎**（HARNESS：while loop、context、skills/tools、sub-agents、沙箱、權限與安全）。預設以**本地 Gemma（Ollama）**為執行器，資料不外流；本地反覆失敗時可升級**外部 GPT-5.5**（Codex 訂閱優先、OpenAI key 備援，使用者自帶加密憑證）。驅動自然語言操作檔案、現場生成技能與工作流程重用。完整規格見 §12；引擎設計見 [detailed-design.md](./detailed-design.md) §6 與 [assistant-design.md](./assistant-design.md)。
 
+### 7.7 技術選型
+
+各層採用的技術與理由（實際版本以 `backend/pyproject.toml`、`frontend/package.json` 為準）。
+
+**前端**
+
+| 技術 | 用途與選用理由 |
+| --- | --- |
+| React 19 + TypeScript + Vite | 元件化 UI、型別安全；Vite 提供快速開發與建置 |
+| TanStack Query | 伺服器狀態：快取、失效與重取 API 資料 |
+| Zustand | 輕量 UI／auth／上傳狀態管理，無樣板程式 |
+| React Hook Form + Zod | 高效表單 + schema 驗證（`@hookform/resolvers` 串接） |
+| React Router | SPA 路由與受保護頁面 |
+| Tailwind CSS + shadcn／base-ui | 一致設計系統、可組合元件、快速開發 |
+| axios | 統一 API 呼叫；攔截器處理 401／silent refresh |
+
+**後端**
+
+| 技術 | 用途與選用理由 |
+| --- | --- |
+| FastAPI + Python 3.12 | async 效能佳、原生型別、自動產生 OpenAPI |
+| SQLAlchemy 2.x（async）+ asyncpg | async ORM + 高效 PostgreSQL 驅動 |
+| Alembic | 資料庫 schema migration 版本管理 |
+| Pydantic／pydantic-settings | request／response 驗證與設定管理 |
+| PyJWT + pwdlib（Argon2） | JWT 存取／刷新權杖 + Argon2 密碼雜湊 |
+| cryptography | 外部模型 API 憑證加密儲存（不存明文） |
+| uvicorn + httpx | ASGI server + async HTTP client（呼叫 LLM） |
+| Pillow／pypdf／py7zr／python-multipart | 圖片縮圖／PDF 預覽／壓縮技能／檔案上傳 |
+| aiosmtplib | async SMTP 寄信（分享通知等） |
+
+**資料、儲存與 AI**
+
+| 技術 | 用途與選用理由 |
+| --- | --- |
+| PostgreSQL 16 + pgvector | 關聯式資料 + 交易一致性 + 向量檢索（語意搜尋） |
+| 本地檔案系統（Storage Provider 抽象） | 開發用本地，可無痛換物件儲存（見 §7.5） |
+| Ollama（本地 Gemma）+ OpenAI 相容外部模型 | 本地優先、資料不外流；反覆失敗時才升級外部 |
+
+**維運與測試**
+
+| 技術 | 用途與選用理由 |
+| --- | --- |
+| Docker + docker compose | 環境一致、一鍵啟動前後端與 DB |
+| GitHub Actions + GHCR + self-hosted runner | CI 測試／建置、CD 部署（見 §26） |
+| pytest · ruff · mypy | 後端測試、lint、型別檢查 |
+| Vitest · Testing Library · MSW · Playwright | 前端單元測試、API mock、E2E |
+
 ## 8. 前端目錄結構
 
 前端按職責分層：`api/`（axios 包裝）、`app/`（路由與守衛）、`pages/`、`components/`、`hooks/`（TanStack Query 包裝）、`stores/`（Zustand）。完整目錄見 [detailed-design.md](./detailed-design.md) §9（前端詳細）；實際以 `frontend/src/` 程式碼為準。
