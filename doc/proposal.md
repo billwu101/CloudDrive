@@ -463,21 +463,9 @@ frontend/
 
 ### 11.1 users
 
-儲存使用者資料。
+**需求**：儲存使用者帳號。`email` 為唯一登入識別；每位使用者有容量上限與已用量；需區分啟用狀態與管理員身分；密碼僅存雜湊、不存明文。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| email | varchar | 登入信箱，唯一 |
-| username | varchar | 顯示名稱 |
-| password_hash | varchar | 密碼雜湊 |
-| avatar_url | text | 頭像網址 |
-| quota_bytes | bigint | 使用者容量上限 |
-| used_bytes | bigint | 已使用容量 |
-| is_active | boolean | 是否啟用 |
-| is_admin | boolean | 是否為管理員 |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
+> 欄位、型別與索引（DDL）見 [detailed-design.md](./detailed-design.md) §7.1。
 
 ### 11.2 drive_items
 

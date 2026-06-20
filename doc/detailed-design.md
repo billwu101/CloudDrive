@@ -1219,9 +1219,9 @@ class ActivityLogService:
 
 ```text
 id uuid primary key
-email varchar unique not null
-username varchar not null
-password_hash varchar not null
+email varchar(255) unique not null
+username varchar(255) not null
+password_hash varchar(255) not null
 avatar_url text null
 quota_bytes bigint not null
 used_bytes bigint not null default 0
@@ -1230,6 +1230,11 @@ is_admin boolean not null default false
 created_at timestamptz not null
 updated_at timestamptz not null
 ```
+
+型別/長度依據（需求見 proposal §11）：
+- `email` / `username` / `password_hash` → `varchar(255)`：帳號識別與雜湊欄位上限 255 字元（避免異常長字串、利於索引）。
+- `avatar_url` → `text`：URL 長度不定，不硬切。
+- `quota_bytes` / `used_bytes` → `bigint`：以位元組計的容量需大整數範圍。
 
 索引：
 
