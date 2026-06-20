@@ -27,7 +27,8 @@
 - [23. 開發里程碑](#23-開發里程碑)
 - [24. 驗收標準](#24-驗收標準)
 - [25. 風險與對策](#25-風險與對策)
-- [26. 結論](#26-結論)
+- [26. 部署與維運計畫](#26-部署與維運計畫)
+- [27. 結論](#27-結論)
 
 ## 1. 文件目的
 
@@ -762,6 +763,8 @@ volumes:
 | redis | 目前不使用 | 不需要開放；若未來引入 queue/cache，也應只留內網 |
 | Ollama / LLM | 開發機可用 `11434` | 若使用本地模型，應限制在內網或主機 loopback，不直接暴露公網 |
 
+> 正式部署、CI/CD 與維運見 §26。
+
 ## 21. 環境變數
 
 後端建議環境變數：
@@ -967,7 +970,51 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 | 預覽生成耗時 | 使用者等待 | 背景任務與快取 |
 | 分享連結外流 | 資料風險 | 密碼、到期時間、撤銷機制 |
 
-## 26. 結論
+## 26. 部署與維運計畫
+
+### 26.1 CI/CD 架構
+
+採 **GitHub Actions + 自架 Runner（self-hosted）**：
+
+- **CI（GitHub 託管 Runner）**：每次 PR / push 執行後端 `pytest`·`ruff`·`mypy`、前端 lint·test·build、前後端 Docker build 檢查；通過且合併 `main` 後建置正式 image。
+- **Image Registry（GHCR）**：CI 產出的 image 以 **Git commit SHA** 標記推送至 GHCR；正式 image **只由 CI 產生**，開發者不從本機直接推送。
+- **CD（部署主機上的自架 Runner）**：以 `workflow_dispatch` **手動觸發**，自架 Runner 主動領取工作、登入 GHCR、執行固定部署腳本（`docker compose pull` → `up -d` → 健康檢查 → 失敗回滾）。
+- 部署主機（家用／校內網路）**不需對外開放埠、不需讓 GitHub SSH 進入**；Runner 以 `systemd` 常駐並主動連線 GitHub。
+
+### 26.2 元件職責
+
+| 元件 | 職責 |
+| --- | --- |
+| 開發者 | 寫碼、commit、push、開 PR；不發布正式 image |
+| GitHub 託管 Runner | 測試、檢查、建置、推送 image |
+| GHCR | 儲存通過 CI 的 image（以 SHA 標記） |
+| 自架 Runner | 只接收 CD 部署工作，不跑 PR 測試 |
+| 部署腳本 | 固定的 pull / up / 健康檢查 / 回滾流程 |
+
+### 26.3 部署流程
+
+1. feature branch → push → PR → CI（GitHub 託管）通過 + review → 合併 `main`。
+2. 合併後 CI 重跑測試、建前後端 image、以 commit SHA 推送 GHCR。
+3. 於 GitHub Actions 手動觸發 Deploy，輸入要部署的 commit SHA。
+4. 自架 Runner 領取 → 登入 GHCR → 部署腳本拉取該 SHA image → 啟動 → 健康檢查 → 成功或自動回滾。
+
+### 26.4 維運
+
+- **健康檢查**：部署後輪詢後端健康端點，連續失敗即判定部署失敗。
+- **回滾**：部署失敗自動回到上一個可用的 image SHA。
+- **正式設定**：`.env`（DB 密碼、JWT secret 等）與正式 compose 設定**只存在部署主機、不進 GitHub**；主機記錄目前部署的 image SHA。正式環境的服務對外暴露原則見 §20。
+- **備份與監控**：定期備份 PostgreSQL 資料與快照、監控 API 用量與容器健康狀態；以 `docker compose` 管理服務生命週期。
+
+### 26.5 部署安全原則
+
+- 自架 Runner **只用於 private repo、只跑 CD**；PR 一律使用 GitHub 託管 Runner。
+- Runner **不以 root 執行、不加入 `docker` 群組**，只能經 `sudo` 執行單一固定部署腳本。
+- 正式 image **只由 CI 建立**，部署一律使用**完整 commit SHA**（不用 `latest`）。
+- `main` 分支保護：禁止直接 push、需 PR + review + CI 通過；workflow／Dockerfile／部署設定由 maintainer 審查（CODEOWNERS）。
+
+> CI/CD workflow（`.github/workflows/ci.yml`·`deploy.yml`）、正式 compose 與部署腳本的實作見專案實際檔案與 [detailed-design.md](./detailed-design.md)。
+
+## 27. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 
