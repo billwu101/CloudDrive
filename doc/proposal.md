@@ -873,6 +873,7 @@ secret 管理原則：
 5. 分享彈窗。
 6. 搜尋輸入 debounce。
 7. 錯誤訊息顯示。
+8. AI 助理面板元件（`components/assistant/*.test.tsx`，屬 §13 AI Assistant）。
 
 ### 23.2 後端測試
 
@@ -891,6 +892,9 @@ secret 管理原則：
 9. 垃圾桶還原。
 10. 容量限制。
 11. 分片上傳。
+12. AI 助理 service／router（`tests/assistant/`，屬 §13 AI Assistant）。
+
+此外，AI 助理另有**獨立評測 harness** `backend/eval/`（屬 §13 AI Assistant）：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異、baseline 回歸；runner 含 in-process mock（CI 預設、決定性）與 API（`--llm real`），Browser runner 見 §23.3。
 
 ### 23.3 E2E 測試
 
@@ -905,6 +909,7 @@ secret 管理原則：
 5. 分享檔案。
 6. 另一位使用者開啟分享檔案。
 7. 刪除檔案並從垃圾桶還原。
+8. AI 助理 Browser 評測（eval harness 的 Playwright runner，屬 §13 AI Assistant）。
 
 ### 23.4 回歸防護測試（補充，2026-06-14）
 
@@ -963,13 +968,6 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 | 檔案 | 覆蓋內容 |
 | --- | --- |
 | `tests/integration/test_file_version_flow.py` | 上傳自動產生 v1、size_bytes 正確記錄、未驗證 403、非擁有者無分享不能列版本、viewer 可列版本、兩次上傳同名各自有獨立 v1 |
-
-#### AI 助理測試與評測（AI Assistant）
-
-> 屬 **In-App AI Assistant**（§13）功能。
-
-- 前端 `components/assistant/*.test.tsx`、後端 `tests/assistant/`。
-- 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
 
 ## 24. 開發里程碑
 
