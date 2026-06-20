@@ -28,9 +28,8 @@
 - [24. 測試計畫](#24-測試計畫)
 - [25. 開發里程碑](#25-開發里程碑)
 - [26. 驗收標準](#26-驗收標準)
-- [27. 後端服務分層](#27-後端服務分層)
-- [28. 風險與對策](#28-風險與對策)
-- [29. 結論](#29-結論)
+- [27. 風險與對策](#27-風險與對策)
+- [28. 結論](#28-結論)
 
 ## 1. 文件目的
 
@@ -360,7 +359,16 @@
 
 ## 11. 後端目錄結構
 
-後端按**模組**組織：每個 domain 為一個自足套件（`app/<module>/`，含 `router.py` / `service.py` / `repository.py` / `schemas.py`），模組之間只透過 service 注入互動、不互相 import 內部。完整目錄與模組邊界見 [detailed-design.md](./detailed-design.md) §4（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
+後端按**模組**組織：每個 domain 為一個自足套件（`app/<module>/`，含 `router.py` / `service.py` / `repository.py` / `schemas.py`），模組之間只透過 service 注入互動、不互相 import 內部。
+
+各層職責分明：
+
+- **Router**：接收 HTTP request、驗證 request schema、呼叫 service、回傳 response。
+- **Service**：商業邏輯、權限判斷、容量判斷、呼叫 repository 與 storage provider。
+- **Repository**：資料庫查詢、transaction 管理、封裝 SQLAlchemy 操作。
+- **Storage Provider**：儲存／讀取／刪除檔案、建立短效下載 URL。
+
+完整目錄與模組邊界見 [detailed-design.md](./detailed-design.md) §4（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
 
 ## 12. 資料庫設計
 
@@ -1039,45 +1047,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 6. §24 規劃的前端單元/E2E、後端單元/整合 測試通過。
 7. Docker 開發環境可一鍵啟動。
 
-## 27. 後端服務分層
-
-### 27.1 Router
-
-負責：
-
-1. 接收 HTTP request。
-2. 驗證 request schema。
-3. 呼叫 service。
-4. 回傳 response。
-
-### 27.2 Service
-
-負責：
-
-1. 商業邏輯。
-2. 權限判斷。
-3. 容量判斷。
-4. 呼叫 repository。
-5. 呼叫 storage provider。
-
-### 27.3 Repository
-
-負責：
-
-1. 資料庫查詢。
-2. transaction 管理。
-3. 封裝 SQLAlchemy 操作。
-
-### 27.4 Storage Provider
-
-負責：
-
-1. 儲存檔案。
-2. 讀取檔案。
-3. 刪除檔案。
-4. 建立短效下載 URL。
-
-## 28. 風險與對策
+## 27. 風險與對策
 
 | 風險 | 影響 | 對策 |
 | --- | --- | --- |
@@ -1089,7 +1059,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 | 預覽生成耗時 | 使用者等待 | 背景任務與快取 |
 | 分享連結外流 | 資料風險 | 密碼、到期時間、撤銷機制 |
 
-## 29. 結論
+## 28. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 
