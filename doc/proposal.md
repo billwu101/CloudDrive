@@ -699,9 +699,21 @@ Permanent delete
 
 ## 19. 錯誤處理
 
-**需求**：API 採統一錯誤格式 `{ "error": { "code", "message", "details" } }`，前端依 `code` 顯示對應訊息——涵蓋未授權、權限不足、找不到、同層重名、容量不足、檔案過大、分享連結過期/停用等情境。
+**需求**：API 採統一錯誤格式 `{ "error": { "code", "message", "details" } }`，前端依 `code` 顯示對應訊息。
 
-> 錯誤格式見 [detailed-design.md](./detailed-design.md) §8.1；完整錯誤碼表（含 HTTP 狀態碼）見 [detailed-design.md](./detailed-design.md) §11。
+常見錯誤情境與 HTTP 狀態碼：
+
+| HTTP 狀態 | 代表情境 |
+| --- | --- |
+| 400 | 參數／檔名／操作不合法（如 item type 不符、parent 不存在、不可移到子孫資料夾） |
+| 401 | 未授權：未登入或 token 無效、帳號或密碼錯誤 |
+| 403 | 權限不足、使用者停用、分享密碼錯誤 |
+| 404 | 找不到：item、檔案本體或分享對象不存在 |
+| 409 | 衝突：同層名稱重複、email 已存在、容量不足 |
+| 410 | 分享連結已過期或停用 |
+| 413 | 檔案過大 |
+
+> 錯誤格式見 [detailed-design.md](./detailed-design.md) §8.1；完整錯誤碼表（`code` ↔ HTTP 狀態）見 [detailed-design.md](./detailed-design.md) §11。
 
 ## 20. Docker 開發環境
 
