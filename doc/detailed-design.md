@@ -1247,7 +1247,7 @@ created_at timestamptz not null
 updated_at timestamptz not null
 ```
 
-型別/長度依據（通用原則見 §7.0；需求見 proposal §11）：
+型別/長度依據（通用原則見 §7.0；需求見 proposal §12）：
 - `email` / `username` / `password_hash` → `varchar(255)`：帳號識別與雜湊欄位上限 255 字元（避免異常長字串、利於索引）。
 - `avatar_url` → `text`：URL 長度不定，不硬切。
 - `quota_bytes` / `used_bytes` → `bigint`：以位元組計的容量需大整數範圍。
