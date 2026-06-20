@@ -160,11 +160,11 @@ MVP 指第一版可展示與可使用的核心版本。
 
 ### 5.4 In-App AI Assistant（核心）
 
-28 模組之後新增的對話式 AI 助理（自然語言操作檔案、計畫確認、現場生成技能、技能管理、工作流程重用）。完整規格見 **§33**。
+28 模組之後新增的對話式 AI 助理（自然語言操作檔案、計畫確認、現場生成技能、技能管理、工作流程重用）。完整規格見 **§32**。
 
 ### 5.5 時光機（Snapshots，核心）
 
-類 Apple Time Machine 的整碟時間點還原：定期/手動/助理操作前自動建快照，可瀏覽過去某時間點的硬碟並就地還原。完整規格見 **§34**。
+類 Apple Time Machine 的整碟時間點還原：定期/手動/助理操作前自動建快照，可瀏覽過去某時間點的硬碟並就地還原。完整規格見 **§33**。
 
 ### 5.6 暫不包含功能
 
@@ -1054,17 +1054,13 @@ class DriveItemResponse(BaseModel):
 | 預覽生成耗時 | 使用者等待 | 背景任務與快取 |
 | 分享連結外流 | 資料風險 | 密碼、到期時間、撤銷機制 |
 
-## 31. 建議開發順序
+## 31. 頁面重新整理後維持登入狀態（Silent Refresh）
 
-開發順序依 §25 開發里程碑的四階段進行：第一週基礎與帳號 → 第二週檔案核心 → 第三週分享與預覽 → 第四週強化與驗收。
-
-## 32. 頁面重新整理後維持登入狀態（Silent Refresh）
-
-### 32.1 問題背景
+### 31.1 問題背景
 
 Access token 依安全規範只存在前端記憶體（Zustand store），不寫入 localStorage 或 sessionStorage。使用者重新整理瀏覽器後，Zustand 狀態歸零，`RequireAuth` 發現 `accessToken === null` 就立刻重導至 `/login`，即使 refresh token cookie 仍然有效。
 
-### 32.2 解法：App 啟動時執行 Silent Refresh
+### 31.2 解法：App 啟動時執行 Silent Refresh
 
 在 React tree 的最頂層加入 `AuthInitializer` 元件，app 掛載時呼叫 `POST /auth/refresh` 一次：
 
@@ -1072,7 +1068,7 @@ Access token 依安全規範只存在前端記憶體（Zustand store），不寫
 - 失敗（cookie 不存在或已過期）→ 不做任何事 → router 將使用者導向 `/login`（正常登出或 session 過期行為）
 - 等待期間 → `AuthInitializer` 回傳 `null`（空白畫面），不讓 `RequireAuth` 在 refresh 結束前搶先重導
 
-### 32.3 實作要點
+### 31.3 實作要點
 
 | 項目 | 說明 |
 |---|---|
@@ -1083,13 +1079,13 @@ Access token 依安全規範只存在前端記憶體（Zustand store），不寫
 | 安全不變式 | Access token 仍只存在記憶體，silent refresh 不改變 refresh token 的儲存位置（HttpOnly cookie） |
 | Cookie 環境 | development/test 可在本機 HTTP 使用 cookie；staging/production 強制 `Secure` |
 
-### 32.4 登出與 Session 過期
+### 31.4 登出與 Session 過期
 
 - 明確登出：呼叫 `POST /auth/logout` → 後端撤銷 refresh token 並清除 cookie → 下次 silent refresh 失敗 → 導向 `/login`
 - Session 過期（refresh token TTL 到期）：cookie 已失效 → silent refresh 返回 401 → 導向 `/login`
 - 這兩種情境均不需前端額外處理，已由現有流程覆蓋
 
-### 32.5 相關檔案
+### 31.5 相關檔案
 
 | 檔案 | 變更 |
 |---|---|
@@ -1098,11 +1094,11 @@ Access token 依安全規範只存在前端記憶體（Zustand store），不寫
 | `frontend/src/api/authApi.ts` | 新增 `authApi.refresh()` 使用 `refreshClient` |
 | `frontend/src/api/client.ts` | 將 `refreshClient` 改為具名匯出（`export const`） |
 
-## 33. In-App AI Assistant（28 模組之後新增的核心功能）
+## 32. In-App AI Assistant（28 模組之後新增的核心功能）
 
 原 28 模組完成後，於網頁應用內新增一個**可對話、可自我擴充的 AI 助理**。使用者用自然語言描述需求，助理把需求轉成**可檢視、可確認、可執行、可記錄的 Workflow**，以既有或現場生成的技能完成檔案／資料夾操作。完整設計見 [assistant-design.md](./assistant-design.md)，評測見 [assistant-eval-design.md](./assistant-eval-design.md)，決策見 [decisions.md](./decisions.md) 的 DEC-016～023。
 
-### 33.1 功能範圍
+### 32.1 功能範圍
 
 - **對話操作**：登入後 CloudDrive shell 內的浮動聊天面板，用自然語言列檔／搜尋／整理／改名／移動／分享／壓縮解壓等。
 - **計畫確認**：寫入/破壞性操作先產生計畫（步驟、權限層級、是否需確認），唯讀操作可 fast-path 自動執行；使用者確認後才執行，破壞性操作**絕不自動執行**。
@@ -1112,7 +1108,7 @@ Access token 依安全規範只存在前端記憶體（Zustand store），不寫
 - **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
 - **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
 
-### 33.2 後端目錄（補充 §9）
+### 32.2 後端目錄（補充 §9）
 
 ```
 app/assistant/
@@ -1124,7 +1120,7 @@ backend/eval/   schema.py runner.py inproc.py runner_browser.py verifier.py
                 judge.py scoring.py baseline.py report.py state.py run.py cases/
 ```
 
-### 33.3 前端目錄（補充 §10）
+### 32.3 前端目錄（補充 §10）
 
 ```
 src/components/assistant/  AssistantPanel MessageBubble WorkflowPlanCard
@@ -1135,7 +1131,7 @@ src/api/assistantApi.ts  src/hooks/useAssistant.ts
 frontend/e2e/assistant/assistant-eval.spec.ts  frontend/playwright.eval.config.ts
 ```
 
-### 33.4 API（補充 §13，前綴 `/api/v1`）
+### 32.4 API（補充 §13，前綴 `/api/v1`）
 
 | Method | Path | 用途 |
 |---|---|---|
@@ -1148,30 +1144,30 @@ frontend/e2e/assistant/assistant-eval.spec.ts  frontend/playwright.eval.config.t
 | PATCH | `/assistant/skills/{id}` | 編輯描述/程式碼（改碼重跑 codeguard） |
 | DELETE | `/assistant/skills/{id}` | 刪除技能（連同右鍵動作）；回 204 |
 
-### 33.5 前端頁面（補充 §14）
+### 32.5 前端頁面（補充 §14）
 
 - **聊天面板**：浮動於各受保護頁；訊息泡泡、計畫確認卡、技能核可/程式碼審查、已存工作流程清單、使用者訊息複製鈕。
 - **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
 
-### 33.6 環境變數（補充 §23）
+### 32.6 環境變數（補充 §23）
 
 `ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
 
-### 33.7 安全（補充 §18）
+### 32.7 安全（補充 §18）
 
 - 生成程式碼**絕不自動執行**：經 codeguard AST 靜態掃描（拒禁用 import/`eval`/dunder/錯誤簽章）→ 使用者核可 → 受限子行程沙箱（`python -I`、CPU/檔案 rlimit、`addaudithook` 封鎖網路/spawn/越界寫入）。編輯既有技能同樣重跑 codeguard。
 - 沙箱檔案存取限該使用者 storage；所有動作可記入 activity_logs。詳見 DEC-019。
 
-### 33.8 測試與評測（補充 §24）
+### 32.8 測試與評測（補充 §24）
 
 - 後端 `tests/assistant/`、前端 `components/assistant/*.test.tsx`。
 - 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
 
-## 34. 時光機（Snapshots，核心功能）
+## 33. 時光機（Snapshots，核心功能）
 
 類 Apple Time Machine 的整碟時間點還原。完整設計見 [time-machine-design.md](./time-machine-design.md)，決策見 DEC-024。**狀態：S1-S5 已實作並測試完成；仍有非阻擋限制：還原時硬配額檢查待補強。**
 
-### 34.1 功能範圍
+### 33.1 功能範圍
 
 - **快照**：整個雲端硬碟在某時間點的狀態（哪些檔案/資料夾存在、名稱、位置、版本）。增量儲存——未變更檔案以 `checksum_sha256` 共用既有內容，不重複存。
 - **三種觸發**：(1) 自動排程（使用者設定預設開啟、每小時；服務內建排程器由 `SNAPSHOT_SCHEDULER_ENABLED` 控制，compose 單 worker 預設開）；(2) 手動「立即建立快照」；(3) **助理執行寫入/破壞性 workflow 或生成式 skill 前自動建快照**（每個 workflow/skill 一個），可一鍵回到助理操作前。
@@ -1180,20 +1176,20 @@ frontend/e2e/assistant/assistant-eval.spec.ts  frontend/playwright.eval.config.t
 - **保留與配額**：保留最近 N 個快照（預設 50，可設），釘選與保命快照豁免；快照空間**不計入檔案配額，另設獨立快照配額（預設為檔案配額的一半）**；刪快照的內容由背景 GC 回收。排程快照需設定開啟、距最近快照已達間隔且 drive 目前至少有一個 item；空碟不建立排程快照。
 - **協作**：分享/協作項目僅擁有者可還原。
 
-### 34.2 重用既有模組
+### 33.2 重用既有模組
 
 建立在既有元件之上：`file_versions`（內容層）、`drive_items` 的名稱/父層/刪除旗標（可還原改名/搬移/刪除）、Trash（互補）、`activity_logs`（稽核）、Storage 的 checksum 去重、背景任務（排程與縮減）、Assistant（執行前快照）。
 
-### 34.3 新增資料表與 API（摘要）
+### 33.3 新增資料表與 API（摘要）
 
 - 新表 `snapshots`、`snapshot_entries`、`snapshot_settings`（見設計文件 §7）。
 - 已實作端點：`POST/GET /snapshots`、`GET /snapshots/{id}/items`、`POST /snapshots/{id}/restore`、`GET/PUT /snapshots/settings`。
 
-### 34.4 前端頁面
+### 33.4 前端頁面
 
 側欄「時光機」入口（`/time-machine`）：快照時間軸、進入快照唯讀瀏覽、還原確認流程（明示覆蓋、已建保命快照、可選 subtree_mode）、保留數/排程/獨立快照配額設定。
 
-## 35. 結論
+## 34. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 
