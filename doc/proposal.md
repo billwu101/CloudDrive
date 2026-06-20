@@ -277,13 +277,13 @@
 
 > Provider 介面方法與 `LocalStorageProvider` 實作見 [detailed-design.md](./detailed-design.md) §6.6。
 
-## 9. 後端目錄結構
-
-後端按**模組**組織：每個 domain 為一個自足套件（`app/<module>/`，含 `router.py` / `service.py` / `repository.py` / `schemas.py`），模組之間只透過 service 注入互動、不互相 import 內部。完整目錄與模組邊界見 [detailed-design.md](./detailed-design.md) §4（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
-
-## 10. 前端目錄結構
+## 9. 前端目錄結構
 
 前端按職責分層：`api/`（axios 包裝）、`app/`（路由與守衛）、`pages/`、`components/`、`hooks/`（TanStack Query 包裝）、`stores/`（Zustand）。完整目錄見 [detailed-design.md](./detailed-design.md) §9（前端詳細）；實際以 `frontend/src/` 程式碼為準。
+
+## 10. 後端目錄結構
+
+後端按**模組**組織：每個 domain 為一個自足套件（`app/<module>/`，含 `router.py` / `service.py` / `repository.py` / `schemas.py`），模組之間只透過 service 注入互動、不互相 import 內部。完整目錄與模組邊界見 [detailed-design.md](./detailed-design.md) §4（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
 
 ## 11. 資料庫設計
 
@@ -371,7 +371,7 @@
 - **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
 - **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
 
-### 12.2 後端目錄（補充 §9）
+### 12.2 後端目錄（補充 §10）
 
 ```
 app/assistant/
@@ -383,7 +383,7 @@ backend/eval/   schema.py runner.py inproc.py runner_browser.py verifier.py
                 judge.py scoring.py baseline.py report.py state.py run.py cases/
 ```
 
-### 12.3 前端目錄（補充 §10）
+### 12.3 前端目錄（補充 §9）
 
 ```
 src/components/assistant/  AssistantPanel MessageBubble WorkflowPlanCard
