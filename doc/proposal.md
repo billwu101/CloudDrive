@@ -393,59 +393,21 @@
 
 長度選擇不是任意值：`50` 多用於狀態/類型，`100~200` 用於技能或 workflow 名稱，`255` 用於帳號、hash 或外部識別字，`512` 用於檔名。正式文件若列資料表欄位，應同時說明這些限制來自「業務意義 + 防止不受控輸入 + 索引效率」。
 
-### 12.1 users
+### 12.1 資料表一覽
 
-**需求**：儲存使用者帳號。`email` 為唯一登入識別；每位使用者有容量上限與已用量；需區分啟用狀態與管理員身分；密碼僅存雜湊、不存明文。
+下表為各資料表的需求；**DDL（欄位、型別、索引）見 [detailed-design.md](./detailed-design.md) §7**，對應小節列於最右欄。
 
-> 欄位、型別與索引（DDL）見 [detailed-design.md](./detailed-design.md) §7.1。
-
-### 12.2 drive_items
-
-**需求**：統一儲存檔案與資料夾，以 `item_type` 區分。同一資料夾下未刪除項目**不可同名**；上傳同名檔案時，MVP 預設保留兩者並自動命名 `filename (1).ext`，亦可改為取代並建新版本或由使用者選擇。支援星號、垃圾桶（軟刪除）、建立/修改者追蹤。
-
-> 欄位、索引（含同資料夾不重名約束、名稱 trigram 搜尋）與資料夾樹策略見 [detailed-design.md](./detailed-design.md) §7.3。
-
-### 12.2.1 user_item_preferences
-
-**需求**：每位使用者對檔案項目的個人化偏好（目前主要是星號）。**星號以本表為準，不放在 `drive_items`**——分享檔案時每位使用者的星號應互不影響；若放在 `drive_items`，一人加星號會污染其他使用者看到的狀態。
-
-> 欄位見 [detailed-design.md](./detailed-design.md) §7.3.1。
-
-### 12.3 file_versions
-
-**需求**：儲存檔案的歷史版本，支援版本回溯。
-
-> 欄位見 [detailed-design.md](./detailed-design.md) §7.4。
-
-### 12.4 shares
-
-**需求**：對指定使用者的分享權限。權限分 `viewer`（檢視/預覽）、`downloader`（可下載）、`editor`（可改名/移動/上傳新版本）。
-
-> 欄位見 [detailed-design.md](./detailed-design.md) §7.5。
-
-### 12.5 share_links
-
-**需求**：公開分享連結，支援權限（`viewer`/`downloader`）、選用密碼、選用到期時間、啟用開關。**資料庫只存 token 與密碼的 hash，不存明文**；明文 token 僅在建立時回傳前端一次。
-
-> 欄位見 [detailed-design.md](./detailed-design.md) §7.6。
-
-### 12.6 upload_sessions
-
-**需求**：支援大型檔案分片上傳。session 狀態機：`pending` → `uploading` → `completed` / `failed` / `cancelled`；完成後建立對應的 `drive_item`。
-
-> 欄位見 [detailed-design.md](./detailed-design.md) §7.7。
-
-### 12.7 upload_chunks
-
-**需求**：記錄各分片（編號、暫存位置、大小、checksum），供完成時組裝與驗證。
-
-> 欄位見 [detailed-design.md](./detailed-design.md) §7.7。
-
-### 12.8 activity_logs
-
-**需求**：記錄使用者操作（`upload`/`download`/`rename`/`move`/`delete`/`restore`/`share`），含操作者、對象、metadata、IP、瀏覽器資訊，供稽核與「最近」功能。
-
-> 欄位見 [detailed-design.md](./detailed-design.md) §7.8。
+| 資料表 | 需求 | DDL |
+| --- | --- | --- |
+| `users` | 使用者帳號；`email` 為唯一登入識別；有容量上限與已用量；區分啟用狀態與管理員身分；密碼僅存雜湊、不存明文。 | §7.1 |
+| `drive_items` | 統一儲存檔案與資料夾（以 `item_type` 區分）；同層未刪除項目不可同名（同名上傳 MVP 自動命名 `filename (1).ext`，亦可取代建新版本或由使用者選）；支援星號、垃圾桶（軟刪除）、建立/修改者追蹤。 | §7.3 |
+| `user_item_preferences` | 每位使用者對項目的個人化偏好（目前為星號）。星號以本表為準、不放 `drive_items`，以免分享時一人加星污染他人狀態。 | §7.3.1 |
+| `file_versions` | 檔案歷史版本，支援版本回溯。 | §7.4 |
+| `shares` | 對指定使用者的分享權限：`viewer`（檢視/預覽）、`downloader`（下載）、`editor`（改名/移動/上傳新版本）。 | §7.5 |
+| `share_links` | 公開分享連結：權限（`viewer`/`downloader`）、選用密碼、選用到期、啟用開關。只存 token 與密碼 hash、不存明文；明文 token 僅建立時回傳一次。 | §7.6 |
+| `upload_sessions` | 大型檔案分片上傳；狀態機 `pending`→`uploading`→`completed`/`failed`/`cancelled`；完成後建立對應 `drive_item`。 | §7.7 |
+| `upload_chunks` | 各分片（編號、暫存位置、大小、checksum），供完成時組裝與驗證。 | §7.7 |
+| `activity_logs` | 使用者操作紀錄（`upload`/`download`/`rename`/`move`/`delete`/`restore`/`share`），含操作者、對象、metadata、IP、瀏覽器；供稽核與「最近」。 | §7.8 |
 
 ## 13. In-App AI Assistant（28 模組之後新增的核心功能）
 
