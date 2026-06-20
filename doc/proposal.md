@@ -469,149 +469,51 @@ frontend/
 
 ### 11.2 drive_items
 
-統一儲存檔案與資料夾。使用 item_type 區分 file 與 folder。
+**需求**：統一儲存檔案與資料夾，以 `item_type` 區分。同一資料夾下未刪除項目**不可同名**；支援星號、垃圾桶（軟刪除）、建立/修改者追蹤。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| owner_id | uuid | 擁有者 |
-| parent_id | uuid | 上層資料夾，根目錄為 null |
-| item_type | varchar | file 或 folder |
-| name | varchar | 檔案或資料夾名稱 |
-| mime_type | varchar | MIME type，資料夾可為 null |
-| extension | varchar | 副檔名 |
-| size_bytes | bigint | 檔案大小 |
-| storage_key | text | 儲存服務中的檔案 key |
-| checksum_sha256 | varchar | 檔案 checksum |
-| is_starred | boolean | 歷史相容欄位；正式星號狀態以 `user_item_preferences.is_starred` 為準 |
-| is_deleted | boolean | 是否在垃圾桶 |
-| deleted_at | timestamptz | 刪除時間 |
-| created_by | uuid | 建立者 |
-| updated_by | uuid | 最後修改者 |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
-
-建議索引：
-
-```sql
-CREATE INDEX idx_drive_items_owner_parent ON drive_items(owner_id, parent_id);
-CREATE INDEX idx_drive_items_owner_deleted ON drive_items(owner_id, is_deleted);
-CREATE INDEX idx_drive_items_name_trgm ON drive_items USING gin (name gin_trgm_ops);
-CREATE UNIQUE INDEX uq_drive_items_same_folder_name
-ON drive_items(owner_id, parent_id, lower(name))
-WHERE is_deleted = false;
-```
-
-若要支援更高效的資料夾樹查詢，可考慮 PostgreSQL ltree 或 closure table。
+> 欄位、索引（含同資料夾不重名約束、名稱 trigram 搜尋）與資料夾樹策略見 [detailed-design.md](./detailed-design.md) §7.3。
 
 ### 11.2.1 user_item_preferences
 
-儲存每位使用者對檔案項目的個人化偏好。目前最重要的是星號狀態。
+**需求**：每位使用者對檔案項目的個人化偏好（目前主要是星號）。**星號以本表為準，不放在 `drive_items`**——分享檔案時每位使用者的星號應互不影響；若放在 `drive_items`，一人加星號會污染其他使用者看到的狀態。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| user_id | uuid | 使用者 |
-| item_id | uuid | 對應 drive_items.id |
-| is_starred | boolean | 此使用者是否將項目加星號 |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
-
-正式行為以 `user_item_preferences` 為準，不以 `drive_items.is_starred` 為準。原因是分享檔案時，每位使用者的星號狀態應互不影響；若只放在 `drive_items`，一位使用者加星號會污染其他使用者看到的狀態。
+> 欄位見 [detailed-design.md](./detailed-design.md) §7.3.1。
 
 ### 11.3 file_versions
 
-儲存檔案版本。
+**需求**：儲存檔案的歷史版本，支援版本回溯。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| file_id | uuid | 對應 drive_items.id |
-| version_no | integer | 版本號 |
-| storage_key | text | 版本檔案儲存 key |
-| size_bytes | bigint | 檔案大小 |
-| checksum_sha256 | varchar | checksum |
-| created_by | uuid | 建立者 |
-| created_at | timestamptz | 建立時間 |
+> 欄位見 [detailed-design.md](./detailed-design.md) §7.4。
 
 ### 11.4 shares
 
-儲存指定使用者分享權限。
+**需求**：對指定使用者的分享權限。權限分 `viewer`（檢視/預覽）、`downloader`（可下載）、`editor`（可改名/移動/上傳新版本）。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| item_id | uuid | 被分享的檔案或資料夾 |
-| owner_id | uuid | 分享者 |
-| target_user_id | uuid | 被分享者 |
-| permission | varchar | viewer、downloader、editor |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
+> 欄位見 [detailed-design.md](./detailed-design.md) §7.5。
 
 ### 11.5 share_links
 
-儲存公開分享連結。
+**需求**：公開分享連結，支援權限（`viewer`/`downloader`）、選用密碼、選用到期時間、啟用開關。**資料庫只存 token 與密碼的 hash，不存明文**；明文 token 僅在建立時回傳前端一次。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| item_id | uuid | 被分享項目 |
-| token_hash | varchar | 分享 token 雜湊 |
-| permission | varchar | viewer、downloader |
-| password_hash | varchar | 分享密碼雜湊，可為 null |
-| expires_at | timestamptz | 到期時間，可為 null |
-| is_active | boolean | 是否啟用 |
-| created_by | uuid | 建立者 |
-| created_at | timestamptz | 建立時間 |
-
-注意：資料庫不要直接存明文分享 token。建立分享連結時回傳明文 token 給前端，資料庫只保存 hash。
+> 欄位見 [detailed-design.md](./detailed-design.md) §7.6。
 
 ### 11.6 upload_sessions
 
-支援大型檔案分片上傳。
+**需求**：支援大型檔案分片上傳。session 狀態機：`pending` → `uploading` → `completed` / `failed` / `cancelled`；完成後建立對應的 `drive_item`。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| user_id | uuid | 上傳者 |
-| parent_id | uuid | 目標資料夾 |
-| file_name | varchar | 檔名 |
-| mime_type | varchar | MIME type |
-| total_size_bytes | bigint | 檔案總大小 |
-| chunk_size_bytes | integer | 每片大小 |
-| total_chunks | integer | 總分片數 |
-| uploaded_chunks | integer | 已上傳分片數 |
-| status | varchar | pending、uploading、completed、failed、cancelled |
-| final_item_id | uuid | 完成後建立的 drive_item |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
+> 欄位見 [detailed-design.md](./detailed-design.md) §7.7。
 
 ### 11.7 upload_chunks
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| upload_session_id | uuid | 對應 upload_sessions |
-| chunk_index | integer | 分片編號 |
-| storage_key | text | 暫存位置 |
-| size_bytes | integer | 分片大小 |
-| checksum_sha256 | varchar | 分片 checksum |
-| created_at | timestamptz | 建立時間 |
+**需求**：記錄各分片（編號、暫存位置、大小、checksum），供完成時組裝與驗證。
+
+> 欄位見 [detailed-design.md](./detailed-design.md) §7.7。
 
 ### 11.8 activity_logs
 
-記錄使用者操作。
+**需求**：記錄使用者操作（`upload`/`download`/`rename`/`move`/`delete`/`restore`/`share`），含操作者、對象、metadata、IP、瀏覽器資訊，供稽核與「最近」功能。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| actor_id | uuid | 操作者 |
-| item_id | uuid | 操作對象 |
-| action | varchar | upload、download、rename、move、delete、restore、share |
-| metadata | jsonb | 附加資訊 |
-| ip_address | inet | IP |
-| user_agent | text | 瀏覽器資訊 |
-| created_at | timestamptz | 建立時間 |
+> 欄位見 [detailed-design.md](./detailed-design.md) §7.8。
 
 ## 12. 權限模型
 
