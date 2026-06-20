@@ -1215,6 +1215,22 @@ class ActivityLogService:
 
 ## 7. 資料庫詳細設計
 
+### 7.0 欄位型別與長度原則
+
+資料庫欄位使用 `varchar` 或 `text` 的原則如下：
+
+| 類型 | 建議型別 | 依據 |
+| --- | --- | --- |
+| 枚舉狀態、短代碼 | `varchar(20~100)` | 例如 `status`、`permission`、`item_type`，長度有限且常用於索引或檢查 |
+| Email、username、hash、token hash | `varchar(255)` | 255 是常見帳號識別欄位上限，可避免異常長字串 |
+| 檔名 | `varchar(512)` | 檔案系統與瀏覽器上傳可能出現較長名稱，仍需上限防止濫用 |
+| checksum | `varchar(64)` | SHA-256 hex 固定 64 字元 |
+| MIME type | `varchar(255)` | MIME type 字串長度有限 |
+| 使用者輸入長文、manifest code、storage key、URL、加密 secret | `text` | 長度不固定，不適合硬切；由 service 層與欄位用途控制 |
+| 結構化流程、metadata | `jsonb` | 方便保存 workflow steps、activity metadata、manifest 等半結構化資料 |
+
+長度選擇不是任意值：`50` 多用於狀態/類型，`100~200` 用於技能或 workflow 名稱，`255` 用於帳號、hash 或外部識別字，`512` 用於檔名。各表欄位依此原則，並結合「業務意義 + 防止不受控輸入 + 索引效率」決定。
+
 ### 7.1 users
 
 ```text
@@ -1231,7 +1247,7 @@ created_at timestamptz not null
 updated_at timestamptz not null
 ```
 
-型別/長度依據（需求見 proposal §11）：
+型別/長度依據（通用原則見 §7.0；需求見 proposal §11）：
 - `email` / `username` / `password_hash` → `varchar(255)`：帳號識別與雜湊欄位上限 255 字元（避免異常長字串、利於索引）。
 - `avatar_url` → `text`：URL 長度不定，不硬切。
 - `quota_bytes` / `used_bytes` → `bigint`：以位元組計的容量需大整數範圍。

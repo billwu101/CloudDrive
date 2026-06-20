@@ -371,25 +371,7 @@
 
 ## 11. 資料庫設計
 
-### 11.0 欄位型別與長度原則
-
-資料庫欄位使用 `varchar` 或 `text` 的原則如下：
-
-| 類型 | 建議型別 | 依據 |
-| --- | --- | --- |
-| 枚舉狀態、短代碼 | `varchar(20~100)` | 例如 `status`、`permission`、`item_type`，長度有限且常用於索引或檢查 |
-| Email、username、hash、token hash | `varchar(255)` | 255 是常見帳號識別欄位上限，可避免異常長字串 |
-| 檔名 | `varchar(512)` | 檔案系統與瀏覽器上傳可能出現較長名稱，仍需上限防止濫用 |
-| checksum | `varchar(64)` | SHA-256 hex 固定 64 字元 |
-| MIME type | `varchar(255)` | MIME type 字串長度有限 |
-| 使用者輸入長文、manifest code、storage key、URL、加密 secret | `text` | 長度不固定，不適合硬切；由 service 層與欄位用途控制 |
-| 結構化流程、metadata | `jsonb` | 方便保存 workflow steps、activity metadata、manifest 等半結構化資料 |
-
-長度選擇不是任意值：`50` 多用於狀態/類型，`100~200` 用於技能或 workflow 名稱，`255` 用於帳號、hash 或外部識別字，`512` 用於檔名。正式文件若列資料表欄位，應同時說明這些限制來自「業務意義 + 防止不受控輸入 + 索引效率」。
-
-### 11.1 資料表一覽
-
-下表為各資料表的需求；**DDL（欄位、型別、索引）見 [detailed-design.md](./detailed-design.md) §7**，對應小節列於最右欄。
+下表為各資料表的需求；**欄位型別與長度原則、各表 DDL（欄位、型別、索引）見 [detailed-design.md](./detailed-design.md) §7**，對應小節列於最右欄。
 
 | 資料表 | 需求 | DDL |
 | --- | --- | --- |
