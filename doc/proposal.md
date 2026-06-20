@@ -29,12 +29,12 @@
 | ERD / 資料表設計 | 是 | 資料保存、權限、搜尋、快照與助理功能的審查依據 |
 | 系統架構圖、部署圖、核心時序圖 | 是 | 幫助非開發者理解資料流與部署邊界 |
 | 測試與 Assistant Eval Harness 報告 | 是 | 證明核心流程、E2E、AI agent 評測有被驗證 |
-| `doc/detailed-design.md` | 視情況附錄 | 偏內部技術設計，交付時可作為技術附錄 |
-| `doc/decisions.md` | 視情況附錄 | 設計決策與取捨，適合審查者追問時引用 |
-| `doc/tasks/progress.md` | 內部紀錄為主 | 任務完成狀態與開發歷程，不宜取代正式驗收文件 |
-| `doc/tasks/*.md` | 內部紀錄為主 | 分工與 checklist，通常不作為主要交付文件 |
+| `doc/detailed-design.md` | 否（內部） | 內部技術設計，不納入交付 |
+| `doc/decisions.md` | 否（內部） | 設計決策與取捨，內部留存，不納入交付 |
+| `doc/tasks/progress.md` | 否（內部） | 任務完成狀態與開發歷程，不納入交付 |
+| `doc/tasks/*.md` | 否（內部） | 分工與 checklist，不納入交付 |
 
-也就是說，`detailed-design.md`、`decisions.md`、`progress.md` 可以一起交付，但不應要求交付方先閱讀它們才能理解系統；正式開發文件本身應能獨立說明系統現況。
+也就是說，`detailed-design.md`、`decisions.md`、`progress.md` 與 `tasks/*.md` 為**內部文件、不納入交付**；正式開發文件本身應能獨立說明系統現況。
 
 ### 1.3 文件維護方式
 
