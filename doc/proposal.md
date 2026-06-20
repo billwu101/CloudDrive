@@ -22,14 +22,13 @@
 - [18. 安全性需求](#18-安全性需求)
 - [19. 效能需求](#19-效能需求)
 - [20. 錯誤處理](#20-錯誤處理)
-- [21. 背景任務](#21-背景任務)
-- [22. Docker 開發環境](#22-docker-開發環境)
-- [23. 環境變數](#23-環境變數)
-- [24. 測試計畫](#24-測試計畫)
-- [25. 開發里程碑](#25-開發里程碑)
-- [26. 驗收標準](#26-驗收標準)
-- [27. 風險與對策](#27-風險與對策)
-- [28. 結論](#28-結論)
+- [21. Docker 開發環境](#21-docker-開發環境)
+- [22. 環境變數](#22-環境變數)
+- [23. 測試計畫](#23-測試計畫)
+- [24. 開發里程碑](#24-開發里程碑)
+- [25. 驗收標準](#25-驗收標準)
+- [26. 風險與對策](#26-風險與對策)
+- [27. 結論](#27-結論)
 
 ## 1. 文件目的
 
@@ -490,7 +489,7 @@ backend/eval/   schema.py runner.py inproc.py runner_browser.py verifier.py
 - **聊天面板**：浮動於各受保護頁；訊息泡泡、計畫確認卡、技能核可/程式碼審查、已存工作流程清單、使用者訊息複製鈕。
 - **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
 
-### 13.5 環境變數（補充 §23）
+### 13.5 環境變數（補充 §22）
 
 `ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
 
@@ -499,7 +498,7 @@ backend/eval/   schema.py runner.py inproc.py runner_browser.py verifier.py
 - 生成程式碼**絕不自動執行**：經 codeguard AST 靜態掃描（拒禁用 import/`eval`/dunder/錯誤簽章）→ 使用者核可 → 受限子行程沙箱（`python -I`、CPU/檔案 rlimit、`addaudithook` 封鎖網路/spawn/越界寫入）。編輯既有技能同樣重跑 codeguard。
 - 沙箱檔案存取限該使用者 storage；所有動作可記入 activity_logs。詳見 DEC-019。
 
-### 13.7 測試與評測（補充 §24）
+### 13.7 測試與評測（補充 §23）
 
 - 前端 `components/assistant/*.test.tsx`、後端 `tests/assistant/`。
 - 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
@@ -788,19 +787,7 @@ Permanent delete
 
 > 錯誤格式見 [detailed-design.md](./detailed-design.md) §8.1；完整錯誤碼表（含 HTTP 狀態碼）見 §11。
 
-## 21. 背景任務
-
-目前版本以同步 service 流程與內建 scheduler 處理必要背景工作；未來若工作量增加，可再外接 Celery/RQ。可能的背景工作包括：
-
-1. 產生圖片縮圖。
-2. 產生 PDF 預覽。
-3. 清理失敗或過期的上傳分片。
-4. 清理垃圾桶過期項目。
-5. 統計使用者容量。
-6. 防毒掃描。
-7. 寄送分享通知 email。
-
-## 22. Docker 開發環境
+## 21. Docker 開發環境
 
 建議使用 docker-compose 管理本機開發環境。
 
@@ -860,7 +847,7 @@ volumes:
 | redis | 目前不使用 | 不需要開放；若未來引入 queue/cache，也應只留內網 |
 | Ollama / LLM | 開發機可用 `11434` | 若使用本地模型，應限制在內網或主機 loopback，不直接暴露公網 |
 
-## 23. 環境變數
+## 22. 環境變數
 
 後端建議環境變數：
 
@@ -898,9 +885,9 @@ secret 管理原則：
 3. 資料庫內不保存明文 refresh token、share token；只保存 hash。
 4. 使用者外部模型憑證若啟用，保存於 `user_external_credentials.secret_encrypted`，只回傳遮罩提示，不回傳明文。
 
-## 24. 測試計畫
+## 23. 測試計畫
 
-### 24.1 前端測試
+### 23.1 前端測試
 
 使用 Vitest 與 React Testing Library。
 
@@ -914,7 +901,7 @@ secret 管理原則：
 6. 搜尋輸入 debounce。
 7. 錯誤訊息顯示。
 
-### 24.2 後端測試
+### 23.2 後端測試
 
 使用 pytest。
 
@@ -932,7 +919,7 @@ secret 管理原則：
 10. 容量限制。
 11. 分片上傳。
 
-### 24.3 E2E 測試
+### 23.3 E2E 測試
 
 使用 Playwright。
 
@@ -946,7 +933,7 @@ secret 管理原則：
 6. 另一位使用者開啟分享檔案。
 7. 刪除檔案並從垃圾桶還原。
 
-### 24.4 回歸防護測試（補充，2026-06-14）
+### 23.4 回歸防護測試（補充，2026-06-14）
 
 根據測試空白分析，以下區域缺乏保護，新增功能時容易造成無聲回歸，已補充對應測試：
 
@@ -1004,36 +991,36 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 | --- | --- |
 | `tests/integration/test_file_version_flow.py` | 上傳自動產生 v1、size_bytes 正確記錄、未驗證 403、非擁有者無分享不能列版本、viewer 可列版本、兩次上傳同名各自有獨立 v1 |
 
-## 25. 開發里程碑
+## 24. 開發里程碑
 
 以**四個階段（週）**推進，各階段即開發順序：
 
-### 25.1 第一週：專案基礎與帳號
+### 24.1 第一週：專案基礎與帳號
 
 1. 建立 frontend 與 backend 專案、Docker Compose、PostgreSQL（pgvector image，供語意搜尋）。
 2. FastAPI 基礎架構、React 基礎版面、lint／format／測試工具。
 3. 使用者註冊、登入、JWT 驗證。
 4. drive_items 資料表與 migration。
 
-### 25.2 第二週：檔案核心（列表／上傳下載／管理）
+### 24.2 第二週：檔案核心（列表／上傳下載／管理）
 
 1. 建立資料夾 API、檔案列表 API、前端我的硬碟頁。
 2. 小檔案上傳、檔案下載、容量檢查、上傳進度 UI、檔案圖示與 MIME type 顯示、操作紀錄。
 3. 重新命名、移動、星號、最近檔案、垃圾桶、搜尋、右鍵選單。
 
-### 25.3 第三週：分享與預覽
+### 24.3 第三週：分享與預覽
 
 1. 指定使用者分享、分享連結、與我分享頁面。
 2. 圖片預覽、PDF 預覽、文字預覽。
 
-### 25.4 第四週：強化與驗收
+### 24.4 第四週：強化與驗收
 
 1. 分片上傳。
 2. 測試補齊、權限測試、效能優化。
 3. 錯誤處理優化。
 4. 部署文件、Demo 準備。
 
-## 26. 驗收標準
+## 25. 驗收標準
 
 功能以 **§5 功能範圍**為基準——§5.1 列的必做功能均可正常操作，即達功能驗收（不在此逐條重述）。除功能完整外，需同時滿足以下品質門檻：
 
@@ -1050,10 +1037,10 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 
 **測試與部署**
 
-6. §24 規劃的前端單元/E2E、後端單元/整合 測試通過。
+6. §23 規劃的前端單元/E2E、後端單元/整合 測試通過。
 7. Docker 開發環境可一鍵啟動。
 
-## 27. 風險與對策
+## 26. 風險與對策
 
 | 風險 | 影響 | 對策 |
 | --- | --- | --- |
@@ -1065,7 +1052,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 | 預覽生成耗時 | 使用者等待 | 背景任務與快取 |
 | 分享連結外流 | 資料風險 | 密碼、到期時間、撤銷機制 |
 
-## 28. 結論
+## 27. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 
