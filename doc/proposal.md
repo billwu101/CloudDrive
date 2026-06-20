@@ -311,7 +311,7 @@
 
 ### 11.2 drive_items
 
-**需求**：統一儲存檔案與資料夾，以 `item_type` 區分。同一資料夾下未刪除項目**不可同名**；支援星號、垃圾桶（軟刪除）、建立/修改者追蹤。
+**需求**：統一儲存檔案與資料夾，以 `item_type` 區分。同一資料夾下未刪除項目**不可同名**；上傳同名檔案時，MVP 預設保留兩者並自動命名 `filename (1).ext`，亦可改為取代並建新版本或由使用者選擇。支援星號、垃圾桶（軟刪除）、建立/修改者追蹤。
 
 > 欄位、索引（含同資料夾不重名約束、名稱 trigram 搜尋）與資料夾樹策略見 [detailed-design.md](./detailed-design.md) §7.3。
 
@@ -412,16 +412,16 @@ backend/eval/   schema.py runner.py inproc.py runner_browser.py verifier.py
 - **聊天面板**：浮動於各受保護頁；訊息泡泡、計畫確認卡、技能核可/程式碼審查、已存工作流程清單、使用者訊息複製鈕。
 - **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
 
-### 12.6 環境變數（補充 §25）
+### 12.6 環境變數（補充 §24）
 
 `ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
 
-### 12.7 安全（補充 §20）
+### 12.7 安全（補充 §19）
 
 - 生成程式碼**絕不自動執行**：經 codeguard AST 靜態掃描（拒禁用 import/`eval`/dunder/錯誤簽章）→ 使用者核可 → 受限子行程沙箱（`python -I`、CPU/檔案 rlimit、`addaudithook` 封鎖網路/spawn/越界寫入）。編輯既有技能同樣重跑 codeguard。
 - 沙箱檔案存取限該使用者 storage；所有動作可記入 activity_logs。詳見 DEC-019。
 
-### 12.8 測試與評測（補充 §26）
+### 12.8 測試與評測（補充 §25）
 
 - 前端 `components/assistant/*.test.tsx`、後端 `tests/assistant/`。
 - 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
@@ -649,21 +649,9 @@ Permanent delete
   -> Update quota
 ```
 
-## 19. 檔案命名與衝突處理
+## 19. 安全性需求
 
-同一資料夾下不允許出現相同名稱的未刪除項目。
-
-當使用者上傳同名檔案時，可提供三種策略：
-
-1. 取代原檔案並建立新版本。
-2. 保留兩者，新檔案自動命名為 `filename (1).ext`。
-3. 由使用者在前端選擇。
-
-MVP 建議先採用第 2 種，第二階段再加入版本管理。
-
-## 20. 安全性需求
-
-### 20.1 身分驗證
+### 19.1 身分驗證
 
 1. 使用 access token 與 refresh token。
 2. access token 有效時間建議 15 到 30 分鐘。
@@ -672,14 +660,14 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 5. 密碼使用 bcrypt 或 argon2 雜湊。
 6. access token 僅存於前端記憶體（不寫 localStorage／sessionStorage）、refresh token 存 HttpOnly cookie；頁面重整後以 **silent refresh**（app 啟動時呼叫 `POST /auth/refresh`）用 refresh cookie 續期維持登入，失敗則導向登入。實作見 [detailed-design.md](./detailed-design.md) §9.2.1。
 
-### 20.2 權限安全
+### 19.2 權限安全
 
 1. 所有檔案操作必須在後端檢查權限。
 2. 使用者不得透過猜測 UUID 存取他人檔案。
 3. 分享連結 token 需足夠長且不可預測。
 4. 分享連結可設定失效。
 
-### 20.3 上傳安全
+### 19.3 上傳安全
 
 1. 限制單檔大小。
 2. 限制使用者總容量。
@@ -689,7 +677,7 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 6. 對可疑檔案執行防毒掃描。
 7. 禁止路徑穿越，例如 `../../secret.txt`。
 
-### 20.4 API 安全
+### 19.4 API 安全
 
 1. 啟用 CORS 白名單。
 2. 限制登入嘗試頻率。
@@ -698,9 +686,9 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 5. 避免在錯誤訊息洩漏內部路徑。
 6. API response 不回傳 password_hash、token_hash 等敏感欄位。
 
-## 21. 效能需求
+## 20. 效能需求
 
-### 21.1 前端效能
+### 20.1 前端效能
 
 1. 檔案列表使用分頁或虛擬滾動。
 2. 搜尋輸入使用 debounce。
@@ -708,7 +696,7 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 4. 縮圖使用 lazy loading。
 5. 預覽視窗按需載入。
 
-### 21.2 後端效能
+### 20.2 後端效能
 
 1. 檔案下載使用 streaming response 或 signed URL。
 2. 大檔案使用分片上傳。
@@ -716,7 +704,7 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 4. 熱門查詢可於後續引入 cache；目前版本不要求 Redis。
 5. 縮圖產生放入背景任務。
 
-### 21.3 資料庫效能
+### 20.3 資料庫效能
 
 1. drive_items 依 owner_id、parent_id 建索引。
 2. 搜尋名稱使用 pg_trgm。
@@ -724,13 +712,13 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 4. 大型 JSON metadata 避免過度查詢。
 5. 列表查詢只取必要欄位。
 
-## 22. 錯誤處理
+## 21. 錯誤處理
 
 **需求**：API 採統一錯誤格式 `{ "error": { "code", "message", "details" } }`，前端依 `code` 顯示對應訊息——涵蓋未授權、權限不足、找不到、同層重名、容量不足、檔案過大、分享連結過期/停用等情境。
 
 > 錯誤格式見 [detailed-design.md](./detailed-design.md) §8.1；完整錯誤碼表（含 HTTP 狀態碼）見 §11。
 
-## 23. 背景任務
+## 22. 背景任務
 
 目前版本以同步 service 流程與內建 scheduler 處理必要背景工作；未來若工作量增加，可再外接 Celery/RQ。可能的背景工作包括：
 
@@ -742,7 +730,7 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 6. 防毒掃描。
 7. 寄送分享通知 email。
 
-## 24. Docker 開發環境
+## 23. Docker 開發環境
 
 建議使用 docker-compose 管理本機開發環境。
 
@@ -802,7 +790,7 @@ volumes:
 | redis | 目前不使用 | 不需要開放；若未來引入 queue/cache，也應只留內網 |
 | Ollama / LLM | 開發機可用 `11434` | 若使用本地模型，應限制在內網或主機 loopback，不直接暴露公網 |
 
-## 25. 環境變數
+## 24. 環境變數
 
 後端建議環境變數：
 
@@ -840,9 +828,9 @@ secret 管理原則：
 3. 資料庫內不保存明文 refresh token、share token；只保存 hash。
 4. 使用者外部模型憑證若啟用，保存於 `user_external_credentials.secret_encrypted`，只回傳遮罩提示，不回傳明文。
 
-## 26. 測試計畫
+## 25. 測試計畫
 
-### 26.1 前端測試
+### 25.1 前端測試
 
 使用 Vitest 與 React Testing Library。
 
@@ -856,7 +844,7 @@ secret 管理原則：
 6. 搜尋輸入 debounce。
 7. 錯誤訊息顯示。
 
-### 26.2 後端測試
+### 25.2 後端測試
 
 使用 pytest。
 
@@ -874,7 +862,7 @@ secret 管理原則：
 10. 容量限制。
 11. 分片上傳。
 
-### 26.3 E2E 測試
+### 25.3 E2E 測試
 
 使用 Playwright。
 
@@ -888,7 +876,7 @@ secret 管理原則：
 6. 另一位使用者開啟分享檔案。
 7. 刪除檔案並從垃圾桶還原。
 
-### 26.4 回歸防護測試（補充，2026-06-14）
+### 25.4 回歸防護測試（補充，2026-06-14）
 
 根據測試空白分析，以下區域缺乏保護，新增功能時容易造成無聲回歸，已補充對應測試：
 
@@ -946,36 +934,36 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 | --- | --- |
 | `tests/integration/test_file_version_flow.py` | 上傳自動產生 v1、size_bytes 正確記錄、未驗證 403、非擁有者無分享不能列版本、viewer 可列版本、兩次上傳同名各自有獨立 v1 |
 
-## 27. 開發里程碑
+## 26. 開發里程碑
 
 以**四個階段（週）**推進，各階段即開發順序：
 
-### 27.1 第一週：專案基礎與帳號
+### 26.1 第一週：專案基礎與帳號
 
 1. 建立 frontend 與 backend 專案、Docker Compose、PostgreSQL（pgvector image，供語意搜尋）。
 2. FastAPI 基礎架構、React 基礎版面、lint／format／測試工具。
 3. 使用者註冊、登入、JWT 驗證。
 4. drive_items 資料表與 migration。
 
-### 27.2 第二週：檔案核心（列表／上傳下載／管理）
+### 26.2 第二週：檔案核心（列表／上傳下載／管理）
 
 1. 建立資料夾 API、檔案列表 API、前端我的硬碟頁。
 2. 小檔案上傳、檔案下載、容量檢查、上傳進度 UI、檔案圖示與 MIME type 顯示、操作紀錄。
 3. 重新命名、移動、星號、最近檔案、垃圾桶、搜尋、右鍵選單。
 
-### 27.3 第三週：分享與預覽
+### 26.3 第三週：分享與預覽
 
 1. 指定使用者分享、分享連結、與我分享頁面。
 2. 圖片預覽、PDF 預覽、文字預覽。
 
-### 27.4 第四週：強化與驗收
+### 26.4 第四週：強化與驗收
 
 1. 分片上傳。
 2. 測試補齊、權限測試、效能優化。
 3. 錯誤處理優化。
 4. 部署文件、Demo 準備。
 
-## 28. 驗收標準
+## 27. 驗收標準
 
 功能以 **§5 功能範圍**為基準——§5.1 列的必做功能均可正常操作，即達功能驗收（不在此逐條重述）。除功能完整外，需同時滿足以下品質門檻：
 
@@ -983,21 +971,21 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 
 1. 使用者只能存取自己的檔案；不能藉猜測 UUID 存取他人資源。
 2. 未授權操作回傳正確錯誤碼（401/403），不洩漏資源是否存在。
-3. 分享連結 token 不可預測、可設失效（見 §20）。
+3. 分享連結 token 不可預測、可設失效（見 §19）。
 
 **品質與體驗**
 
 4. 前端清楚呈現 loading / empty / error 三種狀態。
-5. 容量超限、同名衝突等邊界情況有明確提示（見 §19、§22）。
+5. 容量超限、同名衝突等邊界情況有明確提示（見 §11.2、§21）。
 
 **測試與部署**
 
-6. §26 規劃的前端單元/E2E、後端單元/整合 測試通過。
+6. §25 規劃的前端單元/E2E、後端單元/整合 測試通過。
 7. Docker 開發環境可一鍵啟動。
 
-## 29. UI 設計方向
+## 28. UI 設計方向
 
-### 29.1 整體風格
+### 28.1 整體風格
 
 介面應以實用、清楚、可快速操作為主。雲端硬碟屬於高頻工作型產品，不適合過度裝飾。建議風格：
 
@@ -1009,7 +997,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 6. 操作按鈕使用圖示搭配 tooltip。
 7. 重要操作，例如刪除與永久刪除，需要確認。
 
-### 29.2 主要元件
+### 28.2 主要元件
 
 1. Sidebar
 2. TopSearchBar
@@ -1025,7 +1013,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 12. ConfirmDialog
 13. StorageUsageBar
 
-### 29.3 狀態設計
+### 28.3 狀態設計
 
 每個頁面都要設計：
 
@@ -1035,9 +1023,9 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 4. Permission denied state。
 5. Offline or retry state。
 
-## 30. 後端服務分層
+## 29. 後端服務分層
 
-### 30.1 Router
+### 29.1 Router
 
 負責：
 
@@ -1046,7 +1034,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 3. 呼叫 service。
 4. 回傳 response。
 
-### 30.2 Service
+### 29.2 Service
 
 負責：
 
@@ -1056,7 +1044,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 4. 呼叫 repository。
 5. 呼叫 storage provider。
 
-### 30.3 Repository
+### 29.3 Repository
 
 負責：
 
@@ -1064,7 +1052,7 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 2. transaction 管理。
 3. 封裝 SQLAlchemy 操作。
 
-### 30.4 Storage Provider
+### 29.4 Storage Provider
 
 負責：
 
@@ -1073,9 +1061,9 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 3. 刪除檔案。
 4. 建立短效下載 URL。
 
-## 31. 推薦資料型別
+## 30. 推薦資料型別
 
-### 31.1 TypeScript
+### 30.1 TypeScript
 
 ```ts
 export type DriveItemType = "file" | "folder";
@@ -1105,7 +1093,7 @@ export interface UploadTask {
 }
 ```
 
-### 31.2 Pydantic Schema
+### 30.2 Pydantic Schema
 
 ```python
 from datetime import datetime
@@ -1128,7 +1116,7 @@ class DriveItemResponse(BaseModel):
     updated_at: datetime
 ```
 
-## 32. 風險與對策
+## 31. 風險與對策
 
 | 風險 | 影響 | 對策 |
 | --- | --- | --- |
@@ -1140,7 +1128,7 @@ class DriveItemResponse(BaseModel):
 | 預覽生成耗時 | 使用者等待 | 背景任務與快取 |
 | 分享連結外流 | 資料風險 | 密碼、到期時間、撤銷機制 |
 
-## 33. 結論
+## 32. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 
