@@ -397,6 +397,13 @@
 
 技術選型：伺服器資料用 TanStack Query、UI 狀態用 Zustand、表單用 React Hook Form、schema 驗證用 Zod。
 
+### 10.6 AI 助理相關頁面（AI Assistant）
+
+> 屬 **In-App AI Assistant**（§13）功能。
+
+- **聊天面板**：浮動於各受保護頁；訊息泡泡、計畫確認卡、技能核可/程式碼審查、已存工作流程清單、使用者訊息複製鈕。
+- **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
+
 > 各頁面/元件的詳細結構與 props 見 [detailed-design.md](./detailed-design.md) §9。
 
 ## 11. 後端目錄結構
@@ -438,8 +445,6 @@
 
 原 28 模組完成後，於網頁應用內新增一個**可對話、可自我擴充的 AI 助理**。使用者用自然語言描述需求，助理把需求轉成**可檢視、可確認、可執行、可記錄的 Workflow**，以既有或現場生成的技能完成檔案／資料夾操作。完整設計見 [assistant-design.md](./assistant-design.md)，評測見 [assistant-eval-design.md](./assistant-eval-design.md)，決策見 [decisions.md](./decisions.md) 的 DEC-016～023。
 
-### 13.1 功能範圍
-
 - **對話操作**：登入後 CloudDrive shell 內的浮動聊天面板，用自然語言列檔／搜尋／整理／改名／移動／分享／壓縮解壓等。
 - **計畫確認**：寫入/破壞性操作先產生計畫（步驟、權限層級、是否需確認），唯讀操作可 fast-path 自動執行；使用者確認後才執行，破壞性操作**絕不自動執行**。
 - **現場生成新技能**：缺少的能力由助理現場生成（例如「做一個 7zip 解壓縮功能」），經 **codegen → 靜態驗證（codeguard）→ 使用者核可 → 受限沙箱執行**，產出檔案寫回 drive。
@@ -447,25 +452,6 @@
 - **工作流程重用**：計畫可命名儲存，之後一鍵重跑。
 - **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
 - **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
-
-### 13.2 前端頁面（補充 §10）
-
-- **聊天面板**：浮動於各受保護頁；訊息泡泡、計畫確認卡、技能核可/程式碼審查、已存工作流程清單、使用者訊息複製鈕。
-- **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
-
-### 13.3 環境變數（補充 §22）
-
-`ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
-
-### 13.4 安全（補充 §18）
-
-- 生成程式碼**絕不自動執行**：經 codeguard AST 靜態掃描（拒禁用 import/`eval`/dunder/錯誤簽章）→ 使用者核可 → 受限子行程沙箱（`python -I`、CPU/檔案 rlimit、`addaudithook` 封鎖網路/spawn/越界寫入）。編輯既有技能同樣重跑 codeguard。
-- 沙箱檔案存取限該使用者 storage；所有動作可記入 activity_logs。詳見 DEC-019。
-
-### 13.5 測試與評測（補充 §23）
-
-- 前端 `components/assistant/*.test.tsx`、後端 `tests/assistant/`。
-- 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
 
 ## 14. 時光機（Snapshots，核心功能）
 
@@ -719,6 +705,13 @@ Permanent delete
 5. 避免在錯誤訊息洩漏內部路徑。
 6. API response 不回傳 password_hash、token_hash 等敏感欄位。
 
+### 18.5 AI 助理安全（AI Assistant）
+
+> 屬 **In-App AI Assistant**（§13）功能。
+
+1. 生成程式碼**絕不自動執行**：經 codeguard AST 靜態掃描（拒禁用 import/`eval`/dunder/錯誤簽章）→ 使用者核可 → 受限子行程沙箱（`python -I`、CPU/檔案 rlimit、`addaudithook` 封鎖網路/spawn/越界寫入）。編輯既有技能同樣重跑 codeguard。
+2. 沙箱檔案存取限該使用者 storage；所有動作可記入 `activity_logs`。詳見 DEC-019。
+
 ## 19. 效能需求
 
 ### 19.1 前端效能
@@ -849,6 +842,8 @@ volumes:
 | CREDENTIAL_ENCRYPTION_KEY | 加密使用者外部模型憑證；正式環境必須由 secret manager 或受控環境注入 |
 | EXTERNAL_API_BASE_URL / EXTERNAL_CHAT_MODEL | 外部模型升級設定 |
 
+**AI Assistant 完整環境變數**（屬 §13 功能）：`ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
+
 前端建議環境變數：
 
 | 名稱 | 說明 |
@@ -968,6 +963,13 @@ Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Servic
 | 檔案 | 覆蓋內容 |
 | --- | --- |
 | `tests/integration/test_file_version_flow.py` | 上傳自動產生 v1、size_bytes 正確記錄、未驗證 403、非擁有者無分享不能列版本、viewer 可列版本、兩次上傳同名各自有獨立 v1 |
+
+#### AI 助理測試與評測（AI Assistant）
+
+> 屬 **In-App AI Assistant**（§13）功能。
+
+- 前端 `components/assistant/*.test.tsx`、後端 `tests/assistant/`。
+- 獨立評測 harness `backend/eval/`：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異；baseline 回歸；三種 runner（in-process mock〔CI 預設、決定性〕、API〔`--llm real`〕、Browser〔Playwright〕）。
 
 ## 24. 開發里程碑
 
