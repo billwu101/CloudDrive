@@ -252,7 +252,7 @@
 
 ### 8.1 架構總覽
 
-**前後端分離**：React 前端 ──(HTTPS REST API)──> FastAPI 後端 ──(SQLAlchemy / asyncpg)──> PostgreSQL；檔案 binary 經 Storage Provider 存獨立儲存層（metadata 與 binary 分離，見 §8.5）。完整架構圖與分層見 [detailed-design.md](./detailed-design.md) §5。
+**前後端分離**：React 前端 ──(HTTPS REST API)──> FastAPI 後端 ──(SQLAlchemy / asyncpg)──> PostgreSQL；檔案 binary 經 Storage Provider 存獨立儲存層（metadata 與 binary 分離，見 §8.5）。後端另內含 **AI 助理引擎**（本地 Gemma + 可選外部 GPT-5.5，見 §8.6）。完整架構圖與分層見 [detailed-design.md](./detailed-design.md) §5。
 
 ### 8.2 前端技術
 
@@ -276,6 +276,10 @@
 - 儲存層抽象為 **Storage Provider** 介面，底層可換（本地檔案系統／MinIO／S3／Azure Blob）而不動業務邏輯：開發用本地、正式可換物件儲存。
 
 > Provider 介面方法與 `LocalStorageProvider` 實作見 [detailed-design.md](./detailed-design.md) §6.6。
+
+### 8.6 AI 助理引擎
+
+後端內含對話式 **AI 助理引擎**（HARNESS：while loop、context、skills/tools、sub-agents、沙箱、權限與安全）。預設以**本地 Gemma（Ollama）**為執行器，資料不外流；本地反覆失敗時可升級**外部 GPT-5.5**（Codex 訂閱優先、OpenAI key 備援，使用者自帶加密憑證）。驅動自然語言操作檔案、現場生成技能與工作流程重用。完整規格見 §12；引擎設計見 [detailed-design.md](./detailed-design.md) §6 與 [assistant-design.md](./assistant-design.md)。
 
 ## 9. 前端目錄結構
 
