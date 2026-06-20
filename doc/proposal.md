@@ -242,71 +242,19 @@ MVP 指第一版可展示與可使用的核心版本。
 
 ### 8.1 架構總覽
 
-系統採用前後端分離架構：
-
-```text
-React Frontend
-  |
-  | HTTPS REST API
-  v
-FastAPI Backend
-  |
-  | SQLAlchemy / asyncpg
-  v
-PostgreSQL
-
-FastAPI Backend
-  |
-  | Storage Adapter
-  v
-Local Storage / MinIO / S3 / Azure Blob
-```
+**前後端分離**：React 前端 ──(HTTPS REST API)──> FastAPI 後端 ──(SQLAlchemy / asyncpg)──> PostgreSQL；檔案 binary 經 Storage Provider 存獨立儲存層（metadata 與 binary 分離，見 §8.5）。完整架構圖與分層見 [detailed-design.md](./detailed-design.md) §5。
 
 ### 8.2 前端技術
 
-建議使用：
-
-1. React
-2. TypeScript
-3. Vite
-4. React Router
-5. TanStack Query
-6. Zustand 或 Redux Toolkit
-7. React Hook Form
-8. Zod
-9. Axios 或 Fetch API wrapper
-10. Tailwind CSS 或 Material UI
-
-若要更接近 Google Drive 與 OneDrive，可使用 Material UI 或 shadcn/ui 來快速建立一致的操作介面。
+核心：**React + TypeScript + Vite**；伺服器狀態用 TanStack Query、UI 狀態用 Zustand。其餘選型（路由、表單、驗證、樣式庫等）見 [detailed-design.md](./detailed-design.md) §9。
 
 ### 8.3 後端技術
 
-建議使用：
-
-1. FastAPI
-2. Python 3.12 以上
-3. SQLAlchemy 2.x
-4. Alembic
-5. Pydantic
-6. asyncpg
-7. python-jose 或 PyJWT
-8. passlib 或 pwdlib
-9. Uvicorn
-10. 內建 lifespan / scheduler（目前用於時光機排程與 GC）
-11. 未來若需要大量非同步工作，可再外接 Celery/RQ；目前部署不要求 Redis
+核心：**FastAPI + Python 3.12+ + SQLAlchemy 2.x（async）+ PostgreSQL**；Alembic 管 migration、Pydantic 管 I/O 驗證。其餘選型（JWT／密碼雜湊套件、背景工作機制等）見 [detailed-design.md](./detailed-design.md) §6。
 
 ### 8.4 資料庫
 
-使用 PostgreSQL 儲存：
-
-1. 使用者帳號。
-2. 檔案與資料夾中繼資料。
-3. 權限設定。
-4. 分享連結。
-5. 檔案版本。
-6. 上傳工作狀態。
-7. 操作紀錄。
-8. 容量統計。
+以 PostgreSQL 儲存：使用者帳號、檔案/資料夾 metadata、權限、分享、檔案版本、上傳工作狀態、操作紀錄與容量統計（各表見 §11）。
 
 ### 8.5 儲存層
 
