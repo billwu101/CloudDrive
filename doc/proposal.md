@@ -310,23 +310,14 @@ Local Storage / MinIO / S3 / Azure Blob
 
 ### 8.5 儲存層
 
-檔案本體不建議直接存在 PostgreSQL。建議抽象成 Storage Provider：
+**設計理由**：檔案本體**不存 PostgreSQL**。DB 為結構化查詢與交易設計，存大型 binary 會使備份/複製肥大、佔用連線記憶體、不利串流，效能也隨檔案量劣化。因此採「metadata 與 binary 分離」：
 
-```text
-StorageProvider
-  - save(file_stream, storage_key)
-  - read(storage_key)
-  - delete(storage_key)
-  - exists(storage_key)
-  - generate_download_url(storage_key)
-```
+- **DB 只存 metadata**：檔名、大小、權限、`storage_key`（檔案在儲存層的定位）。
+- **檔案 binary 存獨立儲存層**（檔案系統或物件儲存）。
+- **取檔流程**：先查 DB（驗權限 + 取 `storage_key`），再用 key 向儲存層取 binary——**權限與定位永遠經過 DB，binary 不經 DB**。
+- 儲存層抽象為 **Storage Provider** 介面，底層可換（本地檔案系統／MinIO／S3／Azure Blob）而不動業務邏輯：開發用本地、正式可換物件儲存。
 
-可實作：
-
-1. LocalStorageProvider
-2. MinIOStorageProvider
-3. S3StorageProvider
-4. AzureBlobStorageProvider
+> Provider 介面方法與 `LocalStorageProvider` 實作見 [detailed-design.md](./detailed-design.md) §6.6。
 
 ## 9. 後端目錄結構
 
