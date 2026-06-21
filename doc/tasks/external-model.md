@@ -1,9 +1,9 @@
 # 外部模型接入（Codex/OpenAI）模組任務
 
-設計見 [external-model-integration.md](../external-model-integration.md)，決策見 DEC-026；延伸 DEC-023。
+設計見 [detailed-design.md（附錄 D）](../detailed-design.md)，決策見 DEC-026；延伸 DEC-023。
 
-> 本檔只涵蓋**終端使用者功能**：本地 Gemma 反覆失敗時，自動升級到使用者自己的 GPT-5.5（Codex 訂閱優先、OpenAI key 備援）。Codex 訂閱憑證「跨機可用」已由實機雙容器 demo 驗證通過（external-model-integration.md §9.6；v0.141.0 auth.json 僅 OAuth token、無綁機私鑰、token 可搬）。
-> 階段代號用 **EM1–EM3**（External Model），刻意別於 eval harness 的 E1–E4（`assistant-eval-design.md`），避免混淆。
+> 本檔只涵蓋**終端使用者功能**：本地 Gemma 反覆失敗時，自動升級到使用者自己的 GPT-5.5（Codex 訂閱優先、OpenAI key 備援）。Codex 訂閱憑證「跨機可用」已由實機雙容器 demo 驗證通過（detailed-design.md（附錄 D） §9.6；v0.141.0 auth.json 僅 OAuth token、無綁機私鑰、token 可搬）。
+> 階段代號用 **EM1–EM3**（External Model），刻意別於 eval harness 的 E1–E4（`detailed-design.md（附錄 B）`），避免混淆。
 > 交付順序（風險由低到高）：**EM1 共用基礎 → EM2 路徑 B（API key，先通）→ EM3 路徑 A（Codex 訂閱）**。
 > **進度（2026-06-19）：EM1 + EM2 + EM3 完成並全綠，使用者自動升級功能全數交付**（後端 587 單元、前端全綠；migration 0001→0014 於真 pgvector 驗過）。含失敗／額度耗盡自動標記 invalid、Codex 訂閱（隔離 CODEX_HOME + CLI refresh 回寫加密 + 訂閱優先退回 API key）。
 > 註：原 EM4「eval 考官 provider」是**開發者 eval 工具**（非使用者功能，且重用 EM2/EM3 的 client），已移至 [assistant-eval.md](./assistant-eval.md) 的 E6。

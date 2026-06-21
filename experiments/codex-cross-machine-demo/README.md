@@ -2,7 +2,7 @@
 
 驗證一件事：**`codex login` 產生的憑證（`auth.json`，含 agent 私鑰）複製到「另一台機器（乾淨環境）」後，能不能直接拿來呼叫 + refresh？**
 
-這對應 [`doc/external-model-integration.md`](../../doc/external-model-integration.md) §9 的核心問題：多使用者集中式要把使用者的 Codex 憑證搬到 server 端代呼叫，到底行不行。
+這對應 [`doc/detailed-design.md（附錄 D）`](../../doc/detailed-design.md) §9 的核心問題：多使用者集中式要把使用者的 Codex 憑證搬到 server 端代呼叫，到底行不行。
 
 > 與專案程式無關：本目錄是獨立實驗，不動 backend/frontend。
 

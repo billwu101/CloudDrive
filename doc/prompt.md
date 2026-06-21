@@ -138,7 +138,7 @@
 
 ### 擴充範圍：In-App AI Assistant（28 模組之後新增）
 
-原 28 模組完成後，新增 AI 助理功能（設計見 `doc/assistant-design.md` 與 `doc/assistant-eval-design.md`，決策見 DEC-016~023）。此擴充以下列三個任務文件為範圍，對應 Stage 12~14：
+原 28 模組完成後，新增 AI 助理功能（設計見 `doc/detailed-design.md（附錄 A）` 與 `doc/detailed-design.md（附錄 B）`，決策見 DEC-016~023）。此擴充以下列三個任務文件為範圍，對應 Stage 12~14：
 
 - `doc/tasks/backend-assistant.md`
 - `doc/tasks/frontend-assistant.md`
@@ -152,7 +152,7 @@
 
 ### 擴充範圍：外部模型接入（Codex/OpenAI）（Assistant 之後新增）
 
-本地 Gemma 4 反覆失敗時升級 GPT-5.5（設計見 `doc/external-model-integration.md`，決策 DEC-026，延伸 DEC-023）。以下列任務文件為範圍，對應 Stage 15~17（**設計完成、尚未實作**）：
+本地 Gemma 4 反覆失敗時升級 GPT-5.5（設計見 `doc/detailed-design.md（附錄 D）`，決策 DEC-026，延伸 DEC-023）。以下列任務文件為範圍，對應 Stage 15~17（**設計完成、尚未實作**）：
 
 - `doc/tasks/external-model.md`（使用者功能：EM1 共用基礎 → EM2 路徑 B API key → EM3 路徑 A Codex 訂閱）；考官 provider 見 `assistant-eval.md` E6
 

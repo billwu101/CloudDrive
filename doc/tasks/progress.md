@@ -51,17 +51,17 @@
 
 ## 擴充模組：In-App AI Assistant（28 模組之後新增）
 
-- [x] [Backend Assistant](./backend-assistant.md) — In-App AI Assistant（HARNESS 引擎 + Workflow 管線、本地 Gemma）。M1–M4 全部完成：模型策略、planner/workflow、技能框架與持久化、自我撰寫 sandbox（codegen→codeguard→sandbox→approve→execute→ingest）、skill 管理（`PATCH`/`DELETE /skills/{id}`）。設計見 [assistant-design.md](../assistant-design.md)
+- [x] [Backend Assistant](./backend-assistant.md) — In-App AI Assistant（HARNESS 引擎 + Workflow 管線、本地 Gemma）。M1–M4 全部完成：模型策略、planner/workflow、技能框架與持久化、自我撰寫 sandbox（codegen→codeguard→sandbox→approve→execute→ingest）、skill 管理（`PATCH`/`DELETE /skills/{id}`）。設計見 [detailed-design.md（附錄 A）](../detailed-design.md)
 - [x] [Frontend Assistant](./frontend-assistant.md) — 聊天面板、計畫確認、技能核可/code review、動態右鍵選單、已存 workflow 重跑、側欄 Skills 管理頁（列表/編輯/刪除）。
-- [x] [Assistant 驗證與評分 Harness](./assistant-eval.md) — E1 API/in-process mock runner + verifier/scoring/report + state/safety 斷言 + 多次執行通過率/變異、E2 Playwright browser runner、E3 LLM judge + `--llm real` + baseline 回歸、E4 案例覆蓋。全部完成。設計見 [assistant-eval-design.md](../assistant-eval-design.md)。
+- [x] [Assistant 驗證與評分 Harness](./assistant-eval.md) — E1 API/in-process mock runner + verifier/scoring/report + state/safety 斷言 + 多次執行通過率/變異、E2 Playwright browser runner、E3 LLM judge + `--llm real` + baseline 回歸、E4 案例覆蓋。全部完成。設計見 [detailed-design.md（附錄 B）](../detailed-design.md)。
 
 ## 擴充模組：時光機（Snapshots）（S1–S5 完成）
 
-- [x] [時光機 Snapshots](./time-machine.md) — 類 Apple Time Machine 的整碟時間點還原。**已完成**：S1 資料層 + 手動快照、S2 就地還原（含 pre_restore 保命快照、subtree_mode）、S3 保留最近 N + 獨立快照配額（auto=檔案配額一半）+ `snapshot_settings` + `GET/PUT /snapshots/settings` + blob 背景 GC（`collect_garbage`）+ 背景排程 runner（`SnapshotScheduler`，lifespan 啟動、服務預設關、compose 單 worker 可開）、S4 Assistant workflow/skill 寫入前自動建 `assistant` 快照、trash 永久刪除改為 dedup-aware（不再誤刪快照引用的 blob）、S5 前端（日期分組、設定 UI、資料夾導覽、多選逐項還原、整碟/逐項還原）。**非阻擋限制**：還原時硬配額檢查待補強（還原已寫 activity log）。設計見 [time-machine-design.md](../time-machine-design.md)，決策 DEC-024。
+- [x] [時光機 Snapshots](./time-machine.md) — 類 Apple Time Machine 的整碟時間點還原。**已完成**：S1 資料層 + 手動快照、S2 就地還原（含 pre_restore 保命快照、subtree_mode）、S3 保留最近 N + 獨立快照配額（auto=檔案配額一半）+ `snapshot_settings` + `GET/PUT /snapshots/settings` + blob 背景 GC（`collect_garbage`）+ 背景排程 runner（`SnapshotScheduler`，lifespan 啟動、服務預設關、compose 單 worker 可開）、S4 Assistant workflow/skill 寫入前自動建 `assistant` 快照、trash 永久刪除改為 dedup-aware（不再誤刪快照引用的 blob）、S5 前端（日期分組、設定 UI、資料夾導覽、多選逐項還原、整碟/逐項還原）。**非阻擋限制**：還原時硬配額檢查待補強（還原已寫 activity log）。設計見 [detailed-design.md（附錄 C）](../detailed-design.md)，決策 DEC-024。
 
 ## 擴充模組：外部模型接入（Codex/OpenAI）（E1+E2 完成、E3/E4 待做）
 
-- [x] [外部模型接入](./external-model.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5（使用者自帶憑證）。**EM1+EM2+EM3 完成**：`user_external_credentials` 加密表（Fernet、`CREDENTIAL_ENCRYPTION_KEY`、永不回明文）+ profile 設定/遮罩 UI + ModelRouter per-user 升級接線 + **OpenAI API key 路徑**（`ExternalLLMClient`，gpt-5.5；失敗/額度耗盡自動標 invalid）+ **Codex 訂閱路徑**（per-request 隔離 `CODEX_HOME` + CLI refresh 回寫加密 + 訂閱優先退回 API key，跨機可用已 §9.6 實證）。考官 provider（原 E4，開發者 eval 工具）移至 [assistant-eval.md](./assistant-eval.md) E6。決策 DEC-026；任務 [external-model.md](./external-model.md)；設計 [external-model-integration.md](../external-model-integration.md)。
+- [x] [外部模型接入](./external-model.md) — 本地 Gemma 4 反覆失敗（延用 `MAX_LOCAL_ATTEMPTS`）時升級 GPT-5.5（使用者自帶憑證）。**EM1+EM2+EM3 完成**：`user_external_credentials` 加密表（Fernet、`CREDENTIAL_ENCRYPTION_KEY`、永不回明文）+ profile 設定/遮罩 UI + ModelRouter per-user 升級接線 + **OpenAI API key 路徑**（`ExternalLLMClient`，gpt-5.5；失敗/額度耗盡自動標 invalid）+ **Codex 訂閱路徑**（per-request 隔離 `CODEX_HOME` + CLI refresh 回寫加密 + 訂閱優先退回 API key，跨機可用已 §9.6 實證）。考官 provider（原 E4，開發者 eval 工具）移至 [assistant-eval.md](./assistant-eval.md) E6。決策 DEC-026；任務 [external-model.md](./external-model.md)；設計 [detailed-design.md（附錄 D）](../detailed-design.md)。
 
 ## 建議執行順序
 
