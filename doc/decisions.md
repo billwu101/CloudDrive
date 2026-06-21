@@ -258,7 +258,7 @@
   6. postgres 採 `pgvector/pgvector:pg16`（語意搜尋需要 `vector` 擴充）。
 - 理由：同源反代是讓「部署到任意主機零設定」最省事且最穩的做法；選用功能可關閉，確保沒有 Ollama/embedding 模型的人仍能一行跑起核心。
 - 已知取捨：in-process 排程器假設單一 worker（多副本須關閉並改用外部 cron）；同源反代下 dev 直連模式仍靠 CORS 白名單。
-- 影響範圍：`scripts/start.sh`、根 `.env.example`、`docker-compose.yml`、`frontend/{Dockerfile,nginx.conf}`、`README.md`。詳見 [deployment.md](./deployment.md)。
+- 影響範圍：`scripts/start.sh`、根 `.env.example`、`docker-compose.yml`、`frontend/{Dockerfile,nginx.conf}`、`README.md`。詳見 [README.md](../README.md) 的「正式環境部署與運維」。
 
 ## DEC-026：外部模型接入（Codex 訂閱制 / OpenAI API）——執行升級與 eval 考官
 
@@ -306,4 +306,4 @@
   6. refresh token 與 share token 只存 hash；使用者外部模型憑證保存於 `user_external_credentials.secret_encrypted`，需設定 `CREDENTIAL_ENCRYPTION_KEY` 才啟用。
 - 理由：同源 nginx 入口最容易部署也最容易收斂 CORS/HTTPS/cookie 行為；DB 與 backend 留內網可降低暴露面；secret 與範例設定分離可避免把 demo 設定誤當正式安全設定。
 - 已知取捨：本機展示時為了方便仍會看到 `8000/5432` port 映射；正式部署需用防火牆、安全群組或 compose override 移除/限制這些映射。
-- 影響範圍：`docker-compose.yml`、`.env.example`、`doc/deployment.md`、正式部署手冊。
+- 影響範圍：`docker-compose.yml`、`.env.example`、`README.md`、正式部署手冊。
