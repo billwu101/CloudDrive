@@ -403,22 +403,22 @@
 
 ## 10. 後端目錄結構
 
-後端按**模組**組織：每個 domain 為一個自足套件（`app/<module>/`，含 `router.py` / `service.py` / `repository.py` / `schemas.py`），模組之間只透過 service 注入互動、不互相 import 內部。
+後端按**模組（domain）**組織，每個模組是一個自足套件、內部採**相同的分層**；模組之間只透過服務層注入互動，不互相 import 內部。模組內各層職責：
 
-各層職責分明：
+- **路由層**：接收 HTTP request、驗證輸入、呼叫服務層、組裝回應與狀態碼；不放商業邏輯。
+- **服務層**：商業邏輯所在——權限判斷、容量檢查、協調資料層與儲存層，是模組對外的唯一介面。
+- **資料層**：資料庫查詢與 transaction，封裝 ORM 操作；只被同模組的服務層呼叫。
+- **結構層**：該模組的 request／response 型別與驗證規則。
 
-- **Router**：接收 HTTP request、驗證 request schema、呼叫 service、回傳 response。
-- **Service**：商業邏輯、權限判斷、容量判斷、呼叫 repository 與 storage provider。
-- **Repository**：資料庫查詢、transaction 管理、封裝 SQLAlchemy 操作。
-- **Storage Provider**：儲存／讀取／刪除檔案、建立短效下載 URL。
+跨模組的共用層：
 
-**模組清單**（每個為 `app/<module>/` 套件）：
+- **儲存抽象層**：以介面封裝檔案存取（本地／物件儲存可替換），服務層透過它讀寫 binary，不直接碰檔案系統。
+- **核心層**：設定、JWT 安全、例外與錯誤碼、依賴注入等全域基礎設施。
+- **資料模型層**：ORM 模型與跨模組共用的回應型別。
+- **基礎服務層**：操作紀錄、權限判斷、寄信等沒有對外路由、由其他服務層注入的內部能力。
+- **API 聚合層**：彙整各模組路由為單一對外 API。
 
-- **對外模組**（含 `router.py`）：`auth`、`drive`、`upload`、`download`、`file_version`、`share`、`search`、`trash`、`preview`、`users`、`assistant`、`snapshot`、`external_model`。
-- **內部服務模組**（無對外 router，由其他 service 注入）：`activity_log`（操作紀錄）、`permission`（權限判斷）。
-- **支撐層**：`core`（設定／JWT 安全／例外／錯誤碼／依賴注入）、`db`（session）、`models`（SQLAlchemy ORM）、`schemas`（共用回應型別）、`api/v1/router.py`（聚合各模組 router）、`storage`（StorageProvider 抽象：本地／物件儲存）、`email`（寄信抽象：console／SMTP）。
-
-完整目錄與模組邊界見 [detailed-design.md](./detailed-design.md) §4（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
+各層對應的實際模組清單、檔案與邊界見 [detailed-design.md](./detailed-design.md) §4（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
 
 ## 11. 資料庫設計
 
