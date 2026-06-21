@@ -2772,7 +2772,7 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 
 ## 附錄 C：時光機設計
 
-> 原 `time-machine-design.md` 的完整設計，已併入本文件；主文摘要見 （主文無摘要）。
+> 原 `time-machine-design.md` 的完整設計，已併入本文件；主文未另設摘要章節。
 > 本附錄內的章節編號（§1、§2…）為原文件自身編號，非本文件主編號。
 
 > 狀態：**S1-S5 已實作並測試完成**（後端 snapshot/GC/scheduler/trash dedup/assistant hook、前端 TimeMachinePage）。仍有非阻擋限制：還原時硬配額檢查待補強。
