@@ -1806,6 +1806,8 @@ unique(user_id, item_id)
 
 此表是星號狀態的 canonical source。Drive/Search 回應中的 `is_starred` 需依目前使用者查詢此表後填入。
 
+`drive_items.is_starred` 為初始 schema 的**遺留／相容欄位**，不作為回應與查詢的權威來源；保留它只為相容，新邏輯一律以本表為準。星號之所以每使用者獨立，是為了讓**分享檔案時各使用者的星號互不影響**（避免一人加星污染他人看到的狀態）。見 [decisions.md](./decisions.md) DEC-004、DEC-027。
+
 ### 8.4 file_versions
 
 ```text
@@ -1902,6 +1904,16 @@ ON activity_logs(actor_id, created_at DESC);
 CREATE INDEX idx_activity_logs_item_created
 ON activity_logs(item_id, created_at DESC);
 ```
+
+### 8.9 metadata 與 storage 一致性
+
+DB metadata 與實體 blob 分屬 PostgreSQL 與檔案系統，**檔案操作不在 DB transaction 內**，因此採**補償式一致性**（非分散式交易）：
+
+- **上傳**：先寫 blob 到 storage，再建立 `drive_items`／`file_versions`／配額 metadata；若 DB 階段失敗，service 立即刪除剛寫入的 blob（補償回滾），避免「有檔案、無紀錄」的孤兒 blob。
+- **刪除**：永久刪除時先移除 metadata 與配額，再依快照引用判斷 blob 是否可刪；若 blob 仍被快照引用、或無法證明可安全刪除，則**保留交由背景 GC**（依 checksum 引用計數回收），優先避免誤刪仍可還原的內容。
+- **殘留風險與補強**：極端中斷仍可能留下孤兒 blob 或缺失 blob，故正式環境可加**定期 storage audit** 產生孤兒／缺失報告；`activity_logs` 為輔助稽核、不阻塞主流程。
+
+見 [decisions.md](./decisions.md) DEC-027。
 
 ## 9. In-App AI Assistant（M1–M4 後端）
 
