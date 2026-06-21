@@ -165,6 +165,174 @@ React app
   utils
 ```
 
+### 3.3 系統架構圖
+
+```mermaid
+graph TD
+  U["使用者瀏覽器"] -->|HTTPS| NX["nginx：靜態 SPA + /api 反代"]
+  NX -->|"靜態資源"| SPA["React SPA"]
+  NX -->|"/api/v1"| BE["FastAPI 後端"]
+  BE -->|"SQLAlchemy async / asyncpg"| PG[("PostgreSQL 16 + pgvector")]
+  BE -->|"Storage Provider 介面"| ST["檔案儲存層 local／物件儲存"]
+  BE -->|"HARNESS 引擎"| AS["AI 助理"]
+  AS -->|"預設本地"| OL["Ollama Gemma"]
+  AS -.->|"反覆失敗升級"| EX["外部 GPT-5.5"]
+```
+
+> metadata 經 PostgreSQL、檔案 binary 經 Storage Provider，兩者分離（見 §8.9）。
+
+### 3.4 部署圖
+
+```mermaid
+graph LR
+  subgraph DEV["本機開發（docker compose）"]
+    F1["frontend :8088"] --> B1["backend :8000"]
+    B1 --> P1[("postgres :5432")]
+    B1 --> SV["storage_data volume"]
+    P1 --> PV["postgres_data volume"]
+  end
+  subgraph PROD["正式環境"]
+    NET["公網"] -->|"80/443"| NX2["nginx 唯一入口"]
+    NX2 -->|"內網 /api"| BE2["backend（不對公網）"]
+    BE2 -->|"內網"| PG2[("postgres（不對公網）")]
+    BE2 --> ST2["storage"]
+  end
+```
+
+> 本機映射 `8000/5432` 僅供開發；正式環境僅 nginx 對外（見 DEC-028）。
+
+### 3.5 核心流程時序圖
+
+**登入後 silent refresh**
+
+```mermaid
+sequenceDiagram
+  participant U as 瀏覽器
+  participant FE as AuthInitializer
+  participant BE as FastAPI /auth
+  U->>FE: 載入頁面
+  FE->>BE: POST /auth/refresh（HttpOnly cookie）
+  alt refresh 有效
+    BE-->>FE: 新 access token（存記憶體）
+    FE-->>U: 維持登入
+  else 無效
+    BE-->>FE: 401
+    FE-->>U: 導向登入
+  end
+```
+
+**檔案上傳（補償式一致性）**
+
+```mermaid
+sequenceDiagram
+  participant C as 前端
+  participant S as UploadService
+  participant ST as Storage
+  participant DB as PostgreSQL
+  C->>S: 上傳檔案
+  S->>ST: save(blob)
+  S->>DB: 建 drive_item / file_version / quota
+  alt DB 成功
+    DB-->>S: ok
+    S-->>C: 201
+  else DB 失敗
+    S->>ST: delete(blob)（補償回滾）
+    S-->>C: error
+  end
+```
+
+**分享給指定使用者**
+
+```mermaid
+sequenceDiagram
+  participant O as 擁有者
+  participant SH as ShareService
+  participant DB as PostgreSQL
+  participant R as 受分享者
+  O->>SH: 分享 item 給 user（viewer/downloader/editor）
+  SH->>DB: 建立 shares 紀錄
+  R->>SH: GET /share/shared-with-me
+  SH->>DB: 查 shares
+  DB-->>R: 顯示分享項目
+```
+
+**AI 助理執行 workflow**
+
+```mermaid
+sequenceDiagram
+  participant U as 使用者
+  participant A as Assistant（HARNESS）
+  participant L as LLM
+  participant SVC as Drive/Skill Service
+  U->>A: 自然語言指令
+  A->>L: 解析意圖
+  L-->>A: 計畫（步驟／權限層級）
+  A-->>U: 顯示計畫
+  alt 破壞性操作
+    U->>A: 確認後才執行
+  end
+  A->>SVC: 一律經 service 層執行
+  SVC-->>A: 結果
+  A-->>U: 回填結果
+```
+
+**時光機還原**
+
+```mermaid
+sequenceDiagram
+  participant U as 使用者
+  participant TM as SnapshotService
+  participant DB as PostgreSQL
+  participant ST as Storage
+  U->>TM: 選時間點還原
+  TM->>TM: 先建「還原前保命快照」
+  TM->>DB: 套用快照 metadata（覆蓋現況）
+  TM->>ST: 還原 blob 引用
+  TM-->>U: 還原完成（可再倒回）
+```
+
+### 3.6 輔助流程圖
+
+**權限判斷（繼承）**
+
+```mermaid
+flowchart TD
+  A["存取 item"] --> B{"是 owner?"}
+  B -->|是| O["owner：全部操作"]
+  B -->|否| C{"shares 有分享?"}
+  C -->|是| P["依 shares.permission"]
+  C -->|否| D{"share_link 存取?"}
+  D -->|是| Q["依 link.permission"]
+  D -->|否| E{"父資料夾被分享?"}
+  E -->|是| F["繼承資料夾權限"]
+  E -->|否| X["拒絕存取"]
+```
+
+**AI workflow 狀態機**
+
+```mermaid
+stateDiagram-v2
+  [*] --> planning: 收到指令
+  planning --> pending_confirm: 產生計畫
+  pending_confirm --> executing: 使用者確認
+  pending_confirm --> cancelled: 取消
+  executing --> completed: 成功
+  executing --> failed: 失敗
+  completed --> [*]
+```
+
+**upload session 狀態機**
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending
+  pending --> uploading: 上傳分片
+  uploading --> completed: 合併成功
+  uploading --> failed: 失敗
+  uploading --> cancelled: 取消
+  completed --> [*]
+```
+
 ## 4. 已確認設計決策
 
 | 項目 | 決策 |
