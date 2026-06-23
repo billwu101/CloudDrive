@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# 部署主機上安裝到 /usr/local/sbin/deploy-cloud-drive（root:root 750）。
+# 由 self-hosted runner 經 sudoers 規則以 root 執行：sudo deploy-cloud-drive <commit-sha>
+# 流程：驗證 SHA → pull → up -d → /health 檢查 → 失敗回滾上一版。
+set -Eeuo pipefail
+
+IMAGE_TAG="${1:-}"
+APP_DIR="/opt/cloud-drive"
+COMPOSE_FILE="${APP_DIR}/compose.prod.yml"
+STATE_FILE="${APP_DIR}/.deploy.env"
+# docker/login-action 把 GHCR 登入資訊放在 runner 使用者目錄
+DOCKER_CONFIG_DIR="/home/gha-runner/.docker"
+# 對應 compose 的 backend port 映射 127.0.0.1:8001:8000，以及 FastAPI 的 /health
+HEALTH_URL="http://127.0.0.1:8001/health"
+
+if [[ ! "${IMAGE_TAG}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "錯誤：Image Tag 必須是完整的 40 字元 Git commit SHA。"
+  exit 2
+fi
+if [[ ! -f "${COMPOSE_FILE}" ]]; then
+  echo "錯誤：找不到 ${COMPOSE_FILE}"
+  exit 3
+fi
+
+OLD_TAG=""
+if [[ -f "${STATE_FILE}" ]]; then
+  OLD_TAG="$(sed -n 's/^IMAGE_TAG=//p' "${STATE_FILE}")"
+fi
+
+TEMP_ENV="$(mktemp "${APP_DIR}/.deploy.env.XXXXXX")"
+trap 'rm -f "${TEMP_ENV}"' EXIT
+printf 'IMAGE_TAG=%s\n' "${IMAGE_TAG}" > "${TEMP_ENV}"
+
+echo "準備部署版本：${IMAGE_TAG}"
+
+# 先確認新 Image 可以正常拉取
+docker --config "${DOCKER_CONFIG_DIR}" compose \
+  -f "${COMPOSE_FILE}" --env-file "${TEMP_ENV}" pull
+
+# pull 成功後才更新目前版本紀錄
+install -m 600 -o root -g root "${TEMP_ENV}" "${STATE_FILE}"
+
+docker --config "${DOCKER_CONFIG_DIR}" compose \
+  -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" up -d --remove-orphans
+
+echo "執行健康檢查……"
+for _ in $(seq 1 30); do
+  if curl --fail --silent "${HEALTH_URL}" >/dev/null; then
+    echo "部署成功：${IMAGE_TAG}"
+    docker compose -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" ps
+    exit 0
+  fi
+  sleep 2
+done
+
+echo "新版本健康檢查失敗。"
+docker compose -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" logs --tail=100
+
+if [[ "${OLD_TAG}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "開始回滾至：${OLD_TAG}"
+  printf 'IMAGE_TAG=%s\n' "${OLD_TAG}" > "${STATE_FILE}"
+  docker --config "${DOCKER_CONFIG_DIR}" compose \
+    -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" pull || true
+  docker --config "${DOCKER_CONFIG_DIR}" compose \
+    -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" up -d --remove-orphans
+  echo "已執行回滾。"
+else
+  echo "沒有可使用的上一個版本。"
+fi
+exit 1

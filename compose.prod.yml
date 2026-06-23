@@ -1,0 +1,43 @@
+# 正式環境 compose（部署主機 /opt/cloud-drive/compose.prod.yml）。
+# 由 deploy-cloud-drive 腳本以 IMAGE_TAG（commit SHA）拉取並啟動。
+# 與本機開發的 docker-compose.yml 不同：使用 GHCR 預建 image，不在主機 build。
+name: cloud-drive
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16        # 與本專案一致：語意搜尋需要 pgvector（非 postgres:16-alpine）
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/billwu101/cloud-drive-backend:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - storage_data:/app/storage        # 對應 LOCAL_STORAGE_PATH
+    ports:
+      - "127.0.0.1:8001:8000"            # 只綁 loopback；對外由 frontend/nginx 反代
+
+  frontend:
+    image: ghcr.io/billwu101/cloud-drive-frontend:${IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8088:80"                        # 正式可改 80/443
+
+volumes:
+  postgres_data:
+  storage_data:
