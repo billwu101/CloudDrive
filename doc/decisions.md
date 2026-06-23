@@ -148,7 +148,7 @@
 - 決策：不使用 OpenClaw。自建 In-App Assistant：後端 `/api/v1/assistant/chat` endpoint 內跑 Claude tool-use 迴圈，工具呼叫既有 service 層；前端提供聊天面板。
 - 理由：OpenClaw 的核心價值（跨通訊平台、單人 daemon）在本專案用不到；扛一整個 Node daemon 並處理單人 vs 多人錯配不划算。自建在自家技術棧內、天然多租戶、工作量更小。
 - 已知取捨：放棄 OpenClaw 既有的多通訊平台與技能生態；若未來需要從 Telegram/語音等管道操作，需另議。
-- 影響範圍：新增 `app/assistant/` 模組、前端 assistant 元件；詳見 detailed-design.md（附錄 A）。
+- 影響範圍：新增 `app/assistant/` 模組、前端 assistant 元件；詳見 detailed-design.md §9。
 - 註：本決策當時假設以 Claude/`anthropic` 實作；模型選擇後由 DEC-018/DEC-023 取代為本地 Gemma + 條件式外部升級。OpenClaw 不採用之結論不變。
 
 ## DEC-017：助理一律經 service 層，不直接操作 DB／檔案
@@ -195,7 +195,7 @@
 - 日期：2026-06-16
 - 狀態：Accepted
 - 背景：助理需涵蓋各類檔案/資料夾日常操作並能現場生成新功能；自由放任 tool 迴圈不利於可控性與安全。
-- 決策：採需求流程圖的管線 —— 使用者 NL → LLM 解析 → 轉成候選 Workflow（結構化步驟）→ 檢查可用 Skill（缺則走生成子流程）→ 權限與安全檢查 → 顯示執行計畫 → 使用者確認（是→執行，否→修改/取消）→ 執行 Workflow → 記錄操作與結果。Workflow 為有序 skill 步驟，可儲存重用；唯讀且非破壞工作流程可依權限自動確認 fast-path。此管線疊在 HARNESS 引擎之上，各階段對應 HARNESS 組件（見 detailed-design.md（附錄 A） 第 3 節）。
+- 決策：採需求流程圖的管線 —— 使用者 NL → LLM 解析 → 轉成候選 Workflow（結構化步驟）→ 檢查可用 Skill（缺則走生成子流程）→ 權限與安全檢查 → 顯示執行計畫 → 使用者確認（是→執行，否→修改/取消）→ 執行 Workflow → 記錄操作與結果。Workflow 為有序 skill 步驟，可儲存重用；唯讀且非破壞工作流程可依權限自動確認 fast-path。此管線疊在 HARNESS 引擎之上，各階段對應 HARNESS 組件（見 detailed-design.md §9 第 3 節）。
 - 理由：先計畫後執行 + 使用者確認，兼顧通用性、可檢視性與安全；workflow 化讓多步操作與生成功能可重用、可稽核。
 - 已知取捨：每次（非 fast-path）需一次確認互動；規劃階段增加一次 LLM 結構化輸出成本；需維護 workflow schema 與執行器。
 - 影響範圍：`app/assistant/planner.py`、`workflow.py`、`assistant_workflows`/`assistant_workflow_runs` 表、前端計畫確認 UI。
@@ -208,7 +208,7 @@
 - 決策：建立獨立 eval harness —— 以 YAML 測試案例自動餵 prompt，支援 API 與 Browser 兩種模式（`--mode` 即「是否跑瀏覽器」開關，共用同一份案例）；驗證採確定性斷言（workflow/state/safety）為主、LLM 評審為輔；評分為多維度加權 + 通過門檻 + 多次執行通過率/變異 + baseline 回歸；受測 LLM 可 mock（CI 必跑、決定性）或 real（量測品質）。
 - 理由：非決定性模型需以狀態斷言為主、judge 為輔，並以通過率/變異描述穩定度；雙模式兼顧 CI 速度與真實端到端；baseline 比較可擋回歸。
 - 已知取捨：維護案例與 harness 有成本；real LLM eval 較慢且分數會浮動，故 CI 主跑 mock 確定性案例。
-- 影響範圍：`backend/eval/`、`frontend/e2e/assistant/`、CI 設定；詳見 detailed-design.md（附錄 B）。
+- 影響範圍：`backend/eval/`、`frontend/e2e/assistant/`、CI 設定；詳見 detailed-design.md §11。
 
 ## DEC-023：模型策略 —— 預設本地，反覆失敗時條件式升級外部 API
 
@@ -242,7 +242,7 @@
   9. 前端時間軸**依日期分組**；還原以**多選勾選 + 「還原選取項」/「還原整個快照」**。
 - 理由：以新模型表達整碟狀態才能還原刪除/改名/搬移；重用 file_versions + checksum 讓快照便宜；就地還原貼近 Time Machine 行為，pre_restore 快照消除「誤覆蓋無法回頭」風險；獨立快照配額避免快照吃爆使用者檔案空間又能各自控管；保留 N 比 Apple thinning 簡單且足夠；背景 GC 讓刪除操作輕快。
 - 已知取捨：就地還原具破壞性（以 pre_restore + 二次確認緩解）；自動排程與引用計數回收有背景成本；協作/分享項目的還原暫限擁有者。
-- 影響範圍：新增 `app/snapshot/`（router/service/repository/schemas）、`snapshots`/`snapshot_entries` migration、背景排程任務、`app/assistant/`（workflow/skill 執行前建快照串接）、前端時光機頁與 API/hooks、`tests/snapshot/`。詳見 [detailed-design.md（附錄 C）](./detailed-design.md)。
+- 影響範圍：新增 `app/snapshot/`（router/service/repository/schemas）、`snapshots`/`snapshot_entries` migration、背景排程任務、`app/assistant/`（workflow/skill 執行前建快照串接）、前端時光機頁與 API/hooks、`tests/snapshot/`。詳見 [detailed-design.md §13](./detailed-design.md)。
 
 ## DEC-025：部署規範 —— 一行啟動、前端同源反向代理、選用功能可關閉
 
@@ -267,14 +267,14 @@
 - 背景：本地 Gemma 4 對部分任務反覆做不出可接受結果時，希望能切換到 GPT-5.5；同時希望 eval harness 的考官可選用更強模型評斷 skill 的正確性與效果。使用者需在 profile 綁定自己的外部模型憑證才可使用。延伸自 DEC-023。
 - 決策：
   1. **兩條認證路徑，訂閱制優先、API key 備援**：路徑 A = Codex 訂閱制（優先）；路徑 B = OpenAI API key（穩定備援）。provider 抽象成同一介面；訂閱制不可用時自動退回 API key，功能不中斷。
-  2. **訂閱制管道參考 openclaw 的做法**：不自己刻 ChatGPT OAuth，而是**橋接官方 Codex CLI**（`@zed-industries/codex-acp`，讀 `CODEX_HOME/auth.json`；見 detailed-design.md（附錄 D） §2.1）。仍屬非官方整合層，故 API key（路徑 B）為穩定保證。**部署模式已定：(b) 多使用者集中式、各自帳號**——使用者自行 `codex login` 後把 `auth.json` token 交 server 加密存 profile；呼叫時以 per-request 隔離 `CODEX_HOME` + codex-acp、用畢即焚；token refresh 由 server 自理（openclaw 靠常駐 CLI refresh，我們無常駐故自理）。實作前須實機驗證 token 能否跨機使用 + refresh endpoint。
+  2. **訂閱制管道參考 openclaw 的做法**：不自己刻 ChatGPT OAuth，而是**橋接官方 Codex CLI**（`@zed-industries/codex-acp`，讀 `CODEX_HOME/auth.json`；見 detailed-design.md §12 §2.1）。仍屬非官方整合層，故 API key（路徑 B）為穩定保證。**部署模式已定：(b) 多使用者集中式、各自帳號**——使用者自行 `codex login` 後把 `auth.json` token 交 server 加密存 profile；呼叫時以 per-request 隔離 `CODEX_HOME` + codex-acp、用畢即焚；token refresh 由 server 自理（openclaw 靠常駐 CLI refresh，我們無常駐故自理）。實作前須實機驗證 token 能否跨機使用 + refresh endpoint。
   3. **per-user 憑證、加密 at rest**：新表 `user_external_credentials`，對稱加密（`CREDENTIAL_ENCRYPTION_KEY`）儲存 token/key，API 只回遮罩、永不回明文；**絕不存明文密碼**，OAuth 路徑只存可撤銷 token。
   4. **執行升級延用 DEC-023**：`MAX_LOCAL_ATTEMPTS` 連續本地失敗才升級；隱私閘、權限/沙箱/確認閘、稽核全部沿用；external client 改依使用者 profile 憑證動態建立。
   5. **eval 考官預設 Gemma 4、可切 Codex/GPT**：考官憑證走開發者 env/CLI（非終端使用者）；評斷涵蓋「生成正確性」+「效果符合使用者期待」；考官與被考者分離。
 - 理由：尊重「訂閱制優先」的成本考量，同時以 API key 備援與介面抽象確保不被非官方管道綁死；per-user 加密憑證兼顧「自帶額度」與安全；考官用更強模型更接近人類判斷。
-- 可行性驗證（2026-06-19；原始碼 + 官方文件，見 detailed-design.md（附錄 D） §9）：Codex 訂閱採 **Agent Identity**，但 **agent 私鑰預設就在 `auth.json` 內**；官方文件明確把 auth.json 當密碼、**允許跨機複製**、未提機器綁定。**判定修正：跨機技術上可行**（先前「技術脆弱不可行」過度悲觀，予以更正）；例外是開啟 `SecretAuthStorage`（私鑰進 keyring）則不可搬。多使用者集中式的**剩餘問題為風險權衡而非技術硬傷**：集中保管多人憑證的安全責任、多人同 server IP 的風控灰區、代呼叫合規。已備一鍵雙機 demo（`experiments/codex-cross-machine-demo/`）並**實測通過**：machine-b（不同 hostname、從未登入）用搬來的 auth.json 成功呼叫 gpt-5.5（§9.6）。v0.141.0 auth.json **僅含 OAuth token、無綁機私鑰**，故 token 可搬。跨機 refresh 尚未實測（低風險）。多使用者集中式的採用與否＝風控/合規/憑證保管的權衡，非技術問題。
+- 可行性驗證（2026-06-19；原始碼 + 官方文件，見 detailed-design.md §12 §9）：Codex 訂閱採 **Agent Identity**，但 **agent 私鑰預設就在 `auth.json` 內**；官方文件明確把 auth.json 當密碼、**允許跨機複製**、未提機器綁定。**判定修正：跨機技術上可行**（先前「技術脆弱不可行」過度悲觀，予以更正）；例外是開啟 `SecretAuthStorage`（私鑰進 keyring）則不可搬。多使用者集中式的**剩餘問題為風險權衡而非技術硬傷**：集中保管多人憑證的安全責任、多人同 server IP 的風控灰區、代呼叫合規。已備一鍵雙機 demo（`experiments/codex-cross-machine-demo/`）並**實測通過**：machine-b（不同 hostname、從未登入）用搬來的 auth.json 成功呼叫 gpt-5.5（§9.6）。v0.141.0 auth.json **僅含 OAuth token、無綁機私鑰**，故 token 可搬。跨機 refresh 尚未實測（低風險）。多使用者集中式的採用與否＝風控/合規/憑證保管的權衡，非技術問題。
 - 已知取捨：訂閱制管道穩定性不可控（以備援與抽象化緩解）；儲存可解密憑證有風險（以加密 at rest、遮罩、不入 log 緩解）；外部升級涉資料外送（沿用 DEC-023 隱私閘、預設關閉、使用者明確啟用）。
-- 影響範圍：新 `user_external_credentials` 表 + profile 端點、`app/assistant/llm/`（router/external 依 per-user 憑證）、`backend/eval/judge.py`（OpenAI/Codex 考官 + provider 選項）、config（`CREDENTIAL_ENCRYPTION_KEY` 等）。詳見 [detailed-design.md（附錄 D）](./detailed-design.md)。
+- 影響範圍：新 `user_external_credentials` 表 + profile 端點、`app/assistant/llm/`（router/external 依 per-user 憑證）、`backend/eval/judge.py`（OpenAI/Codex 考官 + provider 選項）、config（`CREDENTIAL_ENCRYPTION_KEY` 等）。詳見 [detailed-design.md §12](./detailed-design.md)。
 
 ## DEC-027：資料欄位型別、星號來源與 metadata/storage 一致性
 

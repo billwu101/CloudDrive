@@ -1,6 +1,6 @@
 # 時光機（Snapshots）模組任務
 
-設計見 [detailed-design.md（附錄 C）](../detailed-design.md)，決策見 DEC-024。
+設計見 [detailed-design.md §13](../detailed-design.md)，決策見 DEC-024。
 
 > 狀態（2026-06-18）：**S1–S5 全部完成**並全綠（後端 snapshot 31 測試含 GC/scheduler、trash dedup 測試、assistant hook 測試；前端 TimeMachinePage 5 測試）。後端含保留/配額/設定、blob GC、背景排程 runner（lifespan，預設關）、trash dedup-aware 永久刪除、Assistant 寫入前快照；前端含日期分組、設定 UI、資料夾導覽、多選逐項還原。
 > 仍未做（非阻擋）：**還原時的硬配額檢查**（還原已寫 activity log）。

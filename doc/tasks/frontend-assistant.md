@@ -1,6 +1,6 @@
 # Frontend Assistant 模組任務（HARNESS 引擎 + Workflow 管線）
 
-對應設計：[detailed-design.md（附錄 A）](../detailed-design.md)
+對應設計：[detailed-design.md §9](../detailed-design.md)
 
 ## 完成定義
 
