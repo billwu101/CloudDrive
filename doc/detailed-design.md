@@ -351,6 +351,28 @@ stateDiagram-v2
 | 管理員後台 | 不納入主文件，只保留 role 欄位 |
 | 文件語言 | 繁體中文 |
 
+### 4.1 設計決策問答（審查常見問題）
+
+> 彙整正式審查常被問到的設計疑問與權威答案；細節見對應章節與 [decisions.md](./decisions.md)。
+
+**Q1. 欄位為何有的用 `text`、有的用 `varchar`？長度（50／255／512）依據什麼？**
+值域短且有限 → `varchar` + 上限（`20~50` 狀態/類型、`64` checksum、`255` email/hash/token/MIME、`512` 檔名）；長度不定或可能很長 → `text`（storage key、URL、長文、生成碼、加密 secret）；半結構化 → `jsonb`。**詳見 §8.0、DEC-027。**
+
+**Q2. 星號 `drive_items.is_starred` 與 `user_item_preferences` 兩處都存，以誰為準？**
+以 **`user_item_preferences.is_starred`** 為準（每使用者獨立，避免共享檔案星號互相污染）；`drive_items.is_starred` 是初始 schema 的遺留／相容欄位，**非權威**，不用於回應與查詢。**詳見 §8.3.1、DEC-027。**
+
+**Q3. `assistant_workflows.session_id` 沒有外鍵，session 刪掉後 workflow 會怎樣？為何不加？**
+**故意不加 FK**：workflow 是可審核／保存重跑的執行計畫，session 是 UI 對話脈絡，生命週期不同。不加 FK 是為了避免刪除／清理 session 時連帶破壞已保存的 workflow 與 audit；session 刪後 `session_id` 變孤立 UUID，workflow 仍可用 `user_id/status/name` 查詢與重跑（真正執行紀錄由 `assistant_workflow_runs.workflow_id` 以 `ON DELETE SET NULL` 承載）。**詳見 DEC-027。**
+
+**Q4. DB 紀錄與實體檔案要一致，上傳／刪除做到一半失敗時怎麼避免孤兒資料？**
+檔案系統不在 DB transaction 內，採**補償式一致性**：上傳先寫 blob 再建 DB metadata，DB 失敗即刪 blob（補償回滾）；刪除先移 metadata 與配額，blob 若仍被快照引用或無法證明可安全刪則留給背景 GC（依 checksum 引用計數）；正式環境另加定期 storage audit 抓孤兒／缺失。**詳見 §8.9、DEC-027。**
+
+**Q5. postgres／redis／backend 都用預設 port 對外，正式環境哪些該開、哪些留內網？**
+正式環境僅 **frontend/nginx 對外**（`80/443`，反代 `/api`）；**backend 與 postgres 留內網**，不對公網；redis 已移除（未來若加也只留內網）。compose 的 `8000/5432` 映射僅供本機開發，正式以防火牆／security group／compose override 移除。**詳見 DEC-028。**
+
+**Q6. secret（JWT／DB／SMTP／LLM）現在放哪？**
+開發以 `core/config.py` 預設值 + `.env`（不進版控）提供；正式環境的 `JWT_SECRET_KEY`、`POSTGRES_PASSWORD`、SMTP 密碼、LLM API key、`CREDENTIAL_ENCRYPTION_KEY` 由 secret manager／CI-CD secrets／受控環境變數注入，不進版控、不寫文件。系統內部 refresh token、share token 只存 hash；使用者外部模型憑證加密存於 `user_external_credentials.secret_encrypted`。**詳見 DEC-028。**
+
 ## 5. 前端詳細設計
 
 ### 5.0 使用者介面規劃
