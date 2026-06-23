@@ -112,4 +112,12 @@ npm run playwright:install
 - **換嵌入模型** — `file_embeddings.embedding` 為 `vector(768)`，維度須與 `EMBEDDING_MODEL` 一致，否則要改對應 migration 與 `Settings.embedding_dim`。
 - **調上傳上限** — nginx `client_max_body_size` 與後端 `MAX_UPLOAD_SIZE_BYTES` 必須一起調整。
 
-> 部署架構（前端同源反代、對外暴露面、選用功能取捨）見 [decisions.md](doc/decisions.md) DEC-025；CI/CD 與維運見 [proposal.md](doc/proposal.md) §26。
+### 正式部署（CI/CD）
+
+採 **GitHub Actions + self-hosted runner**：push／PR 跑 CI、合併 `main` 建 image 推 GHCR、手動觸發部署到 Ubuntu 主機（`pull` → `/health` 檢查 → 失敗回滾）。
+
+- Workflow：[`.github/workflows/ci.yml`](.github/workflows/ci.yml)、[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+- 正式環境 compose：[`compose.prod.yml`](compose.prod.yml)
+- **主機與 GitHub 一次性設置步驟**：[`deploy/README.md`](deploy/README.md)
+
+> 架構決策見 [decisions.md](doc/decisions.md) DEC-025／028；規劃見 [proposal.md](doc/proposal.md) §26；實作規格見 [detailed-design.md](doc/detailed-design.md) §22。
