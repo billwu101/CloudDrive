@@ -55,7 +55,9 @@ jobs:
       - name: mypy
         run: uv run mypy app tests
       - name: pytest (unit + integration)
-        run: uv run pytest
+        # Skip tests that need a reachable Gemma; CI runners can't reach the
+        # internal/DDNS Ollama. They still run locally where the model is up.
+        run: uv run pytest -m "not needs_llm"
       - name: Verify backend Docker build
         run: docker build -t cloud-drive-backend:test .
 

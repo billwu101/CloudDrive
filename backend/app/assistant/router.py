@@ -153,6 +153,9 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         timeout=settings.llm_timeout_seconds,
         api_key=settings.llm_api_key,
         keep_alive=settings.llm_keep_alive,
+        fallback_base_urls=(
+            [settings.llm_fallback_base_url] if settings.llm_fallback_base_url else []
+        ),
     )
     # Global env-configured external client (DEC-023), used when a user has no
     # per-user credential.

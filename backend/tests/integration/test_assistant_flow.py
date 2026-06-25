@@ -40,6 +40,7 @@ async def _root_folder_names(client: AsyncClient, headers: dict[str, str]) -> li
 # ── Real-model end-to-end (require a reachable Gemma) ──────────────────────────
 
 
+@pytest.mark.needs_llm
 async def test_chat_persists_session_and_messages(client: AsyncClient) -> None:
     """A real chat turn must land a session + the user/assistant messages in the DB."""
     h = auth_headers(await register_and_login(client, email="agent1@test.com", username="agent1"))
@@ -62,6 +63,7 @@ async def test_chat_persists_session_and_messages(client: AsyncClient) -> None:
     assert body[1]["content"]  # the assistant said something
 
 
+@pytest.mark.needs_llm
 async def test_chat_create_folder_pending_confirm_creates_real_item(
     client: AsyncClient,
 ) -> None:
@@ -157,6 +159,7 @@ async def test_saved_workflows_are_isolated_between_users(client: AsyncClient) -
     assert rerun_b.status_code == 404, rerun_b.text
 
 
+@pytest.mark.needs_llm
 async def test_sessions_are_isolated_between_users(client: AsyncClient) -> None:
     """A's conversation must never appear in B's session list or be readable by B."""
     a = auth_headers(await register_and_login(client, email="sa@test.com", username="sa"))
