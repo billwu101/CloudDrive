@@ -269,6 +269,14 @@ const assistantHandlers = [
     })
   }),
 
+  http.get(`${BASE}/assistant/models`, () =>
+    HttpResponse.json([
+      { id: 'local', label: 'Local (gemma4:26b)', available: true },
+      { id: 'openai', label: 'OpenAI', available: false },
+      { id: 'codex', label: 'Codex subscription', available: false },
+    ]),
+  ),
+
   http.get(`${BASE}/assistant/skills`, () => HttpResponse.json([])),
 
   http.get(`${BASE}/assistant/workflows/saved`, () => HttpResponse.json([])),

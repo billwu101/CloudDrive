@@ -10,11 +10,24 @@ from app.assistant.workflow import PlannedStep, StepResult, WorkflowStep
 
 AssistantRole = Literal["system", "user", "assistant", "tool"]
 WorkflowPlanStatus = Literal["auto_executed", "pending_approval"]
+# Which model the user picked for this turn. "local" = on-prem Ollama; a provider
+# name (e.g. "openai"/"codex") = that external model only. None = server default
+# (local→external fallback). Validated against availability at request time.
+ModelTarget = Literal["local", "openai", "codex"]
 
 
 class AssistantChatRequest(BaseModel):
     session_id: UUID | None = None
     message: str = Field(min_length=1, max_length=4000)
+    model: ModelTarget | None = None
+
+
+class AssistantModelOption(BaseModel):
+    """One selectable model in the assistant's picker."""
+
+    id: str  # "local" | "openai" | "codex"
+    label: str
+    available: bool
 
 
 class AssistantToolCall(BaseModel):

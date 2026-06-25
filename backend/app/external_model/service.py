@@ -140,6 +140,28 @@ class ExternalCredentialService:
             return _FallbackClient(codex, openai)
         return codex or openai
 
+    async def active_providers(self, user_id: UUID) -> set[str]:
+        """Provider names the user can explicitly select right now (active +
+        decryptable). Empty when credentials are disabled or none are set."""
+        return set((await self.build_provider_clients(user_id)).keys())
+
+    async def build_provider_clients(self, user_id: UUID) -> dict[str, LLMClient]:
+        """One client per active provider, keyed by provider name — for explicit
+        model selection (no codex→openai chaining). Empty when disabled."""
+        if self._cipher is None:
+            return {}
+        active = {
+            c.provider: c for c in await self._repo.list_by_user(user_id) if c.status == "active"
+        }
+        clients: dict[str, LLMClient] = {}
+        codex = self._build_codex(active.get("codex"), user_id)
+        if codex is not None:
+            clients["codex"] = codex
+        openai = self._build_openai(active.get("openai"), user_id)
+        if openai is not None:
+            clients["openai"] = openai
+        return clients
+
     def _decrypt(self, cred: UserExternalCredential, user_id: UUID) -> str | None:
         assert self._cipher is not None
         try:

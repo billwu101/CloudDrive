@@ -59,6 +59,7 @@ class WorkflowService:
         user_id: UUID,
         message: str,
         session_id: UUID | None = None,
+        target: str | None = None,
     ) -> AssistantChatResponse:
         active_session_id = session_id or uuid4()
 
@@ -74,7 +75,7 @@ class WorkflowService:
                     skill_proposal=authoring.skill_proposal,
                 )
 
-        plan = await self._planner.plan(message=message)
+        plan = await self._planner.plan(message=message, target=target)
         if not plan.steps:
             return AssistantChatResponse(session_id=active_session_id, message=plan.reply)
 

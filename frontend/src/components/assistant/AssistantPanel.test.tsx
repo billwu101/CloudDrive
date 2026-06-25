@@ -51,6 +51,9 @@ const server = setupServer(
     }),
   ),
   http.get(`${BASE}/assistant/workflows/saved`, () => HttpResponse.json([])),
+  http.get(`${BASE}/assistant/models`, () =>
+    HttpResponse.json([{ id: 'local', label: 'Local (gemma4:26b)', available: true }]),
+  ),
   http.post(`${BASE}/assistant/workflows/save`, async ({ request }) => {
     const body = (await request.json()) as { name: string }
     return HttpResponse.json({
@@ -109,11 +112,36 @@ describe('AssistantPanel', () => {
     })
   })
 
-  it('renders backend errors as assistant messages', async () => {
+  it('shows the model picker with unavailable providers disabled', async () => {
+    server.use(
+      http.get(`${BASE}/assistant/models`, () =>
+        HttpResponse.json([
+          { id: 'local', label: 'Local (gemma4:26b)', available: true },
+          { id: 'openai', label: 'OpenAI', available: false },
+        ]),
+      ),
+    )
+    renderAssistantPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+
+    const picker = await screen.findByRole('combobox', { name: /choose model/i })
+    expect(picker).toBeInTheDocument()
+    const openai = screen.getByRole('option', { name: /OpenAI \(not configured\)/i })
+    expect(openai).toBeDisabled()
+  })
+
+  it('surfaces the backend error message (which model failed and why)', async () => {
     server.use(
       http.post(`${BASE}/assistant/chat`, () =>
         HttpResponse.json(
-          { error: { code: 'ASSISTANT_UNAVAILABLE', message: 'Assistant unavailable', details: {} } },
+          {
+            error: {
+              code: 'ASSISTANT_UNAVAILABLE',
+              message: 'Could not connect to the local model.',
+              details: {},
+            },
+          },
           { status: 503 },
         ),
       ),
@@ -125,7 +153,7 @@ describe('AssistantPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /send message/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('Assistant is unavailable right now.')).toBeInTheDocument()
+      expect(screen.getByText('Could not connect to the local model.')).toBeInTheDocument()
     })
   })
 

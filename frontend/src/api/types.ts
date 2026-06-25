@@ -148,9 +148,18 @@ export interface AssistantSkillExecuteResponse {
   output: Record<string, unknown>
 }
 
+export type ModelTarget = 'local' | 'openai' | 'codex'
+
 export interface AssistantChatRequest {
   message: string
   session_id?: string
+  model?: ModelTarget
+}
+
+export interface AssistantModelOption {
+  id: ModelTarget
+  label: string
+  available: boolean
 }
 
 export interface WorkflowStep {

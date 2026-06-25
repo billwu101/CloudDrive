@@ -26,6 +26,7 @@ class OllamaLLMClient:
         keep_alive: str = "",
         fallback_base_urls: list[str] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        connect_timeout: float = 5.0,
     ) -> None:
         # Primary first, then any fallbacks; chat() tries them in order and only
         # raises once every endpoint has failed.
@@ -37,6 +38,10 @@ class OllamaLLMClient:
         self._api_key = api_key
         self._keep_alive = keep_alive
         self._transport = transport
+        # Connecting must fail fast (a down/unreachable Ollama shouldn't hang for
+        # the full generation timeout); reading keeps the long timeout for slow
+        # token generation.
+        self._connect_timeout = min(connect_timeout, timeout)
 
     async def chat(
         self,
@@ -61,7 +66,7 @@ class OllamaLLMClient:
         for base_url in self._base_urls:
             try:
                 async with httpx.AsyncClient(
-                    timeout=self._timeout,
+                    timeout=httpx.Timeout(self._timeout, connect=self._connect_timeout),
                     transport=self._transport,
                 ) as client:
                     response = await client.post(

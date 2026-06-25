@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Bot, Loader2, MessageSquareText, Send, X } from 'lucide-react'
 
-import type { AssistantSkillResponse, WorkflowPlanView } from '@/api/types'
+import type { AssistantSkillResponse, ModelTarget, WorkflowPlanView } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { isApiError } from '@/api/client'
 import {
   useApproveAssistantSkill,
   useAssistantChatMutation,
+  useAssistantModels,
   useCancelWorkflow,
   useConfirmWorkflow,
   useRerunWorkflow,
@@ -33,10 +34,9 @@ function newMessageId(role: AssistantMessage['role']) {
 
 function errorMessage(error: unknown) {
   if (isApiError(error)) {
-    if (error.code === 'ASSISTANT_UNAVAILABLE') {
-      return 'Assistant is unavailable right now.'
-    }
-    return error.message
+    // The backend returns a model-specific reason (offline / credential / quota);
+    // show it directly so the user knows which model failed and why.
+    return error.message || 'Assistant is unavailable right now.'
   }
   return 'Assistant could not complete that request.'
 }
@@ -50,6 +50,8 @@ export function AssistantPanel() {
   const [pendingPlan, setPendingPlan] = useState<WorkflowPlanView | null>(null)
   const [reviewingSkill, setReviewingSkill] = useState(false)
   const [lastPrompt, setLastPrompt] = useState('')
+  const [selectedModel, setSelectedModel] = useState<ModelTarget | undefined>()
+  const models = useAssistantModels()
   const chatMutation = useAssistantChatMutation()
   const approveSkill = useApproveAssistantSkill()
   const confirmWorkflow = useConfirmWorkflow()
@@ -64,6 +66,16 @@ export function AssistantPanel() {
     const list = listRef.current
     if (list) list.scrollTop = list.scrollHeight
   }, [isOpen, messages, chatMutation.isPending])
+
+  // Default the picker once models load: prefer a configured external model
+  // (local may be offline), otherwise fall back to local.
+  useEffect(() => {
+    if (selectedModel || !models.data) return
+    const opts = models.data
+    const preferred =
+      opts.find((m) => m.available && m.id !== 'local') ?? opts.find((m) => m.available)
+    if (preferred) setSelectedModel(preferred.id)
+  }, [models.data, selectedModel])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -81,6 +93,7 @@ export function AssistantPanel() {
       const response = await chatMutation.mutateAsync({
         message,
         session_id: sessionId,
+        model: selectedModel,
       })
       setSessionId(response.session_id)
       setPendingSkill(response.skill_proposal ?? null)
@@ -278,28 +291,44 @@ export function AssistantPanel() {
             )}
           </div>
 
-          <form className="flex shrink-0 items-end gap-2 border-t border-border p-3" onSubmit={handleSubmit}>
-            <textarea
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              className="max-h-28 min-h-10 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
-              placeholder="Message assistant (press the send button)"
-              aria-label="Assistant message"
-              rows={1}
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!input.trim() || chatMutation.isPending}
-              aria-label="Send message"
-              title="Send message"
+          <form className="flex shrink-0 flex-col gap-2 border-t border-border p-3" onSubmit={handleSubmit}>
+            <select
+              value={selectedModel ?? ''}
+              onChange={(event) => setSelectedModel(event.target.value as ModelTarget)}
+              className="self-start rounded-md border border-input bg-background px-2 py-1 text-xs text-muted-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+              aria-label="Choose model"
+              title="Choose which model answers"
             >
-              {chatMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Send className="size-4" aria-hidden="true" />
-              )}
-            </Button>
+              {(models.data ?? []).map((option) => (
+                <option key={option.id} value={option.id} disabled={!option.available}>
+                  {option.label}
+                  {option.available ? '' : ' (not configured)'}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-end gap-2">
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                className="max-h-28 min-h-10 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
+                placeholder="Message assistant (press the send button)"
+                aria-label="Assistant message"
+                rows={1}
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!input.trim() || !selectedModel || chatMutation.isPending}
+                aria-label="Send message"
+                title="Send message"
+              >
+                {chatMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Send className="size-4" aria-hidden="true" />
+                )}
+              </Button>
+            </div>
           </form>
 
           {reviewingSkill && (

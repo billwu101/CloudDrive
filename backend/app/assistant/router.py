@@ -9,7 +9,12 @@ from app.activity_log.repository import SQLActivityLogRepository
 from app.activity_log.service import ActivityLogService
 from app.assistant.context import ContextManager
 from app.assistant.hooks import default_hook_registry, snapshot_before_write_hook
-from app.assistant.llm.client import LLMClient, LLMClientError
+from app.assistant.llm.client import (
+    ExternalAuthError,
+    LLMClient,
+    LLMClientError,
+    LLMUnavailableError,
+)
 from app.assistant.llm.external import ExternalLLMClient
 from app.assistant.llm.ollama import OllamaLLMClient
 from app.assistant.llm.privacy import PrivacyDefault
@@ -25,6 +30,7 @@ from app.assistant.schemas import (
     AssistantChatRequest,
     AssistantChatResponse,
     AssistantMessageResponse,
+    AssistantModelOption,
     AssistantSavedWorkflowResponse,
     AssistantSaveWorkflowRequest,
     AssistantSessionResponse,
@@ -171,6 +177,8 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
     per_user_external = await credential_service.build_chat_client(current_user_id)
     if per_user_external is not None:
         external_client = per_user_external
+    # Per-provider clients for explicit model selection (no codex→openai chaining).
+    external_clients = await credential_service.build_provider_clients(current_user_id)
 
     privacy_default = cast(
         PrivacyDefault,
@@ -187,6 +195,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         external_enabled=external_client is not None,
         max_local_attempts=settings.max_local_attempts,
         privacy_default=privacy_default,
+        external_clients=external_clients,
     )
     context = ContextManager(num_ctx=settings.llm_num_ctx)
     planner = WorkflowPlanner(
@@ -223,6 +232,36 @@ AssistantSessionRepoDep = Annotated[
 ]
 
 
+# Human-readable labels for selectable models, shared by the picker and errors.
+_MODEL_LABELS = {
+    "local": "the local model",
+    "openai": "OpenAI",
+    "codex": "the Codex subscription",
+}
+
+
+@router.get(
+    "/models",
+    response_model=list[AssistantModelOption],
+    summary="List models the user can pick for the assistant",
+)
+async def list_models(
+    current_user_id: CurrentUserId,
+    session: DbSession,
+) -> list[AssistantModelOption]:
+    settings = get_settings()
+    providers = await build_credential_service(session, settings).active_providers(current_user_id)
+    return [
+        AssistantModelOption(
+            id="local", label=f"Local ({settings.assistant_model})", available=True
+        ),
+        AssistantModelOption(id="openai", label="OpenAI", available="openai" in providers),
+        AssistantModelOption(
+            id="codex", label="Codex subscription", available="codex" in providers
+        ),
+    ]
+
+
 @router.post(
     "/chat",
     response_model=AssistantChatResponse,
@@ -243,16 +282,34 @@ async def chat(
             "Assistant is disabled",
             status_code=503,
         )
+    label = _MODEL_LABELS.get(body.model or "", "the assistant model")
     try:
         response = await service.chat(
             user_id=current_user_id,
             session_id=body.session_id,
             message=body.message,
+            target=body.model,
         )
+    except ExternalAuthError as exc:
+        # The provider rejected the credential itself (invalid key / quota).
+        raise AppError(
+            ErrorCode.ASSISTANT_UNAVAILABLE,
+            f"The credential for {label} was rejected — it may be invalid or out of quota. "
+            "Update it in Settings or pick another model.",
+            status_code=503,
+        ) from exc
+    except LLMUnavailableError as exc:
+        # The selected model could not be reached (offline / not configured).
+        raise AppError(
+            ErrorCode.ASSISTANT_UNAVAILABLE,
+            f"Could not connect to {label}. It may be offline or not configured — "
+            "pick another model or try again later.",
+            status_code=503,
+        ) from exc
     except LLMClientError as exc:
         raise AppError(
             ErrorCode.ASSISTANT_UNAVAILABLE,
-            "Assistant model is unavailable",
+            f"{label} returned an unexpected error. Pick another model or try again.",
             status_code=503,
         ) from exc
     # Persist the conversation turn so the session can be resumed later.

@@ -115,7 +115,7 @@ class WorkflowPlanner:
         self._num_ctx = num_ctx
         self._max_repair = max(0, max_repair)
 
-    async def plan(self, *, message: str) -> PlanResult:
+    async def plan(self, *, message: str, target: str | None = None) -> PlanResult:
         messages = [
             LLMMessage(role="system", content=build_planner_prompt(self._registry)),
             LLMMessage(role="user", content=message),
@@ -136,6 +136,7 @@ class WorkflowPlanner:
                 [],
                 num_ctx=self._num_ctx,
                 validator=_valid,
+                target=target,
             )
             result = _parse(response.content)
             if result is None:
