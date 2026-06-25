@@ -1,0 +1,22 @@
+id: workflow-reuse-multistep
+name: Composable multi-step plan (reusable, step-output reference)
+prompt: Rename the Reports folder to Archive
+mode: [api]
+tags: [workflow-reuse]
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include: [search, rename_item]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+    - reply: I'll find the Reports folder, then rename it to Archive.
+      steps:
+        - skill: search
+          arguments: { q: Reports }
+        - skill: rename_item
+          arguments:
+            item_id: { from_step: 0, path: items.0.id }
+            new_name: Archive

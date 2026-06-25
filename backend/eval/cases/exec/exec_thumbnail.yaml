@@ -1,0 +1,25 @@
+id: exec-thumbnail
+name: Execute image-thumbnail skill and verify a smaller image is produced
+prompt: 做一個產生圖片縮圖的功能
+mode: [exec, browser]
+tags: [skill-execution, m4]
+expect:
+  execute:
+    fixture: sample.png
+    context_menu_label: Generate Thumbnail
+    produces_min: 1
+    output_name_contains: thumb
+    # Output is a binary image (no text assertion); the runner verifies it is a
+    # produced file. Pillow shrinks the 64x64 fixture to <= 32x32.
+    code: |
+      import os
+      from PIL import Image
+      def run(input_path, output_dir, params):
+          img = Image.open(input_path)
+          img.thumbnail((32, 32))
+          out = os.path.join(output_dir, 'thumbnail.png')
+          img.save(out, 'PNG')
+          return {'thumbnail': 'thumbnail.png', 'size': list(img.size)}
+scoring:
+  weights: { execution: 1.0 }
+  pass_threshold: 1.0

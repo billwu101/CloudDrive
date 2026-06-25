@@ -140,3 +140,116 @@ async def test_search_passes_filters_to_service(user_id: UUID, headers: dict[str
     assert call_kwargs.get("item_type") == "file"
     assert call_kwargs.get("mime_type") == "application/pdf"
     assert call_kwargs.get("page") == 2
+
+
+# ── GET /search/semantic ───────────────────────────────────────────────────────
+
+
+async def test_semantic_search_disabled_returns_503(user_id: UUID, headers: dict[str, str]) -> None:
+    # Embeddings are disabled by default, so the factory yields no service.
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get("/search/semantic", params={"q": "ideas"}, headers=headers)
+    assert resp.status_code == 503
+
+
+async def test_semantic_search_returns_hits(
+    monkeypatch: pytest.MonkeyPatch, user_id: UUID, headers: dict[str, str]
+) -> None:
+    from app.search.semantic import SemanticHit
+
+    hit_item = _item(user_id, name="thesis.pdf")
+
+    class _FakeSemanticService:
+        async def search(self, *, user_id: UUID, query: str, limit: int) -> list[SemanticHit]:
+            # _to_response reads the same attributes off a DriveItemResponse.
+            return [SemanticHit(item=hit_item, score=0.91, snippet="the matching passage")]  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        "app.search.router.build_semantic_search_service",
+        lambda session, settings: _FakeSemanticService(),
+    )
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get("/search/semantic", params={"q": "machine learning"}, headers=headers)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["item"]["name"] == "thesis.pdf"
+    assert abs(body[0]["score"] - 0.91) < 1e-6
+    assert body[0]["snippet"] == "the matching passage"
+
+
+async def test_semantic_search_embedding_down_returns_503(
+    monkeypatch: pytest.MonkeyPatch, user_id: UUID, headers: dict[str, str]
+) -> None:
+    from app.search.embedding import EmbeddingError
+
+    class _BoomService:
+        async def search(self, *, user_id: UUID, query: str, limit: int) -> list[object]:
+            raise EmbeddingError("down")
+
+    monkeypatch.setattr(
+        "app.search.router.build_semantic_search_service",
+        lambda session, settings: _BoomService(),
+    )
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get("/search/semantic", params={"q": "x"}, headers=headers)
+    assert resp.status_code == 503
+
+
+# ── POST /search/embeddings/backfill ────────────────────────────────────────────
+
+
+async def test_backfill_disabled_returns_503(user_id: UUID, headers: dict[str, str]) -> None:
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/search/embeddings/backfill", headers=headers)
+    assert resp.status_code == 503
+
+
+async def test_backfill_returns_counts(
+    monkeypatch: pytest.MonkeyPatch, user_id: UUID, headers: dict[str, str]
+) -> None:
+    from app.search.backfill import BackfillResult
+
+    class _FakeBackfill:
+        async def run(self, *, user_id: UUID, batch_size: int) -> BackfillResult:
+            return BackfillResult(indexed=3, remaining=7)
+
+    monkeypatch.setattr(
+        "app.search.router.build_embedding_backfill_service",
+        lambda session, settings: _FakeBackfill(),
+    )
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/search/embeddings/backfill", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == {"indexed": 3, "remaining": 7}
+
+
+async def test_backfill_embedding_down_returns_503(
+    monkeypatch: pytest.MonkeyPatch, user_id: UUID, headers: dict[str, str]
+) -> None:
+    from app.search.embedding import EmbeddingError
+
+    class _BoomBackfill:
+        async def run(self, *, user_id: UUID, batch_size: int) -> object:
+            raise EmbeddingError("down")
+
+    monkeypatch.setattr(
+        "app.search.router.build_embedding_backfill_service",
+        lambda session, settings: _BoomBackfill(),
+    )
+    svc = AsyncMock(spec=SearchService)
+    app = _make_app(svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/search/embeddings/backfill", headers=headers)
+    assert resp.status_code == 503

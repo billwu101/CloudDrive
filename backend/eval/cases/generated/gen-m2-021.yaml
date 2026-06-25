@@ -1,0 +1,42 @@
+id: gen-m2-021
+name: M2 接續工作：報告（recent+list_items+search+get_info+storage_quota）
+rationale: 回到工作現場：從最近開過的檔找回接續點（recent）→ 重新熟悉目前結構（list_items）→ 定位該主題的檔（search）→ 確認關鍵檔的細節（get_info）→ 確認容量是否夠存新版本（storage_quota）。
+prompt: 我想接續之前在處理的「報告」，幫我看我最近開過哪些檔、列一下根目錄目前的結構、搜尋「報告」相關的檔案、打開最相關的那個看它的詳情，順便確認容量還夠不夠再存新版本。
+mode:
+- api
+- browser
+tags:
+- read-only
+- generated
+- m2
+- scenario:resume_work
+expect:
+  workflow:
+    requires_confirmation: false
+    steps_include:
+    - recent
+    - list_items
+    - search
+    - get_info
+    - storage_quota
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - reply: 好的，我幫你查。
+    steps:
+    - skill: recent
+      arguments: {}
+    - skill: list_items
+      arguments: {}
+    - skill: search
+      arguments:
+        q: 報告
+    - skill: get_info
+      arguments:
+        item_id: 11111111-1111-1111-1111-111111111111
+    - skill: storage_quota
+      arguments: {}

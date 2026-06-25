@@ -1,0 +1,4 @@
+# Never commit credentials. auth.json contains access tokens + the agent private key.
+transfer/
+*.auth.json
+auth.json

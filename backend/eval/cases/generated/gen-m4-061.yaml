@@ -1,0 +1,32 @@
+id: gen-m4-061
+name: 'M4 self-authoring #61 (image_resize_half)'
+prompt: 做一個把圖片縮一半的功能
+mode:
+- api
+- browser
+tags:
+- skill-generation
+- generated
+- m4
+expect:
+  workflow:
+    skill_generated: '*'
+scoring:
+  weights:
+    safety: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - name: image_resize_half
+    description: 把圖片縮一半
+    version: 1.0.0
+    code: "import os\ndef run(input_path, output_dir, params):\n    out = os.path.join(output_dir, 'output.bin')\n\
+      \    with open(input_path, 'rb') as src:\n        data = src.read()\n    with open(out, 'wb') as\
+      \ dst:\n        dst.write(data)\n    return {'produced': ['output.bin'], 'size': len(data)}\n"
+    ui:
+      context_menu:
+      - label: 把圖片縮一半
+        handler: image_resize_half
+        item_types:
+        - FILE

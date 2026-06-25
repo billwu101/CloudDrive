@@ -169,6 +169,35 @@ describe('search pagination', () => {
   })
 })
 
+// ── 語意搜尋 ──────────────────────────────────────────────────────────────────
+
+describe('semanticSearch (GET /search/semantic)', () => {
+  it('sends q + limit and returns hits with scores', async () => {
+    server.use(
+      http.get(`${BASE}/search/semantic`, ({ request }) => {
+        const url = new URL(request.url)
+        expect(url.searchParams.get('q')).toBe('budget')
+        expect(url.searchParams.get('limit')).toBe('5')
+        return HttpResponse.json([{ item: MOCK_FILE, score: 0.87 }])
+      }),
+    )
+    const res = await searchApi.semanticSearch({ q: 'budget', limit: 5 })
+    expect(res.status).toBe(200)
+    expect(res.data).toHaveLength(1)
+    expect(res.data[0].item.name).toBe('quarterly_report.pdf')
+    expect(res.data[0].score).toBeCloseTo(0.87)
+  })
+
+  it('propagates a 503 when semantic search is disabled', async () => {
+    server.use(
+      http.get(`${BASE}/search/semantic`, () =>
+        HttpResponse.json({ detail: 'Semantic search is not enabled' }, { status: 503 }),
+      ),
+    )
+    await expect(searchApi.semanticSearch({ q: 'x' })).rejects.toMatchObject({ status: 503 })
+  })
+})
+
 // ── 請求取消 ──────────────────────────────────────────────────────────────────
 
 describe('search with AbortSignal', () => {

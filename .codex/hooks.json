@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; cd \"$d\" || exit 0; git add -A 2>/dev/null; git diff --cached --quiet && exit 0; git commit -q -m \"chore: auto-commit session changes\" 2>/dev/null || true",
+            "statusMessage": "Auto-committing session changes"
+          }
+        ]
+      }
+    ]
+  }
+}

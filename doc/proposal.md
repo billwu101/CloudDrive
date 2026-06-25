@@ -1,10 +1,72 @@
-# 雲端硬碟系統開發文件
+# 雲端硬碟系統需求文件
+
+## 目錄
+
+- [1. 文件目的](#1-文件目的)
+- [2. 初版假設](#2-初版假設)
+- [3. 待確認問題](#3-待確認問題)
+- [4. 專案目標](#4-專案目標)
+- [5. 功能範圍](#5-功能範圍)
+- [6. 使用者使用情境](#6-使用者使用情境)
+- [7. 系統架構](#7-系統架構)
+- [8. 技術選型](#8-技術選型)
+- [9. 前端頁面與狀態管理](#9-前端頁面與狀態管理)
+- [10. 後端目錄結構](#10-後端目錄結構)
+- [11. 資料庫設計](#11-資料庫設計)
+- [12. In-App AI Assistant](#12-in-app-ai-assistant)
+- [13. 時光機（Snapshots，核心功能）](#13-時光機snapshots核心功能)
+- [14. 權限模型](#14-權限模型)
+- [15. API 設計](#15-api-設計)
+- [16. 關鍵流程設計](#16-關鍵流程設計)
+- [17. 安全性需求](#17-安全性需求)
+- [18. 效能需求](#18-效能需求)
+- [19. 錯誤處理](#19-錯誤處理)
+- [20. Docker 開發環境](#20-docker-開發環境)
+- [21. 環境變數](#21-環境變數)
+- [22. 測試計畫](#22-測試計畫)
+- [23. 開發里程碑](#23-開發里程碑)
+- [24. 驗收標準](#24-驗收標準)
+- [25. 風險與對策](#25-風險與對策)
+- [26. 部署與維運計畫](#26-部署與維運計畫)
+- [27. 結論](#27-結論)
 
 ## 1. 文件目的
 
-本文件描述一個參考 Google Drive 與 OneDrive 的雲端硬碟系統開發方案。系統前端使用 React，後端使用 FastAPI，資料庫使用 PostgreSQL。文件內容涵蓋需求範圍、系統架構、資料庫設計、API 規格、前端頁面規劃、權限模型、安全性、部署方式與開發里程碑。
+本文件描述一個參考 Google Drive 與 OneDrive 的雲端硬碟系統**要解決的問題與需求**——功能範圍、使用者目標、使用情境、角色與限制。**實作方式（系統架構、資料庫設計、API 文件、目錄結構、部署細節）由 開發文檔 記錄，不屬本文件範圍。**
 
-本文件可作為後續開發、分工、估時與驗收的基準。
+
+### 1.1 閱讀對象與用途
+
+本文件主要供**開發團隊**與 **Claude（AI 協作開發）**參考：
+
+| 對象 | 關注內容 | 文件用途 |
+| --- | --- | --- |
+| 開發團隊 | 模組邊界、設計取捨、資料一致性、安全模型、待辦與已知限制 | 後續維護、擴充與除錯依據 |
+| Claude（AI 協作） | 同上 + 現況落點與檔案對應 | 理解專案現況、協助開發與文件對齊 |
+
+> 交付方／審查者、部署／維運人員**另有專屬的需求與開發文件**，以該文件為主要依據；本文件不為其而寫。
+
+因此，本文件不是一次定稿的早期需求書，而是**隨實作演進的現況式需求文件**：已交付的需求以現況描述，未完成或選用項目以狀態標籤標示，不把尚未交付的功能寫成已完成。
+
+### 1.2 交付文件與內部紀錄分工
+
+完整交付不建議只交一份 30 頁以上的單一檔案。較合理的交付套件如下：
+
+| 文件 | 交付方是否需要 | 說明 |
+| --- | --- | --- |
+| 正式需求文件（本文件整理版） | 是 | 放功能範圍、使用者目標、使用情境、角色與限制 |
+| API 文件、ERD、架構／部署／時序圖（**開發文件紀錄**） | 是 | 端點/request/response/錯誤碼、資料表與權限·搜尋·快照·助理、資料流與部署邊界；皆**由 `detailed-design.md` 與 OpenAPI 匯出／節錄**，供交付方審查 |
+| 測試與 Assistant Eval Harness 報告 | 是 | 證明核心流程、E2E、AI agent 評測有被驗證 |
+
+也就是說，`detailed-design.md`、`decisions.md`、`progress.md` 與 `tasks/*.md` 為**內部文件、不納入交付**；正式需求文件本身應能獨立說明系統需求。
+
+### 1.3 文件維護方式
+
+若所有內容都塞在單一檔案，交付時容易閱讀，但後續維護成本高；若全部拆散，審查時又不易理解。建議採用「主文件 + 附錄」：
+
+1. 主文件：控制在可審閱的篇幅，放系統總覽、核心流程、API 摘要、ERD、部署、測試與限制。
+2. 附錄：放完整 API 表、完整資料表欄位、環境變數、錯誤碼、路由對照、功能追蹤矩陣。
+3. 內部文件：保留 `tasks/` 與原始設計決策，供開發團隊追溯。
 
 ## 2. 初版假設
 
@@ -38,7 +100,7 @@
 
 ### 4.1 核心目標
 
-建立一個可上傳、分類、搜尋、分享與下載檔案的雲端硬碟系統。使用者可以像使用 Google Drive 或 OneDrive 一樣，透過資料夾階層管理自己的檔案，並能將檔案或資料夾分享給其他使用者或產生公開連結。
+建立一個可上傳、分類、搜尋、分享與下載檔案的雲端硬碟系統。使用者可以像使用 Google Drive 或 OneDrive 一樣，透過資料夾階層管理自己的檔案，並能將檔案或資料夾分享給其他使用者或產生公開連結。此外提供兩項進階核心能力：**對話式 AI 助理**（以自然語言操作檔案、現場生成技能與工作流程）與**時光機**（時間點快照，可瀏覽並就地還原過去的硬碟狀態）。
 
 ### 4.2 使用者目標
 
@@ -56,6 +118,9 @@
 10. 分享檔案或資料夾給指定使用者。
 11. 建立公開分享連結。
 12. 查看自己的容量使用狀況。
+13. 修改帳號設定（顯示名稱、登入 Email、密碼）。
+14. 透過對話式 AI 助理，用自然語言操作檔案與執行批次任務。
+15. 以時光機瀏覽並就地還原到過去某個時間點的硬碟狀態。
 
 ### 4.3 系統目標
 
@@ -68,12 +133,13 @@
 5. 保持清楚的前後端分層。
 6. 提供可擴充的儲存層抽象，讓本機儲存能在未來替換成物件儲存。
 7. 具備可部署到 Docker 環境的架構。
+8. 以本地模型優先執行 AI 助理，資料預設不外流，必要時才升級外部模型。
 
 ## 5. 功能範圍
 
-### 5.1 MVP 必做功能
+### 5.1 必做功能
 
-MVP 指第一版可展示與可使用的核心版本。
+即第一版可展示與可使用的核心功能。
 
 1. 使用者註冊、登入、登出。
 2. JWT 存取權杖與刷新權杖。
@@ -110,7 +176,7 @@ MVP 指第一版可展示與可使用的核心版本。
 
 ### 5.3 第三階段功能
 
-1. 管理員後台。
+1. 管理員後台（系統統計、使用者列表、容量使用狀況、違規檔案處理紀錄）。
 2. 使用者容量配額管理。
 3. 團隊空間。
 4. 共同資料夾。
@@ -123,7 +189,15 @@ MVP 指第一版可展示與可使用的核心版本。
 11. WebSocket 即時通知。
 12. 桌面或手機同步客戶端。
 
-### 5.4 暫不包含功能
+### 5.4 In-App AI Assistant（核心）
+
+對話式 AI 助理（自然語言操作檔案、計畫確認、現場生成技能、技能管理、工作流程重用）。完整規格見 **§12**。
+
+### 5.5 時光機（Snapshots，核心）
+
+類 Apple Time Machine 的整碟時間點還原：定期/手動/助理操作前自動建快照，可瀏覽過去某時間點的硬碟並就地還原。完整規格見 **§13**。
+
+### 5.6 暫不包含功能
 
 初版不包含：
 
@@ -133,19 +207,11 @@ MVP 指第一版可展示與可使用的核心版本。
 4. 複雜企業組織權限。
 5. 端對端加密。
 
-## 6. 使用者角色
+## 6. 使用者使用情境
 
-### 6.1 一般使用者
+本節列舉**代表性**使用情境（含特殊互動或關鍵業務規則者，如框選、分享、AI 助理、時光機）；**完整功能清單見 §5 功能範圍**，不在此逐一對應。
 
-一般使用者可以管理自己的檔案與資料夾，並使用分享功能。
-
-### 6.2 管理員
-
-管理員可以查看系統統計、使用者列表、容量使用狀況與違規檔案處理紀錄。管理員功能可放在第二或第三階段開發。
-
-## 7. 使用情境
-
-### 7.1 上傳檔案
+### 6.1 上傳檔案
 
 1. 使用者進入「我的硬碟」。
 2. 使用者點擊上傳按鈕或拖曳檔案到頁面。
@@ -155,7 +221,7 @@ MVP 指第一版可展示與可使用的核心版本。
 6. 後端將檔案中繼資料寫入 PostgreSQL。
 7. 前端更新檔案列表。
 
-### 7.2 建立資料夾
+### 6.2 建立資料夾
 
 1. 使用者點擊新增資料夾。
 2. 輸入資料夾名稱。
@@ -163,7 +229,7 @@ MVP 指第一版可展示與可使用的核心版本。
 4. 建立資料夾紀錄。
 5. 前端刷新列表。
 
-### 7.3 分享檔案
+### 6.3 分享檔案
 
 1. 使用者選取檔案。
 2. 點擊分享。
@@ -172,14 +238,14 @@ MVP 指第一版可展示與可使用的核心版本。
 5. 後端建立權限或分享連結紀錄。
 6. 收到分享的使用者可以在「與我分享」頁面看到檔案。
 
-### 7.4 框選檔案與資料夾
+### 6.4 框選檔案與資料夾
 
 1. 使用者在「我的硬碟」檔案區空白處按住滑鼠左鍵。
 2. 使用者拖曳出選取矩形，所有與矩形相交的檔案與資料夾即時進入選取狀態。
 3. 框選只需要按住滑鼠左鍵拖曳，不需要搭配鍵盤按鍵；新的框選範圍會取代既有選取。
 4. 在空白處單擊可清除目前選取，從檔案卡片或按鈕開始拖曳不會誤觸框選。
 
-### 7.5 刪除與還原
+### 6.5 刪除與還原
 
 1. 使用者刪除檔案或資料夾。
 2. 系統不立即永久刪除，而是標記為已刪除並移入垃圾桶。
@@ -187,7 +253,7 @@ MVP 指第一版可展示與可使用的核心版本。
 4. 使用者可永久刪除。
 5. 系統可定期清除超過保留期限的垃圾桶項目。
 
-### 7.6 管理帳號設定
+### 6.6 管理帳號設定
 
 1. 使用者從個人選單進入帳號設定頁。
 2. 使用者可修改顯示名稱與登入 Email。
@@ -195,365 +261,235 @@ MVP 指第一版可展示與可使用的核心版本。
 4. 使用者輸入目前密碼後，可設定至少 8 個字元的新密碼。
 5. 更新成功後，頁面與個人選單立即顯示最新資料。
 
-## 8. 系統架構
+### 6.7 用 AI 助理操作檔案
 
-### 8.1 架構總覽
+1. 使用者以自然語言向助理下指令（例如「把上週的報告搬到 Archive 資料夾」）。
+2. 助理解析意圖，產生執行計畫並顯示給使用者確認。
+3. 使用者確認後助理依計畫操作；唯讀或非破壞性操作可依權限自動執行。
+4. 若缺對應技能，助理現場生成技能，經使用者核可後安裝再執行。
+5. 常用流程可存成工作流程，之後一鍵重用。
 
-系統採用前後端分離架構：
+（完整規格見 §12。）
 
-```text
-React Frontend
-  |
-  | HTTPS REST API
-  v
-FastAPI Backend
-  |
-  | SQLAlchemy / asyncpg
-  v
-PostgreSQL
+### 6.8 用時光機瀏覽與還原
 
-FastAPI Backend
-  |
-  | Storage Adapter
-  v
-Local Storage / MinIO / S3 / Azure Blob
-```
+1. 系統定期、或使用者手動、或助理執行破壞性操作前，自動建立整碟快照。
+2. 使用者開啟時光機，瀏覽過去某個時間點的硬碟狀態。
+3. 使用者選定時間點，就地還原整個硬碟或特定項目。
 
-### 8.2 前端技術
+（完整規格見 §13。）
 
-建議使用：
+## 7. 系統架構
 
-1. React
-2. TypeScript
-3. Vite
-4. React Router
-5. TanStack Query
-6. Zustand 或 Redux Toolkit
-7. React Hook Form
-8. Zod
-9. Axios 或 Fetch API wrapper
-10. Tailwind CSS 或 Material UI
+### 7.1 架構總覽
 
-若要更接近 Google Drive 與 OneDrive，可使用 Material UI 或 shadcn/ui 來快速建立一致的操作介面。
+**前後端分離**：React 前端 ──(HTTPS REST API)──> FastAPI 後端 ──(SQLAlchemy / asyncpg)──> PostgreSQL；檔案 binary 經 Storage Provider 存獨立儲存層（metadata 與 binary 分離，見 §7.5）。後端另內含 **AI 助理引擎**（本地 Gemma + 可選外部 GPT-5.5，見 §7.6）。完整架構圖與分層見 [detailed-design.md](./detailed-design.md) §3。
 
-### 8.3 後端技術
+### 7.2 前端技術
 
-建議使用：
+核心：**React + TypeScript + Vite**；伺服器狀態用 TanStack Query、UI 狀態用 Zustand。其餘選型（路由、表單、驗證、樣式庫等）見 [detailed-design.md](./detailed-design.md) §5。
 
-1. FastAPI
-2. Python 3.12 以上
-3. SQLAlchemy 2.x
-4. Alembic
-5. Pydantic
-6. asyncpg
-7. python-jose 或 PyJWT
-8. passlib 或 pwdlib
-9. Uvicorn
-10. Celery 或 RQ
-11. Redis
+### 7.3 後端技術
 
-### 8.4 資料庫
+核心：**FastAPI + Python 3.12+ + SQLAlchemy 2.x（async）+ PostgreSQL**；Alembic 管 migration、Pydantic 管 I/O 驗證。其餘選型（JWT／密碼雜湊套件、背景工作機制等）見 [detailed-design.md](./detailed-design.md) §7。
 
-使用 PostgreSQL 儲存：
+### 7.4 資料庫
 
-1. 使用者帳號。
-2. 檔案與資料夾中繼資料。
-3. 權限設定。
-4. 分享連結。
-5. 檔案版本。
-6. 上傳工作狀態。
-7. 操作紀錄。
-8. 容量統計。
+以 PostgreSQL 儲存：使用者帳號、檔案/資料夾 metadata、權限、分享、檔案版本、上傳工作狀態、操作紀錄與容量統計（各表見 §11）。
 
-### 8.5 儲存層
+### 7.5 儲存層
 
-檔案本體不建議直接存在 PostgreSQL。建議抽象成 Storage Provider：
+**設計理由**：檔案本體**不存 PostgreSQL**。DB 為結構化查詢與交易設計，存大型 binary 會使備份/複製肥大、佔用連線記憶體、不利串流，效能也隨檔案量劣化。因此採「metadata 與 binary 分離」：
 
-```text
-StorageProvider
-  - save(file_stream, storage_key)
-  - read(storage_key)
-  - delete(storage_key)
-  - exists(storage_key)
-  - generate_download_url(storage_key)
-```
+- **DB 只存 metadata**：檔名、大小、權限、`storage_key`（檔案在儲存層的定位）。
+- **檔案 binary 存獨立儲存層**（檔案系統或物件儲存）。
+- **取檔流程**：先查 DB（驗權限 + 取 `storage_key`），再用 key 向儲存層取 binary——**權限與定位永遠經過 DB，binary 不經 DB**。
+- 儲存層抽象為 **Storage Provider** 介面，底層可換（本地檔案系統／MinIO／S3／Azure Blob）而不動業務邏輯：開發用本地、正式可換物件儲存。
 
-可實作：
+> Provider 介面方法與 `LocalStorageProvider` 實作見 [detailed-design.md](./detailed-design.md) §7.6。
 
-1. LocalStorageProvider
-2. MinIOStorageProvider
-3. S3StorageProvider
-4. AzureBlobStorageProvider
+### 7.6 AI 助理引擎
 
-## 9. 後端目錄建議
+後端內含對話式 **AI 助理引擎**（HARNESS：while loop、context、skills/tools、sub-agents、沙箱、權限與安全）。預設以**本地 Gemma（Ollama）**為執行器，資料不外流；本地反覆失敗時可升級**外部 GPT-5.5**（Codex 訂閱優先、OpenAI key 備援，使用者自帶加密憑證）。驅動自然語言操作檔案、現場生成技能與工作流程重用。完整規格見 §12；引擎設計見 [detailed-design.md](./detailed-design.md) §7 與 [detailed-design.md §9](./detailed-design.md)。
 
-```text
-backend/
-  app/
-    main.py
-    core/
-      config.py
-      security.py
-      dependencies.py
-      exceptions.py
-    db/
-      session.py
-      base.py
-      migrations/
-    models/
-      user.py
-      drive_item.py
-      file_version.py
-      share.py
-      upload_session.py
-      activity_log.py
-    schemas/
-      auth.py
-      user.py
-      drive_item.py
-      share.py
-      upload.py
-    routers/
-      auth.py
-      users.py
-      drive.py
-      upload.py
-      share.py
-      search.py
-      trash.py
-    services/
-      auth_service.py
-      drive_service.py
-      storage_service.py
-      share_service.py
-      search_service.py
-      quota_service.py
-    repositories/
-      user_repository.py
-      drive_repository.py
-      share_repository.py
-    storage/
-      base.py
-      local.py
-      minio.py
-      s3.py
-    tasks/
-      thumbnails.py
-      cleanup.py
-      virus_scan.py
-    tests/
-  alembic.ini
-  pyproject.toml
-  Dockerfile
-```
+## 8. 技術選型
 
-## 10. 前端目錄建議
+各層採用的技術與理由（實際版本以 `backend/pyproject.toml`、`frontend/package.json` 為準）。
 
-```text
-frontend/
-  src/
-    app/
-      router.tsx
-      providers.tsx
-    api/
-      client.ts
-      authApi.ts
-      driveApi.ts
-      shareApi.ts
-      uploadApi.ts
-    components/
-      layout/
-      drive/
-      upload/
-      preview/
-      share/
-      common/
-    pages/
-      LoginPage.tsx
-      RegisterPage.tsx
-      DrivePage.tsx
-      SharedWithMePage.tsx
-      RecentPage.tsx
-      StarredPage.tsx
-      TrashPage.tsx
-      SettingsPage.tsx
-    hooks/
-      useAuth.ts
-      useDriveItems.ts
-      useUploadQueue.ts
-    stores/
-      authStore.ts
-      uploadStore.ts
-      uiStore.ts
-    types/
-      auth.ts
-      drive.ts
-      share.ts
-    utils/
-      fileIcons.ts
-      formatBytes.ts
-      mime.ts
-    styles/
-      globals.css
-  package.json
-  vite.config.ts
-  Dockerfile
-```
+**前端**
+
+| 技術 | 用途與選用理由 |
+| --- | --- |
+| React 19 + TypeScript + Vite | 元件化 UI、型別安全；Vite 提供快速開發與建置 |
+| TanStack Query | 伺服器狀態：快取、失效與重取 API 資料 |
+| Zustand | 輕量 UI／auth／上傳狀態管理，無樣板程式 |
+| React Hook Form + Zod | 高效表單 + schema 驗證（`@hookform/resolvers` 串接） |
+| React Router | SPA 路由與受保護頁面 |
+| Tailwind CSS + shadcn／base-ui | 一致設計系統、可組合元件、快速開發 |
+| axios | 統一 API 呼叫；攔截器處理 401／silent refresh |
+
+**後端**
+
+| 技術 | 用途與選用理由 |
+| --- | --- |
+| FastAPI + Python 3.12 | async 效能佳、原生型別、自動產生 OpenAPI |
+| SQLAlchemy 2.x（async）+ asyncpg | async ORM + 高效 PostgreSQL 驅動 |
+| Alembic | 資料庫 schema migration 版本管理 |
+| Pydantic／pydantic-settings | request／response 驗證與設定管理 |
+| PyJWT + pwdlib（Argon2） | JWT 存取／刷新權杖 + Argon2 密碼雜湊 |
+| cryptography | 外部模型 API 憑證加密儲存（不存明文） |
+| uvicorn + httpx | ASGI server + async HTTP client（呼叫 LLM） |
+| Pillow／pypdf／py7zr／python-multipart | 圖片縮圖／PDF 預覽／壓縮技能／檔案上傳 |
+| aiosmtplib | async SMTP 寄信（分享通知等） |
+
+**資料、儲存與 AI**
+
+| 技術 | 用途與選用理由 |
+| --- | --- |
+| PostgreSQL 16 + pgvector | 關聯式資料 + 交易一致性 + 向量檢索（語意搜尋） |
+| 本地檔案系統（Storage Provider 抽象） | 開發用本地，可無痛換物件儲存（見 §7.5） |
+| Ollama（本地 Gemma）+ OpenAI 相容外部模型 | 本地優先、資料不外流；反覆失敗時才升級外部 |
+
+**維運與測試**
+
+| 技術 | 用途與選用理由 |
+| --- | --- |
+| Docker + docker compose | 環境一致、一鍵啟動前後端與 DB |
+| GitHub Actions + GHCR + self-hosted runner | CI 測試／建置、CD 部署（見 §26） |
+| pytest · ruff · mypy | 後端測試、lint、型別檢查 |
+| Vitest · Testing Library · MSW · Playwright | 前端單元測試、API mock、E2E |
+
+## 9. 前端頁面與狀態管理
+
+### 9.1 頁面
+
+- **登入頁** / **註冊頁**：帳號登入、註冊（含表單驗證）。
+- **主版面**：左側導覽（我的硬碟／與我分享／最近／星號／垃圾桶／儲存空間）、上方搜尋列、中央檔案區、右側詳細資訊面板。
+- **我的硬碟頁**：麵包屑、新增/上傳（檔案/資料夾）、列表/格狀檢視、排序、多選、右鍵選單、拖曳上傳。
+
+### 9.2 整體風格
+
+介面以**實用、清楚、可快速操作**為主（高頻工作型產品，不過度裝飾）：淺色背景、左側固定導覽、上方全域搜尋、清楚的檔案列表、足夠留白、操作按鈕用圖示搭配 tooltip；重要操作（如刪除、永久刪除）需確認。
+
+### 9.3 主要元件
+
+`Sidebar`、`TopSearchBar`、`Breadcrumbs`、`FileToolbar`、`FileTable`、`FileGrid`、`ContextMenu`、`UploadDropzone`、`UploadQueue`、`PreviewDialog`、`ShareDialog`、`ConfirmDialog`、`StorageUsageBar`。
+
+互動重點：上傳佇列含進度/速度/暫停/繼續/取消/重試；預覽支援圖片／PDF／文字／影片／音訊（不支援時顯示下載）；分享彈窗含搜尋使用者、設權限、建公開連結（到期/密碼）、複製、移除對象。
+
+### 9.4 狀態設計
+
+每個頁面都要設計：Loading、Empty、Error、Permission denied、Offline/retry 狀態。
+
+### 9.5 狀態管理
+
+狀態分工：
+
+1. **Auth state**：登入狀態、token、目前使用者。
+2. **Drive query state**：目前資料夾、排序、分頁、搜尋條件。
+3. **Upload state**：上傳佇列與進度。
+4. **UI state**：側邊欄、預覽窗、分享彈窗、右鍵選單。
+
+技術選型：伺服器資料用 TanStack Query、UI 狀態用 Zustand、表單用 React Hook Form、schema 驗證用 Zod。
+
+### 9.6 AI 助理相關頁面（AI Assistant）
+
+> 屬 **In-App AI Assistant**（§12）功能。
+
+- **聊天面板**：浮動於各受保護頁；訊息泡泡、計畫確認卡、技能核可/程式碼審查、已存工作流程清單、使用者訊息複製鈕。
+- **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
+
+> 各頁面/元件的詳細結構與 props 見 [detailed-design.md](./detailed-design.md) §5。
+
+## 10. 後端目錄結構
+
+後端按**模組（domain）**組織，每個模組是一個自足套件、內部採**相同的分層**；模組之間只透過服務層注入互動，不互相 import 內部。模組內各層職責：
+
+- **路由層**：接收 HTTP request、驗證輸入、呼叫服務層、組裝回應與狀態碼；不放商業邏輯。
+- **服務層**：商業邏輯所在——權限判斷、容量檢查、協調資料層與儲存層，是模組對外的唯一介面。
+- **資料層**：資料庫查詢與 transaction，封裝 ORM 操作；只被同模組的服務層呼叫。
+- **結構層**：該模組的 request／response 型別與驗證規則。
+
+跨模組的共用層：
+
+- **儲存抽象層**：以介面封裝檔案存取（本地／物件儲存可替換），服務層透過它讀寫 binary，不直接碰檔案系統。
+- **核心層**：設定、JWT 安全、例外與錯誤碼、依賴注入等全域基礎設施。
+- **資料模型層**：ORM 模型與跨模組共用的回應型別。
+- **基礎服務層**：操作紀錄、權限判斷、寄信等沒有對外路由、由其他服務層注入的內部能力。
+- **API 聚合層**：彙整各模組路由為單一對外 API。
+
+各層對應的實際模組清單、檔案與邊界見 [detailed-design.md](./detailed-design.md) §6（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
 
 ## 11. 資料庫設計
 
-### 11.1 users
+下表為各資料表的需求；**欄位型別與長度原則、各表 DDL（欄位、型別、索引）見 [detailed-design.md](./detailed-design.md) §8**，對應小節列於最右欄。
 
-儲存使用者資料。
-
-| 欄位 | 型別 | 說明 |
+| 資料表 | 需求 | DDL |
 | --- | --- | --- |
-| id | uuid | 主鍵 |
-| email | varchar | 登入信箱，唯一 |
-| username | varchar | 顯示名稱 |
-| password_hash | varchar | 密碼雜湊 |
-| avatar_url | text | 頭像網址 |
-| quota_bytes | bigint | 使用者容量上限 |
-| used_bytes | bigint | 已使用容量 |
-| is_active | boolean | 是否啟用 |
-| is_admin | boolean | 是否為管理員 |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
+| `users` | 使用者帳號；`email` 為唯一登入識別；有容量上限與已用量；區分啟用狀態與管理員身分；密碼僅存雜湊、不存明文。 | §7.1 |
+| `drive_items` | 統一儲存檔案與資料夾（以 `item_type` 區分）；同層未刪除項目不可同名（同名上傳 MVP 自動命名 `filename (1).ext`，亦可取代建新版本或由使用者選）；支援星號、垃圾桶（軟刪除）、建立/修改者追蹤。 | §7.3 |
+| `user_item_preferences` | 每位使用者對項目的個人化偏好（目前為星號）。星號以本表為準、不放 `drive_items`，以免分享時一人加星污染他人狀態。 | §7.3.1 |
+| `file_versions` | 檔案歷史版本，支援版本回溯。 | §7.4 |
+| `shares` | 對指定使用者的分享權限：`viewer`（檢視/預覽）、`downloader`（下載）、`editor`（改名/移動/上傳新版本）。 | §7.5 |
+| `share_links` | 公開分享連結：權限（`viewer`/`downloader`）、選用密碼、選用到期、啟用開關。只存 token 與密碼 hash、不存明文；明文 token 僅建立時回傳一次。 | §7.6 |
+| `upload_sessions` | 大型檔案分片上傳；狀態機 `pending`→`uploading`→`completed`/`failed`/`cancelled`；完成後建立對應 `drive_item`。 | §7.7 |
+| `upload_chunks` | 各分片（編號、暫存位置、大小、checksum），供完成時組裝與驗證。 | §7.7 |
+| `activity_logs` | 使用者操作紀錄（`upload`/`download`/`rename`/`move`/`delete`/`restore`/`share`），含操作者、對象、metadata、IP、瀏覽器；供稽核與「最近」。 | §7.8 |
 
-### 11.2 drive_items
+## 12. In-App AI Assistant
 
-統一儲存檔案與資料夾。使用 item_type 區分 file 與 folder。
+於網頁應用內提供一個**可對話、可自我擴充的 AI 助理**。使用者用自然語言描述需求，助理把需求轉成**可檢視、可確認、可執行、可記錄的 Workflow**，以既有或現場生成的技能完成檔案／資料夾操作。完整設計見 [detailed-design.md §9](./detailed-design.md)，評測見 [detailed-design.md §11](./detailed-design.md)，決策見 [decisions.md](./decisions.md) 的 DEC-016～023。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| owner_id | uuid | 擁有者 |
-| parent_id | uuid | 上層資料夾，根目錄為 null |
-| item_type | varchar | file 或 folder |
-| name | varchar | 檔案或資料夾名稱 |
-| mime_type | varchar | MIME type，資料夾可為 null |
-| extension | varchar | 副檔名 |
-| size_bytes | bigint | 檔案大小 |
-| storage_key | text | 儲存服務中的檔案 key |
-| checksum_sha256 | varchar | 檔案 checksum |
-| is_starred | boolean | 是否加星號 |
-| is_deleted | boolean | 是否在垃圾桶 |
-| deleted_at | timestamptz | 刪除時間 |
-| created_by | uuid | 建立者 |
-| updated_by | uuid | 最後修改者 |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
+- **對話操作**：登入後 CloudDrive shell 內的浮動聊天面板，用自然語言列檔／搜尋／整理／改名／移動／分享／壓縮解壓等。
+- **計畫確認**：寫入/破壞性操作先產生計畫（步驟、權限層級、是否需確認），唯讀操作可 fast-path 自動執行；使用者確認後才執行，破壞性操作**絕不自動執行**。
+- **現場生成新技能**：缺少的能力由助理現場生成（例如「做一個 7zip 解壓縮功能」），經 **codegen → 靜態驗證（codeguard）→ 使用者核可 → 受限沙箱執行**，產出檔案寫回 drive。
+- **技能管理**：側欄 **Skills 頁（`/skills`）**檢視已安裝技能數量、編輯（描述/程式碼，改碼重跑 codeguard）、刪除。
+- **工作流程重用**：計畫可命名儲存，之後一鍵重跑。
+- **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
+- **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
 
-建議索引：
+**HARNESS 引擎架構**：助理後端是一個 agent harness 引擎，由數個核心組件構成——
 
-```sql
-CREATE INDEX idx_drive_items_owner_parent ON drive_items(owner_id, parent_id);
-CREATE INDEX idx_drive_items_owner_deleted ON drive_items(owner_id, is_deleted);
-CREATE INDEX idx_drive_items_name_trgm ON drive_items USING gin (name gin_trgm_ops);
-CREATE UNIQUE INDEX uq_drive_items_same_folder_name
-ON drive_items(owner_id, parent_id, lower(name))
-WHERE is_deleted = false;
-```
+- **執行迴圈（while loop）**：驅動「送訊息 → 解析 → 執行工具 → 回填結果」直到完成或達迴圈上限。
+- **情境管理（context）**：token 預算控制、超量裁切／摘要、大型工具輸出瘦身。
+- **技能與工具（skills/tools）**：技能 registry + manifest，依相關性挑選可用技能；支援現場 author 新技能。
+- **子代理（sub-agents）**：獨立 context 的子代理，主要用於 codegen 與有界平行子任務。
+- **系統提示組裝**：動態組裝人設 + 安全規則 + 可用技能清單 + 當前語境（穩定前綴在前、無隨機／時間戳）。
+- **生命週期 hooks**：在 session／tool／skill／code-exec／error 節點插入稽核、權限閘、計畫確認、安裝前驗證。
+- **持久化**：session／訊息／技能／工作流程持久化，啟動時載入使用者已安裝技能與已存工作流程。
+- **權限與安全**：`user_id` 多租戶綁定、分層權限（唯讀自動／破壞性確認／生成碼核可）、受限沙箱（資源／路徑／網路限制）、全程稽核。
+- **模型路由**：本地 Gemma（Ollama）為主，達失敗上限且符合隱私條件時才升級外部模型（見上「模型策略」）。
 
-若要支援更高效的資料夾樹查詢，可考慮 PostgreSQL ltree 或 closure table。
+各組件的職責與對應實作見 [detailed-design.md §9.7](./detailed-design.md)（HARNESS 九大組件）。
 
-### 11.3 file_versions
+## 13. 時光機（Snapshots，核心功能）
 
-儲存檔案版本。
+類 Apple Time Machine 的整碟時間點還原。完整設計見 [detailed-design.md §13](./detailed-design.md)，決策見 DEC-024。**狀態：S1-S5 已實作並測試完成；仍有非阻擋限制：還原時硬配額檢查待補強。**
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| file_id | uuid | 對應 drive_items.id |
-| version_no | integer | 版本號 |
-| storage_key | text | 版本檔案儲存 key |
-| size_bytes | bigint | 檔案大小 |
-| checksum_sha256 | varchar | checksum |
-| created_by | uuid | 建立者 |
-| created_at | timestamptz | 建立時間 |
+### 13.1 功能範圍
 
-### 11.4 shares
+- **快照**：整個雲端硬碟在某時間點的狀態（哪些檔案/資料夾存在、名稱、位置、版本）。增量儲存——未變更檔案以 `checksum_sha256` 共用既有內容，不重複存。
+- **三種觸發**：(1) 自動排程（使用者設定預設開啟、每小時；服務內建排程器由 `SNAPSHOT_SCHEDULER_ENABLED` 控制，compose 單 worker 預設開）；(2) 手動「立即建立快照」；(3) **助理執行寫入/破壞性 workflow 或生成式 skill 前自動建快照**（每個 workflow/skill 一個），可一鍵回到助理操作前。
+- **時間軸瀏覽**：依時間列出快照，點任一快照唯讀瀏覽當時的硬碟。
+- **就地還原**：把單檔／資料夾子樹／整碟還原到所選時間點，**覆蓋現況**（救回被刪檔、回復改名/搬移/內容）。子樹/整碟還原時可選 `keep_new`（保留現有新增）或 `exact_mirror`（精確鏡像）。還原前自動先建「還原前保命快照」，可再倒回；走 service 層套配額與權限。
+- **保留與配額**：保留最近 N 個快照（預設 50，可設），釘選與保命快照豁免；快照空間**不計入檔案配額，另設獨立快照配額（預設為檔案配額的一半）**；刪快照的內容由背景 GC 回收。排程快照需設定開啟、距最近快照已達間隔且 drive 目前至少有一個 item；空碟不建立排程快照。
+- **協作**：分享/協作項目僅擁有者可還原。
 
-儲存指定使用者分享權限。
+### 13.2 重用既有模組
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| item_id | uuid | 被分享的檔案或資料夾 |
-| owner_id | uuid | 分享者 |
-| target_user_id | uuid | 被分享者 |
-| permission | varchar | viewer、downloader、editor |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
+建立在既有元件之上：`file_versions`（內容層）、`drive_items` 的名稱/父層/刪除旗標（可還原改名/搬移/刪除）、Trash（互補）、`activity_logs`（稽核）、Storage 的 checksum 去重、背景任務（排程與縮減）、Assistant（執行前快照）。
 
-### 11.5 share_links
+### 13.3 新增資料表
 
-儲存公開分享連結。
+- 新表 `snapshots`、`snapshot_entries`、`snapshot_settings`（見設計文件 §7）。
 
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| item_id | uuid | 被分享項目 |
-| token_hash | varchar | 分享 token 雜湊 |
-| permission | varchar | viewer、downloader |
-| password_hash | varchar | 分享密碼雜湊，可為 null |
-| expires_at | timestamptz | 到期時間，可為 null |
-| is_active | boolean | 是否啟用 |
-| created_by | uuid | 建立者 |
-| created_at | timestamptz | 建立時間 |
+### 13.4 前端頁面
 
-注意：資料庫不要直接存明文分享 token。建立分享連結時回傳明文 token 給前端，資料庫只保存 hash。
+側欄「時光機」入口（`/time-machine`）：快照時間軸、進入快照唯讀瀏覽、還原確認流程（明示覆蓋、已建保命快照、可選 subtree_mode）、保留數/排程/獨立快照配額設定。
 
-### 11.6 upload_sessions
+## 14. 權限模型
 
-支援大型檔案分片上傳。
-
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| user_id | uuid | 上傳者 |
-| parent_id | uuid | 目標資料夾 |
-| file_name | varchar | 檔名 |
-| mime_type | varchar | MIME type |
-| total_size_bytes | bigint | 檔案總大小 |
-| chunk_size_bytes | integer | 每片大小 |
-| total_chunks | integer | 總分片數 |
-| uploaded_chunks | integer | 已上傳分片數 |
-| status | varchar | pending、uploading、completed、failed、cancelled |
-| final_item_id | uuid | 完成後建立的 drive_item |
-| created_at | timestamptz | 建立時間 |
-| updated_at | timestamptz | 更新時間 |
-
-### 11.7 upload_chunks
-
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| upload_session_id | uuid | 對應 upload_sessions |
-| chunk_index | integer | 分片編號 |
-| storage_key | text | 暫存位置 |
-| size_bytes | integer | 分片大小 |
-| checksum_sha256 | varchar | 分片 checksum |
-| created_at | timestamptz | 建立時間 |
-
-### 11.8 activity_logs
-
-記錄使用者操作。
-
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| id | uuid | 主鍵 |
-| actor_id | uuid | 操作者 |
-| item_id | uuid | 操作對象 |
-| action | varchar | upload、download、rename、move、delete、restore、share |
-| metadata | jsonb | 附加資訊 |
-| ip_address | inet | IP |
-| user_agent | text | 瀏覽器資訊 |
-| created_at | timestamptz | 建立時間 |
-
-## 12. 權限模型
-
-### 12.1 權限類型
+### 14.1 權限類型
 
 | 權限 | 說明 |
 | --- | --- |
@@ -562,7 +498,7 @@ WHERE is_deleted = false;
 | viewer | 可檢視與預覽 |
 | downloader | 可檢視與下載 |
 
-### 12.2 權限判斷順序
+### 14.2 權限判斷順序
 
 1. 若 user_id 等於 item.owner_id，擁有 owner 權限。
 2. 若 item 透過 shares 分享給該使用者，依 shares.permission 判斷。
@@ -570,440 +506,99 @@ WHERE is_deleted = false;
 4. 若資料夾被分享，子項目應繼承資料夾權限。
 5. 若以上皆不符合，拒絕存取。
 
-### 12.3 權限注意事項
+### 14.3 權限注意事項
 
 1. 後端每個檔案操作都必須檢查權限。
 2. 前端隱藏按鈕只是使用者體驗，不能取代後端權限檢查。
 3. 分享連結 token 不應直接儲存明文。
 4. 資料夾權限繼承要避免查詢過慢，必要時可以建立 permission cache。
 
-## 13. API 設計
+## 15. API 設計
 
-API base path 建議為：
+API base path：`/api/v1`。下表為各端點對應的動作（介面需求）；**完整 request/response 規格見 OpenAPI 匯出（程式碼自動生成）** 與 [detailed-design.md](./detailed-design.md) §14（通用規則：統一錯誤格式、分頁、`DriveItemResponse`、API↔模組對應）。
 
-```text
-/api/v1
-```
+### 15.1 Auth API
 
-### 13.1 Auth API
-
-#### POST /auth/register
-
-註冊使用者。
-
-Request:
-
-```json
-{
-  "email": "user@example.com",
-  "username": "User",
-  "password": "password"
-}
-```
-
-Response:
-
-```json
-{
-  "id": "uuid",
-  "email": "user@example.com",
-  "username": "User"
-}
-```
-
-#### POST /auth/login
-
-登入。
-
-Request:
-
-```json
-{
-  "email": "user@example.com",
-  "password": "password"
-}
-```
-
-Response:
-
-```json
-{
-  "access_token": "jwt",
-  "refresh_token": "jwt",
-  "token_type": "bearer"
-}
-```
-
-#### POST /auth/refresh
-
-刷新 access token。
-
-#### POST /auth/logout
-
-登出並使 refresh token 失效。
-
-#### GET /auth/me
-
-取得目前登入使用者。
-
-### 13.2 Drive API
-
-#### GET /drive/items
-
-取得指定資料夾底下的檔案與資料夾。
-
-Query:
-
-| 參數 | 說明 |
+| 端點 | 動作 |
 | --- | --- |
-| parent_id | 上層資料夾 id，根目錄可省略 |
-| sort | name、updated_at、size |
-| order | asc、desc |
-| page | 頁碼 |
-| page_size | 每頁筆數 |
+| `POST /auth/register` | 註冊使用者 |
+| `POST /auth/login` | 登入（回 access token + refresh token） |
+| `POST /auth/refresh` | 刷新 access token |
+| `POST /auth/logout` | 登出並使 refresh token 失效 |
+| `GET /auth/me` | 取得目前登入使用者 |
 
-Response:
+### 15.2 Drive API
 
-```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "name": "report.pdf",
-      "item_type": "file",
-      "mime_type": "application/pdf",
-      "size_bytes": 102400,
-      "is_starred": false,
-      "updated_at": "2026-06-11T14:00:00Z"
-    }
-  ],
-  "total": 1
-}
-```
-
-#### POST /drive/folders
-
-建立資料夾。
-
-Request:
-
-```json
-{
-  "parent_id": "uuid-or-null",
-  "name": "New Folder"
-}
-```
-
-#### PATCH /drive/items/{item_id}/rename
-
-重新命名。
-
-Request:
-
-```json
-{
-  "name": "new-name.pdf"
-}
-```
-
-#### PATCH /drive/items/{item_id}/move
-
-移動檔案或資料夾。
-
-Request:
-
-```json
-{
-  "target_parent_id": "uuid-or-null"
-}
-```
-
-#### PATCH /drive/items/{item_id}/star
-
-設定星號。
-
-Request:
-
-```json
-{
-  "is_starred": true
-}
-```
-
-#### GET /drive/items/{item_id}/download
-
-下載檔案。可直接串流回應，或回傳短效下載 URL。
-
-#### GET /drive/items/{item_id}/preview
-
-取得預覽資訊。
-
-Response:
-
-```json
-{
-  "preview_type": "pdf",
-  "url": "https://example.com/preview/temporary-url",
-  "expires_in": 300
-}
-```
-
-### 13.3 Upload API
-
-#### POST /upload/simple
-
-小檔案直接上傳。適用於初版或小於指定大小的檔案。
-
-Form data:
-
-| 欄位 | 說明 |
+| 端點 | 動作 |
 | --- | --- |
-| parent_id | 上層資料夾 |
-| file | 檔案 |
+| `GET /drive/items` | 取得指定資料夾底下的檔案與資料夾（支援 sort/order/分頁） |
+| `POST /drive/folders` | 建立資料夾 |
+| `PATCH /drive/items/{item_id}/name` | 重新命名 |
+| `PATCH /drive/items/{item_id}/parent` | 移動檔案或資料夾 |
+| `PUT /drive/items/{item_id}/star` | 設定星號 |
+| `GET /drive/items/{item_id}/download` | 下載檔案（串流或短效下載 URL） |
+| `GET /drive/items/{item_id}/preview` | 取得預覽資訊 |
 
-#### POST /upload/sessions
+### 15.3 Upload API
 
-建立分片上傳工作。
-
-Request:
-
-```json
-{
-  "parent_id": "uuid-or-null",
-  "file_name": "video.mp4",
-  "mime_type": "video/mp4",
-  "total_size_bytes": 104857600,
-  "chunk_size_bytes": 5242880
-}
-```
-
-#### PUT /upload/sessions/{session_id}/chunks/{chunk_index}
-
-上傳單一分片。
-
-#### POST /upload/sessions/{session_id}/complete
-
-合併分片並建立檔案紀錄。
-
-#### DELETE /upload/sessions/{session_id}
-
-取消上傳。
-
-### 13.4 Search API
-
-#### GET /search
-
-搜尋檔案。
-
-Query:
-
-| 參數 | 說明 |
+| 端點 | 動作 |
 | --- | --- |
-| q | 關鍵字 |
-| type | file、folder、all |
-| mime_type | MIME type |
-| page | 頁碼 |
-| page_size | 每頁筆數 |
+| `POST /upload/simple` | 小檔案直接上傳 |
+| `POST /upload/sessions` | 建立分片上傳工作 |
+| `PUT /upload/sessions/{session_id}/chunks/{chunk_index}` | 上傳單一分片 |
+| `POST /upload/sessions/{session_id}/complete` | 合併分片並建立檔案紀錄 |
+| `DELETE /upload/sessions/{session_id}` | 取消上傳 |
 
-### 13.5 Trash API
+### 15.4 Search API
 
-#### GET /trash
+| 端點 | 動作 |
+| --- | --- |
+| `GET /search` | 搜尋檔案 |
 
-取得垃圾桶項目。
+### 15.5 Trash API
 
-#### PATCH /trash/{item_id}/restore
+| 端點 | 動作 |
+| --- | --- |
+| `GET /trash` | 取得垃圾桶項目 |
+| `PATCH /trash/{item_id}/restore` | 還原項目 |
+| `DELETE /trash/{item_id}` | 永久刪除項目 |
+| `DELETE /trash` | 清空垃圾桶 |
 
-還原項目。
+### 15.6 Share API
 
-#### DELETE /trash/{item_id}
+| 端點 | 動作 |
+| --- | --- |
+| `POST /share/items/{item_id}/users` | 分享給指定使用者 |
+| `GET /share/shared-with-me` | 取得與我分享的檔案 |
+| `POST /share/items/{item_id}/links` | 建立公開分享連結 |
+| `DELETE /share/links/{link_id}` | 停用分享連結 |
 
-永久刪除項目。
+### 15.7 Assistant API
 
-#### DELETE /trash
+前綴同 `/api/v1`；完整流程見 [detailed-design.md §9](./detailed-design.md)。
 
-清空垃圾桶。
+| Method | Path | 用途 |
+|---|---|---|
+| POST | `/assistant/chat` | 對話；回計畫或技能提案；記錄 session/訊息 |
+| GET | `/assistant/sessions`、`/assistant/sessions/{id}/messages` | 對話歷史 |
+| POST | `/assistant/workflows/{id}/confirm` · `/cancel` | 確認/取消 pending 計畫 |
+| POST | `/assistant/workflows/save`、GET `/workflows/saved`、POST `/workflows/saved/{id}/rerun` | 命名儲存與一鍵重跑 |
+| GET | `/assistant/skills?status=installed` | 列出已安裝技能 |
+| POST | `/assistant/skills/{id}/approve` · `/execute` | 核可安裝 / 執行（生成技能於沙箱執行並寫回 drive） |
+| PATCH | `/assistant/skills/{id}` | 編輯描述/程式碼（改碼重跑 codeguard） |
+| DELETE | `/assistant/skills/{id}` | 刪除技能（連同右鍵動作）；回 204 |
 
-### 13.6 Share API
+### 15.8 Time Machine API
 
-#### POST /share/items/{item_id}/users
+前綴同 `/api/v1`；完整設計見 [detailed-design.md §13](./detailed-design.md)、資料表見 §13.3。
 
-分享給指定使用者。
-
-Request:
-
-```json
-{
-  "target_email": "friend@example.com",
-  "permission": "viewer"
-}
-```
-
-#### GET /share/shared-with-me
-
-取得與我分享的檔案。
-
-#### POST /share/items/{item_id}/links
-
-建立公開分享連結。
-
-Request:
-
-```json
-{
-  "permission": "viewer",
-  "password": "optional-password",
-  "expires_at": "2026-12-31T23:59:59Z"
-}
-```
-
-Response:
-
-```json
-{
-  "url": "https://drive.example.com/s/share-token"
-}
-```
-
-#### DELETE /share/links/{link_id}
-
-停用分享連結。
-
-## 14. 前端頁面規劃
-
-### 14.1 登入頁
-
-功能：
-
-1. Email 輸入。
-2. 密碼輸入。
-3. 登入按鈕。
-4. 註冊入口。
-5. 錯誤訊息顯示。
-
-### 14.2 註冊頁
-
-功能：
-
-1. 使用者名稱輸入。
-2. Email 輸入。
-3. 密碼輸入。
-4. 確認密碼。
-5. 表單驗證。
-
-### 14.3 主版面
-
-主版面類似 Google Drive 與 OneDrive：
-
-1. 左側導覽列。
-2. 上方搜尋列。
-3. 右上角使用者選單。
-4. 中央檔案區。
-5. 右側詳細資訊面板，可選擇是否開啟。
-
-左側導覽列包含：
-
-1. 我的硬碟。
-2. 與我分享。
-3. 最近。
-4. 星號。
-5. 垃圾桶。
-6. 儲存空間。
-
-### 14.4 我的硬碟頁
-
-功能：
-
-1. 麵包屑導航。
-2. 新增按鈕。
-3. 上傳檔案。
-4. 上傳資料夾。
-5. 建立資料夾。
-6. 列表檢視。
-7. 格狀檢視。
-8. 排序。
-9. 多選。
-10. 右鍵選單。
-11. 拖曳檔案上傳。
-
-### 14.5 檔案項目元件
-
-每個檔案或資料夾顯示：
-
-1. 圖示或縮圖。
-2. 名稱。
-3. 擁有者。
-4. 最近修改時間。
-5. 檔案大小。
-6. 星號狀態。
-7. 更多操作按鈕。
-
-### 14.6 檔案操作選單
-
-操作包含：
-
-1. 開啟。
-2. 預覽。
-3. 下載。
-4. 重新命名。
-5. 移動。
-6. 複製。
-7. 加入星號。
-8. 分享。
-9. 查看詳細資訊。
-10. 移至垃圾桶。
-
-### 14.7 上傳佇列
-
-上傳佇列顯示：
-
-1. 檔名。
-2. 進度條。
-3. 上傳速度。
-4. 剩餘時間。
-5. 暫停。
-6. 繼續。
-7. 取消。
-8. 失敗重試。
-
-### 14.8 預覽視窗
-
-支援：
-
-1. 圖片預覽。
-2. PDF 預覽。
-3. 文字檔預覽。
-4. 影片播放。
-5. 音訊播放。
-
-不支援預覽時，顯示下載按鈕。
-
-### 14.9 分享彈窗
-
-功能：
-
-1. 搜尋使用者 email。
-2. 設定權限。
-3. 建立分享連結。
-4. 設定連結到期時間。
-5. 設定連結密碼。
-6. 複製連結。
-7. 移除分享對象。
-
-## 15. 前端狀態管理
-
-建議狀態分工：
-
-1. Auth state：登入狀態、token、目前使用者。
-2. Drive query state：目前資料夾、排序、分頁、搜尋條件。
-3. Upload state：上傳佇列與進度。
-4. UI state：側邊欄、預覽窗、分享彈窗、右鍵選單。
-
-建議：
-
-1. 伺服器資料使用 TanStack Query。
-2. UI 狀態使用 Zustand。
-3. 表單使用 React Hook Form。
-4. schema 驗證使用 Zod。
+| 端點 | 動作 |
+| --- | --- |
+| `POST /snapshots` | 建立快照 |
+| `GET /snapshots` | 列出快照 |
+| `GET /snapshots/{id}/items` | 瀏覽快照內容 |
+| `POST /snapshots/{id}/restore` | 還原到所選快照 |
+| `GET/PUT /snapshots/settings` | 讀取／更新快照設定 |
 
 ## 16. 關鍵流程設計
 
@@ -1019,6 +614,13 @@ User selects file
   -> Backend updates used_bytes
   -> Frontend refreshes file list
 ```
+
+一致性處理：
+
+1. storage key 由系統產生，不使用原始檔名，避免路徑穿越與重名衝突。
+2. 上傳流程先寫入 storage，再建立 `drive_items` 與 `file_versions`；若資料庫流程失敗，service 會嘗試刪除剛寫入的 blob，避免留下孤兒檔案。
+3. 永久刪除時先移除 metadata 與配額，再由 snapshot-aware GC 判斷 blob 是否仍被快照引用；不能確認安全刪除時保留 blob，交由後續 GC 回收。
+4. PostgreSQL transaction 無法包住外部檔案系統，因此正式維運可加週期性 storage audit：找出「storage 有但 DB 無」與「DB 有但 storage 無」的差異並產生修復報告。
 
 ### 16.2 分片上傳流程
 
@@ -1075,36 +677,25 @@ Permanent delete
   -> Update quota
 ```
 
-## 17. 檔案命名與衝突處理
+## 17. 安全性需求
 
-同一資料夾下不允許出現相同名稱的未刪除項目。
-
-當使用者上傳同名檔案時，可提供三種策略：
-
-1. 取代原檔案並建立新版本。
-2. 保留兩者，新檔案自動命名為 `filename (1).ext`。
-3. 由使用者在前端選擇。
-
-MVP 建議先採用第 2 種，第二階段再加入版本管理。
-
-## 18. 安全性需求
-
-### 18.1 身分驗證
+### 17.1 身分驗證
 
 1. 使用 access token 與 refresh token。
 2. access token 有效時間建議 15 到 30 分鐘。
 3. refresh token 有效時間建議 7 到 30 天。
 4. refresh token 需可撤銷。
 5. 密碼使用 bcrypt 或 argon2 雜湊。
+6. access token 僅存於前端記憶體（不寫 localStorage／sessionStorage）、refresh token 存 HttpOnly cookie；頁面重整後以 **silent refresh**（app 啟動時呼叫 `POST /auth/refresh`）用 refresh cookie 續期維持登入，失敗則導向登入。實作見 [detailed-design.md](./detailed-design.md) §5.2.1。
 
-### 18.2 權限安全
+### 17.2 權限安全
 
 1. 所有檔案操作必須在後端檢查權限。
 2. 使用者不得透過猜測 UUID 存取他人檔案。
 3. 分享連結 token 需足夠長且不可預測。
 4. 分享連結可設定失效。
 
-### 18.3 上傳安全
+### 17.3 上傳安全
 
 1. 限制單檔大小。
 2. 限制使用者總容量。
@@ -1114,7 +705,7 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 6. 對可疑檔案執行防毒掃描。
 7. 禁止路徑穿越，例如 `../../secret.txt`。
 
-### 18.4 API 安全
+### 17.4 API 安全
 
 1. 啟用 CORS 白名單。
 2. 限制登入嘗試頻率。
@@ -1123,9 +714,16 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 5. 避免在錯誤訊息洩漏內部路徑。
 6. API response 不回傳 password_hash、token_hash 等敏感欄位。
 
-## 19. 效能需求
+### 17.5 AI 助理安全（AI Assistant）
 
-### 19.1 前端效能
+> 屬 **In-App AI Assistant**（§12）功能。
+
+1. 生成程式碼**絕不自動執行**：經 codeguard AST 靜態掃描（拒禁用 import/`eval`/dunder/錯誤簽章）→ 使用者核可 → 受限子行程沙箱（`python -I`、CPU/檔案 rlimit、`addaudithook` 封鎖網路/spawn/越界寫入）。編輯既有技能同樣重跑 codeguard。
+2. 沙箱檔案存取限該使用者 storage；所有動作可記入 `activity_logs`。詳見 DEC-019。
+
+## 18. 效能需求
+
+### 18.1 前端效能
 
 1. 檔案列表使用分頁或虛擬滾動。
 2. 搜尋輸入使用 debounce。
@@ -1133,15 +731,15 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 4. 縮圖使用 lazy loading。
 5. 預覽視窗按需載入。
 
-### 19.2 後端效能
+### 18.2 後端效能
 
 1. 檔案下載使用 streaming response 或 signed URL。
 2. 大檔案使用分片上傳。
 3. 搜尋欄位建立索引。
-4. 熱門查詢可使用 Redis cache。
+4. 熱門查詢可於後續引入 cache；目前版本不要求 Redis。
 5. 縮圖產生放入背景任務。
 
-### 19.3 資料庫效能
+### 18.3 資料庫效能
 
 1. drive_items 依 owner_id、parent_id 建索引。
 2. 搜尋名稱使用 pg_trgm。
@@ -1149,94 +747,87 @@ MVP 建議先採用第 2 種，第二階段再加入版本管理。
 4. 大型 JSON metadata 避免過度查詢。
 5. 列表查詢只取必要欄位。
 
-## 20. 錯誤處理
+## 19. 錯誤處理
 
-建議定義標準錯誤格式：
+**需求**：API 採統一錯誤格式 `{ "error": { "code", "message", "details" } }`，前端依 `code` 顯示對應訊息。
 
-```json
-{
-  "error": {
-    "code": "QUOTA_EXCEEDED",
-    "message": "Storage quota exceeded",
-    "details": {}
-  }
-}
-```
+常見錯誤情境與 HTTP 狀態碼：
 
-常見錯誤碼：
-
-| code | 說明 |
+| HTTP 狀態 | 代表情境 |
 | --- | --- |
-| UNAUTHORIZED | 未登入 |
-| FORBIDDEN | 權限不足 |
-| ITEM_NOT_FOUND | 檔案或資料夾不存在 |
-| DUPLICATE_NAME | 同層已有相同名稱 |
-| QUOTA_EXCEEDED | 容量不足 |
-| FILE_TOO_LARGE | 檔案超過限制 |
-| INVALID_FILE_TYPE | 不允許的檔案類型 |
-| UPLOAD_SESSION_NOT_FOUND | 上傳工作不存在 |
-| SHARE_LINK_EXPIRED | 分享連結已過期 |
+| 400 | 參數／檔名／操作不合法（如 item type 不符、parent 不存在、不可移到子孫資料夾） |
+| 401 | 未授權：未登入或 token 無效、帳號或密碼錯誤 |
+| 403 | 權限不足、使用者停用、分享密碼錯誤 |
+| 404 | 找不到：item、檔案本體或分享對象不存在 |
+| 409 | 衝突：同層名稱重複、email 已存在、容量不足 |
+| 410 | 分享連結已過期或停用 |
+| 413 | 檔案過大 |
 
-## 21. 背景任務
+> 錯誤格式見 [detailed-design.md](./detailed-design.md) §14.1；完整錯誤碼表（`code` ↔ HTTP 狀態）見 [detailed-design.md](./detailed-design.md) §16。
 
-可透過 Celery 或 RQ 處理：
-
-1. 產生圖片縮圖。
-2. 產生 PDF 預覽。
-3. 清理失敗或過期的上傳分片。
-4. 清理垃圾桶過期項目。
-5. 統計使用者容量。
-6. 防毒掃描。
-7. 寄送分享通知 email。
-
-## 22. Docker 開發環境
+## 20. Docker 開發環境
 
 建議使用 docker-compose 管理本機開發環境。
 
 ```yaml
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-8088}:80"
     depends_on:
       - backend
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://drive:drive@postgres:5432/drive
-      REDIS_URL: redis://redis:6379/0
-      STORAGE_DRIVER: local
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cloud_drive}:${POSTGRES_PASSWORD:-cloud_drive_dev}@postgres:5432/${POSTGRES_DB:-cloud_drive}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-change-me}
+      LOCAL_STORAGE_PATH: /app/storage
+      SNAPSHOT_SCHEDULER_ENABLED: ${SNAPSHOT_SCHEDULER_ENABLED:-true}
+      ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
+      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-false}
     depends_on:
       - postgres
-      - redis
+    volumes:
+      - storage_data:/app/storage
 
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: drive
-      POSTGRES_PASSWORD: drive
-      POSTGRES_DB: drive
+      POSTGRES_USER: ${POSTGRES_USER:-cloud_drive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloud_drive_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-cloud_drive}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-
 volumes:
   postgres_data:
+  storage_data:
 ```
 
 正式環境不建議使用 compose 裡的簡易密碼，應改用環境變數或 secret manager。
 
-## 23. 環境變數
+正式環境 port 暴露原則：
+
+| 服務 | 本機開發 | 正式環境建議 |
+| --- | --- | --- |
+| frontend nginx | 對外開放 `80/443` 或目前展示用 `8088` | 唯一公開入口，終止 TLS，代理 `/api` |
+| backend FastAPI | 可映射 `8000` 方便除錯 | 不直接對外，只允許 nginx 或內部網路存取 |
+| postgres | 可映射 `5432` 方便本機測試 | 不對公網開放，只允許 backend 內網連線 |
+| redis | 目前不使用 | 不需要開放；若未來引入 queue/cache，也應只留內網 |
+| Ollama / LLM | 開發機可用 `11434` | 若使用本地模型，應限制在內網或主機 loopback，不直接暴露公網 |
+
+> 正式部署、CI/CD 與維運見 §26。
+
+## 21. 環境變數
 
 後端建議環境變數：
 
@@ -1244,7 +835,6 @@ volumes:
 | --- | --- |
 | APP_ENV | development、staging、production |
 | DATABASE_URL | PostgreSQL 連線字串 |
-| REDIS_URL | Redis 連線字串 |
 | JWT_SECRET_KEY | JWT 簽章密鑰 |
 | JWT_ALGORITHM | JWT 演算法 |
 | ACCESS_TOKEN_EXPIRE_MINUTES | access token 有效時間 |
@@ -1254,6 +844,14 @@ volumes:
 | MAX_UPLOAD_SIZE_BYTES | 單檔上限 |
 | DEFAULT_USER_QUOTA_BYTES | 預設使用者容量 |
 | CORS_ORIGINS | 前端允許來源 |
+| EMAIL_PROVIDER / SMTP_* | Email provider 與 SMTP 寄信設定；正式環境需由 secret 管理 |
+| ASSISTANT_ENABLED | 是否啟用 AI Assistant |
+| LLM_BASE_URL / LLM_API_KEY / ASSISTANT_MODEL | 本地或相容 API 模型設定；若含密鑰不得提交版控 |
+| EMBEDDING_ENABLED / EMBEDDING_MODEL | 語意搜尋設定 |
+| CREDENTIAL_ENCRYPTION_KEY | 加密使用者外部模型憑證；正式環境必須由 secret manager 或受控環境注入 |
+| EXTERNAL_API_BASE_URL / EXTERNAL_CHAT_MODEL | 外部模型升級設定 |
+
+**AI Assistant 完整環境變數**（屬 §12 功能）：`ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
 
 前端建議環境變數：
 
@@ -1262,9 +860,31 @@ volumes:
 | VITE_API_BASE_URL | 後端 API 位置 |
 | VITE_APP_NAME | 應用名稱 |
 
-## 24. 測試計畫
+secret 管理原則：
 
-### 24.1 後端測試
+1. 本機開發：可由 `.env` 提供，`.env` 不進版控；`.env.example` 只放可啟動的示範值。
+2. 正式環境：`JWT_SECRET_KEY`、`POSTGRES_PASSWORD`、`SMTP_PASSWORD`、LLM API key、`CREDENTIAL_ENCRYPTION_KEY` 應由 secret manager、CI/CD secret 或受控環境變數注入。
+3. 資料庫內不保存明文 refresh token、share token；只保存 hash。
+4. 使用者外部模型憑證若啟用，保存於 `user_external_credentials.secret_encrypted`，只回傳遮罩提示，不回傳明文。
+
+## 22. 測試計畫
+
+### 22.1 前端測試
+
+使用 Vitest 與 React Testing Library。
+
+測試項目：
+
+1. 登入表單驗證。
+2. 檔案列表渲染。
+3. 上傳進度顯示。
+4. 右鍵選單。
+5. 分享彈窗。
+6. 搜尋輸入 debounce。
+7. 錯誤訊息顯示。
+8. AI 助理面板元件（`components/assistant/*.test.tsx`，屬 §12 AI Assistant）。
+
+### 22.2 後端測試
 
 使用 pytest。
 
@@ -1281,22 +901,11 @@ volumes:
 9. 垃圾桶還原。
 10. 容量限制。
 11. 分片上傳。
+12. AI 助理 service／router（`tests/assistant/`，屬 §12 AI Assistant）。
 
-### 24.2 前端測試
+此外，AI 助理另有**獨立評測 harness** `backend/eval/`（屬 §12 AI Assistant）：YAML 案例 + 確定性斷言（workflow/state/safety）+ 可選 LLM judge；多次執行通過率/變異、baseline 回歸；runner 含 in-process mock（CI 預設、決定性）與 API（`--llm real`），Browser runner 見 §22.3。
 
-使用 Vitest 與 React Testing Library。
-
-測試項目：
-
-1. 登入表單驗證。
-2. 檔案列表渲染。
-3. 上傳進度顯示。
-4. 右鍵選單。
-5. 分享彈窗。
-6. 搜尋輸入 debounce。
-7. 錯誤訊息顯示。
-
-### 24.3 E2E 測試
+### 22.3 E2E 測試
 
 使用 Playwright。
 
@@ -1309,276 +918,70 @@ volumes:
 5. 分享檔案。
 6. 另一位使用者開啟分享檔案。
 7. 刪除檔案並從垃圾桶還原。
+8. AI 助理 Browser 評測（eval harness 的 Playwright runner，屬 §12 AI Assistant）。
 
-### 24.4 回歸防護測試（補充，2026-06-14）
+### 22.4 回歸防護測試（補充，2026-06-14）
 
-根據測試空白分析，以下三個區域缺乏保護，新增功能時容易造成無聲回歸，已補充對應測試：
+**為什麼需要**：商業邏輯已有單元測試，但「測試空白分析」發現一批**介面與不變式**沒人守——它們不會在開發當下報錯，卻會在重構或加新功能時**無聲回歸**（例如 token 被誤寫進 `localStorage`、Router 漏接例外回錯狀態碼、分享流程斷掉）。因此針對下列高風險區補上「守不變式」的測試（細部覆蓋以實際測試碼為準）：
 
-#### 後端 Router 層 HTTP 狀態碼轉換
+| 區域 | 防護的回歸風險 | 測試檔 |
+| --- | --- | --- |
+| 前端 Store 安全不變式 | access token 被誤寫入 `localStorage`／`sessionStorage`（應只在記憶體） | `stores/authStore.test.ts` |
+| 前端核心元件行為 | `DriveToolbar`／`FileTable` 的 props 介面或條件渲染被改壞 | `components/drive/DriveToolbar.test.tsx`、`FileTable.test.tsx` |
+| 前端 E2E 分享流程 | 兩帳號、跨頁的分享流程在前後端整合時斷掉 | `e2e/share.spec.ts` |
+| 後端 Router HTTP 狀態碼 | Router 漏接 Service 例外或回錯 `status_code` | `tests/{upload,trash,search,share}/test_router.py` |
+| 後端整合：版本不變式 | 上傳未自動建立 `file_versions` v1 記錄 | `tests/integration/test_file_version_flow.py` |
 
-Service 層已有單元測試驗證商業邏輯，但 Router 層負責將 Service 拋出的例外轉換為正確 HTTP 狀態碼。若 Router 漏接例外或錯誤使用 `status_code`，單元測試不會捕捉到。
+## 23. 開發里程碑
 
-補充項目：
+以**四個階段（週）**推進，各階段即開發順序：
 
-| 檔案 | 端點覆蓋 |
-| --- | --- |
-| `tests/upload/test_router.py` | POST /upload/simple 201、未驗證 403、parent 不存在 404、quota 超出 413、parent_id 傳遞 |
-| `tests/trash/test_router.py` | 移到垃圾桶 200、列表 200、還原 200、永久刪除 204、清空 204，各端點未驗證 403 |
-| `tests/search/test_router.py` | 搜尋成功 200、空結果 200、未驗證 403、缺少 q 422、過濾參數傳遞 |
-| `tests/share/test_router.py` | 分享 201/403/404、移除分享 204/403、shared-with-me 200/403、建立連結 201/403、驗證連結 200/404、停用連結 204/403 |
+### 23.1 第一週：專案基礎與帳號
 
-#### 後端整合：版本紀錄不變式
+1. 建立 frontend 與 backend 專案、Docker Compose、PostgreSQL（pgvector image，供語意搜尋）。
+2. FastAPI 基礎架構、React 基礎版面、lint／format／測試工具。
+3. 使用者註冊、登入、JWT 驗證。
+4. drive_items 資料表與 migration。
 
-每次上傳必須自動建立版本記錄（`file_versions.version_no = 1`）。若 upload service 的版本建立邏輯被重構，整合測試才能抓到回歸。
+### 23.2 第二週：檔案核心（列表／上傳下載／管理）
 
-補充項目：
+1. 建立資料夾 API、檔案列表 API、前端我的硬碟頁。
+2. 小檔案上傳、檔案下載、容量檢查、上傳進度 UI、檔案圖示與 MIME type 顯示、操作紀錄。
+3. 重新命名、移動、星號、最近檔案、垃圾桶、搜尋、右鍵選單。
 
-| 檔案 | 覆蓋內容 |
-| --- | --- |
-| `tests/integration/test_file_version_flow.py` | 上傳自動產生 v1、size_bytes 正確記錄、未驗證 403、非擁有者無分享不能列版本、viewer 可列版本、兩次上傳同名各自有獨立 v1 |
+### 23.3 第三週：分享與預覽
 
-#### 前端 Store 安全不變式
+1. 指定使用者分享、分享連結、與我分享頁面。
+2. 圖片預覽、PDF 預覽、文字預覽。
 
-`authStore` 持有 access token，但沒有測試確保 token 只在記憶體中。若未來有人誤加了 `localStorage.setItem`，現有測試不會報錯。
-
-補充項目：
-
-| 檔案 | 覆蓋內容 |
-| --- | --- |
-| `src/stores/authStore.test.ts` | 初始狀態 null、setToken/clearToken/clearAuth/setUser 狀態轉換、setToken 不寫入 localStorage 或 sessionStorage |
-
-#### 前端元件行為
-
-DriveToolbar 與 FileTable 是核心互動元件，但沒有對應元件測試。若 props 介面變更或條件渲染邏輯改變，目前沒有任何測試能捕捉。
-
-補充項目：
-
-| 檔案 | 覆蓋內容 |
-| --- | --- |
-| `src/components/drive/DriveToolbar.test.tsx` | New Folder 永遠可見、Trash 按鈕僅在 selectedCount > 0 時出現、顯示正確數量、click handler 呼叫 |
-| `src/components/drive/FileTable.test.tsx` | 渲染所有項目名稱、空陣列不渲染資料列、onItemClick/onItemDoubleClick 傳入正確項目 |
-
-#### 前端 E2E 分享完整流程
-
-目前 E2E 完全沒有覆蓋分享功能。分享涉及兩個使用者帳號、跨頁面操作，是最容易在前後端整合時出問題的流程。
-
-補充項目：
-
-| 檔案 | 覆蓋內容 |
-| --- | --- |
-| `e2e/share.spec.ts` | 分享後對方在 shared-with-me 看到、移除分享後對方看不到、建立公開連結後連結出現在對話框 |
-
-## 25. 開發里程碑
-
-### 25.1 第一週：專案基礎
-
-1. 建立 frontend 與 backend 專案。
-2. 設定 Docker Compose。
-3. 設定 PostgreSQL、Redis。
-4. 建立 FastAPI 基礎架構。
-5. 建立 React 基礎版面。
-6. 設定 lint、format、測試工具。
-
-### 25.2 第二週：帳號與檔案基礎
-
-1. 使用者註冊。
-2. 使用者登入。
-3. JWT 驗證。
-4. drive_items 資料表。
-5. 建立資料夾 API。
-6. 檔案列表 API。
-7. 前端我的硬碟頁。
-
-### 25.3 第三週：上傳下載
-
-1. 小檔案上傳。
-2. 檔案下載。
-3. 容量檢查。
-4. 上傳進度 UI。
-5. 檔案圖示與 MIME type 顯示。
-6. 操作紀錄。
-
-### 25.4 第四週：檔案管理
-
-1. 重新命名。
-2. 移動。
-3. 星號。
-4. 最近檔案。
-5. 垃圾桶。
-6. 搜尋。
-7. 右鍵選單。
-
-### 25.5 第五週：分享與預覽
-
-1. 指定使用者分享。
-2. 分享連結。
-3. 與我分享頁面。
-4. 圖片預覽。
-5. PDF 預覽。
-6. 文字預覽。
-
-### 25.6 第六週：強化與驗收
+### 23.4 第四週：強化與驗收
 
 1. 分片上傳。
-2. 測試補齊。
+2. 測試補齊、權限測試、效能優化。
 3. 錯誤處理優化。
-4. 權限測試。
-5. 效能優化。
-6. 部署文件。
-7. Demo 準備。
+4. 部署文件、Demo 準備。
 
-## 26. 驗收標準
+## 24. 驗收標準
 
-MVP 完成時需符合：
+功能以 **§5 功能範圍**為基準——§5.1 列的必做功能均可正常操作，即達功能驗收（不在此逐條重述）。除功能完整外，需同時滿足以下品質門檻：
 
-1. 使用者可以註冊、登入、登出。
-2. 使用者只能看到自己的檔案。
-3. 使用者可以建立資料夾。
-4. 使用者可以上傳與下載檔案。
-5. 使用者可以重新命名與移動檔案。
-6. 使用者可以刪除檔案到垃圾桶。
-7. 使用者可以從垃圾桶還原檔案。
-8. 使用者可以搜尋檔案。
-9. 使用者可以將檔案加星號。
-10. 使用者可以查看容量使用量。
-11. API 對未授權操作回傳正確錯誤。
-12. 前端能清楚顯示 loading、empty、error 狀態。
-13. Docker 開發環境可以一鍵啟動。
+**安全與隔離**
 
-## 27. UI 設計方向
+1. 使用者只能存取自己的檔案；不能藉猜測 UUID 存取他人資源。
+2. 未授權操作回傳正確錯誤碼（401/403），不洩漏資源是否存在。
+3. 分享連結 token 不可預測、可設失效（見 §17）。
 
-### 27.1 整體風格
+**品質與體驗**
 
-介面應以實用、清楚、可快速操作為主。雲端硬碟屬於高頻工作型產品，不適合過度裝飾。建議風格：
+4. 前端清楚呈現 loading / empty / error 三種狀態。
+5. 容量超限、同名衝突等邊界情況有明確提示（見 §11.2、§19）。
 
-1. 淺色背景。
-2. 左側固定導覽。
-3. 上方全域搜尋。
-4. 清楚的檔案列表。
-5. 足夠的留白。
-6. 操作按鈕使用圖示搭配 tooltip。
-7. 重要操作，例如刪除與永久刪除，需要確認。
+**測試與部署**
 
-### 27.2 主要元件
+6. §22 規劃的前端單元/E2E、後端單元/整合 測試通過。
+7. Docker 開發環境可一鍵啟動。
 
-1. Sidebar
-2. TopSearchBar
-3. Breadcrumbs
-4. FileToolbar
-5. FileTable
-6. FileGrid
-7. ContextMenu
-8. UploadDropzone
-9. UploadQueue
-10. PreviewDialog
-11. ShareDialog
-12. ConfirmDialog
-13. StorageUsageBar
-
-### 27.3 狀態設計
-
-每個頁面都要設計：
-
-1. Loading state。
-2. Empty state。
-3. Error state。
-4. Permission denied state。
-5. Offline or retry state。
-
-## 28. 後端服務分層
-
-### 28.1 Router
-
-負責：
-
-1. 接收 HTTP request。
-2. 驗證 request schema。
-3. 呼叫 service。
-4. 回傳 response。
-
-### 28.2 Service
-
-負責：
-
-1. 商業邏輯。
-2. 權限判斷。
-3. 容量判斷。
-4. 呼叫 repository。
-5. 呼叫 storage provider。
-
-### 28.3 Repository
-
-負責：
-
-1. 資料庫查詢。
-2. transaction 管理。
-3. 封裝 SQLAlchemy 操作。
-
-### 28.4 Storage Provider
-
-負責：
-
-1. 儲存檔案。
-2. 讀取檔案。
-3. 刪除檔案。
-4. 建立短效下載 URL。
-
-## 29. 推薦資料型別
-
-### 29.1 TypeScript
-
-```ts
-export type DriveItemType = "file" | "folder";
-
-export interface DriveItem {
-  id: string;
-  ownerId: string;
-  parentId: string | null;
-  itemType: DriveItemType;
-  name: string;
-  mimeType?: string;
-  extension?: string;
-  sizeBytes: number;
-  isStarred: boolean;
-  isDeleted: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface UploadTask {
-  id: string;
-  file: File;
-  parentId: string | null;
-  progress: number;
-  status: "pending" | "uploading" | "paused" | "completed" | "failed";
-  errorMessage?: string;
-}
-```
-
-### 29.2 Pydantic Schema
-
-```python
-from datetime import datetime
-from uuid import UUID
-from pydantic import BaseModel
-
-
-class DriveItemResponse(BaseModel):
-    id: UUID
-    owner_id: UUID
-    parent_id: UUID | None
-    item_type: str
-    name: str
-    mime_type: str | None = None
-    extension: str | None = None
-    size_bytes: int
-    is_starred: bool
-    is_deleted: bool
-    created_at: datetime
-    updated_at: datetime
-```
-
-## 30. 風險與對策
+## 25. 風險與對策
 
 | 風險 | 影響 | 對策 |
 | --- | --- | --- |
@@ -1590,68 +993,52 @@ class DriveItemResponse(BaseModel):
 | 預覽生成耗時 | 使用者等待 | 背景任務與快取 |
 | 分享連結外流 | 資料風險 | 密碼、到期時間、撤銷機制 |
 
-## 31. 建議開發順序
+## 26. 部署與維運計畫
 
-1. 後端專案初始化。
-2. 前端專案初始化。
-3. Docker Compose。
-4. 使用者註冊與登入。
-5. drive_items 資料表與 migration。
-6. 我的硬碟列表。
-7. 建立資料夾。
-8. 小檔案上傳。
-9. 下載檔案。
-10. 重新命名、移動、刪除。
-11. 垃圾桶。
-12. 搜尋。
-13. 星號與最近。
-14. 分享功能。
-15. 預覽功能。
-16. 分片上傳。
-17. 測試與部署。
+### 26.1 CI/CD 架構
 
-## 32. 頁面重新整理後維持登入狀態（Silent Refresh）
+採 **GitHub Actions + 自架 Runner（self-hosted）**：
 
-### 32.1 問題背景
+- **CI（GitHub 託管 Runner）**：每次 PR / push 執行後端 `pytest`·`ruff`·`mypy`、前端 lint·test·build、前後端 Docker build 檢查；通過且合併 `main` 後建置正式 image。
+- **Image Registry（GHCR）**：CI 產出的 image 以 **Git commit SHA** 標記推送至 GHCR；正式 image **只由 CI 產生**，開發者不從本機直接推送。
+- **CD（部署主機上的自架 Runner）**：以 `workflow_dispatch` **手動觸發**，自架 Runner 主動領取工作、登入 GHCR、執行固定部署腳本（`docker compose pull` → `up -d` → 健康檢查 → 失敗回滾）。
+- 部署主機（家用／校內網路）**不需對外開放埠、不需讓 GitHub SSH 進入**；Runner 以 `systemd` 常駐並主動連線 GitHub。
 
-Access token 依安全規範只存在前端記憶體（Zustand store），不寫入 localStorage 或 sessionStorage。使用者重新整理瀏覽器後，Zustand 狀態歸零，`RequireAuth` 發現 `accessToken === null` 就立刻重導至 `/login`，即使 refresh token cookie 仍然有效。
+### 26.2 元件職責
 
-### 32.2 解法：App 啟動時執行 Silent Refresh
+| 元件 | 職責 |
+| --- | --- |
+| 開發者 | 寫碼、commit、push、開 PR；不發布正式 image |
+| GitHub 託管 Runner | 測試、檢查、建置、推送 image |
+| GHCR | 儲存通過 CI 的 image（以 SHA 標記） |
+| 自架 Runner | 只接收 CD 部署工作，不跑 PR 測試 |
+| 部署腳本 | 固定的 pull / up / 健康檢查 / 回滾流程 |
 
-在 React tree 的最頂層加入 `AuthInitializer` 元件，app 掛載時呼叫 `POST /auth/refresh` 一次：
+### 26.3 部署流程
 
-- 成功 → 將新 access token 寫入 Zustand store → router 看到已認證狀態 → 直接渲染目標頁面
-- 失敗（cookie 不存在或已過期）→ 不做任何事 → router 將使用者導向 `/login`（正常登出或 session 過期行為）
-- 等待期間 → `AuthInitializer` 回傳 `null`（空白畫面），不讓 `RequireAuth` 在 refresh 結束前搶先重導
+1. feature branch → push → PR → CI（GitHub 託管）通過 + review → 合併 `main`。
+2. 合併後 CI 重跑測試、建前後端 image、以 commit SHA 推送 GHCR。
+3. 於 GitHub Actions 手動觸發 Deploy，輸入要部署的 commit SHA。
+4. 自架 Runner 領取 → 登入 GHCR → 部署腳本拉取該 SHA image → 啟動 → 健康檢查 → 成功或自動回滾。
 
-### 32.3 實作要點
+### 26.4 維運
 
-| 項目 | 說明 |
-|---|---|
-| 使用 `refreshClient` | Silent refresh 必須使用不帶攔截器的獨立 Axios instance，避免 401 → refresh → 401 的無窮迴圈 |
-| Refresh 單例化 | `AuthInitializer` 與 401 interceptor 共用同一個 pending refresh promise，避免 React StrictMode 或同時多個 401 重複輪替一次性 token |
-| 元件位置 | `<AuthInitializer>` 包住 `<RouterProvider>`，在 `<QueryClientProvider>` 內（可使用 React Query） |
-| 等待行為 | `ready` 狀態預設 `false`，`.finally()` 後設為 `true`，確保無論成功或失敗都解除阻擋 |
-| 安全不變式 | Access token 仍只存在記憶體，silent refresh 不改變 refresh token 的儲存位置（HttpOnly cookie） |
-| Cookie 環境 | development/test 可在本機 HTTP 使用 cookie；staging/production 強制 `Secure` |
+- **健康檢查**：部署後輪詢後端健康端點，連續失敗即判定部署失敗。
+- **回滾**：部署失敗自動回到上一個可用的 image SHA。
+- **正式設定**：`.env`（DB 密碼、JWT secret 等）與正式 compose 設定**只存在部署主機、不進 GitHub**；主機記錄目前部署的 image SHA。正式環境的服務對外暴露原則見 §20。
+- **備份與監控**：定期備份 PostgreSQL 資料與快照、監控 API 用量與容器健康狀態；以 `docker compose` 管理服務生命週期。
 
-### 32.4 登出與 Session 過期
+### 26.5 部署安全原則
 
-- 明確登出：呼叫 `POST /auth/logout` → 後端撤銷 refresh token 並清除 cookie → 下次 silent refresh 失敗 → 導向 `/login`
-- Session 過期（refresh token TTL 到期）：cookie 已失效 → silent refresh 返回 401 → 導向 `/login`
-- 這兩種情境均不需前端額外處理，已由現有流程覆蓋
+- 自架 Runner **只用於 private repo、只跑 CD**；PR 一律使用 GitHub 託管 Runner。
+- Runner **不以 root 執行、不加入 `docker` 群組**，只能經 `sudo` 執行單一固定部署腳本。
+- 正式 image **只由 CI 建立**，部署一律使用**完整 commit SHA**（不用 `latest`）。
+- `main` 分支保護：禁止直接 push、需 PR + review + CI 通過；workflow／Dockerfile／部署設定由 maintainer 審查（CODEOWNERS）。
 
-### 32.5 相關檔案
+> CI/CD workflow（`.github/workflows/ci.yml`·`deploy.yml`）、正式 compose 與部署腳本的實作見專案實際檔案與 [detailed-design.md](./detailed-design.md)。
 
-| 檔案 | 變更 |
-|---|---|
-| `frontend/src/app/AuthInitializer.tsx` | 新增；執行 silent refresh，阻擋 router 至 refresh 完成 |
-| `frontend/src/App.tsx` | 用 `<AuthInitializer>` 包住 `<RouterProvider>` |
-| `frontend/src/api/authApi.ts` | 新增 `authApi.refresh()` 使用 `refreshClient` |
-| `frontend/src/api/client.ts` | 將 `refreshClient` 改為具名匯出（`export const`） |
-
-## 33. 結論
+## 27. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。
 
-建議第一版先完成穩定的 MVP：登入、我的硬碟、資料夾、上傳、下載、搜尋、垃圾桶與容量統計。待核心流程穩定後，再加入分享連結、檔案版本、分片上傳、預覽、背景任務與管理後台。
+目前核心 MVP 與擴充模組已大致完成：登入、我的硬碟、資料夾、上傳、下載、搜尋、垃圾桶、容量統計、分享連結、檔案版本、預覽、In-App AI Assistant 與時光機（Snapshots）皆已有對應實作與測試紀錄。後續正式開發文件應把這些已完成能力整合成「使用者介面 → API → 資料表 → 時序圖 → 測試驗收」的交接文件，而不是停留在早期功能規劃。

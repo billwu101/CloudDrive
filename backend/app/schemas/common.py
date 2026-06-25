@@ -57,6 +57,7 @@ class CurrentUserResponse(BaseModel):
     used_bytes: int
     is_active: bool
     is_admin: bool
+    must_change_password: bool = False
     created_at: datetime
 
 

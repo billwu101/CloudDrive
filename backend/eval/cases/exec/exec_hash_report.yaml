@@ -1,0 +1,35 @@
+id: exec-hash-report
+name: Execute hash-report skill and verify the SHA256 is correct
+prompt: 做一個產生 MD5+SHA1+SHA256 雜湊報告的功能
+mode: [exec, browser]
+tags: [skill-execution, m4]
+expect:
+  execute:
+    fixture: sample.txt
+    context_menu_label: Generate Hash Report (MD5/SHA1/SHA256)
+    produces_min: 1
+    output_name_contains: hash
+    # Content correctness: the real SHA256 of sample.txt must appear in the report.
+    output_text_contains: aab41460810847aaf6bd8e07ca8c22ba36f8fc46cb3fab61d2278e13c60fb2e6
+    code: |
+      import hashlib
+      import os
+      def run(input_path, output_dir, params):
+          data = open(input_path, 'rb').read()
+          lines = [
+              'MD5 ' + hashlib.md5(data).hexdigest(),
+              'SHA1 ' + hashlib.sha1(data).hexdigest(),
+              'SHA256 ' + hashlib.sha256(data).hexdigest(),
+          ]
+          out = os.path.join(output_dir, 'hash_report.txt')
+          open(out, 'w').write('\n'.join(lines))
+          return {'report': 'hash_report.txt'}
+  # Optional semantic check on the *effect* (only runs under --judge): the judge
+  # scores the produced report against this rubric. Weight 0.3 keeps the
+  # deterministic execution check the primary gate.
+  rubric: |
+    產出的雜湊報告應正確包含 sample.txt 的 MD5、SHA1、SHA256 三種十六進位摘要，
+    每行標明演算法名稱，且無多餘或錯誤內容。
+scoring:
+  weights: { execution: 0.7, judge: 0.3 }
+  pass_threshold: 0.8

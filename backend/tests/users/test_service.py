@@ -84,6 +84,9 @@ class MockUserRepo(AbstractUserRepository):
         self._user.used_bytes = self._recalc_result
         return self._recalc_result
 
+    async def list_all_ids(self) -> list[UUID]:
+        return [self._user.id] if self._user else []
+
 
 class TestUserService:
     async def test_get_by_id_returns_user(self) -> None:

@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.refresh_token import RefreshToken
@@ -32,6 +32,11 @@ class AbstractUserRepository(ABC):
         password_hash: str,
         quota_bytes: int,
     ) -> User: ...
+
+    @abstractmethod
+    async def reset_password(self, user_id: UUID, password_hash: str) -> None:
+        """Set a new password hash and flag the account to change it on next login."""
+        ...
 
 
 class SQLUserRepository(AbstractUserRepository):  # pragma: no cover
@@ -70,6 +75,18 @@ class SQLUserRepository(AbstractUserRepository):  # pragma: no cover
         self._session.add(user)
         await self._session.flush()
         return user
+
+    async def reset_password(self, user_id: UUID, password_hash: str) -> None:
+        await self._session.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(
+                password_hash=password_hash,
+                must_change_password=True,
+                updated_at=datetime.now(UTC),
+            )
+        )
+        await self._session.flush()
 
 
 class AbstractRefreshTokenRepository(ABC):

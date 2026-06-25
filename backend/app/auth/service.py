@@ -15,10 +15,14 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
+    generate_random_password,
     hash_password,
     verify_password,
 )
+from app.email.base import EmailProvider
 from app.models.user import User
+
+RESET_PASSWORD_LENGTH = 10
 
 
 class AuthService:
@@ -109,6 +113,33 @@ class AuthService:
             expires_at=new_expires_at,
         )
         return user, access_token, new_rt_str
+
+    async def forgot_password(self, *, email: str, email_provider: EmailProvider) -> None:
+        """Reset the user's password to a random one and email it to them.
+
+        Non-enumerable: returns normally whether or not the email maps to a
+        real account, so callers cannot probe which addresses are registered.
+        """
+        normalized_email = email.strip().lower()
+        user = await self._user_repo.get_by_email(normalized_email)
+        if user is None or not user.is_active:
+            return
+
+        new_password = generate_random_password(RESET_PASSWORD_LENGTH)
+        await self._user_repo.reset_password(user.id, hash_password(new_password))
+
+        subject = "Your Cloud Drive password has been reset"
+        body = (
+            f"Hi {user.username},\n\n"
+            "You requested a password reset for your Cloud Drive account.\n"
+            f"Your temporary password is:\n\n    {new_password}\n\n"
+            "Sign in with this password, then change it immediately from "
+            "Account Settings. For your security, you will be reminded to "
+            "update it after logging in.\n\n"
+            "If you did not request this, please secure your email account.\n\n"
+            "— Cloud Drive"
+        )
+        await email_provider.send(to=user.email, subject=subject, body=body)
 
     async def logout(self, *, refresh_token_str: str) -> None:
         rt_hash = hash_token(refresh_token_str)

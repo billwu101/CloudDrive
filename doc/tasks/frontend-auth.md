@@ -38,6 +38,16 @@
 - [x] 登入成功後導向 `/drive`。
 - [x] 登出後導向 `/login`。
 
+### 忘記密碼（Forgot Password）
+
+- [x] `CurrentUserResponse` type 新增 `must_change_password`。
+- [x] `authApi.forgotPassword(email)`。
+- [x] `useForgotPasswordMutation`。
+- [x] LoginPage 密碼欄位旁加入「Forgot password?」連結。
+- [x] 建立 `ForgotPasswordPage` + `/forgot-password` 公開路由。
+- [x] 送出後顯示防枚舉式確認訊息（不透露 email 是否存在）。
+- [x] 建立 `ChangePasswordReminder` banner，登入後當 `must_change_password` 為真時提醒改密碼（可關閉、連到 `/settings`、在設定頁不顯示）。
+
 ## 測試任務
 
 - [x] 測試 email 驗證。
@@ -50,3 +60,6 @@
 - [x] 測試頁面重載後 token 不自動復原（無 persist middleware）。
 - [x] 測試帳號設定載入、更新成功與 API 錯誤。
 - [x] 測試新密碼確認與成功後清空欄位。
+- [x] 測試 `forgotPassword` API 送出 email 並回傳通用訊息。
+- [x] 測試 ForgotPasswordPage email 驗證與送出後顯示確認、隱藏表單。
+- [x] 測試 ChangePasswordReminder 顯示/連結、設定頁隱藏、可關閉。

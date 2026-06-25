@@ -4,7 +4,7 @@ import asyncio
 import os
 import shutil
 import tempfile
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 
 # Create storage temp dir and configure settings BEFORE any app imports.
 # get_settings() uses @lru_cache, so the env var must be set first.
@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 from app.core.dependencies import get_db
@@ -31,21 +32,24 @@ _TEST_DB_URL = os.environ.get(
     "postgresql+asyncpg://postgres:postgres@localhost:5432/clouddrive_test",
 )
 
-_engine = create_async_engine(_TEST_DB_URL, echo=False, pool_pre_ping=True)
+_engine = create_async_engine(_TEST_DB_URL, echo=False, pool_pre_ping=True, poolclass=NullPool)
 _SessionFactory = async_sessionmaker(_engine, expire_on_commit=False)
 
 
 @pytest.fixture(scope="session")
-def event_loop():
+def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
-async def _create_schema():
+async def _create_schema() -> AsyncGenerator[None, None]:
     """Create all tables once per test session, drop them at the end."""
     async with _engine.begin() as conn:
+        # file_embeddings uses the pgvector `vector` type; the CREATE EXTENSION
+        # normally lives in migration 0012, but create_all does not run migrations.
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with _engine.begin() as conn:
@@ -54,7 +58,7 @@ async def _create_schema():
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _truncate_tables():
+async def _truncate_tables() -> AsyncGenerator[None, None]:
     """Truncate all tables between tests for isolation."""
     yield
     async with _engine.begin() as conn:
@@ -73,9 +77,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = _override_db
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://testserver"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as ac:
         yield ac
 
 
@@ -99,7 +101,7 @@ async def register_and_login(
         json={"email": email, "password": password},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["access_token"]
+    return str(resp.json()["access_token"])
 
 
 def auth_headers(token: str) -> dict[str, str]:

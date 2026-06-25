@@ -13,6 +13,7 @@ from app.file_version.repository import AbstractFileVersionRepository
 from app.models.drive_item import DriveItem
 from app.permission.service import PermissionService
 from app.schemas.common import DriveItemResponse
+from app.search.indexer import SearchIndexService
 from app.storage.base import StorageProvider
 from app.users.service import QuotaService
 
@@ -68,12 +69,15 @@ class UploadService:
         storage: StorageProvider,
         permission_svc: PermissionService,
         quota_svc: QuotaService,
+        search_indexer: SearchIndexService | None = None,
     ) -> None:
         self._items = item_repo
         self._versions = version_repo
         self._storage = storage
         self._perm = permission_svc
         self._quota = quota_svc
+        # Optional: build the full-text content index for uploaded files.
+        self._indexer = search_indexer
 
     async def upload_simple(
         self,
@@ -145,5 +149,10 @@ class UploadService:
         except Exception:
             await self._storage.delete(storage_key)
             raise
+
+        if self._indexer is not None:
+            await self._indexer.index_file(
+                item_id=item.id, data=data, mime_type=mime_type, extension=item.extension
+            )
 
         return _to_response(item)

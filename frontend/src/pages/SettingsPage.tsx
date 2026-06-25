@@ -5,6 +5,7 @@ import {
   LoaderCircle,
   Mail,
   ShieldCheck,
+  Sparkles,
   UserRound,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
@@ -12,6 +13,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 import { isApiError } from '@/api/client'
+import { ExternalModelSettings } from '@/components/settings/ExternalModelSettings'
 import {
   useChangePasswordMutation,
   useCurrentUserQuery,
@@ -350,6 +352,13 @@ export function SettingsPage() {
           icon={<KeyRound className="size-5" aria-hidden="true" />}
         >
           <PasswordForm />
+        </SectionCard>
+        <SectionCard
+          title="External AI model"
+          description="Optional: let the assistant fall back to OpenAI when the local model can't deliver."
+          icon={<Sparkles className="size-5" aria-hidden="true" />}
+        >
+          <ExternalModelSettings />
         </SectionCard>
       </div>
     </div>

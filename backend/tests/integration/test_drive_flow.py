@@ -78,7 +78,7 @@ async def test_rename_item(client: AsyncClient) -> None:
     item_id = create.json()["id"]
 
     rename = await client.patch(
-        f"/api/v1/drive/items/{item_id}/rename", json={"name": "NewName"}, headers=h
+        f"/api/v1/drive/items/{item_id}/name", json={"name": "NewName"}, headers=h
     )
     assert rename.status_code == 200
     assert rename.json()["name"] == "NewName"
@@ -131,6 +131,29 @@ async def test_search_finds_uploaded_file(client: AsyncClient) -> None:
     assert "quarterly_report.txt" in names
 
 
+async def test_search_finds_file_by_content(client: AsyncClient) -> None:
+    token = await register_and_login(client, email="u7b@test.com")
+    h = auth_headers(token)
+
+    # Filename has no match; the term lives only inside the file body.
+    await client.post(
+        "/api/v1/upload/simple",
+        headers=h,
+        files={
+            "file": (
+                "notes.txt",
+                io.BytesIO(b"the mitochondria is the powerhouse of the cell"),
+                "text/plain",
+            )
+        },
+    )
+
+    resp = await client.get("/api/v1/search", params={"q": "mitochondria"}, headers=h)
+    assert resp.status_code == 200
+    names = [i["name"] for i in resp.json()["items"]]
+    assert "notes.txt" in names  # matched by indexed content, not filename
+
+
 async def test_search_returns_empty_for_no_match(client: AsyncClient) -> None:
     token = await register_and_login(client, email="u8@test.com")
     h = auth_headers(token)
@@ -158,7 +181,5 @@ async def test_user_cannot_access_other_users_items(client: AsyncClient) -> None
     item_id = upload.json()["id"]
 
     # Bob tries to download Alice's file
-    resp = await client.get(
-        f"/api/v1/download/{item_id}", headers=auth_headers(token_b)
-    )
+    resp = await client.get(f"/api/v1/download/{item_id}", headers=auth_headers(token_b))
     assert resp.status_code in (403, 404)

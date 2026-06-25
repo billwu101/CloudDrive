@@ -1,0 +1,42 @@
+id: gen-m2-055
+name: M2 交接專案：使用手冊（list_items+search+get_info+recent+storage_quota）
+rationale: 交接盤點：列出整體結構（list_items）→ 搜出專案相關檔（search）→ 查主要檔的詳情（get_info）→ 確認最近哪些有更新（recent）→ 估整體佔用規模（storage_quota），據以寫交接清單。
+prompt: 我要把「使用手冊」交接給同事，幫我列出根目錄、搜尋這個專案的相關檔案、查看其中主要檔案的詳情、確認最近哪些檔有被更新過、以及整體佔用多少空間，好讓我寫交接清單。
+mode:
+- api
+- browser
+tags:
+- read-only
+- generated
+- m2
+- scenario:handover_project
+expect:
+  workflow:
+    requires_confirmation: false
+    steps_include:
+    - list_items
+    - search
+    - get_info
+    - recent
+    - storage_quota
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - reply: 好的，我幫你查。
+    steps:
+    - skill: list_items
+      arguments: {}
+    - skill: search
+      arguments:
+        q: 使用手冊
+    - skill: get_info
+      arguments:
+        item_id: 11111111-1111-1111-1111-111111111111
+    - skill: recent
+      arguments: {}
+    - skill: storage_quota
+      arguments: {}

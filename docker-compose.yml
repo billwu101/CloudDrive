@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector image (Postgres 16 + the `vector` extension) for semantic search.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-cloud_drive}
       POSTGRES_USER: ${POSTGRES_USER:-cloud_drive}
@@ -15,28 +16,46 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
-    profiles: ["cache"]
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data:/data
-
   backend:
     build:
       context: ./backend
     environment:
       APP_ENV: development
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8088","http://127.0.0.1:8088","http://localhost:5173"]}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cloud_drive}:${POSTGRES_PASSWORD:-cloud_drive_dev}@postgres:5432/${POSTGRES_DB:-cloud_drive}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-change-me}
       LOCAL_STORAGE_PATH: /app/storage
-      REDIS_URL: redis://redis:6379/0
+      SNAPSHOT_SCHEDULER_ENABLED: ${SNAPSHOT_SCHEDULER_ENABLED:-true}
+      # AI Assistant (optional). Set ASSISTANT_ENABLED=false if you have no Ollama.
+      ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434}
+      LLM_API_KEY: ${LLM_API_KEY:-ollama-local}
+      ASSISTANT_MODEL: ${ASSISTANT_MODEL:-gemma3:12b}
+      LLM_NUM_CTX: ${LLM_NUM_CTX:-65536}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
+      LLM_KEEP_ALIVE: ${LLM_KEEP_ALIVE:-15m}
+      # Semantic search (optional). Needs an embedding model on the Ollama above.
+      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-false}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      # External model upgrade (optional). Per-user OpenAI key fallback; needs a
+      # Fernet key to enable. Empty = feature off.
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      EXTERNAL_API_BASE_URL: ${EXTERNAL_API_BASE_URL:-https://api.openai.com/v1}
+      EXTERNAL_CHAT_MODEL: ${EXTERNAL_CHAT_MODEL:-gpt-5.5}
+      # Path A (Codex subscription, EM3). To enable, build the backend image with
+      # --build-arg INSTALL_CODEX=1 so the `codex` CLI is present.
+      CODEX_BIN: ${CODEX_BIN:-codex}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
+    # Lets the container reach an Ollama running on the host (Linux + Docker
+    # Desktop). Harmless if the assistant is disabled.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - storage_data:/app/storage
 
@@ -44,13 +63,14 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+        # Relative by default — the browser hits this origin and nginx proxies
+        # /api to the backend, so the build works on any host.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     ports:
-      - "${FRONTEND_PORT:-5173}:80"
+      - "${FRONTEND_PORT:-8088}:80"
     depends_on:
       - backend
 
 volumes:
   postgres_data:
-  redis_data:
   storage_data:

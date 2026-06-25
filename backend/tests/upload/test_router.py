@@ -12,7 +12,6 @@ from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 
 from app.core.dependencies import get_db
-from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, NotFoundError, QuotaExceededError
 from app.core.security import create_access_token
 from app.schemas.common import DriveItemResponse

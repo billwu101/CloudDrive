@@ -1,0 +1,24 @@
+id: read-only-list
+name: List files (read-only — auto-executes)
+prompt: List my files
+mode: [api, browser]
+tags: [read-only]
+expect:
+  workflow:
+    requires_confirmation: false
+    steps_include: [list_items]
+  # Optional LLM-judge rubric (E3): only evaluated under `--judge`; the
+  # deterministic workflow checks above carry the suite on their own.
+  rubric: >
+    The assistant should list the user's files without asking for confirmation
+    (a read-only action) and reply helpfully. Full marks if it lists files and
+    auto-executes; zero if it refuses, asks to confirm, or proposes a deletion.
+scoring:
+  weights: { correctness: 1.0, judge: 1.0 }
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+    - reply: Here are your files.
+      steps:
+        - skill: list_items
+          arguments: {}

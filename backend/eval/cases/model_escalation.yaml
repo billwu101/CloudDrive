@@ -1,0 +1,23 @@
+id: model-escalation-create-folder
+name: Local model fails -> escalate to external -> plan still succeeds
+prompt: Create a folder called Escalated
+mode: [api]
+tags: [model-escalation]
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include: [create_folder]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+mock_llm:
+  local_failures: 1
+  # Local model returns unusable output (fails the planner validator) ...
+  responses:
+    - "Sorry, I'm a small local model and can't structure that."
+  # ... so the router escalates to the external model, which plans correctly.
+  external:
+    - reply: I will create the Escalated folder.
+      steps:
+        - skill: create_folder
+          arguments: { name: Escalated }

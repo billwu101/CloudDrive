@@ -27,6 +27,7 @@ const MOCK_USER = {
   used_bytes: 1024,
   is_active: true,
   is_admin: false,
+  must_change_password: false,
   created_at: '2024-01-01T00:00:00Z',
 }
 
@@ -58,6 +59,15 @@ const server = setupServer(
       )
     }
     return HttpResponse.json({ access_token: 'tok-abc', token_type: 'bearer' })
+  }),
+
+  http.post(`${BASE}/auth/forgot-password`, async ({ request }) => {
+    const body = (await request.json()) as { email: string }
+    // Non-enumerable: same response regardless of whether the email exists.
+    return HttpResponse.json({
+      message: 'If an account exists for that email, a reset password has been sent.',
+      echo_email: body.email,
+    })
   }),
 
   http.post(`${BASE}/auth/logout`, () => new HttpResponse(null, { status: 204 })),
@@ -126,6 +136,21 @@ describe('login (POST /auth/login)', () => {
   it('response body does NOT contain refresh_token', async () => {
     const res = await authApi.login('alice@example.com', 'Pass123!')
     expect(res.data).not.toHaveProperty('refresh_token')
+  })
+})
+
+// ── 忘記密碼 ──────────────────────────────────────────────────────────────────
+
+describe('forgotPassword (POST /auth/forgot-password)', () => {
+  it('sends the email and returns a generic message', async () => {
+    const res = await authApi.forgotPassword('alice@example.com')
+    expect(res.status).toBe(200)
+    expect(res.data.message).toMatch(/if an account exists/i)
+  })
+
+  it('posts the email in the request body', async () => {
+    const res = await authApi.forgotPassword('alice@example.com')
+    expect((res.data as { echo_email: string }).echo_email).toBe('alice@example.com')
   })
 })
 

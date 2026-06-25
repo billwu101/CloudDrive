@@ -2,8 +2,10 @@ import {
   Clock,
   Cloud,
   HardDrive,
+  History,
   PanelLeft,
   Share2,
+  Sparkles,
   Star,
   Trash2,
 } from 'lucide-react'
@@ -20,6 +22,8 @@ const NAV_ITEMS = [
   { to: '/recent', icon: Clock, label: 'Recent' },
   { to: '/starred', icon: Star, label: 'Starred' },
   { to: '/shared', icon: Share2, label: 'Shared with me' },
+  { to: '/skills', icon: Sparkles, label: 'Skills' },
+  { to: '/time-machine', icon: History, label: 'Time Machine' },
   { to: '/trash', icon: Trash2, label: 'Trash' },
 ] as const
 

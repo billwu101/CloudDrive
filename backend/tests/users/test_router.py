@@ -33,6 +33,7 @@ def _user(user_id: UUID) -> User:
         used_bytes=1024,
         is_active=True,
         is_admin=False,
+        must_change_password=False,
         created_at=now,
         updated_at=now,
     )

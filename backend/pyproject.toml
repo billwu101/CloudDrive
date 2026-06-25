@@ -5,20 +5,27 @@ description = "FastAPI backend for the cloud drive application"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "aiosmtplib>=3.0.0",
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
     "fastapi>=0.136.3",
+    "httpx>=0.28.1",
     "pwdlib[argon2]>=0.3.0",
+    "py7zr>=0.21.0",
+    "pillow>=11.0.0",
+    "pypdf>=5.0.0",
     "pydantic-settings>=2.14.1",
     "pyjwt>=2.13.0",
     "python-multipart>=0.0.32",
     "sqlalchemy[asyncio]>=2.0.50",
     "uvicorn[standard]>=0.49.0",
+    "pgvector>=0.3.0",
+    "cryptography>=43.0.0",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
+    "hypothesis>=6.155.3",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
@@ -46,16 +53,32 @@ strict = true
 plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 files = ["app", "tests"]
 
+[[tool.mypy.overrides]]
+module = "pgvector.*"
+ignore_missing_imports = true
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["app", "tests"]
+src = ["app", "tests", "eval"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["app", "eval"]
+
+[tool.ruff.lint.per-file-ignores]
+# Env vars (LOCAL_STORAGE_PATH) must be set before app imports; get_settings()
+# is @lru_cache, so these imports are intentionally not at module top.
+"tests/integration/conftest.py" = ["E402"]
+# Eval cases are Chinese prompts; fullwidth punctuation （）「」 is intentional.
+"eval/generate_cases.py" = ["RUF001", "RUF002"]
+# Judge rubrics / report headings / --verbose labels are Traditional Chinese
+# (fullwidth ，：／（）).
+"eval/judge.py" = ["RUF001", "RUF002"]
+"eval/report.py" = ["RUF001", "RUF002"]
+"eval/run.py" = ["RUF001", "RUF002"]
 
 [tool.ruff.format]
 quote-style = "double"
