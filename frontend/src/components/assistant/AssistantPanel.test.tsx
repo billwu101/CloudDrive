@@ -6,6 +6,7 @@ import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { useAuthStore } from '@/stores/authStore'
+import { useUIStore } from '@/stores/uiStore'
 import { AssistantPanel } from './AssistantPanel'
 
 const BASE = 'http://localhost:8000/api/v1'
@@ -82,6 +83,7 @@ afterEach(() => {
   cleanup()
   server.resetHandlers()
   useAuthStore.setState({ accessToken: null, user: null })
+  useUIStore.getState().clearSelection()
 })
 afterAll(() => server.close())
 
@@ -110,6 +112,32 @@ describe('AssistantPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Done: hello')).toBeInTheDocument()
     })
+  })
+
+  it('sends the selected file ids and shows a selection chip', async () => {
+    let sentIds: string[] | undefined
+    server.use(
+      http.post(`${BASE}/assistant/chat`, async ({ request }) => {
+        const body = (await request.json()) as { selected_item_ids?: string[] }
+        sentIds = body.selected_item_ids
+        return HttpResponse.json({
+          session_id: 'session-1',
+          message: 'ok',
+          tool_calls: [],
+          tool_results: [],
+        })
+      }),
+    )
+    useUIStore.getState().selectAll(['file-a', 'file-b'])
+    renderAssistantPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+    expect(screen.getByText(/2 files selected/i)).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/assistant message/i), 'zip them')
+    await userEvent.click(screen.getByRole('button', { name: /send message/i }))
+
+    await waitFor(() => expect(sentIds).toEqual(['file-a', 'file-b']))
   })
 
   it('shows the model picker with unavailable providers disabled', async () => {

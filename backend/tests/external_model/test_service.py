@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -205,21 +206,36 @@ async def test_codex_refresh_flows_back_to_on_refresh() -> None:
 
 class _BoomAuth:
     async def chat(
-        self, messages: list[LLMMessage], tools: list[LLMToolDefinition], *, num_ctx: int
+        self,
+        messages: list[LLMMessage],
+        tools: list[LLMToolDefinition],
+        *,
+        num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         raise ExternalAuthError("credential rejected")
 
 
 class _BoomTransient:
     async def chat(
-        self, messages: list[LLMMessage], tools: list[LLMToolDefinition], *, num_ctx: int
+        self,
+        messages: list[LLMMessage],
+        tools: list[LLMToolDefinition],
+        *,
+        num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         raise LLMUnavailableError("temporary outage")
 
 
 class _Ok:
     async def chat(
-        self, messages: list[LLMMessage], tools: list[LLMToolDefinition], *, num_ctx: int
+        self,
+        messages: list[LLMMessage],
+        tools: list[LLMToolDefinition],
+        *,
+        num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         return LLMResponse(content="ok")
 
@@ -303,7 +319,12 @@ async def test_fallback_uses_secondary_on_auth_error() -> None:
 async def test_fallback_returns_primary_when_it_succeeds() -> None:
     class _OkPrimary:
         async def chat(
-            self, messages: list[LLMMessage], tools: list[LLMToolDefinition], *, num_ctx: int
+            self,
+            messages: list[LLMMessage],
+            tools: list[LLMToolDefinition],
+            *,
+            num_ctx: int,
+            response_format: dict[str, Any] | None = None,
         ) -> LLMResponse:
             return LLMResponse(content="primary")
 

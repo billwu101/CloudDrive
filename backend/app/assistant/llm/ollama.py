@@ -49,6 +49,7 @@ class OllamaLLMClient:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self._model,
@@ -56,6 +57,10 @@ class OllamaLLMClient:
             "stream": False,
             "options": {"num_ctx": num_ctx},
         }
+        # Ollama's own JSON mode; the local model already follows the plan format,
+        # so this is just a harmless reinforcement when a schema is requested.
+        if response_format is not None:
+            payload["format"] = "json"
         if self._keep_alive:
             payload["keep_alive"] = self._keep_alive
         if tools:

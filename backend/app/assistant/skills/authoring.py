@@ -164,6 +164,7 @@ def _skill_response(skill: AssistantSkill) -> AssistantSkillResponse:
         manifest=skill.manifest,
         code=skill.code,
         status=skill.status,
+        chat_enabled=skill.chat_enabled,
         created_at=skill.created_at,
         updated_at=skill.updated_at,
     )
@@ -301,6 +302,7 @@ class AssistantSkillService:
         skill_id: UUID,
         description: str | None = None,
         code: str | None = None,
+        chat_enabled: bool | None = None,
     ) -> AssistantSkillResponse:
         """Edit an existing skill's description and/or code. Changed code is
         re-validated through codeguard so a manual edit cannot bypass the
@@ -308,6 +310,16 @@ class AssistantSkillService:
         existing = await self._repo.get_by_id(user_id=user_id, skill_id=skill_id)
         if existing is None:
             raise NotFoundError("Assistant skill not found")
+
+        # The chat-planner opt-in is independent of code edits; apply it on its own.
+        if chat_enabled is not None:
+            toggled = await self._repo.set_chat_enabled(
+                user_id=user_id, skill_id=skill_id, enabled=chat_enabled
+            )
+            if toggled is None:
+                raise NotFoundError("Assistant skill not found")
+            if description is None and code is None:
+                return _skill_response(toggled)
 
         new_code = existing.code if code is None else code
         new_description = existing.description if description is None else description.strip()

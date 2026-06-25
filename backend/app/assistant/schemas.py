@@ -20,6 +20,9 @@ class AssistantChatRequest(BaseModel):
     session_id: UUID | None = None
     message: str = Field(min_length=1, max_length=4000)
     model: ModelTarget | None = None
+    # Drive items the user checked; self-built skills run once per selected file
+    # (their item_id comes from here, never guessed by the LLM).
+    selected_item_ids: list[UUID] = Field(default_factory=list)
 
 
 class AssistantModelOption(BaseModel):
@@ -68,6 +71,7 @@ class AssistantSkillResponse(BaseModel):
     manifest: dict[str, Any]
     code: str
     status: str
+    chat_enabled: bool
     created_at: datetime
     updated_at: datetime
 
@@ -80,6 +84,8 @@ class AssistantSkillApproveResponse(BaseModel):
 class AssistantSkillUpdateRequest(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=500)
     code: str | None = Field(default=None, max_length=20000)
+    # Opt the installed skill in/out of the chat planner (None = leave unchanged).
+    chat_enabled: bool | None = None
 
 
 class AssistantSkillExecuteRequest(BaseModel):

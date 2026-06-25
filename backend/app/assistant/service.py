@@ -21,7 +21,9 @@ from app.assistant.workflow import (
     StepResult,
     WorkflowExecutor,
     WorkflowStep,
+    expand_selection_steps,
     is_auto_confirmable,
+    requires_file_selection,
 )
 from app.core.exceptions import NotFoundError
 from app.models.assistant_workflow import AssistantWorkflow
@@ -60,8 +62,10 @@ class WorkflowService:
         message: str,
         session_id: UUID | None = None,
         target: str | None = None,
+        selected_item_ids: list[UUID] | None = None,
     ) -> AssistantChatResponse:
         active_session_id = session_id or uuid4()
+        selected = selected_item_ids or []
 
         if self._skill_authoring is not None:
             authoring = await self._skill_authoring.handle_authoring_message(
@@ -75,11 +79,23 @@ class WorkflowService:
                     skill_proposal=authoring.skill_proposal,
                 )
 
-        plan = await self._planner.plan(message=message, target=target)
+        plan = await self._planner.plan(
+            message=message, target=target, selected_count=len(selected)
+        )
         if not plan.steps:
             return AssistantChatResponse(session_id=active_session_id, message=plan.reply)
 
         steps = classify_steps(plan.steps, self._registry)
+
+        # Self-built skills run on the user's selected files (item_id is injected,
+        # never guessed). No selection → ask; otherwise run once per file.
+        if requires_file_selection(steps, self._registry):
+            if not selected:
+                return AssistantChatResponse(
+                    session_id=active_session_id,
+                    message="請先在硬碟勾選要操作的檔案。勾好後我就能用這個技能。",
+                )
+            steps = expand_selection_steps(steps, selected, self._registry)
 
         if is_auto_confirmable(steps):
             results = await self._executor.execute(user_id=user_id, steps=steps)

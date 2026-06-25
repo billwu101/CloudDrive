@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from app.assistant.llm.client import (
     LLMClient,
@@ -48,6 +49,7 @@ class ModelRouter:
         num_ctx: int,
         validator: ResponseValidator | None = None,
         target: str | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         # Explicit external provider: use only that client — no local attempt and
         # no fallback. Selecting it is itself the user's opt-in to externalize.
@@ -56,7 +58,12 @@ class ModelRouter:
             if client is None:
                 raise LLMUnavailableError(f"Selected model '{target}' is not configured")
             return await self._call_external(
-                client, messages, tools, num_ctx=num_ctx, last_error=None
+                client,
+                messages,
+                tools,
+                num_ctx=num_ctx,
+                last_error=None,
+                response_format=response_format,
             )
 
         last_error: Exception | None = None
@@ -74,7 +81,9 @@ class ModelRouter:
         if target == self.LOCAL_TARGET:
             raise LLMUnavailableError("Local model is unavailable") from last_error
 
-        return await self._try_external(messages, tools, num_ctx=num_ctx, last_error=last_error)
+        return await self._try_external(
+            messages, tools, num_ctx=num_ctx, last_error=last_error, response_format=response_format
+        )
 
     async def _try_external(
         self,
@@ -83,13 +92,19 @@ class ModelRouter:
         *,
         num_ctx: int,
         last_error: Exception | None,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         if not self._external_enabled or self._external is None:
             raise LLMUnavailableError("Local model failed and external fallback is disabled") from (
                 last_error
             )
         return await self._call_external(
-            self._external, messages, tools, num_ctx=num_ctx, last_error=last_error
+            self._external,
+            messages,
+            tools,
+            num_ctx=num_ctx,
+            last_error=last_error,
+            response_format=response_format,
         )
 
     async def _call_external(
@@ -100,6 +115,7 @@ class ModelRouter:
         *,
         num_ctx: int,
         last_error: Exception | None,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         joined = "\n".join(m.content for m in messages)
         privacy = classify_and_deidentify(joined, default=self._privacy_default)
@@ -111,4 +127,6 @@ class ModelRouter:
         external_messages = messages
         if privacy.deidentified:
             external_messages = [LLMMessage(role="user", content=privacy.text_for_external)]
-        return await client.chat(external_messages, tools, num_ctx=num_ctx)
+        return await client.chat(
+            external_messages, tools, num_ctx=num_ctx, response_format=response_format
+        )

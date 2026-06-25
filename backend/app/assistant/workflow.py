@@ -44,6 +44,53 @@ def is_auto_confirmable(steps: list[WorkflowStep]) -> bool:
     return all(not step.requires_approval for step in steps)
 
 
+def requires_file_selection(steps: list[WorkflowStep], registry: SkillRegistry) -> bool:
+    """True if any step uses a skill that needs a user-selected file (self-built)."""
+
+    for step in steps:
+        skill = registry.get(step.skill)
+        if skill is not None and skill.requires_selection:
+            return True
+    return False
+
+
+def expand_selection_steps(
+    steps: list[WorkflowStep],
+    selected_item_ids: list[UUID],
+    registry: SkillRegistry,
+) -> list[WorkflowStep]:
+    """Expand each requires-selection step into one step per selected file, with
+    ``item_id`` injected (never guessed by the LLM). Other steps are preserved and
+    their ``depends_on`` indices remapped to the new numbering."""
+
+    old_to_new: dict[int, list[int]] = {}
+    expanded: list[WorkflowStep] = []
+    for step in steps:
+        skill = registry.get(step.skill)
+        if skill is not None and skill.requires_selection:
+            new_indices: list[int] = []
+            for item_id in selected_item_ids:
+                index = len(expanded)
+                new_indices.append(index)
+                expanded.append(
+                    WorkflowStep(
+                        index=index,
+                        skill=step.skill,
+                        arguments={"item_id": str(item_id)},
+                        depends_on=[],  # self-built skills are leaf operations
+                        permission_tier=step.permission_tier,
+                        requires_approval=step.requires_approval,
+                    )
+                )
+            old_to_new[step.index] = new_indices
+        else:
+            index = len(expanded)
+            new_deps = [new for old in step.depends_on for new in old_to_new.get(old, [old])]
+            expanded.append(step.model_copy(update={"index": index, "depends_on": new_deps}))
+            old_to_new[step.index] = [index]
+    return expanded
+
+
 class StepResolutionError(Exception):
     """Raised when a step argument references an earlier step that cannot be resolved."""
 

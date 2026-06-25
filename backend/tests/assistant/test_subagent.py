@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolDefinition
@@ -38,6 +39,7 @@ class _ScriptedLLM:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         item = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1

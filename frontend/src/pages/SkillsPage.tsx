@@ -21,9 +21,10 @@ interface SkillCardProps {
   skill: AssistantSkillResponse
   onEdit: (skill: AssistantSkillResponse) => void
   onDelete: (skill: AssistantSkillResponse) => void
+  onToggleChat: (skill: AssistantSkillResponse, enabled: boolean) => void
 }
 
-function SkillCard({ skill, onEdit, onDelete }: SkillCardProps) {
+function SkillCard({ skill, onEdit, onDelete, onToggleChat }: SkillCardProps) {
   const actions = skill.manifest.ui?.context_menu ?? []
   return (
     <li className="rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -46,6 +47,14 @@ function SkillCard({ skill, onEdit, onDelete }: SkillCardProps) {
               ))}
             </div>
           )}
+          <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={skill.chat_enabled}
+              onChange={(e) => onToggleChat(skill, e.target.checked)}
+            />
+            Allow in chat (runs on your selected files, with confirmation)
+          </label>
           <p className="mt-2 text-xs text-muted-foreground">Updated {formatDate(skill.updated_at)}</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
@@ -156,6 +165,9 @@ export function SkillsPage() {
                 setEditing(s)
               }}
               onDelete={(s) => setDeleting(s)}
+              onToggleChat={(s, enabled) =>
+                void updateSkill.mutateAsync({ skillId: s.id, body: { chat_enabled: enabled } })
+              }
             />
           ))}
         </ul>

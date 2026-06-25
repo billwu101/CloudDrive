@@ -36,6 +36,7 @@ class ScriptedLLM:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         return self.responses.pop(0)
 

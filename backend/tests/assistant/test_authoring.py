@@ -48,6 +48,7 @@ class _ScriptedLLM:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         item = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1
@@ -95,6 +96,7 @@ class _FakeSkillRepo(AbstractAssistantSkillRepository):
             manifest=manifest,
             code=code,
             status="pending",
+            chat_enabled=False,
             created_at=now,
             updated_at=now,
         )
@@ -124,6 +126,15 @@ class _FakeSkillRepo(AbstractAssistantSkillRepository):
         skill.description = description
         skill.manifest = manifest
         skill.code = code
+        return skill
+
+    async def set_chat_enabled(
+        self, *, user_id: UUID, skill_id: UUID, enabled: bool
+    ) -> AssistantSkill | None:
+        skill = self.by_id.get(skill_id)
+        if skill is None:
+            return None
+        skill.chat_enabled = enabled
         return skill
 
     async def delete(self, *, user_id: UUID, skill_id: UUID) -> bool:

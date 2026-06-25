@@ -122,6 +122,7 @@ export interface AssistantSkillResponse {
   manifest: AssistantSkillManifest
   code: string
   status: 'pending' | 'installed' | string
+  chat_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -134,6 +135,7 @@ export interface AssistantSkillApproveResponse {
 export interface AssistantSkillUpdateRequest {
   description?: string
   code?: string
+  chat_enabled?: boolean
 }
 
 export interface AssistantSkillExecuteRequest {
@@ -154,6 +156,7 @@ export interface AssistantChatRequest {
   message: string
   session_id?: string
   model?: ModelTarget
+  selected_item_ids?: string[]
 }
 
 export interface AssistantModelOption {

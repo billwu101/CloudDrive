@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Annotated, cast
+import logging
+from collections.abc import Mapping
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -44,6 +46,7 @@ from app.assistant.schemas import (
 from app.assistant.service import WorkflowService
 from app.assistant.skills.authoring import AssistantSkillService
 from app.assistant.skills.builtin import build_read_only_registry, register_write_skills
+from app.assistant.skills.registry import RegisteredSkill, SkillContext, SkillRegistry
 from app.assistant.skills.sandbox import SkillSandbox
 from app.assistant.subagent import CodegenSubAgent
 from app.assistant.workflow import WorkflowExecutor
@@ -72,6 +75,53 @@ from app.users.repository import SQLUserRepository
 from app.users.service import QuotaService
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+logger = logging.getLogger("app.assistant.router")
+
+
+async def _register_installed_skills(
+    registry: SkillRegistry,
+    session: DbSession,
+    user_id: UUID,
+) -> None:
+    """Add the user's installed, chat-enabled self-built skills to the planner.
+
+    Each is registered as a ``write``-tier skill that requires a selected file
+    (``requires_selection``) — the planner never fills ``item_id``; it is injected
+    from the user's selection. Execution bridges to the sandbox path. Names that
+    collide with a built-in skill are skipped (the user is asked to rename)."""
+    skill_service = _assistant_skill_service(session)
+    skill_repo = SQLAssistantSkillRepository(session)
+    installed = await skill_repo.list_by_status(user_id=user_id, status="installed")
+    for skill in installed:
+        if not skill.chat_enabled:
+            continue
+        if registry.get(skill.name) is not None:
+            logger.warning(
+                "skipping chat-enabled skill %r: name collides with a built-in skill", skill.name
+            )
+            continue
+
+        async def _handler(
+            ctx: SkillContext, args: Mapping[str, Any], _skill_id: UUID = skill.id
+        ) -> Any:
+            raw = args.get("item_id")
+            if raw is None:
+                raise AppError(ErrorCode.INVALID_OPERATION, "Select a file before using this skill")
+            result = await skill_service.execute_skill(
+                user_id=ctx.user_id, skill_id=_skill_id, item_id=UUID(str(raw))
+            )
+            return result.model_dump(mode="json")
+
+        registry.register(
+            RegisteredSkill(
+                name=skill.name,
+                description=f"{skill.description} (self-built; runs on the user's selected file)",
+                parameters={"type": "object", "properties": {}, "additionalProperties": False},
+                permission_tier="write",
+                handler=_handler,
+                requires_selection=True,
+            )
+        )
 
 
 def _drive_service(session: DbSession) -> DriveService:
@@ -152,6 +202,8 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
             link_repo=SQLShareLinkRepository(session),
         ),
     )
+    # Opt-in self-built skills (DEC: chat-skills) — write tier + sandbox-bridged.
+    await _register_installed_skills(registry, session, current_user_id)
 
     local_client = OllamaLLMClient(
         base_url=settings.llm_base_url,
@@ -289,6 +341,7 @@ async def chat(
             session_id=body.session_id,
             message=body.message,
             target=body.model,
+            selected_item_ids=body.selected_item_ids,
         )
     except ExternalAuthError as exc:
         # The provider rejected the credential itself (invalid key / quota).
@@ -490,6 +543,7 @@ async def update_skill(
         skill_id=skill_id,
         description=body.description,
         code=body.code,
+        chat_enabled=body.chat_enabled,
     )
     await session.commit()
     return skill

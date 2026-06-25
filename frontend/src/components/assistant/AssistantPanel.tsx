@@ -15,6 +15,7 @@ import {
   useSaveWorkflow,
   useSavedWorkflows,
 } from '@/hooks/useAssistant'
+import { useUIStore } from '@/stores/uiStore'
 import { cn } from '@/lib/utils'
 import { MessageBubble, type AssistantMessage } from './MessageBubble'
 import { SavedWorkflowsPanel } from './SavedWorkflowsPanel'
@@ -52,6 +53,8 @@ export function AssistantPanel() {
   const [lastPrompt, setLastPrompt] = useState('')
   const [selectedModel, setSelectedModel] = useState<ModelTarget | undefined>()
   const models = useAssistantModels()
+  const selectedItemIds = useUIStore((s) => s.selectedItemIds)
+  const clearSelection = useUIStore((s) => s.clearSelection)
   const chatMutation = useAssistantChatMutation()
   const approveSkill = useApproveAssistantSkill()
   const confirmWorkflow = useConfirmWorkflow()
@@ -94,6 +97,7 @@ export function AssistantPanel() {
         message,
         session_id: sessionId,
         model: selectedModel,
+        selected_item_ids: Array.from(selectedItemIds),
       })
       setSessionId(response.session_id)
       setPendingSkill(response.skill_proposal ?? null)
@@ -291,7 +295,28 @@ export function AssistantPanel() {
             )}
           </div>
 
-          <form className="flex shrink-0 flex-col gap-2 border-t border-border p-3" onSubmit={handleSubmit}>
+          {selectedItemIds.size > 0 && (
+            <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 pt-2 text-xs text-muted-foreground">
+              <span className="rounded-full bg-muted px-2 py-0.5">
+                📎 {selectedItemIds.size} file{selectedItemIds.size > 1 ? 's' : ''} selected
+              </span>
+              <span>— self-built skills run on these</span>
+              <button
+                type="button"
+                onClick={() => clearSelection()}
+                className="ml-auto text-destructive hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+          <form
+            className={cn(
+              'flex shrink-0 flex-col gap-2 p-3',
+              selectedItemIds.size > 0 ? '' : 'border-t border-border',
+            )}
+            onSubmit={handleSubmit}
+          >
             <select
               value={selectedModel ?? ''}
               onChange={(event) => setSelectedModel(event.target.value as ModelTarget)}

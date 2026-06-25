@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolDefinition
 from app.assistant.llm.router import ModelRouter
@@ -19,6 +21,7 @@ class ScriptedLLM:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         self.calls += 1
         return self.responses.pop(0)

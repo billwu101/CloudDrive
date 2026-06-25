@@ -10,6 +10,36 @@ from app.assistant.llm.router import ModelRouter
 from app.assistant.skills.registry import SkillRegistry
 from app.assistant.workflow import PlannedStep, is_step_ref
 
+# Structured-output schema for the plan, sent as ``response_format`` on external
+# models so they emit the exact ``{reply, steps[...]}`` shape (local Ollama already
+# follows it; external models like Gemini otherwise reply in free text). Not
+# "strict" so the open ``arguments`` object stays valid across providers.
+_PLAN_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "workflow_plan",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "reply": {"type": "string"},
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "skill": {"type": "string"},
+                            "arguments": {"type": "object"},
+                            "depends_on": {"type": "array", "items": {"type": "integer"}},
+                        },
+                        "required": ["skill", "arguments", "depends_on"],
+                    },
+                },
+            },
+            "required": ["reply", "steps"],
+        },
+    },
+}
+
 
 class PlanResult(BaseModel):
     reply: str = ""
@@ -115,11 +145,27 @@ class WorkflowPlanner:
         self._num_ctx = num_ctx
         self._max_repair = max(0, max_repair)
 
-    async def plan(self, *, message: str, target: str | None = None) -> PlanResult:
+    async def plan(
+        self, *, message: str, target: str | None = None, selected_count: int = 0
+    ) -> PlanResult:
         messages = [
             LLMMessage(role="system", content=build_planner_prompt(self._registry)),
-            LLMMessage(role="user", content=message),
         ]
+        # Tell the planner about the user's current file selection so skills that
+        # operate on selected files can be used directly, without asking which file.
+        if selected_count > 0:
+            messages.append(
+                LLMMessage(
+                    role="system",
+                    content=(
+                        f"The user currently has {selected_count} file(s) selected. "
+                        "Skills that operate on the user's selected file(s) can be used "
+                        "directly on the selection — do NOT ask which file; just call the "
+                        "skill (its item_id is supplied automatically per selected file)."
+                    ),
+                )
+            )
+        messages.append(LLMMessage(role="user", content=message))
 
         def _valid(response: LLMResponse) -> bool:
             return _parse(response.content) is not None
@@ -137,6 +183,7 @@ class WorkflowPlanner:
                 num_ctx=self._num_ctx,
                 validator=_valid,
                 target=target,
+                response_format=_PLAN_RESPONSE_FORMAT,
             )
             result = _parse(response.content)
             if result is None:

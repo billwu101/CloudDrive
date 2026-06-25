@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from app.assistant.llm.client import (
@@ -38,9 +39,12 @@ class _CredentialTrackingClient:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         try:
-            return await self._inner.chat(messages, tools, num_ctx=num_ctx)
+            return await self._inner.chat(
+                messages, tools, num_ctx=num_ctx, response_format=response_format
+            )
         except ExternalAuthError:
             await self._on_auth_error()
             raise
@@ -60,12 +64,17 @@ class _FallbackClient:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         try:
-            return await self._primary.chat(messages, tools, num_ctx=num_ctx)
+            return await self._primary.chat(
+                messages, tools, num_ctx=num_ctx, response_format=response_format
+            )
         except (ExternalAuthError, LLMUnavailableError):
             logger.info("external primary failed; falling back to secondary provider")
-            return await self._secondary.chat(messages, tools, num_ctx=num_ctx)
+            return await self._secondary.chat(
+                messages, tools, num_ctx=num_ctx, response_format=response_format
+            )
 
 
 class ExternalCredentialService:
