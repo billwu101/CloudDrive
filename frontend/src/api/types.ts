@@ -150,7 +150,8 @@ export interface AssistantSkillExecuteResponse {
   output: Record<string, unknown>
 }
 
-export type ModelTarget = 'local' | 'openai' | 'codex'
+// "local" or a model-connection id (uuid string).
+export type ModelTarget = string
 
 export interface AssistantChatRequest {
   message: string
@@ -284,16 +285,30 @@ export interface BackfillResponse {
   remaining: number
 }
 
-export interface ExternalCredentialView {
-  provider: string
-  auth_type: string
+export type ConnectionKind = 'openai_compatible' | 'ollama' | 'codex'
+
+export interface ConnectionView {
+  id: string
+  label: string
+  kind: ConnectionKind
+  base_url: string
+  model: string
   masked_hint: string
   status: string
   updated_at: string
 }
 
-export interface ExternalCredentialUpsert {
-  provider: 'openai' | 'codex'
-  auth_type: 'api_key' | 'oauth_token'
+export interface ConnectionCreate {
+  label: string
+  kind: ConnectionKind
+  base_url?: string
+  model?: string
   secret: string
+}
+
+export interface ConnectionUpdate {
+  label?: string
+  base_url?: string
+  model?: string
+  secret?: string
 }

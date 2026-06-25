@@ -10,16 +10,15 @@ from app.assistant.workflow import PlannedStep, StepResult, WorkflowStep
 
 AssistantRole = Literal["system", "user", "assistant", "tool"]
 WorkflowPlanStatus = Literal["auto_executed", "pending_approval"]
-# Which model the user picked for this turn. "local" = on-prem Ollama; a provider
-# name (e.g. "openai"/"codex") = that external model only. None = server default
-# (local→external fallback). Validated against availability at request time.
-ModelTarget = Literal["local", "openai", "codex"]
 
 
+# Which model the user picked for this turn: "local" = on-prem Ollama, or a
+# connection id (str) for one of the user's named external connections. None =
+# server default (local→external fallback). Validated against availability.
 class AssistantChatRequest(BaseModel):
     session_id: UUID | None = None
     message: str = Field(min_length=1, max_length=4000)
-    model: ModelTarget | None = None
+    model: str | None = None
     # Drive items the user checked; self-built skills run once per selected file
     # (their item_id comes from here, never guessed by the LLM).
     selected_item_ids: list[UUID] = Field(default_factory=list)

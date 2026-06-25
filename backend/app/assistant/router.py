@@ -56,7 +56,7 @@ from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.drive.repository import SQLDriveItemRepository, SQLUserItemPreferenceRepository
 from app.drive.service import DriveService
-from app.external_model.factory import build_credential_service
+from app.external_model.factory import build_connection_service
 from app.file_version.repository import SQLFileVersionRepository
 from app.permission.repository import SQLShareRepository
 from app.permission.service import PermissionService
@@ -224,13 +224,9 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
             model=settings.external_model,
             api_key=settings.external_llm_api_key,
         )
-    # Per-user credential (DEC-026) takes precedence over the global client.
-    credential_service = build_credential_service(session, settings)
-    per_user_external = await credential_service.build_chat_client(current_user_id)
-    if per_user_external is not None:
-        external_client = per_user_external
-    # Per-provider clients for explicit model selection (no codex→openai chaining).
-    external_clients = await credential_service.build_provider_clients(current_user_id)
+    # Per-user named connections (model selection); keyed by str(connection id).
+    connection_service = build_connection_service(session, settings)
+    external_clients = await connection_service.build_clients(current_user_id)
 
     privacy_default = cast(
         PrivacyDefault,
@@ -284,14 +280,6 @@ AssistantSessionRepoDep = Annotated[
 ]
 
 
-# Human-readable labels for selectable models, shared by the picker and errors.
-_MODEL_LABELS = {
-    "local": "the local model",
-    "openai": "OpenAI",
-    "codex": "the Codex subscription",
-}
-
-
 @router.get(
     "/models",
     response_model=list[AssistantModelOption],
@@ -302,16 +290,18 @@ async def list_models(
     session: DbSession,
 ) -> list[AssistantModelOption]:
     settings = get_settings()
-    providers = await build_credential_service(session, settings).active_providers(current_user_id)
-    return [
+    conns = await build_connection_service(session, settings).list_masked(current_user_id)
+    options = [
         AssistantModelOption(
             id="local", label=f"Local ({settings.assistant_model})", available=True
-        ),
-        AssistantModelOption(id="openai", label="OpenAI", available="openai" in providers),
-        AssistantModelOption(
-            id="codex", label="Codex subscription", available="codex" in providers
-        ),
+        )
     ]
+    for conn in conns:
+        label = conn.label + (f" · {conn.model}" if conn.model else "")
+        options.append(
+            AssistantModelOption(id=str(conn.id), label=label, available=conn.status == "active")
+        )
+    return options
 
 
 @router.post(
@@ -334,7 +324,7 @@ async def chat(
             "Assistant is disabled",
             status_code=503,
         )
-    label = _MODEL_LABELS.get(body.model or "", "the assistant model")
+    label = "the local model" if body.model in (None, "local") else "the selected model"
     try:
         response = await service.chat(
             user_id=current_user_id,

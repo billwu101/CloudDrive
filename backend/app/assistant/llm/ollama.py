@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.assistant.llm.client import (
+    ExternalAuthError,
     LLMInvalidResponseError,
     LLMMessage,
     LLMResponse,
@@ -81,6 +82,11 @@ class OllamaLLMClient:
                     )
                     response.raise_for_status()
                 return _parse_ollama_response(response.json(), self._model)
+            except httpx.HTTPStatusError as exc:
+                if _is_credential_error(exc.response):
+                    raise ExternalAuthError("Ollama credential was rejected") from exc
+                last_exc = exc
+                continue
             except httpx.HTTPError as exc:
                 last_exc = exc
                 continue
@@ -92,6 +98,18 @@ def _auth_headers(api_key: str) -> Mapping[str, str] | None:
     if not api_key:
         return None
     return {"Authorization": f"Bearer {api_key}"}
+
+
+def _is_credential_error(response: httpx.Response) -> bool:
+    if response.status_code in (401, 403):
+        return True
+    if response.status_code == 429:
+        try:
+            text = str(response.json()).lower()
+        except ValueError:
+            return False
+        return "quota" in text or "billing" in text or "credit" in text
+    return False
 
 
 def _to_ollama_tool(tool: LLMToolDefinition) -> dict[str, Any]:

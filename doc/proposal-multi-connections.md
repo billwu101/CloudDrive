@@ -74,8 +74,41 @@ external_model_connections
 - 連線間的自動 fallback(維持手動選)。
 - 團隊/共享連線。
 
-## 10. 待確認問題
-- [ ] kind 是固定 enum(openai_compatible/codex)還是也開放純自訂 base_url?(建議:enum + preset)
-- [ ] 既有單筆 openai/codex 憑證如何遷移(自動建一筆具名連線)?
-- [ ] base_url 任填的 **SSRF 風險**如何控管(白名單 host?僅 https?)。
-- [ ] local(Ollama 本機)要不要也納入「連線」統一管理,還是維持獨立?
+## 10. 已確認決策（2026-06-25）
+- [x] kind = enum **`openai_compatible` / `ollama` / `codex`** + 前端 presets。
+- [x] 既有憑證 **不遷移**,直接重建(舊資料為測試用)。
+- [ ] base_url 任填的 **SSRF 風險**未控管(目前任填;待補白名單/僅 https)。← 仍待辦
+- [x] local(本機 Ollama)維持獨立(server env 設定),連線只管外部。
+
+## 11. 實作說明（已完成 2026-06-25）
+
+> 取代舊的 `user_external_credentials`(每 provider 一把)。
+
+### 資料
+- 新表 `external_model_connections`(`id`/`user_id`/`label`/`kind`/`base_url`/`model`/`secret_encrypted`/`masked_hint`/`status`/時間),migration **0016**(drop 舊表、建新表、不遷移)。
+
+### 後端
+- `app/models/external_model_connection.py`(新)、刪 `user_external_credential.py`。
+- `external_model/repository.py`:`SQLConnectionRepository`(CRUD by id)。
+- `external_model/service.py`:`ExternalModelConnectionService`,`build_clients(user_id)` 回 `{str(id): client}`;依 kind 建 client:
+  - `openai_compatible` → `ExternalLLMClient(base_url, model, key)`
+  - `ollama` → `OllamaLLMClient(base_url, model, api_key)`（原生 `/api/chat`）
+  - `codex` → `CodexSubscriptionClient`
+  - 失敗(`ExternalAuthError`)→ `_CredentialTrackingClient` 標記該連線 `invalid`;Codex token refresh 回寫(by user_id+connection_id)。
+- `external_model/schemas.py`:`ConnectionCreate/Update/View`(只回遮罩)。
+- `external_model/router.py`:`GET/POST/PUT/DELETE /users/me/model-connections`。
+- `assistant/router.py`:`external_clients = build_connection_service(...).build_clients(user)`;`GET /assistant/models` 回 local + 每筆連線(id=str(id), label=`label · model`, available=status==active);chat `target` = 連線 id。
+- `AssistantChatRequest.model: str | None`(連線 id 或 "local")。
+- 測試:`tests/external_model/test_service.py`、`test_router.py` 重寫;後端 **593 passed**。
+
+### 前端
+- `api/types.ts`:`ModelTarget=string`、`ConnectionView/Create/Update/Kind`。
+- `api/externalModelApi.ts` → `modelConnectionApi`(CRUD);`hooks/useExternalCredentials.ts` → `useModelConnections` 等。
+- `components/settings/ExternalModelSettings.tsx`:連線列表 + 新增表單(label / kind 下拉 / base_url / model / key)+ **presets**(Gemini / OpenAI / Ollama cloud / Codex)。
+- `AssistantPanel`:下拉列出 local + 各連線。
+- 測試:`ExternalModelSettings.test.tsx` 重寫;前端 **251 passed**。
+
+### 實機驗證重點（見 note.md）
+- **Gemini**:`openai_compatible` + `https://generativelanguage.googleapis.com/v1beta/openai`,可用(但 free tier 每日 20 次、且偶發 503 high demand)。
+- **Ollama cloud**:**必須用 `openai_compatible` + `https://ollama.com/v1`**(不是 `ollama` kind —— 原生 `/api/chat` + `/v1` base_url 會變 `/v1/api/chat` 404);`/v1` 支援 json_schema。preset 已修正。模型用目錄內名稱(如 `gpt-oss:20b`);**免費 key 有限流(撞到回 401)**。
+- 仍未實作:連線編輯 UI(只做了新增/刪除,PUT 端點有但 UI 沒接編輯)。

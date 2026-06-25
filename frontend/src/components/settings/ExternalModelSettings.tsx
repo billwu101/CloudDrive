@@ -3,11 +3,11 @@ import { useState } from 'react'
 
 import { isApiError } from '@/api/client'
 import {
-  useDeleteExternalCredential,
-  useExternalCredentials,
-  useUpsertExternalCredential,
+  useCreateModelConnection,
+  useDeleteModelConnection,
+  useModelConnections,
 } from '@/hooks/useExternalCredentials'
-import type { ExternalCredentialView } from '@/api/types'
+import type { ConnectionKind, ConnectionView } from '@/api/types'
 
 const inputClass =
   'w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30'
@@ -17,32 +17,53 @@ const submitClass =
 
 type Message = { kind: 'ok' | 'err'; text: string } | null
 
-function CredentialStatus({
-  cred,
-  label,
+// Common endpoints to prefill base_url and reduce confusion. The user still
+// names the connection themselves (so a Gemini key isn't labelled "OpenAI").
+const PRESETS: Record<string, { kind: ConnectionKind; base_url: string; model: string }> = {
+  Gemini: {
+    kind: 'openai_compatible',
+    base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    model: 'gemini-2.5-flash-lite',
+  },
+  OpenAI: { kind: 'openai_compatible', base_url: 'https://api.openai.com/v1', model: 'gpt-5.5' },
+  // Ollama cloud works best via its OpenAI-compatible endpoint (supports the
+  // planner's structured output); the native "ollama" kind is for self-hosted.
+  'Ollama cloud': {
+    kind: 'openai_compatible',
+    base_url: 'https://ollama.com/v1',
+    model: 'gpt-oss:20b',
+  },
+  Codex: { kind: 'codex', base_url: '', model: '' },
+}
+
+function ConnectionRow({
+  conn,
   onRemove,
   removing,
 }: {
-  cred: ExternalCredentialView
-  label: string
+  conn: ConnectionView
   onRemove: () => void
   removing: boolean
 }) {
   return (
     <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
-      <span>
-        {label}: <span className="font-mono">{cred.masked_hint}</span>
+      <span className="min-w-0 truncate">
+        <span className="font-medium">{conn.label}</span>
+        <span className="ml-2 text-xs text-muted-foreground">
+          {conn.kind}
+          {conn.model ? ` · ${conn.model}` : ''} · <span className="font-mono">{conn.masked_hint}</span>
+        </span>
         <span
-          className={`ml-2 rounded-full px-2 py-0.5 text-xs ${cred.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'}`}
+          className={`ml-2 rounded-full px-2 py-0.5 text-xs ${conn.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'}`}
         >
-          {cred.status}
+          {conn.status}
         </span>
       </span>
       <button
         type="button"
         onClick={onRemove}
         disabled={removing}
-        className="flex items-center gap-1 text-xs text-destructive hover:underline disabled:opacity-50"
+        className="flex shrink-0 items-center gap-1 text-xs text-destructive hover:underline disabled:opacity-50"
       >
         <Trash2 className="size-3.5" aria-hidden="true" />
         Remove
@@ -52,140 +73,148 @@ function CredentialStatus({
 }
 
 export function ExternalModelSettings() {
-  const { data: creds } = useExternalCredentials()
-  const upsert = useUpsertExternalCredential()
-  const remove = useDeleteExternalCredential()
+  const { data: connections } = useModelConnections()
+  const create = useCreateModelConnection()
+  const remove = useDeleteModelConnection()
 
-  const [apiKey, setApiKey] = useState('')
-  const [codexAuth, setCodexAuth] = useState('')
+  const [label, setLabel] = useState('')
+  const [kind, setKind] = useState<ConnectionKind>('openai_compatible')
+  const [baseUrl, setBaseUrl] = useState(PRESETS.Gemini.base_url)
+  const [model, setModel] = useState(PRESETS.Gemini.model)
+  const [secret, setSecret] = useState('')
   const [message, setMessage] = useState<Message>(null)
 
-  const openai = creds?.find((c) => c.provider === 'openai')
-  const codex = creds?.find((c) => c.provider === 'codex')
+  const applyPreset = (name: string) => {
+    const preset = PRESETS[name]
+    if (!preset) return
+    setKind(preset.kind)
+    setBaseUrl(preset.base_url)
+    setModel(preset.model)
+    if (!label) setLabel(name)
+  }
 
   const notEnabledText =
-    'This server has not enabled external credentials (missing CREDENTIAL_ENCRYPTION_KEY).'
+    'This server has not enabled model connections (missing CREDENTIAL_ENCRYPTION_KEY).'
 
-  const saveOpenai = async () => {
+  const handleAdd = async () => {
     setMessage(null)
     try {
-      await upsert.mutateAsync({ provider: 'openai', auth_type: 'api_key', secret: apiKey.trim() })
-      setApiKey('')
-      setMessage({ kind: 'ok', text: 'OpenAI API key saved.' })
-    } catch (err) {
-      const text = isApiError(err) && err.status === 503 ? notEnabledText : 'Could not save the API key.'
-      setMessage({ kind: 'err', text })
-    }
-  }
-
-  const saveCodex = async () => {
-    setMessage(null)
-    try {
-      await upsert.mutateAsync({ provider: 'codex', auth_type: 'oauth_token', secret: codexAuth.trim() })
-      setCodexAuth('')
-      setMessage({ kind: 'ok', text: 'Codex subscription saved.' })
+      await create.mutateAsync({
+        label: label.trim(),
+        kind,
+        base_url: baseUrl.trim(),
+        model: model.trim(),
+        secret: secret.trim(),
+      })
+      setLabel('')
+      setSecret('')
+      setMessage({ kind: 'ok', text: 'Connection added.' })
     } catch (err) {
       const text =
-        isApiError(err) && err.status === 503 ? notEnabledText : 'Could not save the Codex credential.'
+        isApiError(err) && err.status === 503 ? notEnabledText : 'Could not add the connection.'
       setMessage({ kind: 'err', text })
     }
   }
 
-  const removeProvider = async (provider: 'openai' | 'codex', noun: string) => {
+  const handleRemove = async (id: string) => {
     setMessage(null)
     try {
-      await remove.mutateAsync(provider)
-      setMessage({ kind: 'ok', text: `${noun} removed.` })
+      await remove.mutateAsync(id)
+      setMessage({ kind: 'ok', text: 'Connection removed.' })
     } catch {
-      setMessage({ kind: 'err', text: `Could not remove the ${noun.toLowerCase()}.` })
+      setMessage({ kind: 'err', text: 'Could not remove the connection.' })
     }
   }
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        When the local model repeatedly fails, the assistant can fall back to GPT-5.5. A Codex
-        subscription is tried first; if you also set an OpenAI API key it is used as a backup.
-        Credentials are stored encrypted and only masked hints are ever shown.
+        Add one or more model connections — each with its own name, source, endpoint, model and key.
+        Pick which one the assistant uses from the model menu in the chat panel. Keys are stored
+        encrypted; only a masked hint is ever shown.
       </p>
 
-      {/* Codex subscription (tried first) */}
-      <div className="space-y-2">
-        <h4 className="text-sm font-semibold">Codex subscription</h4>
-        {codex && (
-          <CredentialStatus
-            cred={codex}
-            label="Token"
-            onRemove={() => void removeProvider('codex', 'Codex credential')}
-            removing={remove.isPending}
-          />
-        )}
-        {codex?.status === 'invalid' && (
-          <p className="text-xs text-destructive">
-            This subscription token was rejected. Re-run `codex login` and paste the new auth.json.
-          </p>
-        )}
-        <label htmlFor="codex-auth" className="mb-1 block text-sm font-medium">
-          auth.json from `codex login`
-        </label>
-        <textarea
-          id="codex-auth"
-          autoComplete="off"
-          rows={3}
-          placeholder='{"tokens":{"access_token":"…","refresh_token":"…"}}'
-          className={`${inputClass} font-mono`}
-          value={codexAuth}
-          onChange={(e) => setCodexAuth(e.target.value)}
-        />
-        <button
-          type="button"
-          onClick={() => void saveCodex()}
-          disabled={!codexAuth.trim() || upsert.isPending}
-          className={`flex items-center gap-1.5 ${submitClass}`}
-        >
-          {upsert.isPending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-          {codex ? 'Replace subscription' : 'Save subscription'}
-        </button>
-      </div>
+      {connections && connections.length > 0 && (
+        <div className="space-y-2">
+          {connections.map((conn) => (
+            <ConnectionRow
+              key={conn.id}
+              conn={conn}
+              onRemove={() => void handleRemove(conn.id)}
+              removing={remove.isPending}
+            />
+          ))}
+        </div>
+      )}
 
-      <hr className="border-border" />
+      <div className="space-y-2 rounded-md border border-border p-3">
+        <h4 className="text-sm font-semibold">Add a connection</h4>
 
-      {/* OpenAI API key (fallback) */}
-      <div className="space-y-2">
-        <h4 className="text-sm font-semibold">OpenAI API key</h4>
-        {openai && (
-          <CredentialStatus
-            cred={openai}
-            label="Current key"
-            onRemove={() => void removeProvider('openai', 'API key')}
-            removing={remove.isPending}
-          />
-        )}
-        {openai?.status === 'invalid' && (
-          <p className="text-xs text-destructive">
-            This key was rejected (invalid or out of quota). Replace it to keep using GPT-5.5 fallback.
-          </p>
-        )}
-        <label htmlFor="openai-api-key" className="mb-1 block text-sm font-medium">
-          API key
-        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {Object.keys(PRESETS).map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => applyPreset(name)}
+              className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+
         <input
-          id="openai-api-key"
+          aria-label="Connection name"
+          placeholder="Name (e.g. My Gemini)"
+          className={inputClass}
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+        />
+        <select
+          aria-label="Source type"
+          className={inputClass}
+          value={kind}
+          onChange={(e) => setKind(e.target.value as ConnectionKind)}
+        >
+          <option value="openai_compatible">OpenAI-compatible (OpenAI, Gemini, Groq…)</option>
+          <option value="ollama">Ollama (cloud or self-hosted)</option>
+          <option value="codex">Codex subscription (auth.json)</option>
+        </select>
+        {kind !== 'codex' && (
+          <>
+            <input
+              aria-label="Base URL"
+              placeholder="Base URL"
+              className={inputClass}
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+            <input
+              aria-label="Model"
+              placeholder="Model (e.g. gemini-2.5-flash-lite)"
+              className={inputClass}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
+          </>
+        )}
+        <input
+          aria-label="API key or token"
           type="password"
           autoComplete="off"
-          placeholder="sk-…"
+          placeholder={kind === 'codex' ? 'auth.json contents' : 'API key'}
           className={inputClass}
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
         />
         <button
           type="button"
-          onClick={() => void saveOpenai()}
-          disabled={!apiKey.trim() || upsert.isPending}
+          onClick={() => void handleAdd()}
+          disabled={!label.trim() || !secret.trim() || create.isPending}
           className={`flex items-center gap-1.5 ${submitClass}`}
         >
-          {upsert.isPending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-          {openai ? 'Replace key' : 'Save key'}
+          {create.isPending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+          Add connection
         </button>
       </div>
 

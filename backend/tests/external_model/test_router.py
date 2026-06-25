@@ -13,31 +13,31 @@ from app.core.config import get_settings
 from app.core.dependencies import get_db
 from app.core.security import create_access_token
 from app.external_model.crypto import CredentialCipher
-from app.external_model.router import _credential_service
+from app.external_model.router import _connection_service
 from app.external_model.router import router as ext_router
-from app.external_model.service import ExternalCredentialService
-from tests.external_model.test_service import MemCredentialRepo
+from app.external_model.service import ExternalModelConnectionService
+from tests.external_model.test_service import MemConnectionRepo
 
 pytestmark = pytest.mark.asyncio
 
-_PREFIX = "/users/me/external-credentials"
+_PREFIX = "/users/me/model-connections"
 
 
-def _service(*, with_cipher: bool = True) -> ExternalCredentialService:
+def _service(
+    repo: MemConnectionRepo, *, with_cipher: bool = True
+) -> ExternalModelConnectionService:
     cipher = CredentialCipher(Fernet.generate_key().decode()) if with_cipher else None
-    return ExternalCredentialService(
-        repo=MemCredentialRepo(), cipher=cipher, settings=get_settings()
-    )
+    return ExternalModelConnectionService(repo=repo, cipher=cipher, settings=get_settings())
 
 
-def _make_app(service: ExternalCredentialService) -> FastAPI:
+def _make_app(service: ExternalModelConnectionService) -> FastAPI:
     app = FastAPI()
 
     async def _fake_db() -> AsyncGenerator[AsyncMock, None]:
         yield AsyncMock()
 
     app.dependency_overrides[get_db] = _fake_db
-    app.dependency_overrides[_credential_service] = lambda: service
+    app.dependency_overrides[_connection_service] = lambda: service
     app.include_router(ext_router)
     return app
 
@@ -52,53 +52,75 @@ def headers(user_id: UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-async def test_put_then_get_returns_masked_only(headers: dict[str, str]) -> None:
-    service = _service()
-    app = _make_app(service)
+async def test_create_then_get_returns_masked_only(headers: dict[str, str]) -> None:
+    app = _make_app(_service(MemConnectionRepo()))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        put = await c.put(
+        created = await c.post(
             _PREFIX,
-            json={"provider": "openai", "auth_type": "api_key", "secret": "sk-abcdef1234"},
+            json={
+                "label": "My Gemini",
+                "kind": "openai_compatible",
+                "base_url": "https://g/v1",
+                "model": "gemini-2.5-flash-lite",
+                "secret": "sk-abcdef1234",
+            },
             headers=headers,
         )
-        get = await c.get(_PREFIX, headers=headers)
+        listed = await c.get(_PREFIX, headers=headers)
 
-    assert put.status_code == 200
-    body = put.json()
-    assert body["provider"] == "openai"
+    assert created.status_code == 200
+    body = created.json()
+    assert body["label"] == "My Gemini" and body["kind"] == "openai_compatible"
     assert body["masked_hint"].endswith("1234")
     assert "secret" not in body and "secret_encrypted" not in body  # never plaintext
 
-    assert get.status_code == 200
-    rows = get.json()
-    assert len(rows) == 1
-    assert rows[0]["masked_hint"].endswith("1234")
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert len(rows) == 1 and rows[0]["model"] == "gemini-2.5-flash-lite"
     assert "secret_encrypted" not in rows[0]
 
 
-async def test_put_503_when_credentials_not_configured(headers: dict[str, str]) -> None:
-    app = _make_app(_service(with_cipher=False))
+async def test_create_503_when_not_configured(headers: dict[str, str]) -> None:
+    app = _make_app(_service(MemConnectionRepo(), with_cipher=False))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.put(
+        resp = await c.post(
             _PREFIX,
-            json={"provider": "openai", "auth_type": "api_key", "secret": "sk-x"},
+            json={"label": "x", "kind": "openai_compatible", "secret": "sk-x"},
             headers=headers,
         )
     assert resp.status_code == 503
 
 
-async def test_delete_removes_credential(user_id: UUID, headers: dict[str, str]) -> None:
-    service = _service()
-    await service.upsert(user_id=user_id, provider="openai", auth_type="api_key", secret="sk-x")
-    app = _make_app(service)
+async def test_update_and_delete(user_id: UUID, headers: dict[str, str]) -> None:
+    repo = MemConnectionRepo()
+    svc = _service(repo)
+    conn = await svc.create(
+        user_id=user_id,
+        label="Old",
+        kind="openai_compatible",
+        base_url="b",
+        model="m",
+        secret="s",
+    )
+    app = _make_app(svc)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.delete(f"{_PREFIX}/openai", headers=headers)
-    assert resp.status_code == 204
-    assert await service.list_masked(user_id) == []
+        updated = await c.put(f"{_PREFIX}/{conn.id}", json={"label": "New"}, headers=headers)
+        deleted = await c.delete(f"{_PREFIX}/{conn.id}", headers=headers)
+
+    assert updated.status_code == 200 and updated.json()["label"] == "New"
+    assert deleted.status_code == 204
+    assert await svc.list_masked(user_id) == []
+
+
+async def test_update_missing_returns_404(headers: dict[str, str]) -> None:
+    app = _make_app(_service(MemConnectionRepo()))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.put(f"{_PREFIX}/{uuid4()}", json={"label": "x"}, headers=headers)
+    assert resp.status_code == 404
 
 
 async def test_requires_auth() -> None:
-    app = _make_app(_service())
+    app = _make_app(_service(MemConnectionRepo()))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.get(_PREFIX)
     assert resp.status_code in (401, 403)

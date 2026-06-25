@@ -1,8 +1,10 @@
 # 需求草案：助理模型可選擇 + 明確錯誤回報
 
-> 狀態：**proposal 草案（待使用者確認）**。2026-06-25。
-> 依 CLAUDE.md 文件先行規則，本檔確認後才進 `detailed-design.md` → `tasks/`。
-> 關聯：[codex-訂閱制問題分析.md](./codex-訂閱制問題分析.md)、[tasks/external-model.md](./tasks/external-model.md)、DEC-023 / DEC-026。
+> 狀態：**已實作（2026-06-25）**。下拉選單最初列 local/openai/codex,後由
+> [proposal-multi-connections.md](./proposal-multi-connections.md) **延伸/取代**為「列出 local +
+> 使用者具名連線」——選項 id 從固定字串改為連線 id。錯誤分類回報、本機快速失敗、planner
+> 結構化輸出(json_schema)等本檔內容仍有效。詳見 note.md。
+> 依 CLAUDE.md 文件先行規則。關聯：[proposal-multi-connections.md]、[codex-訂閱制問題分析.md](./codex-訂閱制問題分析.md)、DEC-023 / DEC-026。
 
 ## 1. 背景與動機
 

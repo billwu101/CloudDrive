@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -16,179 +16,219 @@ from app.assistant.llm.client import (
     LLMUnavailableError,
 )
 from app.assistant.llm.external import ExternalLLMClient
+from app.assistant.llm.ollama import OllamaLLMClient
 from app.core.config import get_settings
 from app.external_model.codex_client import CodexSubscriptionClient
 from app.external_model.crypto import CredentialCipher
-from app.external_model.repository import AbstractExternalCredentialRepository
+from app.external_model.repository import AbstractConnectionRepository
 from app.external_model.service import (
-    ExternalCredentialService,
+    ExternalModelConnectionService,
     _CredentialTrackingClient,
-    _FallbackClient,
 )
-from app.models.user_external_credential import UserExternalCredential
+from app.models.external_model_connection import ExternalModelConnection
 
 
-class MemCredentialRepo(AbstractExternalCredentialRepository):
+class MemConnectionRepo(AbstractConnectionRepository):
     def __init__(self) -> None:
-        self.rows: dict[tuple[UUID, str], UserExternalCredential] = {}
+        self.rows: dict[UUID, ExternalModelConnection] = {}
 
-    async def list_by_user(self, user_id: UUID) -> list[UserExternalCredential]:
-        return [c for (u, _p), c in self.rows.items() if u == user_id]
+    async def list_by_user(self, user_id: UUID) -> list[ExternalModelConnection]:
+        return [c for c in self.rows.values() if c.user_id == user_id]
 
-    async def get(self, user_id: UUID, provider: str) -> UserExternalCredential | None:
-        return self.rows.get((user_id, provider))
+    async def get(self, user_id: UUID, connection_id: UUID) -> ExternalModelConnection | None:
+        conn = self.rows.get(connection_id)
+        return conn if conn is not None and conn.user_id == user_id else None
 
-    async def upsert(
+    async def create(self, connection: ExternalModelConnection) -> ExternalModelConnection:
+        self.rows[connection.id] = connection
+        return connection
+
+    async def update(
         self,
         *,
         user_id: UUID,
-        provider: str,
-        auth_type: str,
-        secret_encrypted: str,
-        masked_hint: str,
+        connection_id: UUID,
+        label: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+        secret_encrypted: str | None = None,
+        masked_hint: str | None = None,
+        status: str | None = None,
         updated_at: datetime,
-    ) -> None:
-        self.rows[(user_id, provider)] = UserExternalCredential(
-            user_id=user_id,
-            provider=provider,
-            auth_type=auth_type,
-            secret_encrypted=secret_encrypted,
-            masked_hint=masked_hint,
-            status="active",
-            updated_at=updated_at,
-        )
+    ) -> ExternalModelConnection | None:
+        conn = await self.get(user_id, connection_id)
+        if conn is None:
+            return None
+        for field, value in (
+            ("label", label),
+            ("base_url", base_url),
+            ("model", model),
+            ("secret_encrypted", secret_encrypted),
+            ("masked_hint", masked_hint),
+            ("status", status),
+        ):
+            if value is not None:
+                setattr(conn, field, value)
+        conn.updated_at = updated_at
+        return conn
 
-    async def delete(self, user_id: UUID, provider: str) -> None:
-        self.rows.pop((user_id, provider), None)
+    async def delete(self, user_id: UUID, connection_id: UUID) -> bool:
+        conn = await self.get(user_id, connection_id)
+        if conn is None:
+            return False
+        del self.rows[connection_id]
+        return True
 
-    async def set_status(self, user_id: UUID, provider: str, status: str) -> None:
-        row = self.rows.get((user_id, provider))
-        if row is not None:
-            row.status = status
+    async def set_status(self, user_id: UUID, connection_id: UUID, status: str) -> None:
+        conn = await self.get(user_id, connection_id)
+        if conn is not None:
+            conn.status = status
 
 
-def _service(repo: MemCredentialRepo, *, with_cipher: bool = True) -> ExternalCredentialService:
+def _service(
+    repo: MemConnectionRepo, *, with_cipher: bool = True
+) -> ExternalModelConnectionService:
     cipher = CredentialCipher(Fernet.generate_key().decode()) if with_cipher else None
-    return ExternalCredentialService(repo=repo, cipher=cipher, settings=get_settings())
+    return ExternalModelConnectionService(repo=repo, cipher=cipher, settings=get_settings())
 
 
-async def test_upsert_encrypts_and_masks() -> None:
-    repo = MemCredentialRepo()
-    svc = _service(repo)
-    user = uuid4()
-
-    stored = await svc.upsert(
-        user_id=user, provider="openai", auth_type="api_key", secret="sk-abcdef123456"
+async def test_create_encrypts_and_masks() -> None:
+    svc = _service(MemConnectionRepo())
+    stored = await svc.create(
+        user_id=uuid4(),
+        label="My Gemini",
+        kind="openai_compatible",
+        base_url="https://example/v1",
+        model="gemini-2.5-flash-lite",
+        secret="sk-abcdef123456",
     )
-
     assert stored.secret_encrypted != "sk-abcdef123456"  # encrypted at rest
     assert stored.masked_hint.endswith("3456")
     assert stored.status == "active"
 
 
-async def test_build_chat_client_openai_api_key() -> None:
-    repo = MemCredentialRepo()
+async def test_build_clients_openai_compatible() -> None:
+    repo = MemConnectionRepo()
     svc = _service(repo)
     user = uuid4()
-    await svc.upsert(user_id=user, provider="openai", auth_type="api_key", secret="sk-key-9999")
+    conn = await svc.create(
+        user_id=user,
+        label="Gemini",
+        kind="openai_compatible",
+        base_url="https://g/v1",
+        model="gemini-2.5-flash-lite",
+        secret="sk-key-9999",
+    )
 
-    client = await svc.build_chat_client(user)
+    clients = await svc.build_clients(user)
 
-    # Wrapped so a credential rejection can mark it invalid; inner is the real client.
-    assert isinstance(client, _CredentialTrackingClient)
-    inner = client._inner
+    assert set(clients) == {str(conn.id)}
+    wrapper = clients[str(conn.id)]
+    assert isinstance(wrapper, _CredentialTrackingClient)
+    inner = wrapper._inner
     assert isinstance(inner, ExternalLLMClient)
     assert inner._api_key == "sk-key-9999"  # decrypted for use
-    assert inner._model == get_settings().external_chat_model
+    assert inner._model == "gemini-2.5-flash-lite"
 
 
-async def test_build_chat_client_none_without_credentials() -> None:
-    assert await _service(MemCredentialRepo()).build_chat_client(uuid4()) is None
-
-
-async def test_build_chat_client_none_when_cipher_disabled() -> None:
-    repo = MemCredentialRepo()
+async def test_build_clients_ollama_kind() -> None:
+    repo = MemConnectionRepo()
+    svc = _service(repo)
     user = uuid4()
-    # Seed a row directly; service has no cipher so it can't use it.
-    repo.rows[(user, "openai")] = UserExternalCredential(
+    conn = await svc.create(
         user_id=user,
-        provider="openai",
-        auth_type="api_key",
-        secret_encrypted="whatever",
-        masked_hint="…",
-        status="active",
-        updated_at=datetime.now(UTC),
+        label="Ollama",
+        kind="ollama",
+        base_url="https://ollama/v1",
+        model="llama3",
+        secret="ok-123",
     )
-    assert await _service(repo, with_cipher=False).build_chat_client(user) is None
+    clients = await svc.build_clients(user)
+    wrapper = clients[str(conn.id)]
+    assert isinstance(wrapper, _CredentialTrackingClient)
+    assert isinstance(wrapper._inner, OllamaLLMClient)
 
 
-async def test_build_chat_client_skips_invalid_status() -> None:
-    repo = MemCredentialRepo()
+async def test_build_clients_codex_kind() -> None:
+    repo = MemConnectionRepo()
     svc = _service(repo)
     user = uuid4()
-    await svc.upsert(user_id=user, provider="openai", auth_type="api_key", secret="sk-x")
-    await svc.mark_invalid(user, "openai")
+    conn = await svc.create(
+        user_id=user, label="Codex", kind="codex", base_url="", model="", secret='{"tokens":{}}'
+    )
+    clients = await svc.build_clients(user)
+    wrapper = clients[str(conn.id)]
+    assert isinstance(wrapper, _CredentialTrackingClient)
+    assert isinstance(wrapper._inner, CodexSubscriptionClient)
 
-    assert await svc.build_chat_client(user) is None
+
+async def test_build_clients_empty_without_cipher() -> None:
+    assert await _service(MemConnectionRepo(), with_cipher=False).build_clients(uuid4()) == {}
 
 
-async def test_build_chat_client_codex_only() -> None:
-    repo = MemCredentialRepo()
+async def test_build_clients_skips_invalid() -> None:
+    repo = MemConnectionRepo()
     svc = _service(repo)
     user = uuid4()
-    await svc.upsert(
-        user_id=user, provider="codex", auth_type="oauth_token", secret='{"tokens":{}}'
+    conn = await svc.create(
+        user_id=user, label="X", kind="openai_compatible", base_url="b", model="m", secret="s"
     )
-
-    client = await svc.build_chat_client(user)
-    assert isinstance(client, _CredentialTrackingClient)
-    assert isinstance(client._inner, CodexSubscriptionClient)
+    await repo.set_status(user, conn.id, "invalid")
+    assert await svc.build_clients(user) == {}
 
 
-async def test_subscription_first_chains_to_openai_fallback() -> None:
-    # With both a Codex subscription and an OpenAI key, the subscription is tried
-    # first and the key is the fallback (§2.3).
-    repo = MemCredentialRepo()
+async def test_update_new_secret_reencrypts_and_clears_invalid() -> None:
+    repo = MemConnectionRepo()
     svc = _service(repo)
     user = uuid4()
-    await svc.upsert(
-        user_id=user, provider="codex", auth_type="oauth_token", secret='{"tokens":{}}'
+    conn = await svc.create(
+        user_id=user, label="X", kind="openai_compatible", base_url="b", model="m", secret="old"
     )
-    await svc.upsert(user_id=user, provider="openai", auth_type="api_key", secret="sk-fallback")
+    await repo.set_status(user, conn.id, "invalid")
 
-    client = await svc.build_chat_client(user)
-    assert isinstance(client, _FallbackClient)
-    assert isinstance(client._primary, _CredentialTrackingClient)
-    assert isinstance(client._primary._inner, CodexSubscriptionClient)  # codex tried first
-    assert isinstance(client._secondary, _CredentialTrackingClient)
-    assert isinstance(client._secondary._inner, ExternalLLMClient)
-    assert client._secondary._inner._api_key == "sk-fallback"  # api key is the fallback
+    updated = await svc.update(user_id=user, connection_id=conn.id, secret="new-secret-9876")
+
+    assert updated is not None
+    assert updated.status == "active"  # editing clears the invalid flag
+    assert updated.masked_hint.endswith("9876")
+
+
+async def test_delete_removes_connection() -> None:
+    repo = MemConnectionRepo()
+    svc = _service(repo)
+    user = uuid4()
+    conn = await svc.create(
+        user_id=user, label="X", kind="openai_compatible", base_url="b", model="m", secret="s"
+    )
+    assert await svc.delete(user, conn.id) is True
+    assert await svc.list_masked(user) == []
 
 
 async def test_codex_refresh_flows_back_to_on_refresh() -> None:
-    # A token refreshed by the CLI mid-call is handed to the service's on_refresh.
-    refreshed: list[tuple[UUID, str, str]] = []
+    refreshed: list[tuple[UUID, UUID, str]] = []
 
-    async def on_refresh(user_id: UUID, provider: str, secret: str) -> None:
-        refreshed.append((user_id, provider, secret))
+    async def on_refresh(user_id: UUID, connection_id: UUID, secret: str) -> None:
+        refreshed.append((user_id, connection_id, secret))
 
-    repo = MemCredentialRepo()
-    svc = ExternalCredentialService(
+    repo = MemConnectionRepo()
+    svc = ExternalModelConnectionService(
         repo=repo,
         cipher=CredentialCipher(Fernet.generate_key().decode()),
         settings=get_settings(),
         on_refresh=on_refresh,
     )
     user = uuid4()
-    await svc.upsert(
+    conn = await svc.create(
         user_id=user,
-        provider="codex",
-        auth_type="oauth_token",
+        label="Codex",
+        kind="codex",
+        base_url="",
+        model="",
         secret='{"tokens":{"access_token":"OLD"}}',
     )
-    client = await svc.build_chat_client(user)
-    assert isinstance(client, _CredentialTrackingClient)
-    codex = client._inner
+    wrapper = (await svc.build_clients(user))[str(conn.id)]
+    assert isinstance(wrapper, _CredentialTrackingClient)
+    codex = wrapper._inner
     assert isinstance(codex, CodexSubscriptionClient)
 
     async def runner(cmd: list[str], env: dict[str, str], timeout: float) -> tuple[int, str]:
@@ -197,8 +237,8 @@ async def test_codex_refresh_flows_back_to_on_refresh() -> None:
         return 0, "x\ncodex\nok\ntokens used 1"
 
     codex._runner = runner
-    await client.chat([LLMMessage(role="user", content="x")], [], num_ctx=10)
-    assert refreshed == [(user, "codex", '{"tokens":{"access_token":"NEW"}}')]
+    await wrapper.chat([LLMMessage(role="user", content="x")], [], num_ctx=10)
+    assert refreshed == [(user, conn.id, '{"tokens":{"access_token":"NEW"}}')]
 
 
 # ── credential-tracking wrapper (auto-mark invalid on rejection) ──────────────
@@ -249,7 +289,7 @@ async def test_tracking_marks_invalid_on_auth_error() -> None:
     client = _CredentialTrackingClient(_BoomAuth(), on_auth_error=on_err)
     with pytest.raises(ExternalAuthError):
         await client.chat([], [], num_ctx=10)
-    assert called == [True]  # credential marked invalid
+    assert called == [True]
 
 
 async def test_tracking_does_not_mark_on_transient_error() -> None:
@@ -261,73 +301,39 @@ async def test_tracking_does_not_mark_on_transient_error() -> None:
     client = _CredentialTrackingClient(_BoomTransient(), on_auth_error=on_err)
     with pytest.raises(LLMUnavailableError):
         await client.chat([], [], num_ctx=10)
-    assert called == []  # transient outage must NOT invalidate the key
-
-
-async def test_tracking_passes_through_success() -> None:
-    called: list[bool] = []
-
-    async def on_err() -> None:
-        called.append(True)
-
-    client = _CredentialTrackingClient(_Ok(), on_auth_error=on_err)
-    resp = await client.chat([], [], num_ctx=10)
-    assert resp.content == "ok"
     assert called == []
 
 
-async def test_build_chat_client_wraps_with_invalidate_callback() -> None:
-    invalidated: list[tuple[UUID, str]] = []
+async def test_tracking_passes_through_success() -> None:
+    client = _CredentialTrackingClient(_Ok(), on_auth_error=lambda: _noop())
+    resp = await client.chat([], [], num_ctx=10)
+    assert resp.content == "ok"
 
-    async def on_invalidate(user_id: UUID, provider: str) -> None:
-        invalidated.append((user_id, provider))
 
-    repo = MemCredentialRepo()
-    svc = ExternalCredentialService(
+async def _noop() -> None:
+    return None
+
+
+async def test_build_clients_wraps_with_invalidate_callback() -> None:
+    invalidated: list[tuple[UUID, UUID]] = []
+
+    async def on_invalidate(user_id: UUID, connection_id: UUID) -> None:
+        invalidated.append((user_id, connection_id))
+
+    repo = MemConnectionRepo()
+    svc = ExternalModelConnectionService(
         repo=repo,
         cipher=CredentialCipher(Fernet.generate_key().decode()),
         settings=get_settings(),
         on_invalidate=on_invalidate,
     )
     user = uuid4()
-    await svc.upsert(user_id=user, provider="openai", auth_type="api_key", secret="sk-x")
-    client = await svc.build_chat_client(user)
-    assert isinstance(client, _CredentialTrackingClient)
-
-    # Force the wrapped client to see a credential rejection.
-    client._inner = _BoomAuth()
+    conn = await svc.create(
+        user_id=user, label="X", kind="openai_compatible", base_url="b", model="m", secret="sk-x"
+    )
+    wrapper = (await svc.build_clients(user))[str(conn.id)]
+    assert isinstance(wrapper, _CredentialTrackingClient)
+    wrapper._inner = _BoomAuth()
     with pytest.raises(ExternalAuthError):
-        await client.chat([], [], num_ctx=10)
-    assert invalidated == [(user, "openai")]
-
-
-# ── subscription-first fallback chain ────────────────────────────────────────
-
-
-async def test_fallback_uses_secondary_on_transient_failure() -> None:
-    client = _FallbackClient(_BoomTransient(), _Ok())
-    resp = await client.chat([], [], num_ctx=10)
-    assert resp.content == "ok"
-
-
-async def test_fallback_uses_secondary_on_auth_error() -> None:
-    client = _FallbackClient(_BoomAuth(), _Ok())
-    resp = await client.chat([], [], num_ctx=10)
-    assert resp.content == "ok"
-
-
-async def test_fallback_returns_primary_when_it_succeeds() -> None:
-    class _OkPrimary:
-        async def chat(
-            self,
-            messages: list[LLMMessage],
-            tools: list[LLMToolDefinition],
-            *,
-            num_ctx: int,
-            response_format: dict[str, Any] | None = None,
-        ) -> LLMResponse:
-            return LLMResponse(content="primary")
-
-    client = _FallbackClient(_OkPrimary(), _Ok())
-    resp = await client.chat([], [], num_ctx=10)
-    assert resp.content == "primary"  # secondary not used
+        await wrapper.chat([], [], num_ctx=10)
+    assert invalidated == [(user, conn.id)]
