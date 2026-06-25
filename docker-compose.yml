@@ -30,6 +30,7 @@ services:
       ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434}
+      LLM_FALLBACK_BASE_URL: ${LLM_FALLBACK_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-ollama-local}
       ASSISTANT_MODEL: ${ASSISTANT_MODEL:-gemma3:12b}
       LLM_NUM_CTX: ${LLM_NUM_CTX:-65536}

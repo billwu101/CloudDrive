@@ -24,9 +24,14 @@ class OllamaLLMClient:
         timeout: float = 30.0,
         api_key: str = "",
         keep_alive: str = "",
+        fallback_base_urls: list[str] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self._base_url = base_url.rstrip("/")
+        # Primary first, then any fallbacks; chat() tries them in order and only
+        # raises once every endpoint has failed.
+        self._base_urls = [base_url.rstrip("/")] + [
+            u.rstrip("/") for u in (fallback_base_urls or []) if u
+        ]
         self._model = model
         self._timeout = timeout
         self._api_key = api_key
@@ -52,21 +57,25 @@ class OllamaLLMClient:
             payload["tools"] = [_to_ollama_tool(t) for t in tools]
         headers = _auth_headers(self._api_key)
 
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
-                transport=self._transport,
-            ) as client:
-                response = await client.post(
-                    f"{self._base_url}/api/chat",
-                    json=payload,
-                    headers=headers,
-                )
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise LLMUnavailableError("Local assistant model is unavailable") from exc
+        last_exc: httpx.HTTPError | None = None
+        for base_url in self._base_urls:
+            try:
+                async with httpx.AsyncClient(
+                    timeout=self._timeout,
+                    transport=self._transport,
+                ) as client:
+                    response = await client.post(
+                        f"{base_url}/api/chat",
+                        json=payload,
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                return _parse_ollama_response(response.json(), self._model)
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                continue
 
-        return _parse_ollama_response(response.json(), self._model)
+        raise LLMUnavailableError("Local assistant model is unavailable") from last_exc
 
 
 def _auth_headers(api_key: str) -> Mapping[str, str] | None:

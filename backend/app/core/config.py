@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     assistant_enabled: bool = True
     llm_provider: str = "ollama"
     llm_base_url: str = "http://192.168.10.75:11434"
+    # Optional fallback Ollama endpoint; tried when llm_base_url is unreachable.
+    llm_fallback_base_url: str = ""
     llm_api_key: str = "ollama-local"
     assistant_model: str = "gemma4:26b"
     llm_num_ctx: int = 65536
