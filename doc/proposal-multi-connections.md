@@ -108,7 +108,7 @@ external_model_connections
 - `AssistantPanel`:下拉列出 local + 各連線。
 - 測試:`ExternalModelSettings.test.tsx` 重寫;前端 **251 passed**。
 
-### 實機驗證重點（見 note.md）
+### 實機驗證重點（2026-06-25 實測）
 - **Gemini**:`openai_compatible` + `https://generativelanguage.googleapis.com/v1beta/openai`,可用(但 free tier 每日 20 次、且偶發 503 high demand)。
 - **Ollama cloud**:**必須用 `openai_compatible` + `https://ollama.com/v1`**(不是 `ollama` kind —— 原生 `/api/chat` + `/v1` base_url 會變 `/v1/api/chat` 404);`/v1` 支援 json_schema。preset 已修正。模型用目錄內名稱(如 `gpt-oss:20b`);**免費 key 有限流(撞到回 401)**。
 - 仍未實作:連線編輯 UI(只做了新增/刪除,PUT 端點有但 UI 沒接編輯)。

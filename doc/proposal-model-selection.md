@@ -3,7 +3,7 @@
 > 狀態：**已實作（2026-06-25）**。下拉選單最初列 local/openai/codex,後由
 > [proposal-multi-connections.md](./proposal-multi-connections.md) **延伸/取代**為「列出 local +
 > 使用者具名連線」——選項 id 從固定字串改為連線 id。錯誤分類回報、本機快速失敗、planner
-> 結構化輸出(json_schema)等本檔內容仍有效。詳見 note.md。
+> 結構化輸出(json_schema)等本檔內容仍有效。
 > 依 CLAUDE.md 文件先行規則。關聯：[proposal-multi-connections.md]、[codex-訂閱制問題分析.md](./codex-訂閱制問題分析.md)、DEC-023 / DEC-026。
 
 ## 1. 背景與動機
@@ -100,3 +100,22 @@
 
 ### 仍未納入（沿用第 6 節）
 - 多把同 provider key、全域偏好設定頁、codegen 逐輪指定模型、自動 fallback。
+
+## 11. 外部模型結構化輸出修正（json_schema，2026-06-25）
+
+> 模型選擇上線後發現的關鍵問題:選外部模型(Gemini)時助理只會閒聊、不執行。
+
+**根本原因**:planner 要求 LLM 回固定 JSON `{"reply", "steps":[{"skill","arguments","depends_on"}]}`。本機 Gemma 會遵守,**外部模型(如 Gemini)不遵守**。三次實測:
+1. 純文字模式 → 回自然語言 → `_parse` 失敗 → 退成閒聊回覆。
+2. `response_format=json_object` → 是 JSON,但**欄位名錯**(`step`/`args` 而非 `steps`/`arguments`)。
+3. **`response_format=json_schema`(結構化輸出)→ 格式完全正確** ✅。
+
+**前置 bug**:planner 規劃時未告知「使用者已選 N 個檔」,外部模型一直反問「哪個檔」。→ `planner.plan(selected_count=...)` 加一條系統訊息告知,並指示可直接呼叫選檔技能。
+
+**修法(範圍嚴格:只 planner 呼叫、只外部模型)**:
+- 在 `LLMClient.chat` 加 `response_format: dict | None` 參數,從 `planner` → `ModelRouter` → 外部 client 串下去;`ExternalLLMClient` 放進 payload。
+- `_PLAN_RESPONSE_FORMAT`(定義於 `planner.py`)是 plan 的 json_schema;**不加 `strict`**(strict 要求 `additionalProperties:false`,與開放的 `arguments` 物件衝突,OpenAI 會拒)。
+- 本機 Ollama 只在有 schema 時加自己的 `format:"json"`(它本來就遵守格式);**自然語言回覆、codegen 不受影響**(它們不帶 response_format)。
+- 為介面一致,所有 LLM client(ollama/external/codex/wrappers)與測試 fake 的 `chat()` 都加了該參數。
+
+**影響**:這是「所有外部模型走 planner」的通病,不只本功能 —— 模型選擇把它暴露出來。修正後 Gemini / Ollama(`/v1`)都能正確產生計畫(實測通過)。
