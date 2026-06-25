@@ -47,6 +47,9 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 async def _create_schema() -> AsyncGenerator[None, None]:
     """Create all tables once per test session, drop them at the end."""
     async with _engine.begin() as conn:
+        # file_embeddings uses the pgvector `vector` type; the CREATE EXTENSION
+        # normally lives in migration 0012, but create_all does not run migrations.
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with _engine.begin() as conn:
