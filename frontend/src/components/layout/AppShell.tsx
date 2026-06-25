@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { CurrentUserResponse, QuotaResponse } from '@/api/types'
+import { AssistantPanel } from '@/components/assistant/AssistantPanel'
 import { MainContent } from './MainContent'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
@@ -31,6 +32,7 @@ export function AppShell({
         <TopBar title={title} onSearch={onSearch} searchValue={searchValue} />
         <MainContent>{children}</MainContent>
       </div>
+      <AssistantPanel />
     </div>
   )
 }

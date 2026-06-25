@@ -7,7 +7,10 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_API_BASE_URL=http://localhost:8000/api/v1
+# Relative by default: the browser calls /api on the same origin and nginx
+# proxies it to the backend, so the build isn't tied to any host. Override only
+# if the API is served from a different origin.
+ARG VITE_API_BASE_URL=/api/v1
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 RUN npm run build

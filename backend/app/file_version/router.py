@@ -59,5 +59,7 @@ async def list_versions(
     drive_svc: DriveSvcDep,
     version_svc: FileVersionServiceDep,
 ) -> list[FileVersionResponse]:
-    item = await drive_svc.get_raw_item(current_user_id, item_id)
+    # Fetch without an ownership check; list_versions enforces view permission
+    # so a shared viewer (not just the owner) can list versions.
+    item = await drive_svc.get_raw_item_unscoped(item_id)
     return await version_svc.list_versions(current_user_id, item)

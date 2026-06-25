@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.file_version import FileVersion
@@ -28,6 +28,9 @@ class AbstractFileVersionRepository(ABC):
 
     @abstractmethod
     async def list_by_file(self, file_id: UUID) -> list[FileVersion]: ...
+
+    @abstractmethod
+    async def delete_by_file(self, file_id: UUID) -> None: ...
 
 
 class SQLFileVersionRepository(AbstractFileVersionRepository):  # pragma: no cover
@@ -73,3 +76,6 @@ class SQLFileVersionRepository(AbstractFileVersionRepository):  # pragma: no cov
             .order_by(FileVersion.version_no.desc())
         )
         return list(result.scalars().all())
+
+    async def delete_by_file(self, file_id: UUID) -> None:
+        await self._session.execute(delete(FileVersion).where(FileVersion.file_id == file_id))

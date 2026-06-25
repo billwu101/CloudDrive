@@ -1,0 +1,30 @@
+services:
+  machine-a:
+    build: .
+    hostname: machine-a # distinct host identity from machine-b
+    environment:
+      CODEX_HOME: /codexhome
+    volumes:
+      - codex_a:/codexhome # machine-a's own CODEX_HOME (will be logged in)
+      - ./transfer:/transfer # shared drop point to move auth.json a -> b
+      - ./scripts:/scripts:ro
+    command: sleep infinity
+    tty: true
+    stdin_open: true
+
+  machine-b:
+    build: .
+    hostname: machine-b
+    environment:
+      CODEX_HOME: /codexhome
+    volumes:
+      - codex_b:/codexhome # SEPARATE, never-logged-in CODEX_HOME (the "other machine")
+      - ./transfer:/transfer
+      - ./scripts:/scripts:ro
+    command: sleep infinity
+    tty: true
+    stdin_open: true
+
+volumes:
+  codex_a:
+  codex_b:

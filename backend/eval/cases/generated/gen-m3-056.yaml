@@ -1,0 +1,37 @@
+id: gen-m3-056
+name: 'M3 query+write #56 (search+list_items+recent->create_folder)'
+prompt: 幫我建立一個資料夾（過程中可先搜尋檔案、列出根目錄檔案、看最近開啟的檔案）
+mode:
+- api
+- browser
+tags:
+- daily-ops
+- generated
+- m3
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include:
+    - search
+    - list_items
+    - recent
+    - create_folder
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - reply: 計畫如下,請確認。
+    steps:
+    - skill: search
+      arguments:
+        q: invoice
+    - skill: list_items
+      arguments: {}
+    - skill: recent
+      arguments: {}
+    - skill: create_folder
+      arguments:
+        name: Folder56

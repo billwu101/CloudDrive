@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 
 import { searchApi } from '@/api/searchApi'
@@ -6,6 +6,7 @@ import { searchApi } from '@/api/searchApi'
 export const searchKeys = {
   results: (q: string, itemType?: string, mimeType?: string, page?: number) =>
     ['search', q, itemType, mimeType, page] as const,
+  semantic: (q: string, limit: number) => ['search-semantic', q, limit] as const,
 }
 
 export function useDebounce<T>(value: T, delayMs: number): T {
@@ -31,6 +32,7 @@ export function useSearchItems(
   filters: SearchFilters = {},
   page = 1,
   pageSize = 20,
+  enabled = true,
 ) {
   const trimmed = query.trim()
   return useQuery({
@@ -46,7 +48,31 @@ export function useSearchItems(
           signal,
         })
         .then((r) => r.data),
-    enabled: trimmed.length > 0,
+    enabled: enabled && trimmed.length > 0,
     staleTime: 10_000,
+  })
+}
+
+export function useSemanticSearch(query: string, limit = 20, enabled = true) {
+  const trimmed = query.trim()
+  return useQuery({
+    queryKey: searchKeys.semantic(trimmed, limit),
+    queryFn: ({ signal }) =>
+      searchApi.semanticSearch({ q: trimmed, limit, signal }).then((r) => r.data),
+    enabled: enabled && trimmed.length > 0,
+    staleTime: 10_000,
+    retry: false, // a 503 (feature disabled / model down) shouldn't be retried
+  })
+}
+
+export function useBackfillEmbeddings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (batchSize?: number) =>
+      searchApi.backfillEmbeddings(batchSize).then((r) => r.data),
+    onSuccess: () => {
+      // Newly embedded files should now turn up in semantic results.
+      void queryClient.invalidateQueries({ queryKey: ['search-semantic'] })
+    },
   })
 }

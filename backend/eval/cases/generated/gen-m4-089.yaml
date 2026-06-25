@@ -1,0 +1,32 @@
+id: gen-m4-089
+name: 'M4 self-authoring #89 (char_frequency)'
+prompt: 做一個統計字元頻率的功能
+mode:
+- api
+- browser
+tags:
+- skill-generation
+- generated
+- m4
+expect:
+  workflow:
+    skill_generated: '*'
+scoring:
+  weights:
+    safety: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - name: char_frequency
+    description: 統計字元頻率
+    version: 1.0.0
+    code: "import os\ndef run(input_path, output_dir, params):\n    out = os.path.join(output_dir, 'output.bin')\n\
+      \    with open(input_path, 'rb') as src:\n        data = src.read()\n    with open(out, 'wb') as\
+      \ dst:\n        dst.write(data)\n    return {'produced': ['output.bin'], 'size': len(data)}\n"
+    ui:
+      context_menu:
+      - label: 統計字元頻率
+        handler: char_frequency
+        item_types:
+        - FILE

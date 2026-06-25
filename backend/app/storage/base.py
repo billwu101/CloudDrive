@@ -1,7 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import IO, Protocol, runtime_checkable
+
+
+@dataclass(frozen=True)
+class StoredObject:
+    """A blob present in the backend, as seen by a storage sweep."""
+
+    key: str
+    size: int
+    # Last-modified time as a Unix epoch (seconds). Used by GC's grace period.
+    modified_at: float
 
 
 @runtime_checkable
@@ -26,4 +37,8 @@ class StorageProvider(Protocol):
 
     async def get_size(self, key: str) -> int:
         """Return the size in bytes of the stored object."""
+        ...
+
+    async def list_objects(self) -> list[StoredObject]:
+        """Enumerate every stored blob (for content GC). Excludes temp files."""
         ...

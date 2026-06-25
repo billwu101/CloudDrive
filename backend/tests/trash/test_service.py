@@ -73,11 +73,22 @@ def _file(owner_id: UUID, *, parent_id: UUID | None = None, storage_key: str = "
     return item
 
 
+class _SnapRefs:
+    """Fake SnapshotReferenceChecker — blobs in ``referenced`` are kept for GC."""
+
+    def __init__(self, referenced: set[str] | None = None) -> None:
+        self.referenced = referenced or set()
+
+    async def is_referenced_by_snapshot(self, storage_key: str) -> bool:
+        return storage_key in self.referenced
+
+
 def _make_svc(
     items: list[DriveItem] | None = None,
     shares: list[Share] | None = None,
     storage: MemStorage | None = None,
     version_repo: MemFileVersionRepo | None = None,
+    snapshot_referenced: set[str] | None = None,
 ) -> tuple[TrashService, MemDriveItemRepo, MemFileVersionRepo, MemStorage, MemShareRepo]:
     if storage is None:
         storage = MemStorage()
@@ -95,6 +106,9 @@ def _make_svc(
         share_repo=share_repo,
         storage=storage,
         quota_svc=quota_svc,
+        # By default nothing is snapshot-referenced, so orphaned blobs are deleted
+        # immediately — tests that assert physical deletion still hold.
+        snapshot_refs=_SnapRefs(snapshot_referenced),
     )
     return svc, item_repo, version_repo, storage, share_repo
 
@@ -205,6 +219,7 @@ async def test_permanent_delete_removes_storage() -> None:
         share_repo=share_repo,
         storage=storage,
         quota_svc=quota_svc,
+        snapshot_refs=_SnapRefs(),
     )
     await svc.permanent_delete(user_obj.id, item.id)
     assert "k/v1" in storage.deleted
@@ -242,6 +257,7 @@ async def test_permanent_delete_subtracts_quota() -> None:
         share_repo=MemShareRepo(),
         storage=storage,
         quota_svc=quota_svc,
+        snapshot_refs=_SnapRefs(),
     )
     await svc.permanent_delete(user_obj.id, item.id)
     assert user_obj.used_bytes == 300
@@ -281,8 +297,52 @@ async def test_permanent_delete_folder_recursively_deletes_children() -> None:
         share_repo=MemShareRepo(),
         storage=storage,
         quota_svc=quota_svc,
+        snapshot_refs=_SnapRefs(),
     )
     await svc.permanent_delete(user_obj.id, folder.id)
     assert folder.id not in item_repo._items
     assert child_file.id not in item_repo._items
     assert "child_key" in storage.deleted
+
+
+async def test_permanent_delete_keeps_blob_referenced_by_snapshot() -> None:
+    user_obj = _make_user(used_bytes=100)
+    storage = MemStorage()
+    storage._data["k/v1"] = b"x" * 100
+    item = _file(user_obj.id, storage_key="k/v1")
+    item.is_deleted = True
+    version_repo = MemFileVersionRepo()
+    version_repo._versions.append(
+        FileVersion(
+            id=uuid4(),
+            file_id=item.id,
+            version_no=1,
+            storage_key="k/v1",
+            size_bytes=100,
+            checksum_sha256=None,
+            created_by=user_obj.id,
+            created_at=datetime.now(UTC),
+        )
+    )
+    item_repo = MemDriveItemRepo([item])
+    trash_repo = MemTrashRepo(item_repo._items)
+    quota_svc = QuotaService(repo=MockUserRepo(user_obj))
+    svc = TrashService(
+        item_repo=item_repo,
+        trash_repo=trash_repo,
+        version_repo=version_repo,
+        share_repo=MemShareRepo(),
+        storage=storage,
+        quota_svc=quota_svc,
+        # A snapshot still references this blob.
+        snapshot_refs=_SnapRefs({"k/v1"}),
+    )
+
+    await svc.permanent_delete(user_obj.id, item.id)
+
+    # Metadata gone and quota freed immediately...
+    assert item.id not in item_repo._items
+    assert user_obj.used_bytes == 0
+    # ...but the blob survives for the snapshot (GC reclaims it later).
+    assert "k/v1" not in storage.deleted
+    assert "k/v1" in storage._data

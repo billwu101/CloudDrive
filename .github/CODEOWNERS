@@ -1,0 +1,7 @@
+# CI/CD、容器與部署設定的修改必須由 maintainer review
+.github/workflows/    @billwu101
+.github/CODEOWNERS    @billwu101
+backend/Dockerfile    @billwu101
+frontend/Dockerfile   @billwu101
+compose.prod.yml      @billwu101
+deploy/               @billwu101

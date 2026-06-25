@@ -78,7 +78,7 @@ async def test_rename_item(client: AsyncClient) -> None:
     item_id = create.json()["id"]
 
     rename = await client.patch(
-        f"/api/v1/drive/items/{item_id}/rename", json={"name": "NewName"}, headers=h
+        f"/api/v1/drive/items/{item_id}/name", json={"name": "NewName"}, headers=h
     )
     assert rename.status_code == 200
     assert rename.json()["name"] == "NewName"
@@ -129,6 +129,29 @@ async def test_search_finds_uploaded_file(client: AsyncClient) -> None:
     assert resp.status_code == 200
     names = [i["name"] for i in resp.json()["items"]]
     assert "quarterly_report.txt" in names
+
+
+async def test_search_finds_file_by_content(client: AsyncClient) -> None:
+    token = await register_and_login(client, email="u7b@test.com")
+    h = auth_headers(token)
+
+    # Filename has no match; the term lives only inside the file body.
+    await client.post(
+        "/api/v1/upload/simple",
+        headers=h,
+        files={
+            "file": (
+                "notes.txt",
+                io.BytesIO(b"the mitochondria is the powerhouse of the cell"),
+                "text/plain",
+            )
+        },
+    )
+
+    resp = await client.get("/api/v1/search", params={"q": "mitochondria"}, headers=h)
+    assert resp.status_code == 200
+    names = [i["name"] for i in resp.json()["items"]]
+    assert "notes.txt" in names  # matched by indexed content, not filename
 
 
 async def test_search_returns_empty_for_no_match(client: AsyncClient) -> None:

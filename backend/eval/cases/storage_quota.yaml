@@ -1,0 +1,18 @@
+id: storage-quota-read
+name: Ask remaining storage (read-only fast-path)
+prompt: How much storage space do I have left?
+mode: [api]
+tags: [read-only]
+expect:
+  workflow:
+    requires_confirmation: false
+    steps_include: [storage_quota]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+    - reply: Checking your storage usage.
+      steps:
+        - skill: storage_quota
+          arguments: {}

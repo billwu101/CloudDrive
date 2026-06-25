@@ -1,0 +1,22 @@
+id: exec-untar
+name: Execute untar skill and verify the right members are extracted
+prompt: 做一個解開 tar 封存的功能
+mode: [exec, browser]
+tags: [skill-execution, m4]
+expect:
+  execute:
+    fixture: sample.tar
+    context_menu_label: Extract tar archive
+    produces_min: 2
+    # Content correctness: the archive's members come out with the right names.
+    expected_files: [alpha.txt, docs/beta.txt]
+    code: |
+      import tarfile
+      def run(input_path, output_dir, params):
+          with tarfile.open(input_path) as tar:
+              tar.extractall(output_dir)
+              names = tar.getnames()
+          return {'extracted': names}
+scoring:
+  weights: { execution: 1.0 }
+  pass_threshold: 1.0

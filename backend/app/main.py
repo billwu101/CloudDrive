@@ -1,3 +1,7 @@
+import asyncio
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI, Request
@@ -8,6 +12,28 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 
+logger = logging.getLogger("app.main")
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
+    stop = asyncio.Event()
+    task: asyncio.Task[None] | None = None
+    if settings.snapshot_scheduler_enabled:
+        # Imported lazily so the scheduler (and its DB engine import) isn't pulled
+        # in for apps/tests that never enable it.
+        from app.snapshot.scheduler import build_default_scheduler
+
+        task = asyncio.create_task(build_default_scheduler().run_forever(stop))
+        logger.info("Time Machine scheduler enabled")
+    try:
+        yield
+    finally:
+        stop.set()
+        if task is not None:
+            await task
+
 
 def create_app() -> FastAPI:
     settings = get_settings()
@@ -17,6 +43,7 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
+        lifespan=lifespan,
     )
 
     application.add_middleware(

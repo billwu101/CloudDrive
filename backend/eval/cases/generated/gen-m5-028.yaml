@@ -1,0 +1,43 @@
+id: gen-m5-028
+name: 'M5 multi-step+refs #28 (search+list_items+get_info->rename_item)'
+prompt: 幫我把某個項目改名（過程中可先搜尋檔案、列出根目錄檔案、查看某個項目的詳情）
+mode:
+- api
+- browser
+tags:
+- workflow-reuse
+- generated
+- m5
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include:
+    - search
+    - list_items
+    - get_info
+    - rename_item
+scoring:
+  weights:
+    correctness: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - reply: 多步驟計畫,請確認。
+    steps:
+    - skill: search
+      arguments:
+        q: invoice
+    - skill: list_items
+      arguments: {}
+    - skill: get_info
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.0.id
+    - skill: rename_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.0.id
+        new_name: Renamed28

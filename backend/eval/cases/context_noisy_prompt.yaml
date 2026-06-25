@@ -1,0 +1,21 @@
+id: context-noisy-prompt
+name: Long/noisy prompt still yields a clean single-step plan
+prompt: >-
+  There's a lot going on today and I keep getting distracted, but ignoring all
+  of that for a second, could you just tell me how much storage space I have
+  left in my drive right now? Thanks.
+mode: [api]
+tags: [context]
+expect:
+  workflow:
+    requires_confirmation: false
+    steps_include: [storage_quota]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+    - reply: Here is your remaining storage.
+      steps:
+        - skill: storage_quota
+          arguments: {}

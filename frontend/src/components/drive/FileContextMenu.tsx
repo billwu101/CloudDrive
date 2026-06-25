@@ -5,6 +5,7 @@ import {
   FolderInput,
   Link2,
   Share2,
+  Sparkles,
   Star,
   StarOff,
   Trash2,
@@ -12,9 +13,16 @@ import {
 
 import type { DriveItemResponse } from '@/api/types'
 
+export interface AssistantContextMenuAction {
+  skillId: string
+  label: string
+  handler: string
+}
+
 interface FileContextMenuProps {
   item: DriveItemResponse
   position: { x: number; y: number }
+  assistantActions?: AssistantContextMenuAction[]
   onClose: () => void
   onPreview: (item: DriveItemResponse) => void
   onRename: (item: DriveItemResponse) => void
@@ -24,6 +32,7 @@ interface FileContextMenuProps {
   onToggleStar: (item: DriveItemResponse) => void
   onTrash: (item: DriveItemResponse) => void
   onDownload?: (item: DriveItemResponse) => void
+  onAssistantAction?: (action: AssistantContextMenuAction, item: DriveItemResponse) => void
 }
 
 const MenuItem = ({
@@ -38,6 +47,7 @@ const MenuItem = ({
   danger?: boolean
 }) => (
   <button
+    role="menuitem"
     onClick={onClick}
     className={`flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent ${danger ? 'text-destructive' : ''}`}
   >
@@ -49,6 +59,7 @@ const MenuItem = ({
 export function FileContextMenu({
   item,
   position,
+  assistantActions = [],
   onClose,
   onPreview,
   onRename,
@@ -58,6 +69,7 @@ export function FileContextMenu({
   onToggleStar,
   onTrash,
   onDownload,
+  onAssistantAction,
 }: FileContextMenuProps) {
   const wrap =
     (fn: () => void) =>
@@ -69,7 +81,14 @@ export function FileContextMenu({
 
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} />
+      <div
+        className="fixed inset-0 z-40"
+        onClick={onClose}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          onClose()
+        }}
+      />
       <div
         role="menu"
         className="fixed z-50 min-w-44 rounded-md border bg-popover p-1 shadow-md"
@@ -89,6 +108,19 @@ export function FileContextMenu({
         />
         {item.item_type === 'FILE' && onDownload && (
           <MenuItem icon={Download} label="Download" onClick={wrap(() => onDownload(item))} />
+        )}
+        {assistantActions.length > 0 && (
+          <>
+            <div className="my-1 h-px bg-border" />
+            {assistantActions.map((action) => (
+              <MenuItem
+                key={`${action.skillId}:${action.handler}`}
+                icon={Sparkles}
+                label={action.label}
+                onClick={wrap(() => onAssistantAction?.(action, item))}
+              />
+            ))}
+          </>
         )}
         <div className="my-1 h-px bg-border" />
         <MenuItem icon={Trash2} label="Move to trash" onClick={wrap(() => onTrash(item))} danger />

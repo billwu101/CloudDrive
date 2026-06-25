@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 from app.core.dependencies import get_db
@@ -31,7 +32,7 @@ _TEST_DB_URL = os.environ.get(
     "postgresql+asyncpg://postgres:postgres@localhost:5432/clouddrive_test",
 )
 
-_engine = create_async_engine(_TEST_DB_URL, echo=False, pool_pre_ping=True)
+_engine = create_async_engine(_TEST_DB_URL, echo=False, pool_pre_ping=True, poolclass=NullPool)
 _SessionFactory = async_sessionmaker(_engine, expire_on_commit=False)
 
 
@@ -46,6 +47,9 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 async def _create_schema() -> AsyncGenerator[None, None]:
     """Create all tables once per test session, drop them at the end."""
     async with _engine.begin() as conn:
+        # file_embeddings uses the pgvector `vector` type; the CREATE EXTENSION
+        # normally lives in migration 0012, but create_all does not run migrations.
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with _engine.begin() as conn:

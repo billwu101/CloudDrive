@@ -28,6 +28,56 @@ class Settings(BaseSettings):
     smtp_from: str = "Cloud Drive <no-reply@clouddrive.local>"
     smtp_use_tls: bool = True  # STARTTLS
 
+    # In-app AI assistant
+    assistant_enabled: bool = True
+    llm_provider: str = "ollama"
+    llm_base_url: str = "http://192.168.10.75:11434"
+    # Optional fallback Ollama endpoint; tried when llm_base_url is unreachable.
+    llm_fallback_base_url: str = ""
+    llm_api_key: str = "ollama-local"
+    assistant_model: str = "gemma4:26b"
+    llm_num_ctx: int = 65536
+    llm_timeout_seconds: float = 300
+    llm_keep_alive: str = "15m"
+    assistant_max_tool_iterations: int = 8
+    assistant_sandbox_timeout_sec: int = 30
+
+    # Optional external model fallback. Disabled by default; privacy gates apply first.
+    external_llm_enabled: bool = False
+    max_local_attempts: int = 3
+    external_llm_base_url: str = ""
+    external_model: str = ""
+    external_llm_api_key: str = ""
+    privacy_default: str = "sensitive"
+
+    # Per-user external model credentials (DEC-026). CREDENTIAL_ENCRYPTION_KEY is a
+    # urlsafe-base64 Fernet key (generate: Fernet.generate_key()); empty disables
+    # per-user credentials. Path B (OpenAI API key) calls external_api_base_url
+    # with external_chat_model.
+    credential_encryption_key: str = ""
+    external_api_base_url: str = "https://api.openai.com/v1"
+    external_chat_model: str = "gpt-5.5"
+    # Path A (Codex subscription): the official `codex` CLI binary used to bridge
+    # a user's subscription (EM3). Must be installed in the runtime image.
+    codex_bin: str = "codex"
+
+    # Time Machine background scheduler (in-process loop). Off by default — enable
+    # in a single-worker deployment, or run an external cron calling the same
+    # SnapshotService methods for multi-worker setups.
+    snapshot_scheduler_enabled: bool = False
+    snapshot_scheduler_tick_seconds: int = 300  # how often the loop wakes up
+    snapshot_gc_interval_minutes: int = 360  # how often to run blob GC
+    snapshot_gc_grace_minutes: int = 60  # protect blobs newer than this from GC
+
+    # Semantic search (embeddings via Ollama + pgvector). Off by default so
+    # uploads don't block on an embedding model that may not be installed.
+    embedding_enabled: bool = False
+    embedding_model: str = "nomic-embed-text"
+    embedding_base_url: str = ""  # falls back to llm_base_url when empty
+    # Must match the model's output dimension AND the vector() column width in
+    # migration 0012 (default nomic-embed-text = 768).
+    embedding_dim: int = 768
+
 
 @lru_cache
 def get_settings() -> Settings:

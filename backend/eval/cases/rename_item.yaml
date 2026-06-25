@@ -1,0 +1,20 @@
+id: rename-item-write
+name: Rename an item (write — needs confirmation)
+prompt: Rename my Reports folder to Archive
+mode: [api]
+tags: [daily-ops]
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include: [rename_item]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+mock_llm:
+  responses:
+    - reply: I will rename it to Archive.
+      steps:
+        - skill: rename_item
+          arguments:
+            item_id: 11111111-1111-1111-1111-111111111111
+            new_name: Archive
