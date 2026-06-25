@@ -38,6 +38,9 @@ addopts = "--strict-config --strict-markers"
 asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "needs_llm: integration test that calls the real configured Gemma model; skip in CI (no reachable LLM) with -m 'not needs_llm'",
+]
 
 [tool.coverage.run]
 branch = true
