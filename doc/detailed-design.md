@@ -369,7 +369,7 @@ stateDiagram-v2
 正式環境僅 **frontend/nginx 對外**（`80/443`，反代 `/api`）；**backend 與 postgres 留內網**，不對公網；redis 已移除（未來若加也只留內網）。compose 的 `8000/5432` 映射僅供本機開發，正式以防火牆／security group／compose override 移除。**詳見 DEC-028。**
 
 **Q6. secret（JWT／DB／SMTP／LLM）現在放哪？**
-開發以 `core/config.py` 預設值 + `.env`（不進版控）提供；正式環境的 `JWT_SECRET_KEY`、`POSTGRES_PASSWORD`、SMTP 密碼、LLM API key、`CREDENTIAL_ENCRYPTION_KEY` 由 secret manager／CI-CD secrets／受控環境變數注入，不進版控、不寫文件。系統內部 refresh token、share token 只存 hash；使用者外部模型憑證加密存於 `user_external_credentials.secret_encrypted`。**詳見 DEC-028。**
+開發以 `core/config.py` 預設值 + `.env`（不進版控）提供；正式環境的 `JWT_SECRET_KEY`、`POSTGRES_PASSWORD`、SMTP 密碼、LLM API key、`CREDENTIAL_ENCRYPTION_KEY` 由 secret manager／CI-CD secrets／受控環境變數注入，不進版控、不寫文件。系統內部 refresh token、share token 只存 hash；使用者外部模型憑證加密存於 `external_model_connections.secret_encrypted`（2026-06-25 起，取代舊 `user_external_credentials`，見 §12.10）。**詳見 DEC-028。**
 
 ## 5. 前端詳細設計
 
@@ -2200,6 +2200,8 @@ DB metadata 與實體 blob 分屬 PostgreSQL 與檔案系統，**檔案操作不
 - **不符資格**（隱私鎖定或外部停用）→ **不外送任何資料**，停止並向使用者說明「本地無法完成」，提供縮小需求/手動處理的選項。
 - 升級事件經 lifecycle hook 記錄（稽核），並可由使用者層級設定全面禁用外部。
 
+> **更新（2026-06-25，DEC-026）**：上述「本地預設 + 失敗自動升級」為原始 DEC-023 行為，仍以 `target=None` 路徑保留。但**助理聊天面板現改為「使用者每則訊息手動選模型」**——選定的連線就是該次唯一執行器，**不再自動 fallback**；接不到/憑證被拒/額度耗盡會回**可區分的明確錯誤**且**快速失敗**（本機 connect 逾時 5s）。詳見 §12.10.4。
+
 
 ### 9.2 名詞定義
 
@@ -2323,6 +2325,16 @@ WorkflowRun {
 - **刪除**：`DELETE /assistant/skills/{id}`（回 204），連同其右鍵動作一併移除。
 - service 層 `update_skill`/`delete_skill`、repository `update`/`delete`；皆依 `user_id` 隔離。
 
+### 9.95.4 自建技能在對話中使用（chat-enabled，已實作 2026-06-25）
+
+> 需求草案見 [proposal-chat-skills.md](./proposal-chat-skills.md)。原本 planner 只認 13 個內建 skill；自建/生成的 skill（如 `compress_to_zip`）只能透過右鍵 `POST /assistant/skills/{id}/execute` 對單檔執行，對話中說「用我的 skill 壓縮」會被回「沒有這個功能」。本功能讓自建 skill 也能被 planner 排進計畫——但因為是**不可信程式碼**，採多層管控。
+
+- **逐個 opt-in（D3）**：`assistant_skills` 加 `chat_enabled BOOLEAN NOT NULL DEFAULT false`（migration **0015**）。**只有 `installed` 且 `chat_enabled`** 的 skill 才載入 planner registry；`PATCH /assistant/skills/{id}` 可切換（前端 SkillsPage 卡片 toggle）。
+- **一律 write 級（D1）**：載入時以 `tier="write"` + 固定參數 `{ item_id }` + **橋接 closure handler** 註冊——closure 捕捉 `AssistantSkillService`，被呼叫時把該 skill 的 DB `code` 交給沙盒執行（重用 `execute_skill` → `_execute_generated`：複製原檔 → 沙盒 → 可信層上傳，執行前先快照）。用到自建 skill 的計畫**一律進確認閘**（`is_auto_confirmable` 回 false），不自動執行。
+- **勾選帶入目標檔（D2）**：`AssistantChatRequest` 加 `selected_item_ids: list[UUID]`；自建 skill 步驟的 `item_id` 由**勾選清單**帶入（不靠 LLM 猜檔名）。勾一個 → 對該檔執行；**勾多個 → 對每檔各跑一次（批次，執行層迴圈）**；勾零個 → 提示先選檔。前端沿用硬碟頁多選 state，對話框顯示已選檔 chips。
+- **名稱衝突（D3-Q3）**：自建 skill 名稱與內建衝突 → **跳過不載入並提示改名**。
+- **安全多層**：預設關 + 逐個 opt-in → write 級必確認 → codeguard 靜態掃描 + 沙盒隔離（網路/檔案/行程封鎖）→ 執行前自動快照（§13.4.3）；沙盒在本機執行，不送外部模型。
+
 
 ### 9.6 端到端範例
 
@@ -2354,6 +2366,7 @@ app/assistant/
   schemas.py           # Pydantic I/O schemas（chat / plan / skill / workflow）
   service.py           # 01 AgentLoop
   planner.py           # 階段 2-3：NL → 候選 Workflow（結構化輸出 + 驗證）；+ 07 build_planner_prompt
+                       #   2026-06-25：加 _PLAN_RESPONSE_FORMAT（json_schema）強制外部模型回正確格式；plan(target, selected_count) 串接，見 §12.10.5
   workflow.py          # Workflow/WorkflowRun 模型、執行器（階段 8）、相依與錯誤策略
   context.py           # 02
   # 07 system prompt：無獨立 prompt.py，內嵌於 planner / subagent 各自的 build_*_prompt
@@ -2381,7 +2394,7 @@ app/assistant/
 
 - `assistant_sessions(id, user_id, title, created_at, updated_at)`
 - `assistant_messages(id, session_id, role, content, tool_calls JSONB, created_at)`
-- `assistant_skills(id, user_id, name, description, manifest JSONB, code TEXT, status, created_at, updated_at)`
+- `assistant_skills(id, user_id, name, description, manifest JSONB, code TEXT, status, chat_enabled, created_at, updated_at)` — `chat_enabled BOOLEAN NOT NULL DEFAULT false`（migration 0015；§9.95.4）控制該自建技能是否載入 planner registry
 - `assistant_workflows(id, user_id, name, source_nl, steps JSONB, created_at)`
 - `assistant_workflow_runs(id, workflow_id, user_id, status, step_results JSONB, created_at, finished_at)`
 
@@ -2635,17 +2648,18 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 
 ## 12. 外部模型接入（Codex/OpenAI）
 
-### 12.0 實作現況（2026-06-19）
+### 12.0 實作現況（2026-06-19；多組具名連線改版 2026-06-25，見 §12.7）
 
 | 區塊 | 設計 § | 階段 | 實作落點 | 狀態 |
 | --- | --- | --- | --- | --- |
-| 憑證儲存 + 加密 + profile 端點/UI | §12.3 | EM1 | `app/external_model/{models,crypto,repository,router,schemas,service}.py`、migration 0014、`components/settings/ExternalModelSettings.tsx` | ✅ |
+| 憑證儲存 + 加密 + profile 端點/UI | §12.3 | EM1 | `app/external_model/{models,crypto,repository,router,schemas,service}.py`、migration 0014、`components/settings/ExternalModelSettings.tsx` | ✅（已被 §12.7 改版取代） |
 | 升級接線（本地反覆失敗 → 外部） | §12.4 | EM1 | `app/assistant/llm/router.py`、`app/assistant/router.py` | ✅ |
 | 路徑 B：OpenAI API key | §12.2.2 | EM2 | `app/assistant/llm/external.py`（`ExternalLLMClient`） | ✅ |
 | 失敗／額度耗盡 → 標 `invalid` | §12.2.2 | EM2 | `external.py`（401/403/429-quota 分類）+ `service._CredentialTrackingClient` | ✅ |
 | 路徑 A：Codex 訂閱 | §12.2.1 | EM3 | `app/external_model/codex_client.py`（`CodexSubscriptionClient`） | ✅ |
-| provider 選擇／退回 | §12.2.3 | EM3 | `service.build_chat_client` + `_FallbackClient` | ✅ |
+| provider 選擇／退回 | §12.2.3 | EM3 | `service.build_chat_client` + `_FallbackClient` | ✅（手動選擇改版後不再自動退回，見 §12.10） |
 | eval 考官 provider（+ 評 exec 產出） | §12.5 | E6 | `eval/judge.py`、`eval/run.py`（任務在 `tasks/assistant-eval.md`） | ✅ |
+| **多組具名連線 + 模型可選 + 無自動 fallback** | **§12.10** | **EM4** | `app/models/external_model_connection.py`、migration **0016**、`external_model/{repository,service,router,schemas}.py`、`assistant/{router,planner,llm}.py`、`components/settings/ExternalModelSettings.tsx`、`components/assistant/AssistantPanel.tsx` | **✅（2026-06-25）** |
 
 
 ### 12.1 目標
@@ -2686,7 +2700,7 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 
 1. **取得 token（使用者端，一次性）**：使用者在自己機器用官方 `codex login`（OAuth 訂閱）登入，產生 `~/.codex/auth.json`（含 access/refresh token）。前端 profile 頁引導使用者把該 `auth.json` 的 token 內容貼上／上傳。
    - server **不**代跑 `codex login`（OAuth 需使用者瀏覽器互動，無法在 server 端代理）。
-2. **儲存（server 端）**：把 token 經對稱加密存入該使用者的 `user_external_credentials`（§12.3），`auth_type=oauth_token`、`provider=codex`；只回遮罩。
+2. **儲存（server 端）**：把 token 經對稱加密存入該使用者的外部模型憑證表（原 `user_external_credentials`，2026-06-25 起為 `external_model_connections` 的 `kind=codex` 連線，見 §12.10）；只回遮罩。
 3. **呼叫（server 端，per-request 隔離）**〔已實作〕：需要升級或考官用 Codex 時——
    - 為「該次呼叫 × 該使用者」建立**臨時隔離 `CODEX_HOME`**（`tempfile.mkdtemp`），把解密後的 token 寫成 `auth.json`（0600），以 **`codex exec --skip-git-repo-check`** subprocess 呼叫訂閱額度，**用畢即焚**（`shutil.rmtree`、token 不落地於共用位置）。比照 openclaw 的「隔離 home + 遮罩」實務。
    - 實作：`codex_client.CodexSubscriptionClient`（subprocess runner 可注入測試）；輸出解析見 `_extract_response`。
@@ -2716,7 +2730,9 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 
 依使用者決定：**加密存 DB、可解密供呼叫**。
 
-- 資料表 `user_external_credentials`〔已實作，Alembic migration 0014〕：
+> ⚠️ **本節為 EM1~EM3 的原始設計（每使用者每 provider 一把憑證）。2026-06-25 已被 §12.10「多組具名模型連線」取代** —— `user_external_credentials` 表由 migration 0016 drop，改為 `external_model_connections`（可多筆、可命名、可選來源與模型）。加密／遮罩／隱私閘等安全立場不變,以下表格保留作為歷史對照,實際資料表以 §12.10 為準。
+
+- 資料表 `user_external_credentials`〔**已停用**，原 Alembic migration 0014；migration 0016 已 drop〕：
 
   | 欄位 | 說明 |
   | --- | --- |
@@ -2730,7 +2746,7 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 
 - **加密**：對稱加密（如 Fernet），金鑰來自部署密鑰 `CREDENTIAL_ENCRYPTION_KEY`（env，不入版控）。呼叫外部前才在記憶體解密，用畢即棄。
 - **API 一律回傳遮罩**（`masked_hint`），**永不回傳明文**。
-- profile 端點〔已實作〕：`PUT /users/me/external-credentials`（設定/更新）、`DELETE /users/me/external-credentials/{provider}`（移除）、`GET`（只回 provider + masked_hint + status）。cipher 未設時 `PUT` 回 503。
+- profile 端點〔**已被 §12.10 取代**〕：原 `PUT /users/me/external-credentials`、`DELETE /users/me/external-credentials/{provider}`、`GET` 已移除，改為 `GET/POST/PUT/DELETE /users/me/model-connections`（見 §12.10 / §14.5）。cipher（`CREDENTIAL_ENCRYPTION_KEY`）未設時寫入端點仍回 503。
 - **安全立場（硬性）**：
   - **絕不**以明文儲存任何密碼或金鑰。
   - 路徑 A（訂閱制）若需帳密登入，**登入換 token 後只存 token，不存密碼**；密碼不落 DB、不寫 log。
@@ -2743,7 +2759,7 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 - 資格：使用者已在 profile 綁定可用外部憑證 **且** 外部啟用 **且** 非隱私鎖定（或已去識別化）。
 - 外部回來的計畫/結果**仍走原本權限、安全、沙箱、確認閘**（與本地產出同等對待）。
 - 升級事件寫**稽核**（誰、哪個工作、用哪個 provider、第幾次升級），但**不記錄憑證**。
-- 接點〔已實作〕：`ModelRouter`（`app/assistant/llm/router.py`）是升級骨架；`app/assistant/router.py` 的 `_assistant_service` 注入 `CurrentUserId` → `build_chat_client` 依使用者 profile 憑證**動態建外部 client**（取代僅全域 env），provider 依 §12.2.3 選擇。
+- 接點〔已實作〕：`ModelRouter`（`app/assistant/llm/router.py`）是升級骨架；`app/assistant/router.py` 的 `_assistant_service` 注入 `CurrentUserId` 動態建外部 client（取代僅全域 env）。**2026-06-25 起**：原 `build_chat_client`（單一 provider + `_FallbackClient` 自動退回）已改為 `ExternalModelConnectionService.build_clients(user_id)`（回 `{連線 id: client}`），且助理聊天改為手動選模型、不自動退回（§12.10）。本節的自動升級僅保留在 `target=None` 相容路徑。
 
 ### 12.5 Eval harness 考官（judge）
 
@@ -2834,6 +2850,80 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 - **判定：跨機可用已證實——token 不綁機、可搬。** 多使用者集中式在「技術可搬性」這關**通過**。
 - 過程插曲（非授權問題）：首次失敗是 codex 的「Not inside a trusted directory」目錄檢查，加 `--skip-git-repo-check` 後即正常——印證「環境/用法錯 ≠ 綁機」。
 - 尚未實測：① **refresh 未觸發**（token 仍新、`last_refresh` 未變）；refresh token 在 auth.json 內、屬標準 OAuth 續期，預期可跨機（低風險）。② 多地多 IP 的 ChatGPT 風控。
+
+### 12.10 多組「具名模型連線」+ 模型可選 + 無自動 fallback（EM4，已實作 2026-06-25）
+
+> 取代 §12.3「每使用者每 provider 一把憑證」。完整需求草案見 [proposal-multi-connections.md](./proposal-multi-connections.md) 與 [proposal-model-selection.md](./proposal-model-selection.md)。決策 DEC-026。
+
+#### 12.10.1 動機
+
+EM1~EM3 的 `user_external_credentials` 是 `(user_id, provider)` 單筆，痛點：① 某模型免費額度用完無法換另一把 key；② 不能存多把、不能自己命名；③ UI 寫「OpenAI key」但實連 Gemini（走 OpenAI 相容端點），名稱誤導；④ 不同來源（OpenAI / Gemini / Ollama cloud / Codex）呼叫方式不同；⑤ 不同 key／來源要能選不同模型。
+
+核心洞見：「**OpenAI 相容」是協定不是廠商**——OpenAI / Gemini / Ollama cloud / Groq 等多半提供相容 `/chat/completions`，差別只在 `base_url + model + key`；Codex（訂閱）是唯一特例（CLI bridge）。
+
+#### 12.10.2 資料模型
+
+`external_model_connections`〔Alembic migration **0016**：drop `user_external_credentials`、建新表、**不遷移**舊資料（舊為測試用）〕：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `id` (PK uuid) | 連線 id（可多筆） |
+| `user_id` (FK CASCADE) | 擁有者 |
+| `label` | 使用者自取名稱（顯示在下拉/設定） |
+| `kind` | `openai_compatible` / `ollama` / `codex` |
+| `base_url` | `openai_compatible`/`ollama` 必填；`codex` 不需 |
+| `model` | 該連線使用的模型（如 `gemini-2.5-flash-lite`） |
+| `secret_encrypted` | API key（或 codex auth.json），Fernet 加密 |
+| `masked_hint` | 遮罩提示（僅顯示末 4 碼） |
+| `status` | `active` / `invalid`（驗證失敗時標記） |
+| `created_at` / `updated_at` | |
+
+#### 12.10.3 後端
+
+- `app/models/external_model_connection.py`（新）、刪 `user_external_credential.py`。
+- `external_model/repository.py`：`SQLConnectionRepository`（CRUD by id）。
+- `external_model/service.py`：`ExternalModelConnectionService`，`build_clients(user_id) -> dict[str, LLMClient]`（keyed by `str(connection.id)`）；依 `kind` 建 client：
+  - `openai_compatible` → `ExternalLLMClient(base_url, model, key)`
+  - `ollama` → `OllamaLLMClient(base_url, model, api_key)`（原生 `/api/chat`）
+  - `codex` → `CodexSubscriptionClient`
+  - 失敗（`ExternalAuthError`）→ `_CredentialTrackingClient` 標記該連線 `invalid`；Codex token refresh 回寫（by `user_id` + `connection_id`）。
+- `external_model/schemas.py`：`ConnectionCreate/Update/View`（只回遮罩，永不回明文）。
+- `external_model/router.py`：`GET/POST/PUT/DELETE /users/me/model-connections`（取代舊 `/external-credentials`）。
+- `assistant/router.py`：`external_clients = build_connection_service(...).build_clients(user)`；`GET /assistant/models` 回 local + 每筆連線（`id=str(id)`、`label="{label} · {model}"`、`available=status=="active"`）；chat 的 `target` = 連線 id（或 `"local"`）。
+- `AssistantChatRequest.model: str | None`（連線 id 或 `"local"`）。
+
+#### 12.10.4 模型可選 + 無自動 fallback（取代 §12.4 的自動升級路徑）
+
+- 助理面板每則訊息帶上所選 `model`；`ModelRouter.chat(target=...)` 指定時 **local-only 或該連線 only**，**不再自動 fallback**（不再 codex→openai 串接，也不再「本地反覆失敗才升級」）。`target=None` 維持 §12.4 / DEC-023 舊自動行為以保相容。
+- 隱私閘沿用（手動選外部仍須通過隱私規則；敏感且未去識別化 → 拒送並說明）。
+- **明確錯誤 + 快速失敗**：失敗回可區分訊息——連不到（連線失敗/逾時）、憑證被拒（401/403）、額度/速率（429/quota）、其他。`OllamaLLMClient` 加 `connect_timeout`（預設 **5s**），連不到的本機數秒內失敗，不再卡 `LLM_TIMEOUT_SECONDS`（300s）。
+
+#### 12.10.5 外部模型結構化輸出（json_schema）
+
+外部模型（如 Gemini）原本不遵守 planner 要求的 JSON 格式（`{"reply","steps":[{"skill","arguments","depends_on"}]}`）→ 只閒聊不執行。修法（範圍嚴格：只 planner 呼叫、只外部走 schema）：
+
+- `LLMClient.chat` 加 `response_format: dict | None`，從 `planner` → `ModelRouter` → 外部 client 串下去；`ExternalLLMClient` 放進 payload。
+- `_PLAN_RESPONSE_FORMAT`（定義於 `planner.py`）是 plan 的 json_schema，**不加 `strict`**（strict 要求 `additionalProperties:false`，與開放的 `arguments` 物件衝突，OpenAI 會拒）。
+- 本機 Ollama 只在有 schema 時加自己的 `format:"json"`；自然語言回覆、codegen 不帶 `response_format`，不受影響。
+- 前置修正：planner 規劃時未告知「使用者已選 N 個檔」→ 外部模型一直反問哪個檔。`planner.plan(selected_count=...)` 加一條系統訊息告知。
+
+#### 12.10.6 前端
+
+- `api/types.ts`：`ModelTarget = string`、`ConnectionView/Create/Update/Kind`。
+- `api/externalModelApi.ts` → `modelConnectionApi`（CRUD）；`hooks/useExternalCredentials.ts` → `useModelConnections` 等。
+- `components/settings/ExternalModelSettings.tsx`：連線**列表** + 新增表單（label / kind 下拉 / base_url / model / key）+ **presets**（Gemini / OpenAI / Ollama cloud / Codex，自動帶入對應 base_url 降低混淆）。
+- `components/assistant/AssistantPanel.tsx`：下拉列出 local + 各連線 label；未設定者停用；送出帶 `model`；錯誤顯示後端分類訊息。
+
+#### 12.10.7 實機驗證（2026-06-25 實測）
+
+- **Gemini**：`openai_compatible` + `https://generativelanguage.googleapis.com/v1beta/openai` 可用（free tier 每日有限、偶發 503 high demand）。
+- **Ollama cloud**：**必須用 `openai_compatible` + `https://ollama.com/v1`**（不是 `ollama` kind——原生 `/api/chat` + `/v1` base_url 會變 `/v1/api/chat` 404）；`/v1` 支援 json_schema；模型用目錄內名稱（如 `gpt-oss:20b`）；**免費 key 有限流（撞到回 401）**。preset 已對應修正。
+
+#### 12.10.8 安全 / 待辦
+
+- 沿用 Fernet 加密、只回遮罩、隱私閘；測試後端 **593 passed**、前端 **251 passed**，ruff/mypy/lint/typecheck 全過。
+- ⚠️ **SSRF 未控管**：`base_url` 目前任填，未做 https 限制/白名單——使用者可填任意 URL（含內網）。**待補**（見 proposal-multi-connections §10）。
+- 連線**編輯 UI 未接**（PUT 端點有，UI 只做新增/刪除）。
 
 ## 13. 時光機（Snapshots）
 
@@ -3068,7 +3158,7 @@ tests/snapshot/
 
 ### 14.5 完整端點清單
 
-Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／response body、enum 值與校驗規則以 OpenAPI 自動生成為準**（執行時 `/docs`、`/openapi.json`），錯誤碼對照見 §16。認證欄：🔐 需 access token、🔓 公開。
+Base path：`/api/v1`。下表涵蓋全部 62 個端點（2026-06-25：+`GET /assistant/models`、模型連線 CRUD 取代舊 external-credentials）；**逐欄位 request／response body、enum 值與校驗規則以 OpenAPI 自動生成為準**（執行時 `/docs`、`/openapi.json`），錯誤碼對照見 §16。認證欄：🔐 需 access token、🔓 公開。
 
 **Auth（`/auth`）**
 
@@ -3147,7 +3237,8 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 
 | Method | Path | 用途 | 認證 |
 | --- | --- | --- | --- |
-| POST | `/assistant/chat` | 對話（回計畫或技能提案） | 🔐 |
+| POST | `/assistant/chat` | 對話（回計畫或技能提案）；可帶 `model`（連線 id 或 `local`，§12.10.4）與 `selected_item_ids`（勾選檔，§9.95.4） | 🔐 |
+| GET | `/assistant/models` | 可用模型清單：local + 各 active 連線（§12.10.3） | 🔐 |
 | GET | `/assistant/sessions` | 對話列表 | 🔐 |
 | GET | `/assistant/sessions/{id}/messages` | 對話訊息 | 🔐 |
 | POST | `/assistant/workflows/{id}/confirm` | 確認 pending 計畫 | 🔐 |
@@ -3172,13 +3263,14 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | GET | `/snapshots/settings` | 讀取快照設定 | 🔐 |
 | PUT | `/snapshots/settings` | 更新快照設定 | 🔐 |
 
-**External Model（`/users/me/external-credentials`）**
+**External Model（`/users/me/model-connections`）** — 2026-06-25 取代舊 `/external-credentials`（§12.10）
 
 | Method | Path | 用途 | 認證 |
 | --- | --- | --- | --- |
-| GET | `/users/me/external-credentials` | 取得外部模型憑證（遮罩） | 🔐 |
-| PUT | `/users/me/external-credentials` | 設定外部模型憑證（加密存） | 🔐 |
-| DELETE | `/users/me/external-credentials/{provider}` | 刪除憑證 | 🔐 |
+| GET | `/users/me/model-connections` | 列出具名模型連線（遮罩） | 🔐 |
+| POST | `/users/me/model-connections` | 新增連線（label/kind/base_url/model/key，加密存） | 🔐 |
+| PUT | `/users/me/model-connections/{id}` | 更新連線 | 🔐 |
+| DELETE | `/users/me/model-connections/{id}` | 刪除連線 | 🔐 |
 
 ## 15. 非功能設計
 
