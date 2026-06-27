@@ -72,7 +72,41 @@
 
 ## 3. 整體架構
 
-### 3.1 後端架構
+### 3.1 模組拆分原則與依賴方向
+
+整體系統依下列原則拆分模組，確保各模組職責清楚、相互低耦合、可獨立開發與測試：
+
+1. 每個模組只處理自己的核心責任。
+2. Router 不直接操作資料庫。
+3. Service 負責商業邏輯與跨 repository 協調。
+4. Repository 只負責資料存取。
+5. StorageProvider 只負責檔案本體讀寫，不負責資料庫。
+6. 權限檢查集中在 PermissionService，不分散在各 router。
+7. 容量檢查集中在 QuotaService。
+8. 前端 server state 由 TanStack Query 管理。
+9. 前端 UI state 由 Zustand 管理。
+10. 每個模組都要能用 mock repository 或 mock storage 獨立測試。
+
+模組依賴方向（單向，不可逆）：
+
+```text
+Router
+  -> Service
+    -> Repository
+    -> StorageProvider
+    -> PermissionService
+    -> QuotaService
+
+Repository
+  -> PostgreSQL
+
+StorageProvider
+  -> Local file system
+```
+
+Repository 不可呼叫 Service；StorageProvider 不可呼叫 Repository；前端元件不可直接呼叫 `fetch`，必須透過 api client 或 hook。後端的分層落地細節見 §6 後端核心設計。
+
+### 3.2 後端架構
 
 ```text
 FastAPI app
@@ -120,7 +154,7 @@ FastAPI app
   schemas
 ```
 
-### 3.2 前端架構
+### 3.3 前端架構
 
 ```text
 React app
@@ -162,7 +196,7 @@ React app
   utils
 ```
 
-### 3.3 系統架構圖
+### 3.4 系統架構圖
 
 ```mermaid
 graph TD
@@ -178,7 +212,7 @@ graph TD
 
 > metadata 經 PostgreSQL、檔案 binary 經 Storage Provider，兩者分離（見 §7.9）。
 
-### 3.4 部署圖
+### 3.5 部署圖
 
 ```mermaid
 graph LR
@@ -198,7 +232,7 @@ graph LR
 
 > 本機映射 `8000/5432` 僅供開發；正式環境僅 nginx 對外（見 DEC-028）。
 
-### 3.5 核心流程時序圖
+### 3.6 核心流程時序圖
 
 **登入後 silent refresh**
 
@@ -288,7 +322,7 @@ sequenceDiagram
   TM-->>U: 還原完成（可再倒回）
 ```
 
-### 3.6 輔助流程圖
+### 3.7 輔助流程圖
 
 **權限判斷（繼承）**
 
@@ -329,40 +363,6 @@ stateDiagram-v2
   uploading --> cancelled: 取消
   completed --> [*]
 ```
-
-### 3.7 模組拆分原則與依賴方向
-
-整體系統依下列原則拆分模組，確保各模組職責清楚、相互低耦合、可獨立開發與測試：
-
-1. 每個模組只處理自己的核心責任。
-2. Router 不直接操作資料庫。
-3. Service 負責商業邏輯與跨 repository 協調。
-4. Repository 只負責資料存取。
-5. StorageProvider 只負責檔案本體讀寫，不負責資料庫。
-6. 權限檢查集中在 PermissionService，不分散在各 router。
-7. 容量檢查集中在 QuotaService。
-8. 前端 server state 由 TanStack Query 管理。
-9. 前端 UI state 由 Zustand 管理。
-10. 每個模組都要能用 mock repository 或 mock storage 獨立測試。
-
-模組依賴方向（單向，不可逆）：
-
-```text
-Router
-  -> Service
-    -> Repository
-    -> StorageProvider
-    -> PermissionService
-    -> QuotaService
-
-Repository
-  -> PostgreSQL
-
-StorageProvider
-  -> Local file system
-```
-
-Repository 不可呼叫 Service；StorageProvider 不可呼叫 Repository；前端元件不可直接呼叫 `fetch`，必須透過 api client 或 hook。後端的分層落地細節見 §6 後端核心設計。
 
 ## 4. 已確認設計決策
 
@@ -3347,7 +3347,7 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 
 ## 21. CI/CD 與部署實作
 
-> 對應 proposal §26（規劃）與 §3.4 部署圖。本章為**實作規格**——實際檔案落在 repo 的 `.github/workflows/` 與部署主機 `/opt/cloud-drive/`，**以實際檔案為準**。適用：10 人以下小團隊、private repo、Ubuntu 內網部署主機、Docker Compose。範例已**適配本專案**（pgvector image、env 名稱、uv/npm 指令、`/health` endpoint）。
+> 對應 proposal §26（規劃）與 §3.5 部署圖。本章為**實作規格**——實際檔案落在 repo 的 `.github/workflows/` 與部署主機 `/opt/cloud-drive/`，**以實際檔案為準**。適用：10 人以下小團隊、private repo、Ubuntu 內網部署主機、Docker Compose。範例已**適配本專案**（pgvector image、env 名稱、uv/npm 指令、`/health` endpoint）。
 
 ### 21.1 整體流程
 
