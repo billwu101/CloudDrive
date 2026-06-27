@@ -199,6 +199,7 @@ React app
 ### 3.4 系統架構圖
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 graph TD
   U["使用者瀏覽器"] -->|HTTPS| NX["nginx：靜態 SPA + /api 反代"]
   NX -->|"靜態資源"| SPA["React SPA"]
@@ -215,6 +216,7 @@ graph TD
 ### 3.5 部署圖
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 graph LR
   subgraph DEV["本機開發（docker compose）"]
     F1["frontend :8088"] --> B1["backend :8000"]
@@ -237,6 +239,7 @@ graph LR
 **登入後 silent refresh**
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 sequenceDiagram
   participant U as 瀏覽器
   participant FE as AuthInitializer
@@ -255,6 +258,7 @@ sequenceDiagram
 **檔案上傳（補償式一致性）**
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 sequenceDiagram
   participant C as 前端
   participant S as UploadService
@@ -275,6 +279,7 @@ sequenceDiagram
 **分享給指定使用者**
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 sequenceDiagram
   participant O as 擁有者
   participant SH as ShareService
@@ -290,6 +295,7 @@ sequenceDiagram
 **AI 助理執行 workflow**
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 sequenceDiagram
   participant U as 使用者
   participant A as Assistant（HARNESS）
@@ -310,6 +316,7 @@ sequenceDiagram
 **時光機還原**
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 sequenceDiagram
   participant U as 使用者
   participant TM as SnapshotService
@@ -327,6 +334,7 @@ sequenceDiagram
 **權限判斷（繼承）**
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 flowchart TD
   A["存取 item"] --> B{"是 owner?"}
   B -->|是| O["owner：全部操作"]
@@ -342,6 +350,7 @@ flowchart TD
 **AI workflow 狀態機**
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 stateDiagram-v2
   [*] --> planning: 收到指令
   planning --> pending_confirm: 產生計畫
@@ -355,6 +364,7 @@ stateDiagram-v2
 **upload session 狀態機**
 
 ```mermaid
+%%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
 stateDiagram-v2
   [*] --> pending
   pending --> uploading: 上傳分片
@@ -3447,6 +3457,7 @@ CREDENTIAL_ENCRYPTION_KEY=<Fernet key> # 啟用外部模型憑證才需
 - **必要安全規則**：self-hosted 只用於 private repo、只跑 CD；PR 一律 `ubuntu-latest`、禁止 PR 用 self-hosted；Runner 非 root、不入 docker 群組、只能 sudo 固定腳本；正式 image 只由 CI 建、**用完整 SHA 不用 `latest`**；`.env` 只存主機；第三方 Action 正式上線釘完整 commit SHA。
 
 ## 22. 結論
+
 
 本詳細設計將系統拆分為 Auth、User/Quota、DriveItem、Permission、Storage、Upload、Download、Preview、Trash、Search、Share、FileVersion、ActivityLog 與前端對應模組。模組之間透過明確接口互動，避免彼此直接耦合。
 
