@@ -894,7 +894,7 @@ Core 模組提供全系統共用能力：
 4. 密碼雜湊與驗證。
 5. 統一錯誤格式。
 6. 取得目前登入使用者。
-7. CORS、API prefix、app startup 設定。
+7. CORS、API prefix、app startup 設定（CORS 以 `expose_headers` 暴露 `Content-Disposition`，讓前端跨來源時仍能讀取下載 zip 的檔名）。
 
 ### 6.1.2 主要檔案
 
@@ -1480,7 +1480,8 @@ Download 模組負責檔案下載：
 1. 驗證使用者權限（每個檔案各自經 `assert_can_download`）。
 2. **單檔下載**：驗證 item 是 file，從 StorageProvider 讀取，使用 `StreamingResponse` 回傳。
 3. **多選打包下載**：接受多個 item id（可同時含檔案與資料夾）；資料夾遞迴展開並保留目錄結構，逐檔權限檢查後打包成單一 zip 串流回傳。zip 以 `SpooledTemporaryFile` 緩衝（小檔留記憶體、大檔落暫存）避免整包佔用 RAM；頂層同名項自動去重（`a.txt` → `a (1).txt`），blob 缺失的檔案略過而非整批失敗。
-4. 寫入下載操作紀錄。
+4. **zip 檔名**：取自選取內容而非固定 `download.zip`——單選用該項目名（資料夾用資料夾名、檔案去副檔名），多選用「第一項名 等 N 項」；以 `Content-Disposition` 回傳。前端為 blob 下載、blob URL 不帶檔名，故需從此標頭解析檔名設給 `a.download`；當前端與後端跨來源時，後端 CORS 必須以 `expose_headers` 暴露 `Content-Disposition`，否則瀏覽器讀不到（見 §6.1.1）。
+5. 寫入下載操作紀錄。
 
 ### 6.8.2 API
 
