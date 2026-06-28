@@ -1477,17 +1477,17 @@ MVP 中 router 可以不暴露這些 endpoint。
 
 Download 模組負責檔案下載：
 
-1. 驗證使用者權限。
-2. 驗證 item 是 file。
-3. 從 StorageProvider 讀取檔案。
-4. 使用 StreamingResponse 回傳。
-5. 寫入下載操作紀錄。
+1. 驗證使用者權限（每個檔案各自經 `assert_can_download`）。
+2. **單檔下載**：驗證 item 是 file，從 StorageProvider 讀取，使用 `StreamingResponse` 回傳。
+3. **多選打包下載**：接受多個 item id（可同時含檔案與資料夾）；資料夾遞迴展開並保留目錄結構，逐檔權限檢查後打包成單一 zip 串流回傳。zip 以 `SpooledTemporaryFile` 緩衝（小檔留記憶體、大檔落暫存）避免整包佔用 RAM；頂層同名項自動去重（`a.txt` → `a (1).txt`），blob 缺失的檔案略過而非整批失敗。
+4. 寫入下載操作紀錄。
 
 ### 6.8.2 API
 
 | Method | Path | 說明 |
 | --- | --- | --- |
-| GET | `/api/v1/drive/items/{item_id}/download` | 下載檔案 |
+| GET | `/api/v1/download/{item_id}` | 下載單一檔案（串流） |
+| POST | `/api/v1/download/archive` | 多選打包為 zip（body：`{ "item_ids": [...] }`；資料夾遞迴、保留結構） |
 
 ### 6.8.3 Service 介面
 
@@ -3098,7 +3098,8 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | Method | Path | 用途 | 認證 |
 | --- | --- | --- | --- |
 | POST | `/upload/simple` | 小檔直接上傳 | 🔐 |
-| GET | `/download/{item_id}` | 下載檔案（串流/短效 URL） | 🔐 |
+| GET | `/download/{item_id}` | 下載單一檔案（串流） | 🔐 |
+| POST | `/download/archive` | 多選打包為 zip（`{item_ids}`，資料夾遞迴） | 🔐 |
 | GET | `/preview/{item_id}` | 預覽資訊 | 🔐 |
 | GET | `/preview/{item_id}/content` | 預覽內容 | 🔐 |
 | GET | `/drive/items/{item_id}/versions` | 檔案版本列表 | 🔐 |

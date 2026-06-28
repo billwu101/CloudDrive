@@ -2,6 +2,7 @@ import { ArrowLeft, FolderOpen } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { driveApi } from '@/api/driveApi'
 import type {
   AssistantSkillExecuteResponse,
   AssistantSkillResponse,
@@ -172,6 +173,20 @@ export function DrivePage() {
     setTrashTargets(targets)
   }, [items, selectedIds])
 
+  const handleDownloadSelected = useCallback(async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const res = await driveApi.downloadArchive(ids)
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'download.zip'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }, [selectedIds])
+
   const handleRetryUpload = useCallback(
     (task: { file: File }) => {
       upload([task.file])
@@ -226,6 +241,7 @@ export function DrivePage() {
             <DriveToolbar
               selectedCount={selectedIds.size}
               onNewFolder={() => setShowCreateFolder(true)}
+              onDownloadSelected={handleDownloadSelected}
               onTrashSelected={handleTrashSelected}
             />
           </div>
