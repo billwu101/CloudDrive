@@ -145,7 +145,7 @@ async def test_archive_single_file_bundles_content() -> None:
     svc = _make_svc(items=[f], storage=storage)
 
     result = await svc.archive(user, [f.id])
-    assert result.filename == "download.zip"
+    assert result.filename == "a.zip"  # single file -> its name without extension
     zf = await _zip_from(result)
     assert zf.namelist() == ["a.txt"]
     assert zf.read("a.txt") == b"alpha"
@@ -163,6 +163,7 @@ async def test_archive_folder_preserves_structure() -> None:
     svc = _make_svc(items=[folder, sub, f1, f2], storage=storage)
 
     result = await svc.archive(user, [folder.id])
+    assert result.filename == "docs.zip"  # single folder -> its own name
     zf = await _zip_from(result)
     assert set(zf.namelist()) == {"docs/1.txt", "docs/sub/2.txt"}
     assert zf.read("docs/sub/2.txt") == b"two"
@@ -220,3 +221,17 @@ async def test_archive_dedupes_duplicate_top_level_names() -> None:
     result = await svc.archive(user, [f1.id, f2.id])
     zf = await _zip_from(result)
     assert set(zf.namelist()) == {"dup.txt", "dup (1).txt"}
+
+
+async def test_archive_multi_select_names_zip_after_first_and_count() -> None:
+    user = uuid4()
+    storage = MemStorage()
+    storage._data["k/1"] = b"one"
+    storage._data["k/2"] = b"two"
+    folder = _item(owner_id=user, item_type=ItemType.FOLDER, name="docs")
+    inside = _mkfile(user, "x.txt", storage_key="k/1", parent_id=folder.id)
+    other = _mkfile(user, "report.pdf", storage_key="k/2")
+    svc = _make_svc(items=[folder, inside, other], storage=storage)
+
+    result = await svc.archive(user, [folder.id, other.id])
+    assert result.filename == "docs 等 2 項.zip"  # first item's name + item count

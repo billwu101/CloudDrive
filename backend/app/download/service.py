@@ -21,6 +21,12 @@ from app.storage.base import StorageProvider
 _FOLDER_PAGE = 500
 
 
+def _strip_ext(name: str) -> str:
+    """Drop a file's extension for use as a zip base name (report.txt -> report)."""
+    stem, dot, _ext = name.rpartition(".")
+    return stem if dot else name
+
+
 @dataclass
 class DownloadFileResult:
     filename: str
@@ -76,11 +82,17 @@ class DownloadService:
 
         files: list[tuple[str, str]] = []  # (arcname inside zip, storage_key)
         used_top: set[str] = set()
+        first_name: str | None = None
         for item_id in item_ids:
             item = await self._items.get_by_id(item_id)
             if item is None or item.is_deleted:
                 raise AppError(ErrorCode.NOT_FOUND, "Item not found", status_code=404)
             await self._perm.assert_can_download(user_id, item)
+            if first_name is None:
+                # Folders keep their full name; files drop the extension.
+                first_name = (
+                    item.name if item.item_type == ItemType.FOLDER else _strip_ext(item.name)
+                )
             top_name = self._dedupe(used_top, item.name)
             if item.item_type == ItemType.FILE:
                 await self._maybe_add(files, top_name, item)
@@ -89,7 +101,12 @@ class DownloadService:
 
         if not files:
             raise AppError(ErrorCode.INVALID_OPERATION, "Selection contains no downloadable files")
-        return ArchiveResult(filename="download.zip", stream=self._build_zip(files))
+        # Name the zip after the selection, not a generic "download.zip": a single
+        # item uses its own name; multiple items use the first name + "等 N 項".
+        label = first_name or "download"
+        if len(item_ids) > 1:
+            label = f"{label} 等 {len(item_ids)} 項"
+        return ArchiveResult(filename=f"{label}.zip", stream=self._build_zip(files))
 
     @staticmethod
     def _dedupe(used: set[str], name: str) -> str:

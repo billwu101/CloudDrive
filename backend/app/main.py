@@ -52,6 +52,10 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Let the browser read the download filename on cross-origin responses —
+        # Content-Disposition is not a CORS-safelisted response header, so without
+        # this the frontend cannot name the downloaded zip.
+        expose_headers=["Content-Disposition"],
     )
 
     @application.exception_handler(AppError)

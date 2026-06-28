@@ -177,10 +177,15 @@ export function DrivePage() {
     const ids = [...selectedIds]
     if (ids.length === 0) return
     const res = await driveApi.downloadArchive(ids)
+    // The server names the zip after the selection (folder/file name); read it
+    // back from Content-Disposition since a blob URL carries no filename.
+    const cd = (res.headers['content-disposition'] as string | undefined) ?? ''
+    const match = /filename\*=UTF-8''([^;]+)/i.exec(cd)
+    const filename = match ? decodeURIComponent(match[1]) : 'download.zip'
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'download.zip'
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     a.remove()
