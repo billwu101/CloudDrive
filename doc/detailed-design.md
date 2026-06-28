@@ -2633,15 +2633,20 @@ runs: 3                               # 跑 3 次取通過率/變異
 backend/eval/
   __init__.py
   schema.py          # EvalCase / Expect / Scoring（pydantic）+ YAML 載入
-  cases/             # *.yaml 測試案例
-  runner_api.py      # API 模式：直接打後端 endpoint
+  cases/             # *.yaml 測試案例（含 generated/ 與 exec/）
+  generate_cases.py  # 產生 M2–M5 案例套件（每級 100 案、scripted mock_llm）
+  runner.py          # API 模式：直接打後端 endpoint
   runner_browser.py  # Browser 模式橋接（觸發 Playwright 並回收結果）
+  exec_runner.py     # Exec 模式：在真實 SkillSandbox 跑案例 reference code 對 fixture，比對產出
+  inproc.py          # In-process（mock-LLM）runner：進程內建真實 pipeline、無需 backend，供 CI 穩定跑
+  state.py           # 抓取執行後 drive/storage 狀態供 verifier 斷言
   verifier.py        # 確定性斷言（workflow/state/safety）
   judge.py           # 可選 LLM 評審（rubric → 分數）
   scoring.py         # 多維度加權、通過率/變異、套件彙總
   report.py          # 產出 JSON（機器）+ Markdown（人讀）
   run.py             # CLI 入口
-  baseline.json      # 可選：基準分數，供回歸比較
+  baseline.py        # 基準分數載入與回歸比較（CLI 以 --baseline 指向 baseline.json 資料檔）
+  fixtures/          # exec 模式的確定性輸入 fixture 生成（make_fixtures）
 frontend/e2e/assistant/
   assistant-eval.spec.ts   # Browser 模式：讀同一批 case，驅動真實 UI
 ```
