@@ -60,13 +60,12 @@
 1. 管理員後台 UI。
 2. OAuth 登入。
 3. WebSocket 即時通知。
-4. 全文檢索。
-5. 防毒掃描實作。
-6. 端對端加密。
-7. 線上 Office 文件共同編輯。
-8. 桌面同步程式。
-9. 手機 App。
-10. 大檔案分片上傳核心流程實作。
+4. 防毒掃描實作。
+5. 端對端加密。
+6. 線上 Office 文件共同編輯。
+7. 桌面同步程式。
+8. 手機 App。
+9. 大檔案分片上傳核心流程實作。
 
 上述項目可保留資料表欄位或抽象接口，但不在本文件中展開成完整實作。
 
@@ -1659,65 +1658,71 @@ class TrashService:
 
 ### 6.11.1 責任
 
-Search 模組負責搜尋使用者可存取的檔案與資料夾。
+Search 模組提供使用者可存取檔案／資料夾的搜尋，分兩種：
 
-MVP 搜尋範圍：
+1. **全文搜尋（預設啟用）**：搜尋**檔名**與**檔案內容**。上傳時自動抽取文字建索引（`file_search_index`），查詢時比對檔名與索引內容。
+2. **語意搜尋（選用）**：以 embedding 向量做語意相近檢索（`file_embeddings` + pgvector），由 `EMBEDDING_ENABLED` 控制、預設關閉；未啟用時相關端點回 `503`。
 
-1. 檔案名稱。
-2. 資料夾名稱。
-3. MIME type 篩選。
-4. item_type 篩選。
+兩者都只在使用者**有權限**（owner 或被分享）的範圍內搜尋，並排除垃圾桶。資料表見 §7.10／§7.11。
 
-全文檢索不納入本文件主設計。
+### 6.11.2 內容索引（全文）
 
-### 6.11.2 API
+- **建立時機**：上傳時於 `SearchIndexService.index_file` 同步建立——以 `extract_text` 抽取純文字後 upsert `file_search_index`（一檔一列，`item_id` 為 PK）。
+- **可抽取型別**：純文字類（`txt/md/markdown/csv/tsv/json/log/xml/yaml/yml/html/htm/rst`，以及 `text/*`、`application/json`）與 **PDF**（pypdf，最多 50 頁）。其餘型別不索引內容，但仍可用檔名搜到。
+- **保護上限**：單檔超過 5 MiB 不在上傳路徑同步抽取；內容截斷至 20 萬字，避免索引列膨脹。
+- **失敗非致命**：抽取失敗或不支援只代表「不可內容搜尋」，不影響上傳；既有索引列會被清除。
+
+### 6.11.3 API
 
 | Method | Path | 說明 |
 | --- | --- | --- |
-| GET | `/api/v1/search` | 搜尋項目 |
+| GET | `/api/v1/search` | 全文搜尋（檔名 + 內容），支援 `type`／`mime_type` 篩選與分頁 |
+| GET | `/api/v1/search/semantic` | 語意搜尋（選用，未啟用回 `503`） |
+| POST | `/api/v1/search/embeddings/backfill` | 為語意搜尋啟用前已存在的檔案補建 embedding（選用，未啟用回 `503`） |
 
-Query：
+`GET /search` Query：`q`（必填）、`type`（file／folder／all）、`mime_type`、`page`、`page_size`。
 
-| 參數 | 必填 | 說明 |
-| --- | --- | --- |
-| q | 是 | 關鍵字 |
-| type | 否 | file、folder、all |
-| mime_type | 否 | MIME type |
-| page | 否 | 頁碼 |
-| page_size | 否 | 每頁筆數 |
-
-### 6.11.3 Service 介面
+### 6.11.4 Service 介面
 
 ```python
-class SearchService:
-    async def search(
-        self,
-        user_id: UUID,
-        query: str,
-        item_type: str | None,
-        mime_type: str | None,
-        page: int,
-        page_size: int,
-    ) -> Page[DriveItem]
+class SearchService:                      # 全文搜尋
+    async def search(self, user_id, query, *, item_type, mime_type, page, page_size) -> Page[DriveItemResponse]
+
+class SearchIndexService:                 # 上傳時建索引（全文 + 選用 embedding）
+    async def index_file(self, *, item_id, data, mime_type, extension) -> bool
+
+class SemanticSearchService:              # 語意查詢（選用）
+    async def search(self, *, user_id, query, limit) -> list[SemanticHit]   # SemanticHit(item, score, snippet)
+
+class EmbeddingBackfillService:           # 舊檔補建 embedding（選用）
+    async def run(self, *, user_id, batch_size) -> BackfillResult           # (indexed, remaining)
 ```
 
-### 6.11.4 查詢設計
+由 `app/search/factory.py` 依 `EMBEDDING_ENABLED` 組裝：未啟用時 `build_semantic_search_service`／`build_embedding_backfill_service` 回 `None`，router 轉 `503`。Embedding 經 `OllamaEmbeddingClient`（`EMBEDDING_BASE_URL` 預設沿用 `LLM_BASE_URL`）。
 
-1. 排除 `is_deleted = true`。
-2. 搜尋 owner 自己的檔案。
-3. 搜尋被分享給自己的檔案。
-4. 使用 PostgreSQL `pg_trgm` 提升模糊搜尋效能。
-5. 第二階段若需要更完整的權限繼承搜尋，可加入 permission cache。
+### 6.11.5 查詢設計
 
-### 6.11.5 可獨立測試項
+**全文（`SQLSearchRepository.search`）**：
 
-1. 搜尋可找到自己的檔案。
-2. 搜尋可找到分享給自己的檔案。
-3. 搜尋不可找到未分享的他人檔案。
-4. 垃圾桶檔案不出現在搜尋結果。
-5. type=file 只回傳檔案。
-6. type=folder 只回傳資料夾。
-7. MIME type 篩選有效。
+1. 比對 `DriveItem.name ILIKE %q%` OR `FileSearchIndex.content ILIKE %q%`（子字串，涵蓋 CJK）OR `to_tsvector('english', content) @@ plainto_tsquery(q)`（英文詞幹）。
+2. LEFT JOIN 索引表，讓「無內容索引的檔案」仍可用檔名命中。
+3. 排除 `is_deleted = true`；限 owner 自己或被分享給自己的項目；支援 `type`／`mime_type` 篩選與分頁。
+
+**語意（`SQLFileEmbeddingRepository.semantic_search`）**：
+
+1. 長文於建索引時切塊（每塊 1000 字、重疊 100、最多 50 塊），逐塊 embedding 存 `file_embeddings`（best-effort，失敗不擋上傳）。
+2. 查詢時將 query embedding 成向量，以 pgvector `cosine_distance` 找最近塊；每檔以 `DISTINCT ON (item_id)` 取其最相近塊後再排序。
+3. 權限過濾（owner 或被分享、排除垃圾桶）；回 `SemanticHit(item, score = 1 − distance, snippet)`，snippet 為最相近塊的預覽文字。
+
+### 6.11.6 可獨立測試項
+
+1. 全文：可用檔名找到自己的檔案。
+2. 全文：可用**檔案內容**找到自己的檔案（內容已索引）。
+3. 全文：可找到分享給自己的檔案；找不到未分享的他人檔案。
+4. 全文：垃圾桶檔案不出現；`type`／`mime_type` 篩選有效。
+5. 索引：上傳支援型別會建 `file_search_index`；不支援型別不建、仍可檔名搜。
+6. 語意：未啟用時 `/search/semantic`、`/embeddings/backfill` 回 `503`。
+7. 語意：啟用時依相似度排序、含 score 與 snippet（需 embedding 服務）。
 
 ### 6.12 Share 模組
 
@@ -2155,6 +2160,36 @@ DB metadata 與實體 blob 分屬 PostgreSQL 與檔案系統，**檔案操作不
 - **殘留風險與補強**：極端中斷仍可能留下孤兒 blob 或缺失 blob，故正式環境可加**定期 storage audit** 產生孤兒／缺失報告；`activity_logs` 為輔助稽核、不阻塞主流程。
 
 見 [decisions.md](./decisions.md) DEC-027。
+
+### 7.10 file_search_index
+
+```text
+item_id uuid primary key references drive_items(id) on delete cascade
+content text not null default ''
+updated_at timestamptz not null
+```
+
+檔案抽取出的純文字內容，供全文搜尋（§6.11）。一檔一列、隨 drive item 一併 cascade 刪除；`content` 同時供 `ILIKE` 子字串比對（涵蓋 CJK）與 `to_tsvector('english', …)` 英文全文檢索。
+
+### 7.11 file_embeddings
+
+```text
+id uuid primary key
+item_id uuid not null references drive_items(id) on delete cascade
+chunk_index integer not null default 0
+snippet text not null default ''
+embedding vector(768) not null
+model varchar(100) not null default ''
+updated_at timestamptz not null
+```
+
+語意搜尋（選用）用的向量表：長文切塊後**一塊一列**（`chunk_index`）。`embedding` 為 pgvector `vector(768)`（須與 `EMBEDDING_MODEL` 輸出維度一致，預設 `nomic-embed-text` = 768）；`snippet` 為該塊預覽文字（搜尋結果顯示用）。查詢以 `cosine_distance` 取每檔最近塊。需 `CREATE EXTENSION vector`（migration 0012）。
+
+索引：
+
+```sql
+CREATE INDEX idx_file_embeddings_item_id ON file_embeddings(item_id);
+```
 
 ## 8. In-App AI Assistant（引擎設計）
 
@@ -3356,7 +3391,7 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | 管理員後台 | 使用 `users.is_admin`，另開 admin routers/pages |
 | OAuth 登入 | AuthService 增加 OAuth provider，users 增加 provider identity 表 |
 | WebSocket 通知 | 增加 NotificationService 與 websocket router |
-| 全文檢索 | SearchService 底層替換為 PostgreSQL full-text 或 OpenSearch |
+| 搜尋升級 | 在現有全文（PostgreSQL `tsvector`／`ILIKE`）＋語意（pgvector）之上，未來可換 OpenSearch／專用向量庫以提升規模與相關性 |
 | 防毒掃描 | UploadService 上傳後送 background task |
 | 檔案加密 | StorageProvider 寫入前加密、讀取後解密 |
 | 團隊空間 | 增加 workspaces、workspace_members、workspace_drive_items |
