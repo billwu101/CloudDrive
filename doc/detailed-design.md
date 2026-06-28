@@ -886,6 +886,33 @@ useSearchItems(query, filters, page, pageSize)
 
 ## 6. 後端核心設計
 
+本章描述後端的**核心模組**，逐一說明各模組的職責、Service 介面、流程與測試項。各模組依 §3.1 的分層協作（router → service → repository／storage），模組間只透過 service 注入溝通、不互相引用內部實作。
+
+核心模組一覽：
+
+| 模組 | 章節 | 職責 | repo 套件 |
+| --- | --- | --- | --- |
+| Core | §6.1 | 設定、JWT、密碼雜湊、DB session、錯誤格式、CORS | `app/core` |
+| Auth | §6.2 | 註冊／登入／登出／refresh、忘記密碼（含 Email provider 抽象 `app/email`） | `app/auth`、`app/email` |
+| User／Quota | §6.3 | 個人資料、密碼變更、容量統計 | `app/users` |
+| DriveItem | §6.4 | 檔案／資料夾 CRUD、移動、星號、最近 | `app/drive` |
+| Permission | §6.5 | 權限判斷（owner／editor／downloader／viewer） | `app/permission` |
+| Storage | §6.6 | 二進位儲存抽象（LocalStorageProvider） | `app/storage` |
+| Upload | §6.7 | 上傳（同步建全文索引、選用 embedding） | `app/upload` |
+| Download | §6.8 | 單檔串流下載 + 多選 zip 打包 | `app/download` |
+| Preview | §6.9 | 圖片／PDF／文字／影音 + Office 轉 PDF + Markdown | `app/preview` |
+| Trash | §6.10 | 垃圾桶軟刪除、還原、永久刪除 | `app/trash` |
+| Search | §6.11 | 全文搜尋（檔名＋內容）+ 語意搜尋（選用） | `app/search` |
+| Share | §6.12 | 指定使用者分享 + 公開連結 | `app/share` |
+| FileVersion | §6.13 | 檔案版本資料模型與 service | `app/file_version` |
+| ActivityLog | §6.14 | 操作紀錄（稽核 + 「最近」來源） | `app/activity_log` |
+
+**進階／獨立模組另立專章**（不在本章，但屬同一後端）：
+
+- **In-App AI Assistant**（`app/assistant`）：HARNESS 引擎與 Workflow 管線見 §8、前端聊天切片見 §9、驗證評分 Harness 見 §10。
+- **外部模型接入**（`app/external_model`）：per-user 加密憑證、Codex／OpenAI 升級與失敗回退（`_FallbackClient`）見 §11。
+- **時光機 Snapshots**（`app/snapshot`）：整碟快照、自動排程、blob GC 與還原見 §12。
+
 ### 6.1 Core 模組
 
 ### 6.1.1 責任
