@@ -1553,19 +1553,22 @@ Download 模組負責檔案下載：
 
 ```python
 class DownloadService:
-    async def prepare_download(
-        self,
-        user_id: UUID,
-        item_id: UUID,
-    ) -> DownloadFileResult
+    async def download(self, user_id: UUID, item_id: UUID) -> DownloadFileResult
+    async def archive(self, user_id: UUID, item_ids: list[UUID]) -> ArchiveResult
 ```
 
 ```python
-class DownloadFileResult(BaseModel):
-    file_name: str
+@dataclass
+class DownloadFileResult:
+    filename: str
     mime_type: str
     size_bytes: int
-    stream: BinaryIO
+    stream: AsyncGenerator[bytes, None]
+
+@dataclass
+class ArchiveResult:           # 多選 zip 打包（含資料夾遞迴，見 §6.8.1）
+    filename: str
+    stream: AsyncGenerator[bytes, None]
 ```
 
 ### 6.8.4 Router 回應設計
