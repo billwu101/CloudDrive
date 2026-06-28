@@ -884,6 +884,34 @@ useSearchItems(query, filters, page, pageSize)
 3. 搜尋結果可開啟 preview 或資料夾。
 4. 搜尋錯誤時顯示錯誤狀態。
 
+### 5.12 Settings 前端模組
+
+### 5.12.1 責任
+
+帳號設定頁（`/settings`，`SettingsPage`）讓使用者管理個人資料與外部模型憑證：
+
+1. 修改顯示名稱、登入 Email、密碼（react-hook-form + zod 驗證，逐項即時回饋成功／錯誤）。
+2. 管理外部模型憑證（`ExternalModelSettings` 元件）：新增／更新／刪除 per-user 加密憑證，只顯示遮罩（細節見 §11）。
+
+### 5.12.2 元件
+
+```text
+SettingsPage
+ExternalModelSettings   # 外部模型憑證（components/settings/）
+```
+
+### 5.12.3 Hooks 與 API
+
+- 個人資料：`useAuth` 的 `updateUsername`／`updateEmail`／`changePassword` → `authApi` → `PATCH /users/me`、`/users/me/email`、`/users/me/password`。
+- 外部憑證：`useExternalCredentials`／`useUpsertExternalCredential`／`useDeleteExternalCredential` → `externalModelApi`（端點見 §11）。
+
+### 5.12.4 可獨立測試項
+
+1. 顯示名稱／Email／密碼各自表單以 zod 驗證；非法輸入阻擋送出。
+2. 修改成功顯示成功提示、失敗顯示錯誤訊息。
+3. 密碼修改需提供正確的目前密碼。
+4. 外部憑證新增／刪除後列表更新；只顯示遮罩、不顯示明文。
+
 ## 6. 後端核心設計
 
 本章描述後端的**核心模組**，逐一說明各模組的職責、Service 介面、流程與測試項。各模組依 §3.1 的分層協作（router → service → repository／storage），模組間只透過 service 注入溝通、不互相引用內部實作。
