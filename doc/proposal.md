@@ -111,7 +111,7 @@
 3. 建立、重新命名、移動、複製、刪除資料夾與檔案。
 4. 透過列表或格狀檢視瀏覽檔案。
 5. 透過關鍵字搜尋檔名與檔案資訊。
-6. 預覽圖片、PDF、文字檔與常見文件格式。
+6. 預覽圖片、PDF、文字檔、影片、音訊，以及 Word／Excel／PowerPoint 等 Office 文書檔與 Markdown；不支援的格式則提供下載。
 7. 將檔案標記星號。
 8. 查看最近開啟或最近修改的檔案。
 9. 把檔案移到垃圾桶，並可還原或永久刪除。
@@ -173,6 +173,7 @@
 10. 圖片縮圖。
 11. PDF 預覽。
 12. 操作紀錄。
+13. Office 文書（Word／Excel／PowerPoint）與 Markdown 預覽。
 
 ### 5.3 第三階段功能
 
@@ -375,7 +376,7 @@
 
 `Sidebar`、`TopSearchBar`、`Breadcrumbs`、`FileToolbar`、`FileTable`、`FileGrid`、`ContextMenu`、`UploadDropzone`、`UploadQueue`、`PreviewDialog`、`ShareDialog`、`ConfirmDialog`、`StorageUsageBar`。
 
-互動重點：上傳佇列含進度/速度/暫停/繼續/取消/重試；預覽支援圖片／PDF／文字／影片／音訊（不支援時顯示下載）；分享彈窗含搜尋使用者、設權限、建公開連結（到期/密碼）、複製、移除對象。
+互動重點：上傳佇列含進度/速度/暫停/繼續/取消/重試；預覽支援圖片／PDF／文字／影片／音訊，以及 Word／Excel／PowerPoint 文書檔（伺服器轉 PDF 預覽）與 Markdown（渲染顯示），不支援時顯示下載；分享彈窗含搜尋使用者、設權限、建公開連結（到期/密碼）、複製、移除對象。
 
 ### 9.4 狀態設計
 

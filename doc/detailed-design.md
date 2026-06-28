@@ -424,7 +424,7 @@ stateDiagram-v2
 | 我的硬碟（`/`,`/folder/:id`） | 上述 Shell：麵包屑 + Toolbar + 檔案區（列表/格狀）+ 右鍵選單 + 拖曳上傳 |
 | 與我分享（`/shared`） | Sidebar + 分享項目清單 |
 | 最近／星號／垃圾桶 | 同硬碟版面，資料來源不同；垃圾桶含還原/永久刪除 |
-| 預覽（Dialog） | 圖片/PDF/文字/影片/音訊；不支援時顯示下載 |
+| 預覽（Dialog） | 圖片/PDF/文字/影片/音訊、Office 文書（Word／Excel／PPT 由伺服器轉 PDF）、Markdown（渲染）；不支援時顯示下載 |
 | 分享（Dialog） | 搜尋使用者 email、設權限、建公開連結（密碼/到期） |
 | Skills 管理（`/skills`） | 已安裝技能清單 + 編輯/刪除 |
 | 時光機（`/time-machine`） | 快照時間軸 + 唯讀瀏覽 + 還原確認 |
@@ -761,16 +761,19 @@ UploadTaskItem
 ### 5.8.1 責任
 
 1. 呼叫 preview API。
-2. 根據 preview_type 渲染不同 viewer。
-3. 不支援預覽時顯示下載操作。
+2. 根據 `preview_type` 渲染不同 viewer。
+3. **Office 文書**（`document` 型）：後端已轉成 PDF，前端直接重用 `PdfPreview` 顯示 `content` endpoint 回傳的 PDF。
+4. **Markdown**（`markdown` 型）：`content` endpoint 回傳原始 Markdown 文字，前端以 `MarkdownPreview`（react-markdown）渲染。
+5. 不支援預覽時顯示下載操作。
 
 ### 5.8.2 元件
 
 ```text
 PreviewDialog
 ImagePreview
-PdfPreview
+PdfPreview          # 也用於 Office 文書（後端轉 PDF 後）
 TextPreview
+MarkdownPreview     # react-markdown 渲染
 VideoPreview
 AudioPreview
 UnsupportedPreview
@@ -781,8 +784,10 @@ UnsupportedPreview
 1. image preview 使用 img 顯示。
 2. pdf preview 使用 iframe 或 PDF viewer 顯示。
 3. text preview 顯示文字內容。
-4. unsupported preview 顯示下載按鈕。
-5. preview API 錯誤時顯示錯誤狀態。
+4. `document` 型走 PdfPreview 顯示轉換後的 PDF。
+5. markdown preview 以 react-markdown 渲染（非顯示原始碼）。
+6. unsupported preview 顯示下載按鈕。
+7. preview API 錯誤時顯示錯誤狀態。
 
 ### 5.9 Share 前端模組
 
@@ -1536,16 +1541,18 @@ return StreamingResponse(
 
 ### 6.9.1 責任
 
-Preview 模組負責根據檔案 MIME type 回傳預覽資訊。
+Preview 模組負責根據檔案 MIME type 判定預覽型別，並回傳預覽資訊與內容。
 
-MVP 基本預覽：
+支援的預覽型別（後端 `_resolve_preview_type` 依 MIME 判定）：
 
-1. 圖片：回傳可被前端載入的預覽 endpoint。
-2. PDF：回傳可被前端 PDF viewer 載入的 endpoint。
-3. 文字檔：回傳文字內容或文字預覽 endpoint。
-4. 不支援的類型：回傳 `unsupported`。
+1. 圖片（`image/*`）、影片（`video/*`）、音訊（`audio/*`）：`content` endpoint 直接串流原檔。
+2. PDF（`application/pdf`）：串流原檔給前端 PDF viewer。
+3. 文字（`text/*`，排除 `text/markdown`）：回傳文字內容。
+4. **Markdown**（`text/markdown`／`.md`）：型別 `markdown`，`content` 回原始 Markdown 文字，由前端 react-markdown 渲染。
+5. **Office 文書**（`docx/xlsx/pptx`、舊版 `doc/xls/ppt`、`csv`）：型別 `document`，`content` endpoint 以 **LibreOffice headless** 將原檔轉成 PDF 後串流，前端重用 PdfPreview 顯示；轉換按需產生並快取（見 §6.9.5）。
+6. 不支援的類型：回傳 `unsupported`，前端顯示下載。
 
-圖片縮圖與 PDF 預覽生成屬第二階段，可透過 background task 擴充。
+圖片縮圖等可透過 background task 進一步擴充。
 
 ### 6.9.2 API
 
@@ -1566,20 +1573,32 @@ class PreviewService:
 
 ```json
 {
-  "preview_type": "image | pdf | text | video | audio | unsupported",
+  "preview_type": "image | pdf | document | text | markdown | video | audio | unsupported",
   "content_url": "/api/v1/drive/items/{item_id}/preview/content",
   "mime_type": "application/pdf"
 }
 ```
 
-### 6.9.5 可獨立測試項
+`document` 與 `markdown` 為本次新增：`document` 的 `content` 是 LibreOffice 轉出的 PDF（`mime_type` = `application/pdf`），`markdown` 的 `content` 是原始 Markdown 文字。
+
+### 6.9.5 文書轉換與快取（LibreOffice）
+
+- **轉換器**：對 `document` 型，以 `soffice --headless --convert-to pdf` 子程序把原檔（docx/xlsx/pptx、doc/xls/ppt、csv）轉成 PDF；設逾時，失敗則退回 `unsupported`（前端顯示下載）。
+- **按需 + 快取**：首次預覽時才轉（不在上傳時做，避免拖慢上傳、也避免轉了沒人看），結果以原檔 `checksum_sha256` 為鍵存入 storage（如 `preview-cache/{checksum}.pdf`）；同檔再次預覽直接回快取，原檔變更（checksum 變）自然換新鍵。
+- **依賴**：backend 映像需安裝 LibreOffice（見 §21 部署）；無 LibreOffice 的環境，`document` 自動退化為 `unsupported`，不影響其他預覽（功能可關閉）。
+- **安全／效能**：只轉使用者有權限的檔（沿用權限檢查）；轉換子程序設逾時、不需網路；CPU/IO 密集，靠快取攤平重複成本。
+
+### 6.9.6 可獨立測試項
 
 1. image MIME type 回傳 image preview。
 2. pdf MIME type 回傳 pdf preview。
 3. text MIME type 回傳 text preview。
-4. 不支援 MIME type 回傳 unsupported。
-5. 無權限使用者不可取得 preview。
-6. folder 不可 preview。
+4. `text/markdown` 回傳 `markdown` 型。
+5. Office MIME（docx/xlsx/pptx/csv）回傳 `document` 型，`content` 為轉換後 PDF。
+6. 轉換結果第二次預覽命中快取（不重轉）。
+7. 不支援 MIME type 回傳 unsupported。
+8. 無權限使用者不可取得 preview。
+9. folder 不可 preview。
 
 ### 6.10 Trash 模組
 
@@ -3447,6 +3466,7 @@ CREDENTIAL_ENCRYPTION_KEY=<Fernet key> # 啟用外部模型憑證才需
 - **backend-test**（`working-directory: backend`）：`uv sync --frozen` → `uv run pytest` → `uv run ruff check app tests` → `uv run mypy app tests` → `docker build`。
 - **frontend-test**（`working-directory: frontend`）：`npm ci` → `npm run lint` → `npm test -- --run` → `npm run build` → `docker build`。
 - **publish-images**（僅 `push` 到 `main`、`needs` 前兩者、`permissions: packages: write`）：`docker/login-action` 登入 GHCR（`${{ secrets.GITHUB_TOKEN }}`）→ `build-push-action` 推 `cloud-drive-backend`/`cloud-drive-frontend:${{ github.sha }}`，用 `cache-from/to: type=gha`。
+- **backend 映像依賴**：backend `Dockerfile` 需安裝 LibreOffice（headless），供 Preview 模組把 Office 文書轉 PDF 預覽（見 §6.9.5）；映像因此較大，屬已知取捨，不需此功能的部署可改用未含 LibreOffice 的映像（`document` 型自動退化為 `unsupported`）。
 
 ### 21.7 CD Workflow（`.github/workflows/deploy.yml`）
 
