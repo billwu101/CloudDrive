@@ -4,14 +4,13 @@
  * 覆蓋功能：
  *   - 取得預覽資訊 (GET /preview/:id)
  *   - 請求取消 (AbortSignal)
- *   - 取得下載 URL (getContentUrl)
  */
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { useAuthStore } from '@/stores/authStore'
-import { getContentUrl, previewApi } from './previewApi'
+import { previewApi } from './previewApi'
 
 const BASE = 'http://localhost:8000/api/v1'
 
@@ -111,26 +110,3 @@ describe('getInfo with AbortSignal', () => {
   })
 })
 
-// ── 取得下載 URL ──────────────────────────────────────────────────────────────
-
-describe('getContentUrl', () => {
-  it('returns URL ending in /download/:id', () => {
-    const url = getContentUrl('file-1')
-    expect(url).toContain('/download/file-1')
-  })
-
-  it('returns a string (not a promise)', () => {
-    const url = getContentUrl('file-1')
-    expect(typeof url).toBe('string')
-  })
-
-  it('embeds the correct item ID in the URL', () => {
-    const url = getContentUrl('abc-123-xyz')
-    expect(url).toContain('abc-123-xyz')
-  })
-
-  it('URL is based on the configured API base URL', () => {
-    const url = getContentUrl('file-1')
-    expect(url).toMatch(/^https?:\/\//)
-  })
-})

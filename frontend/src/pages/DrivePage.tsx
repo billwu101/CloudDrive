@@ -2,6 +2,7 @@ import { ArrowLeft, FolderOpen } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { downloadItem, triggerBlobDownload } from '@/api/download'
 import { driveApi } from '@/api/driveApi'
 import type {
   AssistantSkillExecuteResponse,
@@ -182,14 +183,7 @@ export function DrivePage() {
     const cd = (res.headers['content-disposition'] as string | undefined) ?? ''
     const match = /filename\*=UTF-8''([^;]+)/i.exec(cd)
     const filename = match ? decodeURIComponent(match[1]) : 'download.zip'
-    const url = URL.createObjectURL(res.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    triggerBlobDownload(res.data, filename)
   }, [selectedIds])
 
   const handleRetryUpload = useCallback(
@@ -292,6 +286,7 @@ export function DrivePage() {
             assistantActions={assistantMenuActions}
             onClose={() => setContextMenu(null)}
             onPreview={(item) => setPreviewItemId(item.id)}
+            onDownload={(item) => downloadItem(item.id, item.name)}
             onRename={(item) => setRenameTarget(item)}
             onMove={(item) => setMoveTarget(item)}
             onShare={() => {}}

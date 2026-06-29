@@ -1,7 +1,7 @@
 import { Download, Loader2, X } from 'lucide-react'
 import { useEffect } from 'react'
 
-import { getContentUrl } from '@/api/previewApi'
+import { downloadItem } from '@/api/download'
 import { usePreviewBlobUrl, usePreviewInfo } from '@/hooks/usePreview'
 
 import { AudioPreview } from './AudioPreview'
@@ -48,7 +48,7 @@ function PreviewContent({ itemId }: { itemId: string }) {
       <UnsupportedPreview
         filename={data.filename}
         mimeType={data.mime_type}
-        downloadUrl={getContentUrl(itemId)}
+        onDownload={() => downloadItem(itemId, data.filename)}
       />
     )
   }
@@ -88,7 +88,7 @@ function PreviewContent({ itemId }: { itemId: string }) {
         <UnsupportedPreview
           filename={data.filename}
           mimeType={data.mime_type}
-          downloadUrl={getContentUrl(itemId)}
+          onDownload={() => downloadItem(itemId, data.filename)}
         />
       )
   }
@@ -107,8 +107,6 @@ export function PreviewDialog({ itemId, onClose }: PreviewDialogProps) {
 
   if (!itemId) return null
 
-  const contentUrl = itemId ? getContentUrl(itemId) : null
-
   return (
     <div
       role="dialog"
@@ -126,15 +124,14 @@ export function PreviewDialog({ itemId, onClose }: PreviewDialogProps) {
           {data?.filename ?? ''}
         </span>
         <div className="flex items-center gap-2">
-          {contentUrl && (
-            <a
-              href={contentUrl}
-              download={data?.filename}
+          {data && (
+            <button
+              onClick={() => downloadItem(itemId, data.filename)}
               aria-label="Download file"
               className="flex size-8 items-center justify-center rounded text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             >
               <Download className="size-5" aria-hidden="true" />
-            </a>
+            </button>
           )}
           <button
             aria-label="Close preview"
