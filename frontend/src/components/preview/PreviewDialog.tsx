@@ -1,11 +1,12 @@
 import { Download, Loader2, X } from 'lucide-react'
 import { useEffect } from 'react'
 
-import { getContentUrl } from '@/api/previewApi'
+import { getContentUrl, getPreviewContentUrl } from '@/api/previewApi'
 import { usePreviewInfo } from '@/hooks/usePreview'
 
 import { AudioPreview } from './AudioPreview'
 import { ImagePreview } from './ImagePreview'
+import { MarkdownPreview } from './MarkdownPreview'
 import { PdfPreview } from './PdfPreview'
 import { TextPreview } from './TextPreview'
 import { UnsupportedPreview } from './UnsupportedPreview'
@@ -19,6 +20,7 @@ interface PreviewDialogProps {
 function PreviewContent({ itemId }: { itemId: string }) {
   const { data, isLoading, isError } = usePreviewInfo(itemId)
   const contentUrl = getContentUrl(itemId)
+  const previewContentUrl = getPreviewContentUrl(itemId)
 
   if (isLoading) {
     return (
@@ -41,8 +43,13 @@ function PreviewContent({ itemId }: { itemId: string }) {
       return <ImagePreview src={contentUrl} filename={data.filename} />
     case 'pdf':
       return <PdfPreview src={contentUrl} filename={data.filename} />
+    case 'document':
+      // Office/CSV converted to PDF server-side — load via the preview endpoint.
+      return <PdfPreview src={previewContentUrl} filename={data.filename} />
     case 'text':
       return <TextPreview src={contentUrl} />
+    case 'markdown':
+      return <MarkdownPreview src={contentUrl} />
     case 'video':
       return <VideoPreview src={contentUrl} mimeType={data.mime_type} />
     case 'audio':

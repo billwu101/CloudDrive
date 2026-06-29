@@ -12,3 +12,12 @@ export const previewApi = {
 export function getContentUrl(itemId: string): string {
   return `${BASE_URL}/download/${itemId}`
 }
+
+/**
+ * Preview-content endpoint. Use this for `document` previews: the server
+ * converts Office/CSV files to PDF here (the raw download would be the
+ * original, unviewable file).
+ */
+export function getPreviewContentUrl(itemId: string): string {
+  return `${BASE_URL}/preview/${itemId}/content`
+}
