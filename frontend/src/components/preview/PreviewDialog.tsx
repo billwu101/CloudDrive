@@ -1,8 +1,8 @@
 import { Download, Loader2, X } from 'lucide-react'
 import { useEffect } from 'react'
 
-import { getContentUrl, getPreviewContentUrl } from '@/api/previewApi'
-import { usePreviewInfo } from '@/hooks/usePreview'
+import { getContentUrl } from '@/api/previewApi'
+import { usePreviewBlobUrl, usePreviewInfo } from '@/hooks/usePreview'
 
 import { AudioPreview } from './AudioPreview'
 import { ImagePreview } from './ImagePreview'
@@ -19,8 +19,13 @@ interface PreviewDialogProps {
 
 function PreviewContent({ itemId }: { itemId: string }) {
   const { data, isLoading, isError } = usePreviewInfo(itemId)
-  const contentUrl = getContentUrl(itemId)
-  const previewContentUrl = getPreviewContentUrl(itemId)
+  // Office documents need the PDF-converted endpoint; everything else the raw file.
+  const converted = data?.preview_type === 'document'
+  const needsContent = !!data && data.preview_type !== 'unsupported'
+  const { url: blobUrl, isError: blobError } = usePreviewBlobUrl(
+    needsContent ? itemId : null,
+    converted,
+  )
 
   if (isLoading) {
     return (
@@ -38,28 +43,52 @@ function PreviewContent({ itemId }: { itemId: string }) {
     )
   }
 
+  if (data.preview_type === 'unsupported') {
+    return (
+      <UnsupportedPreview
+        filename={data.filename}
+        mimeType={data.mime_type}
+        downloadUrl={getContentUrl(itemId)}
+      />
+    )
+  }
+
+  if (blobError) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-destructive">Failed to load preview content.</p>
+      </div>
+    )
+  }
+
+  if (blobUrl === null) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" aria-label="Loading preview" />
+      </div>
+    )
+  }
+
   switch (data.preview_type) {
     case 'image':
-      return <ImagePreview src={contentUrl} filename={data.filename} />
+      return <ImagePreview src={blobUrl} filename={data.filename} />
     case 'pdf':
-      return <PdfPreview src={contentUrl} filename={data.filename} />
     case 'document':
-      // Office/CSV converted to PDF server-side — load via the preview endpoint.
-      return <PdfPreview src={previewContentUrl} filename={data.filename} />
+      return <PdfPreview src={blobUrl} filename={data.filename} />
     case 'text':
-      return <TextPreview src={contentUrl} />
+      return <TextPreview src={blobUrl} />
     case 'markdown':
-      return <MarkdownPreview src={contentUrl} />
+      return <MarkdownPreview src={blobUrl} />
     case 'video':
-      return <VideoPreview src={contentUrl} mimeType={data.mime_type} />
+      return <VideoPreview src={blobUrl} mimeType={data.mime_type} />
     case 'audio':
-      return <AudioPreview src={contentUrl} filename={data.filename} mimeType={data.mime_type} />
+      return <AudioPreview src={blobUrl} filename={data.filename} mimeType={data.mime_type} />
     default:
       return (
         <UnsupportedPreview
           filename={data.filename}
           mimeType={data.mime_type}
-          downloadUrl={contentUrl}
+          downloadUrl={getContentUrl(itemId)}
         />
       )
   }

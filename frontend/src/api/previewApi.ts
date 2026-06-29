@@ -6,18 +6,21 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api
 export const previewApi = {
   getInfo: (itemId: string, signal?: AbortSignal) =>
     api.get<PreviewInfoResponse>(`/preview/${itemId}`, { signal }),
+
+  /**
+   * Fetch preview content as a Blob. Goes through the axios instance so it
+   * carries the Bearer token (and refresh) — unlike `<iframe>`/`<img>` src,
+   * which can't send Authorization and would 401. `converted: true` hits the
+   * preview endpoint that turns Office/CSV files into PDF.
+   */
+  getContentBlob: (itemId: string, opts?: { converted?: boolean }) =>
+    api.get<Blob>(opts?.converted ? `/preview/${itemId}/content` : `/download/${itemId}`, {
+      responseType: 'blob',
+    }),
 }
 
-/** Returns the URL used to stream file content for preview or download. */
+/** Direct content URL (no auth header) — used only for the download link on
+ *  unsupported types, where the browser handles the navigation. */
 export function getContentUrl(itemId: string): string {
   return `${BASE_URL}/download/${itemId}`
-}
-
-/**
- * Preview-content endpoint. Use this for `document` previews: the server
- * converts Office/CSV files to PDF here (the raw download would be the
- * original, unviewable file).
- */
-export function getPreviewContentUrl(itemId: string): string {
-  return `${BASE_URL}/preview/${itemId}/content`
 }
