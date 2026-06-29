@@ -12,7 +12,7 @@ import { PreviewDialog } from './PreviewDialog'
 const BASE = 'http://localhost:8000/api/v1'
 
 const server = setupServer(
-  http.get(`${BASE}/preview/:id/info`, ({ params }) => {
+  http.get(`${BASE}/preview/:id`, ({ params }) => {
     const id = params.id as string
     if (id === 'img-1') {
       return HttpResponse.json({
@@ -120,7 +120,7 @@ describe('PreviewDialog', () => {
   it('shows error state when API fails', async () => {
     useAuthStore.setState({ accessToken: 'tok' })
     server.use(
-      http.get(`${BASE}/preview/:id/info`, () =>
+      http.get(`${BASE}/preview/:id`, () =>
         HttpResponse.json({ code: 'SERVER_ERROR' }, { status: 500 }),
       ),
     )

@@ -5,7 +5,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api
 
 export const previewApi = {
   getInfo: (itemId: string, signal?: AbortSignal) =>
-    api.get<PreviewInfoResponse>(`/preview/${itemId}/info`, { signal }),
+    api.get<PreviewInfoResponse>(`/preview/${itemId}`, { signal }),
 }
 
 /** Returns the URL used to stream file content for preview or download. */
