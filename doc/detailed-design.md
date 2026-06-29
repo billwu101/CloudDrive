@@ -2383,6 +2383,29 @@ updated_at timestamptz not null
 CREATE INDEX idx_file_embeddings_item_id ON file_embeddings(item_id);
 ```
 
+### 7.12 Schema 演進（Migrations）
+
+資料庫 schema 由 Alembic 管理（`backend/alembic/versions/`），為**單一連續 revision 鏈、無分支**，head 為 `0014`。下表為完整演進（亦可作為「migration → 對應文件章節」的覆蓋對照）：
+
+| Rev | 變更 | 對應章節 |
+| --- | --- | --- |
+| 0001 | 初始 schema：建 8 張核心表（`users`、`refresh_tokens`、`drive_items`、`file_versions`、`shares`、`share_links`、`activity_logs`、`user_item_preferences`） | §7.1–7.8、7.3.1 |
+| 0002 | `activity_logs.ip_address` 由 `INET` 改 `varchar(45)` | §7.8 |
+| 0003 | `item_type` 值大寫化（`file`/`folder` → `FILE`/`FOLDER`，資料修正） | §7.3 |
+| 0004 | `users` 加 `must_change_password` 旗標 | §7.1 |
+| 0005 | `assistant_skills` | §8.9 |
+| 0006 | `assistant_workflows` + `assistant_workflow_runs` | §8.9 |
+| 0007 | `assistant_sessions` + `assistant_messages` | §8.9 |
+| 0008 | `assistant_workflows` 加 `name`（saved workflows） | §8.9 |
+| 0009 | `snapshots` + `snapshot_entries`（時光機） | §12.7 |
+| 0010 | `snapshot_settings`（保留數／排程／快照配額） | §12.7 |
+| 0011 | `file_search_index`（全文內容索引） | §7.10 |
+| 0012 | `file_embeddings` + `CREATE EXTENSION vector`（pgvector 語意） | §7.11 |
+| 0013 | `file_embeddings` 改一檔多向量（chunk）+ snippet | §7.11 |
+| 0014 | `user_external_credentials`（外部模型 per-user 憑證，DEC-026） | §11.3 |
+
+> 部署時 `alembic upgrade head` 套用全鏈（見 §21）。**新增 migration 必須接在鏈尾並回填本表**，維持文件與 schema 同步。
+
 ## 8. In-App AI Assistant（引擎設計）
 
 ### 8.1 目的與背景
