@@ -1249,7 +1249,7 @@ class DriveItemRepository:
     async def create(self, item: DriveItemCreate) -> DriveItem
     async def update_name(self, item_id: UUID, name: str, updated_by: UUID) -> DriveItem
     async def update_parent(self, item_id: UUID, parent_id: UUID | None, updated_by: UUID) -> DriveItem
-    async def exists_name_in_parent(self, owner_id: UUID, parent_id: UUID | None, name: str) -> bool
+    async def name_exists_in_parent(self, name: str, parent_id: UUID | None, owner_id: UUID, *, exclude_id: UUID | None = None) -> bool
 
 class UserItemPreferenceRepository:
     async def get_preference(self, user_id: UUID, item_id: UUID) -> UserItemPreference | None
@@ -1988,6 +1988,140 @@ class ActivityLogService:
 2. metadata 以 jsonb 儲存。
 3. item_id 可為 null。
 4. ActivityLogService 失敗時不應破壞主要操作流程；是否阻擋主流程由 service 層決定。
+
+### 6.15 Repository 介面（全模組完整方法）
+
+各模組資料存取層 `AbstractXxxRepository` 的完整方法。auth／drive 另見 §6.2.4／§6.4.3 的就地說明；進階模組 assistant／external_model／snapshot 的 repository 也一併集中於此以便對照 code。下列方法**皆為 `async`**，為精簡省略 `self`／`async def`，格式為 `方法(參數) -> 回傳`。
+
+```python
+# auth（app/auth）
+UserRepository:
+    get_by_email(email) -> User | None
+    get_by_id(user_id) -> User | None
+    create(*, email, username, password_hash, quota_bytes) -> User
+    reset_password(user_id, password_hash) -> None
+RefreshTokenRepository:
+    create(*, user_id, token_hash, expires_at) -> RefreshToken
+    get_by_hash(token_hash) -> RefreshToken | None
+    revoke(token_id) -> None
+
+# users（app/users）
+UserRepository:
+    get_by_id(user_id) -> User | None
+    get_by_email(email) -> User | None
+    update_username(user_id, username) -> User
+    update_email(user_id, email) -> User
+    update_password(user_id, password_hash) -> User
+    add_used_bytes(user_id, delta) -> None
+    subtract_used_bytes(user_id, delta) -> None
+    recalculate_used_bytes(user_id) -> int
+    list_all_ids() -> list[UUID]
+
+# permission（app/permission；操作 share 表判斷權限）
+ShareRepository:
+    get_by_item_and_user(item_id, user_id) -> Share | None
+    delete_by_item(item_id) -> None
+
+# drive（app/drive；見 §6.4.3）
+DriveItemRepository:
+    get_by_id(item_id) -> DriveItem | None
+    list_children(parent_id, owner_id, *, sort_by, order, offset, limit) -> tuple[list[DriveItem], int]
+    create(*, owner_id, parent_id, item_type, name, created_by) -> DriveItem
+    update_name(item_id, name, updated_by) -> DriveItem
+    update_parent(item_id, parent_id, updated_by) -> DriveItem
+    name_exists_in_parent(name, parent_id, owner_id, *, exclude_id) -> bool
+    get_preference(user_id, item_id) -> UserItemPreference | None
+    upsert_preference(user_id, item_id, *, is_starred) -> UserItemPreference
+    get_starred_ids(user_id, item_ids) -> set[UUID]
+
+# file_version（app/file_version）
+FileVersionRepository:
+    create(*, file_id, version_no, storage_key, size_bytes, checksum_sha256, created_by) -> FileVersion
+    get_max_version_no(file_id) -> int
+    list_by_file(file_id) -> list[FileVersion]
+    delete_by_file(file_id) -> None
+
+# search（app/search；內容索引/語意 repo 見 §6.11）
+SearchRepository:
+    search(user_id, query, *, item_type, mime_type, offset, limit) -> tuple[list[DriveItem], int]
+
+# share（app/share）
+ShareRepository:
+    create(*, item_id, owner_id, target_user_id, permission) -> Share
+    get_by_item_and_user(item_id, user_id) -> Share | None
+    update_permission(share_id, permission) -> Share
+    delete(share_id) -> None
+    delete_by_item(item_id) -> None
+    list_shared_with_me(user_id, *, offset, limit) -> tuple[list[Share], int]
+ShareLinkRepository:
+    create(*, item_id, token_hash, permission, password_hash, expires_at, created_by) -> ShareLink
+    get_by_token_hash(token_hash) -> ShareLink | None
+    deactivate(link_id) -> None
+
+# trash（app/trash）
+TrashRepository:
+    mark_deleted(item_id, deleted_at) -> DriveItem
+    mark_restored(item_id) -> DriveItem
+    list_deleted(owner_id, *, offset, limit) -> tuple[list[DriveItem], int]
+    get_all_deleted(owner_id) -> list[DriveItem]
+    hard_delete(item_id) -> None
+    get_children_recursive(item_id) -> list[DriveItem]
+
+# activity_log（app/activity_log）
+ActivityLogRepository:
+    create(*, actor_id, item_id, action, metadata, ip_address, user_agent) -> ActivityLog
+    list_by_actor(actor_id, *, limit) -> list[ActivityLog]
+    list_by_item(item_id, *, limit) -> list[ActivityLog]
+    get_recent_item_ids(actor_id, *, limit, exclude_item_ids) -> list[UUID]
+
+# assistant（app/assistant；skills/sessions/messages/workflows 共用一個 repo，見 §8）
+AssistantRepository:
+    get_by_id(*, user_id, skill_id) -> AssistantSkill | None
+    get_by_name(*, user_id, name) -> AssistantSkill | None
+    list_by_status(*, user_id, status) -> list[AssistantSkill]
+    create_or_replace_pending(*, user_id, name, description, manifest, code) -> AssistantSkill
+    approve(*, user_id, skill_id) -> AssistantSkill | None
+    update(*, user_id, skill_id, description, manifest, code) -> AssistantSkill | None
+    delete(*, user_id, skill_id) -> bool
+    ensure_session(*, user_id, session_id, title) -> AssistantSession
+    add_message(*, session_id, role, content, tool_calls) -> AssistantMessage
+    list_sessions(*, user_id) -> list[AssistantSession]
+    list_messages(*, user_id, session_id) -> list[AssistantMessage]
+    create_pending(*, user_id, session_id, source_nl, steps) -> AssistantWorkflow
+    get_pending(*, user_id, workflow_id) -> AssistantWorkflow | None
+    set_status(*, workflow, status) -> None
+    record_run(*, user_id, workflow_id, source_nl, status, step_results) -> AssistantWorkflowRun
+    save_named(*, user_id, name, source_nl, steps) -> AssistantWorkflow
+    list_saved(*, user_id) -> list[AssistantWorkflow]
+    get_saved(*, user_id, workflow_id) -> AssistantWorkflow | None
+
+# external_model（app/external_model；見 §11）
+ExternalCredentialRepository:
+    list_by_user(user_id) -> list[UserExternalCredential]
+    get(user_id, provider) -> UserExternalCredential | None
+    upsert(*, user_id, provider, auth_type, secret_encrypted, masked_hint, updated_at) -> None
+    delete(user_id, provider) -> None
+    set_status(user_id, provider, status) -> None
+
+# snapshot（app/snapshot；見 §12）
+SnapshotRepository:
+    list_owner_items(owner_id) -> list[DriveItem]
+    list_all_items(owner_id) -> list[DriveItem]
+    create_snapshot(*, user_id, trigger, label, pinned, item_count, total_bytes, entries) -> Snapshot
+    list_snapshots(user_id) -> list[Snapshot]
+    get_snapshot(*, user_id, snapshot_id) -> Snapshot | None
+    list_entries(*, snapshot_id, parent_item_id) -> list[SnapshotEntry]
+    list_all_entries(snapshot_id) -> list[SnapshotEntry]
+    upsert_item(*, owner_id, entry) -> None
+    set_deleted(*, item_id, deleted) -> None
+    delete_snapshot(snapshot_id) -> None
+    get_settings(user_id) -> SnapshotSettings | None
+    upsert_settings(*, user_id, retention_n, schedule_enabled, schedule_interval_minutes, quota_bytes) -> SnapshotSettings
+    get_user_quota_bytes(user_id) -> int
+    used_snapshot_bytes(user_id) -> int
+    referenced_storage_keys() -> set[str]
+    is_referenced_by_snapshot(storage_key) -> bool
+```
 
 ## 7. 資料庫詳細設計
 
