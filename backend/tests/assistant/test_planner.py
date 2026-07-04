@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolDefinition
 from app.assistant.llm.router import ModelRouter
-from app.assistant.planner import WorkflowPlanner, validate_plan
+from app.assistant.planner import _PLAN_RESPONSE_FORMAT, PlanResult, WorkflowPlanner, validate_plan
 from app.assistant.skills.registry import RegisteredSkill, SkillRegistry
 from app.assistant.workflow import PlannedStep
 
@@ -14,6 +14,7 @@ class ScriptedLLM:
     def __init__(self, responses: list[LLMResponse]) -> None:
         self.responses = responses
         self.calls = 0
+        self.response_formats: list[dict[str, Any] | None] = []
 
     async def chat(
         self,
@@ -24,6 +25,7 @@ class ScriptedLLM:
         response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         self.calls += 1
+        self.response_formats.append(response_format)
         return self.responses.pop(0)
 
 
@@ -81,6 +83,31 @@ async def test_planner_parses_plain_json() -> None:
     result = await _planner(llm).plan(message="show files")
     assert result.reply == "ok"
     assert result.steps[0].skill == "list_items"
+    # A valid first plan must not trigger the repair loop — exactly one LLM call.
+    assert llm.calls == 1
+
+
+async def test_planner_requests_structured_output_on_every_call() -> None:
+    # The plan schema must reach the LLM client so providers can enforce it with
+    # constrained decoding (Ollama format / OpenAI json_schema).
+    llm = ScriptedLLM([LLMResponse(content='{"reply": "ok", "steps": []}')])
+    await _planner(llm).plan(message="hi")
+    assert llm.response_formats == [_PLAN_RESPONSE_FORMAT]
+
+
+def test_plan_response_format_stays_in_sync_with_models() -> None:
+    # _PLAN_RESPONSE_FORMAT is hand-written (deliberately: the Pydantic models
+    # have defaults, so model_json_schema() would emit no `required` and weaken
+    # constrained decoding). This drift test fails if the models gain/lose/rename
+    # fields without the schema being updated to match.
+    json_schema = cast(dict[str, Any], _PLAN_RESPONSE_FORMAT["json_schema"])
+    plan_schema = json_schema["schema"]
+    assert set(plan_schema["properties"]) == set(PlanResult.model_fields)
+    assert set(plan_schema["required"]) == set(PlanResult.model_fields)
+
+    step_schema = plan_schema["properties"]["steps"]["items"]
+    assert set(step_schema["properties"]) == set(PlannedStep.model_fields)
+    assert set(step_schema["required"]) == set(PlannedStep.model_fields)
 
 
 async def test_planner_strips_code_fences() -> None:

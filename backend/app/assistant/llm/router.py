@@ -69,7 +69,9 @@ class ModelRouter:
         last_error: Exception | None = None
         for _ in range(self._max_local_attempts):
             try:
-                response = await self._local.chat(messages, tools, num_ctx=num_ctx)
+                response = await self._local.chat(
+                    messages, tools, num_ctx=num_ctx, response_format=response_format
+                )
             except LLMClientError as exc:
                 last_error = exc
                 continue
