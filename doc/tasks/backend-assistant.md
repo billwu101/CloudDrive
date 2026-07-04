@@ -83,3 +83,12 @@ M3 實作備註（2026-06-17）：完成 sessions/messages 持久化（`0007`）
 - [x] `ruff format/check`、`mypy app tests`、`pytest` 全綠（M4 切片）。
 
 M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.py`(codegen)、`skills/codeguard.py`(AST 靜態驗證)、`skills/sandbox.py`(子行程沙箱:`-I`+process group+rlimit+audithook 封鎖網路/spawn/越界寫入)、`authoring.py` 生成子流程(意圖→codegen→pending,核可→安裝,執行→沙箱→寫回 drive)。加 `py7zr` 相依。前端右鍵掛載與程式碼審查 dialog 屬 M5。尚未做:生成子流程接進 planner 的「缺技能」自動偵測(目前由 authoring 關鍵字意圖觸發)、7zip 真模型 live 瀏覽器 demo(需重建 Docker 映像)。
+
+## 本機約束解碼（2026-07-04）
+
+- [x] `llm/ollama.py`：`_to_ollama_format()` 從 json_schema 信封拆出裸 schema 放進 Ollama `format`（grammar 級約束解碼，取代寫死的 `format:"json"` 弱檔）；僅結構化請求 `options.temperature=0`，一般聊天取樣不變。
+- [x] `llm/router.py`：本機路徑補轉發 `response_format`（先前只有外部路徑有，本機 Ollama 收不到 schema）。
+- [x] `test_ollama_client.py`：信封拆殼、裸 schema 通過、無 response_format 時不加 format/temperature（TDD 先紅後綠）。
+- [x] `test_planner.py`：planner 每次呼叫帶 `_PLAN_RESPONSE_FORMAT`、首次合法計畫只呼叫 LLM 一次、手寫 schema 與 `PlanResult`/`PlannedStep` 欄位 drift test。`validate_plan` + repair loop 語意防線測試維持不變。
+- [ ] （後續）`llm/anthropic.py` 改用 `output_config.format` 結構化輸出（目前只加「Respond with valid JSON only」prompt，無硬約束）。
+- [ ] （後續）`subagent.py` codegen 呼叫補 `response_format`（期待 JSON 但目前純靠 prompt + 自身 repair loop）。

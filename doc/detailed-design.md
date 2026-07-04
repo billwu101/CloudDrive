@@ -2900,11 +2900,12 @@ EM1~EM3 的 `user_external_credentials` 是 `(user_id, provider)` 單筆，痛�
 
 #### 12.10.5 外部模型結構化輸出（json_schema）
 
-外部模型（如 Gemini）原本不遵守 planner 要求的 JSON 格式（`{"reply","steps":[{"skill","arguments","depends_on"}]}`）→ 只閒聊不執行。修法（範圍嚴格：只 planner 呼叫、只外部走 schema）：
+外部模型（如 Gemini）原本不遵守 planner 要求的 JSON 格式（`{"reply","steps":[{"skill","arguments","depends_on"}]}`）→ 只閒聊不執行。修法：
 
-- `LLMClient.chat` 加 `response_format: dict | None`，從 `planner` → `ModelRouter` → 外部 client 串下去；`ExternalLLMClient` 放進 payload。
-- `_PLAN_RESPONSE_FORMAT`（定義於 `planner.py`）是 plan 的 json_schema，**不加 `strict`**（strict 要求 `additionalProperties:false`，與開放的 `arguments` 物件衝突，OpenAI 會拒）。
-- 本機 Ollama 只在有 schema 時加自己的 `format:"json"`；自然語言回覆、codegen 不帶 `response_format`，不受影響。
+- `LLMClient.chat` 加 `response_format: dict | None`，從 `planner` → `ModelRouter` → 各 client 串下去（**2026-07-04 起本機與外部路徑都轉發**；先前只有外部，`router.py` 本機呼叫漏傳，由 planner 防護測試抓出補上）；`ExternalLLMClient` 原樣放進 payload。
+- `_PLAN_RESPONSE_FORMAT`（定義於 `planner.py`）是 plan 的 json_schema，**不加 `strict`**（strict 要求 `additionalProperties:false`，與開放的 `arguments` 物件衝突，OpenAI 會拒）。**維持手寫、不用 `model_json_schema()`**——Pydantic model 欄位皆有預設值，自動產生的 schema 會沒有 `required`，約束反而變弱；改以 drift test（`test_plan_response_format_stays_in_sync_with_models`）鎖定 schema 與 `PlanResult`/`PlannedStep` 欄位一致。
+- 本機 Ollama（2026-07-04 更新）：有 `response_format` 時，`_to_ollama_format()` 從信封拆出裸 schema 放進 `format`（Ollama 據此做 grammar 級約束解碼，取代先前只保證合法 JSON 的 `format:"json"` 弱檔），並同時 `options.temperature=0` 提升計畫可重現性；自然語言回覆、codegen 不帶 `response_format`，取樣與輸出皆不受影響。
+- 語意防線不變：schema 只保證形狀，hallucinated skill 名/缺參數仍由 `validate_plan` + repair loop 攔截。
 - 前置修正：planner 規劃時未告知「使用者已選 N 個檔」→ 外部模型一直反問哪個檔。`planner.plan(selected_count=...)` 加一條系統訊息告知。
 
 #### 12.10.6 前端
