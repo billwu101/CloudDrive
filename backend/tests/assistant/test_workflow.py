@@ -595,3 +595,82 @@ async def test_rerun_reports_failure_honestly() -> None:
     assert rerun.message != "Saved workflow executed."
     assert "boom" in rerun.message
     assert repo.runs[-1].status == "failed"
+
+
+async def test_failed_fast_path_replans_once_and_succeeds() -> None:
+    # Execution failure feeds real observations back to the planner; the second
+    # (read-only) plan runs and its result is reported. Happy path stays 1 call.
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    executed: list[str] = []
+    service, llm = _scripted_service(
+        user_id,
+        [
+            {"reply": "第一次。", "steps": [{"skill": "boom", "arguments": {}}]},
+            {
+                "reply": "改用列出的方式完成了。",
+                "steps": [{"skill": "list_items", "arguments": {}}],
+            },
+        ],
+        repo,
+        executed,
+    )
+
+    response = await service.chat(user_id=user_id, message="show files")
+
+    assert llm.calls == 2
+    # The replan prompt must carry the execution feedback (the real error).
+    assert "kaboom" in llm.prompts[1]
+    assert executed == ["boom", "list_items"]
+    assert response.results and all(r.ok for r in response.results)
+    assert response.message == "改用列出的方式完成了。"
+    # Both attempts are recorded for auditability: failed first, then succeeded.
+    assert [run.status for run in repo.runs] == ["failed", "succeeded"]
+
+
+async def test_replan_never_escalates_privileges() -> None:
+    # A replan executes without the user ever seeing it, so it may only contain
+    # read-only steps. A destructive replan must NOT run and NOT become pending.
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    executed: list[str] = []
+    service, _llm = _scripted_service(
+        user_id,
+        [
+            {"reply": "第一次。", "steps": [{"skill": "boom", "arguments": {}}]},
+            {"reply": "那我改刪除。", "steps": [{"skill": "delete_item", "arguments": {}}]},
+        ],
+        repo,
+        executed,
+    )
+
+    response = await service.chat(user_id=user_id, message="show files")
+
+    assert "delete_item" not in executed  # never executed unseen
+    assert not repo.workflows  # and never silently queued for approval
+    assert "boom" in response.message  # honest report of the original failure
+    assert [run.status for run in repo.runs] == ["failed"]
+
+
+async def test_replan_happens_at_most_once() -> None:
+    # Replan budget is 1: a second failure ends in an honest report, not a loop.
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    executed: list[str] = []
+    service, llm = _scripted_service(
+        user_id,
+        [
+            {"reply": "第一次。", "steps": [{"skill": "boom", "arguments": {}}]},
+            {"reply": "再試一次。", "steps": [{"skill": "boom", "arguments": {}}]},
+        ],
+        repo,
+        executed,
+    )
+
+    response = await service.chat(user_id=user_id, message="show files")
+
+    assert llm.calls == 2  # planning + one replan, nothing more
+    assert executed == ["boom", "boom"]
+    assert "重試" in response.message  # honest report notes the retry happened
+    assert "kaboom" in response.message
+    assert [run.status for run in repo.runs] == ["failed", "failed"]

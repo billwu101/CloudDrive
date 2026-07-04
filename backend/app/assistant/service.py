@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from uuid import UUID, uuid4
 
 from app.assistant.permissions import classify_steps
@@ -55,6 +56,31 @@ def _compose_failure_message(results: list[StepResult], *, retried: bool = False
     else:
         tail = "沒有任何步驟完成,也沒有做出任何變更。"
     return prefix + detail + tail
+
+
+def _execution_feedback(message: str, results: list[StepResult]) -> str:
+    """Planner input for a replan: the original request plus what actually
+    happened. Unlike the first pass, the model now plans against real
+    observations (e.g. 'search returned 0 items') instead of assumptions."""
+
+    lines: list[str] = []
+    for result in results:
+        if result.ok:
+            output = json.dumps(result.output, ensure_ascii=False, default=str)
+            if len(output) > 300:
+                output = output[:300] + "…"
+            lines.append(f"- step {result.index} {result.skill}: ok, output={output}")
+        else:
+            lines.append(f"- step {result.index} {result.skill}: FAILED — {result.error}")
+    return (
+        f"{message}\n\n"
+        "[Execution feedback] Your previous plan for this request failed while executing:\n"
+        + "\n".join(lines)
+        + "\nRe-plan to satisfy the original request taking this feedback into account"
+        " (e.g. adjust search terms or take a different approach). If it cannot be"
+        " satisfied with the available skills, return an empty steps list and explain"
+        " briefly in reply."
+    )
 
 
 class WorkflowService:
@@ -128,6 +154,20 @@ class WorkflowService:
                 status=_run_status(results),
                 step_results=[result.model_dump(mode="json") for result in results],
             )
+            if not _all_ok(results):
+                # One bounded replan with real execution feedback (fast-path
+                # only). If it can't produce a safely executable plan, fall
+                # through to the honest failure report — never loop.
+                replanned = await self._replan_after_failure(
+                    user_id=user_id,
+                    message=message,
+                    target=target,
+                    selected_count=len(selected),
+                    session_id=active_session_id,
+                    results=results,
+                )
+                if replanned is not None:
+                    return replanned
             return AssistantChatResponse(
                 session_id=active_session_id,
                 message=plan.reply if _all_ok(results) else _compose_failure_message(results),
@@ -149,6 +189,57 @@ class WorkflowService:
                 status="pending_approval",
                 steps=steps,
             ),
+        )
+
+    async def _replan_after_failure(
+        self,
+        *,
+        user_id: UUID,
+        message: str,
+        target: str | None,
+        selected_count: int,
+        session_id: UUID,
+        results: list[StepResult],
+    ) -> AssistantChatResponse | None:
+        """Execution-time counterpart of the planner's repair loop: feed the
+        failed run's real observations back and try one revised plan.
+
+        Guardrail — a replan executes without the user ever seeing it, so it
+        may only contain read-only (auto-confirmable) steps and no
+        selection-based skills. Anything needing approval means giving up and
+        reporting honestly; silently queueing new destructive work the user
+        never asked to review would hollow out the confirm gate. Returns None
+        when no safely executable replan exists.
+        """
+
+        replan = await self._planner.plan(
+            message=_execution_feedback(message, results),
+            target=target,
+            selected_count=selected_count,
+        )
+        if not replan.steps:
+            return None
+        new_steps = classify_steps(replan.steps, self._registry)
+        if requires_file_selection(new_steps, self._registry) or not is_auto_confirmable(new_steps):
+            return None
+
+        new_results = await self._executor.execute(user_id=user_id, steps=new_steps)
+        await self._workflows.record_run(
+            user_id=user_id,
+            workflow_id=None,
+            source_nl=f"{message} [replan]",
+            status=_run_status(new_results),
+            step_results=[result.model_dump(mode="json") for result in new_results],
+        )
+        return AssistantChatResponse(
+            session_id=session_id,
+            message=(
+                replan.reply
+                if _all_ok(new_results)
+                else _compose_failure_message(new_results, retried=True)
+            ),
+            plan=WorkflowPlanView(workflow_id=None, status="auto_executed", steps=new_steps),
+            results=new_results,
         )
 
     async def confirm(
