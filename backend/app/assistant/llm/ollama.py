@@ -58,10 +58,13 @@ class OllamaLLMClient:
             "stream": False,
             "options": {"num_ctx": num_ctx},
         }
-        # Ollama's own JSON mode; the local model already follows the plan format,
-        # so this is just a harmless reinforcement when a schema is requested.
+        # Constrained decoding: Ollama compiles the schema in `format` into a
+        # grammar and masks illegal tokens at sampling time, so the response is
+        # guaranteed to match the schema — not just be valid JSON. Temperature is
+        # pinned only for structured requests; plain chat keeps default sampling.
         if response_format is not None:
-            payload["format"] = "json"
+            payload["format"] = _to_ollama_format(response_format)
+            payload["options"]["temperature"] = 0
         if self._keep_alive:
             payload["keep_alive"] = self._keep_alive
         if tools:
@@ -110,6 +113,23 @@ def _is_credential_error(response: httpx.Response) -> bool:
             return False
         return "quota" in text or "billing" in text or "credit" in text
     return False
+
+
+def _to_ollama_format(response_format: dict[str, Any]) -> dict[str, Any]:
+    """Translate the cross-provider ``response_format`` into Ollama's ``format``.
+
+    Callers express structured output in the OpenAI envelope shape
+    ``{"type": "json_schema", "json_schema": {"name": ..., "schema": {...}}}``
+    (which ``ExternalLLMClient`` forwards verbatim), but Ollama's ``format``
+    only understands the bare inner JSON Schema. A dict that is not an
+    envelope is treated as an already-bare schema and passed through.
+    """
+    json_schema = response_format.get("json_schema")
+    if isinstance(json_schema, dict):
+        schema = json_schema.get("schema")
+        if isinstance(schema, dict):
+            return schema
+    return response_format
 
 
 def _to_ollama_tool(tool: LLMToolDefinition) -> dict[str, Any]:
