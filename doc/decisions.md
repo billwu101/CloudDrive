@@ -324,3 +324,15 @@
   4. **可先量再改**：若 eval 顯示假設落空類失敗經單次 replan 仍大量殘留，屆時再評估升級，本決策不排除未來翻案。
 - 已知取捨：confirm/rerun 路徑失敗只有誠實報告、無自動補救（同意問題與儲存契約優先）；replan 需多一次 LLM 呼叫與少量 token（僅失敗時發生）；replan 只能用 read-only 步驟兜路，無法自動補救需寫入權限的失敗。
 - 影響範圍：`backend/app/assistant/service.py`、`tests/assistant/test_workflow.py`、`doc/detailed-design.md` §12.11、`doc/tasks/backend-assistant.md`。
+
+### DEC-029 補充：三條路徑的授權邊界（2026-07-04）
+
+replan 的本質是「在使用者視線外執行一份新計畫」，因此只在「授權是給**規則**、不是給**那份計畫**」的路徑上合法：
+
+| 路徑 | 執行授權來源 | 失敗時 | 理由 |
+|---|---|---|---|
+| chat 快速路徑 | 「read-only 免確認」的系統規則 | replan 一次（新計畫仍受同一規則約束） | replan 未取得任何原本沒有的權力；read-only 重試最壞只浪費 token，不可能改資料 |
+| confirm | 使用者對**那份具體步驟清單**的核可 | 誠實回報 | 核可的是那份計畫、不是目標本身；偷換步驟讓「看過的」與「執行的」不再是同一份，事前確認閘形同虛設；destructive 盲目重試最壞是刪錯且不可逆 |
+| rerun | 使用者具名儲存的**固定配方** | 誠實回報 | saved workflow 的價值就是確定性；偷換步驟違反「儲存」契約 |
+
+合規的 confirm 補救設計（未做、不違反本決策）：失敗後 replan 但**不執行**，改產生新 pending 請使用者再確認一次——保住同意邊界，代價是多一輪往返。等 eval 數據顯示 destructive 失敗夠常見再評估。

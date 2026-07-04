@@ -100,3 +100,15 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [x] `test_workflow.py`：誠實報告 ×3 路徑、replan 成功、replan 權限不升級、replan 只一次（TDD 先紅後綠）。
 - [x] `doc/decisions.md` DEC-029：記錄決策與「不做 agentic loop」的理由（權限邊界/弱模型穩定性/成本/可先量再改）。
 - [ ] （後續）在 eval harness 量測失敗分佈（格式類/假設落空類/不可補救類），驗證單次 replan 的實際回收率。
+
+## TODO：DAG 並行執行 + 失敗隔離（下一項，2026-07-04 記錄）
+
+**動機**：一次勾選 5 個檔案壓縮時，`expand_selection_steps` 會展開成 5 個獨立步驟（`depends_on=[]`），但 executor 目前是循序 for 迴圈且**遇第一個錯就 break**（`workflow.py` execute）——(1) 5 個互不相依的步驟被迫排隊浪費時間；(2) 第 1 個失敗後其餘 4 個「全部沒做」，即使它們毫無關聯。
+
+- [ ] executor 改 DAG 波次執行：依 `depends_on` 做拓撲分層，同層無相依步驟用 `asyncio.gather` 並行；加並行上限（semaphore，避免打爆 DB/storage/沙箱）。
+- [ ] 失敗隔離：某步失敗只跳過**它的下游相依步驟**（標記 skipped＋原因），無關分支照常執行完——取代現在的全域 break。
+- [ ] `StepResult` 增加 skipped 語意（新欄位或 error 慣例），`_run_status` 增加 partial 狀態考量（全成/部分成/全敗）。
+- [ ] 誠實報告配合升級：分支彙總（「5 個檔案：4 個成功、1 個失敗（原因）、0 個跳過」）。
+- [ ] replan 互動釐清：部分失敗時 replan 的輸入應只含失敗分支；已成功分支不得重跑（副作用）。
+- [ ] 沙箱技能並行時的資源上限確認（`asyncio.to_thread` × N 個 `python -I` 子行程的 CPU/記憶體）。
+- [ ] 測試：獨立步驟確實並行（時序或呼叫順序斷言）、失敗隔離（1 敗 4 成）、下游 skip、相依鏈仍守順序、並行上限生效。
