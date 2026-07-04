@@ -92,3 +92,11 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [x] `test_planner.py`：planner 每次呼叫帶 `_PLAN_RESPONSE_FORMAT`、首次合法計畫只呼叫 LLM 一次、手寫 schema 與 `PlanResult`/`PlannedStep` 欄位 drift test。`validate_plan` + repair loop 語意防線測試維持不變。
 - [ ] （後續）`llm/anthropic.py` 改用 `output_config.format` 結構化輸出（目前只加「Respond with valid JSON only」prompt，無硬約束）。
 - [ ] （後續）`subagent.py` codegen 呼叫補 `response_format`（期待 JSON 但目前純靠 prompt + 自身 repair loop）。
+
+## 執行失敗處理（2026-07-04，DEC-029）
+
+- [x] `service.py`：`_compose_failure_message()` 誠實報告——三條執行路徑（chat fast-path / confirm / rerun）失敗時不再回規劃期的 `plan.reply` 或固定成功句，改回 StepResult 組合的事實報告。
+- [x] `service.py`：`_replan_after_failure()` + `_execution_feedback()`——fast-path 失敗才餵回真實觀察重規劃一次（budget=1）；護欄：全 read-only 才執行、否則放棄且不建 pending；兩次嘗試各記 run。
+- [x] `test_workflow.py`：誠實報告 ×3 路徑、replan 成功、replan 權限不升級、replan 只一次（TDD 先紅後綠）。
+- [x] `doc/decisions.md` DEC-029：記錄決策與「不做 agentic loop」的理由（權限邊界/弱模型穩定性/成本/可先量再改）。
+- [ ] （後續）在 eval harness 量測失敗分佈（格式類/假設落空類/不可補救類），驗證單次 replan 的實際回收率。

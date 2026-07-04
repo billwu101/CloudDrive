@@ -2926,6 +2926,14 @@ EM1~EM3 的 `user_external_credentials` 是 `(user_id, provider)` 單筆，痛�
 - ⚠️ **SSRF 未控管**：`base_url` 目前任填，未做 https 限制/白名單——使用者可填任意 URL（含內網）。**待補**（見 proposal-multi-connections §10）。
 - 連線**編輯 UI 未接**（PUT 端點有，UI 只做新增/刪除）。
 
+### 12.11 執行失敗處理：誠實報告 + 有限度重規劃（2026-07-04，DEC-029）
+
+plan-then-execute 的兩個結構性問題與對策（詳細理由與「為何不做 agentic loop」見 `decisions.md` DEC-029）：
+
+- **誠實報告（第 0 級）**：`plan.reply` 是規劃時的預測，執行失敗時不得回給使用者。`service.py` 的三條執行路徑（chat 快速路徑 / confirm / rerun）統一：全成功才用原訊息；有失敗改回 `_compose_failure_message()` 從 `StepResult` 組合的事實報告（失敗步驟+原因、已完成步驟、其後未執行且無進一步變更）。程式組合、不經 LLM。API status 欄位不變（前端契約）。
+- **失敗才 replan（第 1 級，僅 chat 快速路徑）**：執行失敗 → `_execution_feedback()` 把逐步真實結果餵回 planner 重規劃一次（budget=1）→ 護欄：新計畫必須全 read-only auto-confirmable 且不含 requires_selection，否則放棄且不建 pending；replan 再失敗落回誠實報告（加註已重試）。兩次嘗試各記一筆 run（第二筆 source_nl 帶 `[replan]`）。成功路徑維持一次 LLM 呼叫。
+- confirm / rerun **無 replan**：核可後偷換步驟破壞同意邊界；saved workflow 是固定配方。
+
 ## 13. 時光機（Snapshots）
 
 ### 13.1 目的

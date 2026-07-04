@@ -307,3 +307,20 @@
 - 理由：同源 nginx 入口最容易部署也最容易收斂 CORS/HTTPS/cookie 行為；DB 與 backend 留內網可降低暴露面；secret 與範例設定分離可避免把 demo 設定誤當正式安全設定。
 - 已知取捨：本機展示時為了方便仍會看到 `8000/5432` port 映射；正式部署需用防火牆、安全群組或 compose override 移除/限制這些映射。
 - 影響範圍：`docker-compose.yml`、`.env.example`、`README.md`、正式部署手冊。
+
+## DEC-029：執行失敗處理 —— 誠實報告 + 有限度重規劃，不採 agentic loop
+
+- 日期：2026-07-04
+- 狀態：Accepted
+- 背景：planner 一次產出完整計畫（plan-then-execute），executor 遇錯即停。兩個問題：(1) `plan.reply` 是規劃時（執行前）由 LLM 寫的預測，卻在執行後原樣回給使用者——執行失敗時等於「沒做完卻說做完」；confirm/rerun 更固定回 "Workflow executed."。(2) 步驟失敗（多為規劃假設落空，如 search 回空導致 `from_step` 引用解析失敗）後沒有任何補救路徑。
+- 決策：
+  1. **第 0 級（誠實報告）**：三條執行路徑（chat 快速路徑 / confirm / rerun）統一——全成功才用原訊息；任何失敗改回程式從 `StepResult` 組合的事實報告（哪步失敗+原因、已完成哪些、其後未執行且無進一步變更）。不經 LLM，杜絕粉飾。
+  2. **第 1 級（失敗才 replan，僅 chat 快速路徑）**：執行失敗時把逐步真實結果（成功步驟輸出截斷 300 字、失敗錯誤全文）餵回 planner 重規劃一次（budget=1）。護欄：replan 產出必須全為 read-only auto-confirmable 且不含 requires_selection 技能，否則放棄且不建 pending；再失敗即落回第 0 級報告。兩次嘗試各自記 run。
+  3. **不做第 2 級（逐步 agentic loop / native function calling）**。
+- 不做 agentic loop 的理由：
+  1. **權限模型依賴完整計畫先行**：destructive 步驟是整批分類、事前一次核可（DEC 系列的 plan-and-confirm 管線）。逐步決策會讓「使用者核可了什麼」失去明確邊界——要嘛每步彈確認（UX 不可接受），要嘛事後追認（掏空確認閘）。
+  2. **弱模型穩定性**：本機小模型跑長程多輪 loop 容易漂移；一次規劃 + schema 約束解碼 + validate_plan，是把弱模型鎖在能力範圍內的設計。
+  3. **成本/延遲**：本產品的工作流以 2-3 步為主，agentic loop 讓所有成功案例都付 N 倍呼叫成本，替少數失敗案例買保險不划算；「失敗才 replan」讓成功路徑維持一次呼叫。
+  4. **可先量再改**：若 eval 顯示假設落空類失敗經單次 replan 仍大量殘留，屆時再評估升級，本決策不排除未來翻案。
+- 已知取捨：confirm/rerun 路徑失敗只有誠實報告、無自動補救（同意問題與儲存契約優先）；replan 需多一次 LLM 呼叫與少量 token（僅失敗時發生）；replan 只能用 read-only 步驟兜路，無法自動補救需寫入權限的失敗。
+- 影響範圍：`backend/app/assistant/service.py`、`tests/assistant/test_workflow.py`、`doc/detailed-design.md` §12.11、`doc/tasks/backend-assistant.md`。
