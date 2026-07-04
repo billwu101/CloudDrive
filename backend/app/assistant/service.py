@@ -35,6 +35,28 @@ def _run_status(results: list[StepResult]) -> str:
     return "succeeded" if all(result.ok for result in results) else "failed"
 
 
+def _all_ok(results: list[StepResult]) -> bool:
+    return all(result.ok for result in results)
+
+
+def _compose_failure_message(results: list[StepResult], *, retried: bool = False) -> str:
+    """Truthful post-execution report. ``plan.reply`` is written by the LLM at
+    planning time — before anything ran — so it must never be shown when
+    execution failed. The facts (which steps ran, which failed, that nothing
+    further was changed) come from StepResults, not from the model."""
+
+    failed = next(result for result in results if not result.ok)
+    completed = [result for result in results if result.ok]
+    prefix = "我重新規劃並重試了一次仍然失敗。" if retried else ""
+    detail = f"執行未完成:第 {failed.index + 1} 步({failed.skill})失敗:{failed.error}。"
+    if completed:
+        done = "、".join(result.skill for result in completed)
+        tail = f"已完成 {len(completed)} 步({done}),其後的步驟未執行,沒有進一步的變更。"
+    else:
+        tail = "沒有任何步驟完成,也沒有做出任何變更。"
+    return prefix + detail + tail
+
+
 class WorkflowService:
     """Plan-and-confirm pipeline: NL -> candidate workflow -> check skills ->
     permission gate -> (read-only fast-path execute | persist pending) -> log.
@@ -108,7 +130,7 @@ class WorkflowService:
             )
             return AssistantChatResponse(
                 session_id=active_session_id,
-                message=plan.reply,
+                message=plan.reply if _all_ok(results) else _compose_failure_message(results),
                 plan=WorkflowPlanView(workflow_id=None, status="auto_executed", steps=steps),
                 results=results,
             )
@@ -152,7 +174,7 @@ class WorkflowService:
         return AssistantWorkflowConfirmResponse(
             workflow_id=workflow.id,
             status="executed",
-            message="Workflow executed.",
+            message="Workflow executed." if _all_ok(results) else _compose_failure_message(results),
             results=results,
         )
 
@@ -206,7 +228,11 @@ class WorkflowService:
         return AssistantWorkflowConfirmResponse(
             workflow_id=workflow.id,
             status="executed",
-            message="Saved workflow executed.",
+            message=(
+                "Saved workflow executed."
+                if _all_ok(results)
+                else _compose_failure_message(results)
+            ),
             results=results,
         )
 

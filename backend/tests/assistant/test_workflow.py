@@ -29,6 +29,8 @@ from app.models.assistant_workflow import AssistantWorkflow, AssistantWorkflowRu
 class ScriptedLLM:
     def __init__(self, responses: list[LLMResponse]) -> None:
         self.responses = responses
+        self.calls = 0
+        self.prompts: list[str] = []
 
     async def chat(
         self,
@@ -38,6 +40,8 @@ class ScriptedLLM:
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
+        self.calls += 1
+        self.prompts.append("\n".join(m.content for m in messages))
         return self.responses.pop(0)
 
 
@@ -460,3 +464,134 @@ async def test_conversational_plan_without_steps() -> None:
     assert response.message == "Hello!"
     assert response.plan is None
     assert not repo.runs
+
+
+# --- Honest execution reporting + bounded replan-on-failure -------------------
+
+
+def _boom_registry(user_id: UUID, executed: list[str]) -> SkillRegistry:
+    """Registry with a read-tier skill that always fails at execution time, plus
+    the usual read/destructive skills — models the 'planning assumption broke
+    during execution' class of failure (e.g. empty search result)."""
+
+    registry = _registry(user_id, executed)
+
+    async def boom_handler(context: SkillContext, args: Mapping[str, Any]) -> dict[str, Any]:
+        executed.append("boom")
+        raise RuntimeError("kaboom: nothing matched")
+
+    async def boom_delete_handler(context: SkillContext, args: Mapping[str, Any]) -> dict[str, Any]:
+        executed.append("boom_delete")
+        raise RuntimeError("kaboom: delete failed")
+
+    registry.register(
+        RegisteredSkill(
+            name="boom",
+            description="Read-only skill that fails at runtime.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": True},
+            permission_tier="read",
+            handler=boom_handler,
+        )
+    )
+    registry.register(
+        RegisteredSkill(
+            name="boom_delete",
+            description="Destructive skill that fails at runtime.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": True},
+            permission_tier="destructive",
+            handler=boom_delete_handler,
+        )
+    )
+    return registry
+
+
+def _scripted_service(
+    user_id: UUID,
+    plan_jsons: list[dict[str, Any]],
+    repo: FakeWorkflowRepo,
+    executed: list[str],
+) -> tuple[WorkflowService, ScriptedLLM]:
+    registry = _boom_registry(user_id, executed)
+    llm = ScriptedLLM([LLMResponse(content=json.dumps(p)) for p in plan_jsons])
+    router = ModelRouter(
+        local_client=llm,
+        external_client=None,
+        external_enabled=False,
+        max_local_attempts=1,
+        privacy_default="non_sensitive",
+    )
+    planner = WorkflowPlanner(
+        llm=router, registry=registry, context=ContextManager(num_ctx=2048), num_ctx=2048
+    )
+    service = WorkflowService(
+        planner=planner,
+        executor=WorkflowExecutor(registry=registry),
+        registry=registry,
+        workflow_repo=repo,
+    )
+    return service, llm
+
+
+async def test_failed_fast_path_reports_failure_honestly() -> None:
+    # The pre-execution `plan.reply` must never be shown when execution failed —
+    # the user-facing message has to state what actually happened.
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    executed: list[str] = []
+    service, _ = _scripted_service(
+        user_id,
+        [
+            {"reply": "我已幫你列出檔案。", "steps": [{"skill": "boom", "arguments": {}}]},
+            {"reply": "沒辦法完成。", "steps": []},  # replan yields nothing usable
+        ],
+        repo,
+        executed,
+    )
+
+    response = await service.chat(user_id=user_id, message="show files")
+
+    assert response.message != "我已幫你列出檔案。"
+    assert "boom" in response.message
+    assert "kaboom" in response.message
+    assert response.results and response.results[0].ok is False
+    assert repo.runs[0].status == "failed"
+
+
+async def test_confirm_reports_failure_honestly() -> None:
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    executed: list[str] = []
+    service, _ = _scripted_service(
+        user_id,
+        [{"reply": "我會刪除它。", "steps": [{"skill": "boom_delete", "arguments": {}}]}],
+        repo,
+        executed,
+    )
+    pending = await service.chat(user_id=user_id, message="delete it")
+    assert pending.plan is not None and pending.plan.workflow_id is not None
+
+    confirmed = await service.confirm(user_id=user_id, workflow_id=pending.plan.workflow_id)
+
+    assert confirmed.message != "Workflow executed."
+    assert "boom_delete" in confirmed.message
+    assert "kaboom" in confirmed.message
+    assert repo.runs[-1].status == "failed"
+
+
+async def test_rerun_reports_failure_honestly() -> None:
+    user_id = uuid4()
+    repo = FakeWorkflowRepo()
+    executed: list[str] = []
+    service, _ = _scripted_service(user_id, [], repo, executed)
+    saved = await service.save_workflow(
+        user_id=user_id,
+        name="daily",
+        source_nl="list stuff",
+        steps=[PlannedStep(skill="boom", arguments={})],
+    )
+
+    rerun = await service.rerun_workflow(user_id=user_id, workflow_id=saved.id)
+
+    assert rerun.message != "Saved workflow executed."
+    assert "boom" in rerun.message
+    assert repo.runs[-1].status == "failed"
