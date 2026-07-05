@@ -62,6 +62,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 七、Git 與版本控制規則
 
+- **每次程式碼／文件變動後（一輪對話結束）都要 `git commit` 並 `git push` 到當前分支的遠端**，不累積未提交或未推送的變更；例行的 repo 內 commit 與 push 不需再逐次詢問（此為長期授權）。
 - 每個 Commit 只處理一個主題；Commit 前跑相關測試；禁止提交 `.env`／密鑰／大型暫存檔／測試輸出／IDE 個人設定／未授權 ROM／模型／資料；功能／重構／格式盡量分開提交；不以重寫歷史掩蓋錯誤；合併前確認測試通過、無衝突、文件同步、公開介面未被破壞。
 - Commit 格式：`feat:`／`fix:`／`test:`／`docs:`／`refactor:`／`chore:`。
 
