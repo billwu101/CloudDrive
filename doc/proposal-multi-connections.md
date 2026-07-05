@@ -1,6 +1,6 @@
 # 需求草案：多組「具名模型連線」（取代單一 openai/codex 憑證）
 
-> 狀態:**proposal 草案(待實作,建議下個 session 開始)**。2026-06-25。
+> 狀態:**已實作(2026-06-25)**——migration 0016 `external_model_connections`、`app/external_model/{repository,service,router,schemas}.py`、`GET/POST/PUT/DELETE /users/me/model-connections`、助理下拉列 local + 具名連線;實作對照見 [detailed-design.md §12.10](./detailed-design.md)。(原草案日期 2026-06-25)
 > 依 CLAUDE.md 文件先行。關聯:[proposal-model-selection.md]、[proposal-chat-skills.md]、DEC-026。
 > 取代 [proposal-chat-skills.md] / [external-model.md] 中「每 provider 一把 key」的限制。
 

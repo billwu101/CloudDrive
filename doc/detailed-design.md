@@ -174,7 +174,7 @@ graph TD
   BE -->|"Storage Provider 介面"| ST["檔案儲存層 local／物件儲存"]
   BE -->|"HARNESS 引擎"| AS["AI 助理"]
   AS -->|"預設本地"| OL["Ollama Gemma"]
-  AS -.->|"反覆失敗升級"| EX["外部 GPT-5.5"]
+  AS -.->|"使用者自選具名連線（隱私閘）"| EX["外部模型（OpenAI 相容／Codex）"]
 ```
 
 > metadata 經 PostgreSQL、檔案 binary 經 Storage Provider，兩者分離（見 §8.9）。
@@ -2166,13 +2166,13 @@ DB metadata 與實體 blob 分屬 PostgreSQL 與檔案系統，**檔案操作不
 ### 9.91.1 模型
 
 - **預設：Gemma 4 26B（本地）**，經 Ollama（`/api/chat`，支援 tools）或 OpenAI 相容端點。
-- **升級路徑**：當本地 Gemma 反覆做不出可接受結果，且符合隱私條件時，可升級呼叫**外部大型模型 API**（見 1.3）。
+- **外部模型路徑（2026-06-25 起為使用者手動選擇）**：使用者於聊天面板**逐訊息自選**模型來源——本機或任一筆具名外部連線（§12.10）；選定即該次唯一執行器，無自動 fallback，外送一律經隱私閘。原「反覆失敗自動升級」（DEC-023）僅保留於 `target=None` 相容路徑（見 9.91.3 更新註記）。
 - 後端以 `LLMClient` 抽象封裝本地與外部執行器；本地端只用 `httpx`，外部端為可設定、可關閉、且受隱私閘控管。
 - 26B 本地模型 function-calling 與規劃可靠度有限，因此管線的**結構化輸出 + 驗證 + 修復重試 + 升級 + 使用者確認閘**特別重要。
 
 ### 9.91.2 方案抉擇（沿用）
 
-不採用 OpenClaw（DEC-016）；一律經 service 層或沙箱（DEC-017）；**預設本地、條件式外部升級**（DEC-018 經 DEC-023 修訂）；自我撰寫技能須核可+沙箱+稽核（DEC-019）；session/技能/工作流程持久化（DEC-020）；以 Workflow 管線 + 計畫確認為執行模型（DEC-021）；驗證/評分 harness 把關（DEC-022）。
+不採用 OpenClaw（DEC-016）；一律經 service 層或沙箱（DEC-017）；**預設本地、外部改為使用者手動選擇**（DEC-018 經 DEC-023 修訂；2026-06-25 起自動升級被手動選模取代，見 §12.10）；自我撰寫技能須核可+沙箱+稽核（DEC-019）；session/技能/工作流程持久化（DEC-020）；以 Workflow 管線 + 計畫確認為執行模型（DEC-021）；驗證/評分 harness 把關（DEC-022）。
 
 ### 9.91.3 模型策略與升級（隱私閘 + 複雜度路由 + 失敗升級）
 
@@ -2378,7 +2378,7 @@ app/assistant/
     client.py          # LLMClient 協定（本地與外部共用介面）
     ollama.py          # 本地 Gemma via Ollama / OpenAI 相容（httpx）
     external.py        # 外部大型模型 API 執行器（OpenAI API key 路徑；EM2）
-    router.py          # 1.3 模型策略：隱私閘 + 複雜度路由 + 失敗升級
+    router.py          # 1.3 模型策略：隱私閘 + 手動 target 選擇（§12.10）；自動升級僅 target=None 相容路徑
     privacy.py         # 隱私分類 + 去識別化（升級前置）
   skills/
     registry.py        # 03
@@ -2435,9 +2435,10 @@ ASSISTANT_ENABLED=true
 ASSISTANT_MAX_TOOL_ITERATIONS=8
 ASSISTANT_SANDBOX_TIMEOUT_SEC=30
 
-# 失敗升級到外部大型模型（1.3）
-EXTERNAL_LLM_ENABLED=false        # 全域開關；false 則永不外送
-MAX_LOCAL_ATTEMPTS=3              # 本地連續失敗幾次才評估升級
+# 外部模型（server 層 fallback client；僅 target=None 相容路徑使用——
+# 助理面板為手動選模 + per-user 具名連線，見 §12.10）
+EXTERNAL_LLM_ENABLED=false        # 全域開關；false 則相容路徑永不外送
+MAX_LOCAL_ATTEMPTS=3              # 本地重試次數（選本機時亦適用；相容路徑達上限才評估升級）
 EXTERNAL_LLM_BASE_URL=
 EXTERNAL_MODEL=
 EXTERNAL_LLM_API_KEY=

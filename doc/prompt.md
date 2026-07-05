@@ -146,20 +146,20 @@
 
 擴充原則：
 1. 助理一律經既有 service 層或受控沙箱操作，帶當前 `user_id`，不直接讀寫 DB／storage（DEC-017）。
-2. 預設本地 Gemma 4 26B；反覆失敗且符合隱私條件才升級外部 API；外部預設關閉（DEC-018/023）。
+2. 預設本地 Gemma 4 26B；外部模型由**使用者逐訊息手動選擇**（具名連線，§12.10），外送必經隱私閘（DEC-018/023/026；原自動升級僅存於 `target=None` 相容路徑）。
 3. 自我撰寫技能須「核可 → 沙箱 → 稽核」，絕不自動執行未審核程式碼（DEC-019）。
 4. 執行模型為 Workflow 管線 + 計畫確認（DEC-021）；功能正確性由驗證/評分 harness 把關（DEC-022）。
 
 ### 擴充範圍：外部模型接入（Codex/OpenAI）（Assistant 之後新增）
 
-本地 Gemma 4 反覆失敗時升級 GPT-5.5（設計見 `doc/detailed-design.md §12`，決策 DEC-026，延伸 DEC-023）。以下列任務文件為範圍，對應 Stage 15~17（**設計完成、尚未實作**）：
+外部模型接入（設計見 `doc/detailed-design.md §12`，決策 DEC-026，延伸 DEC-023）。以下列任務文件為範圍，對應 Stage 15~17（**已實作：EM1–EM3 於 2026-06-19 全數交付；2026-06-25 起由「手動選模型 + 多組具名連線」取代自動升級，見 §12.10**）：
 
 - `doc/tasks/external-model.md`（使用者功能：EM1 共用基礎 → EM2 路徑 B API key → EM3 路徑 A Codex 訂閱）；考官 provider 見 `assistant-eval.md` E6
 
 擴充原則：
 1. 憑證為**使用者自帶**、加密 at rest（`CREDENTIAL_ENCRYPTION_KEY`），對外只回遮罩；**絕不存明文密碼**、不入 log/回應。
-2. 升級延用 DEC-023：`MAX_LOCAL_ATTEMPTS` 連續本地失敗 + 隱私閘/權限/沙箱/確認閘/稽核；外部預設關閉。
-3. 認證雙路徑、**訂閱制優先、API key 備援**，behind 同一 `ExternalChatClient` 介面；訂閱制橋接官方 Codex CLI（per-request 隔離 `CODEX_HOME` + `codex-acp`，用畢即焚）。跨機可用已實機驗證（§9.6）。
+2. 隱私閘/權限/沙箱/確認閘/稽核延用 DEC-023；模型來源由**使用者手動選擇**（2026-06-25 起，無自動 fallback；原 `MAX_LOCAL_ATTEMPTS` 自動升級僅存於 `target=None` 相容路徑）。
+3. 認證雙路徑（Codex 訂閱 / OpenAI 相容 API key），behind 同一 `ExternalChatClient` 介面（原「訂閱制優先自動退回」已由手動選連線取代）；訂閱制橋接官方 Codex CLI（per-request 隔離 `CODEX_HOME` + `codex-acp`，用畢即焚）。跨機可用已實機驗證（§9.6）。
 4. eval 考官可選 Gemma/Codex（預設 Gemma），考官憑證走開發者 env，考官與被考者分離。
 5. 檔案所有權：新增 `app/external_model/`（或併入 `app/assistant/llm/`）、`user_external_credentials` model/migration、profile 端點、`eval/judge.py` 擴充、前端 profile 憑證 UI；實作時避免與既有 `assistant/llm` 共享檔案衝突，必要時順序執行。
 
@@ -531,7 +531,7 @@ chore: complete cloud drive implementation
 此 Agent 負責建立：
 
 1. `app/assistant/`：`service.py`(01 迴圈)、`planner.py`、`workflow.py`、`context.py`、`schemas.py`、`hooks.py`、`permissions.py`、`subagent.py`、`repository.py`（system prompt 07 內嵌於 planner/subagent，無獨立 `prompt.py`）。
-2. `app/assistant/llm/`：`client.py`、`ollama.py`(本地 Gemma)、`external.py`、`router.py`(隱私閘+複雜度+失敗升級)、`privacy.py`。
+2. `app/assistant/llm/`：`client.py`、`ollama.py`(本地 Gemma)、`external.py`、`router.py`(隱私閘+手動 target 選擇；自動升級僅 `target=None` 相容路徑)、`privacy.py`。
 3. `app/assistant/skills/`：`registry.py`、`manifest.py`、`authoring.py`、`sandbox.py`、`builtin/`(檔案/批次內建技能 + `author_skill`)。
 4. Alembic migration：`assistant_sessions`/`assistant_messages`/`assistant_skills`/`assistant_workflows`/`assistant_workflow_runs`。
 5. `core/config.py` 助理與外部升級設定；於 `api/v1/router.py` 註冊（共享檔案，依檔案所有權規則由主 Agent 協調）。

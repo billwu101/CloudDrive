@@ -213,7 +213,7 @@
 ## DEC-023：模型策略 —— 預設本地，反覆失敗時條件式升級外部 API
 
 - 日期：2026-06-16
-- 狀態：Accepted（修訂 DEC-018）
+- 狀態：Accepted（修訂 DEC-018）；**2026-06-25 起助理聊天路徑改為「使用者逐訊息手動選模型」，自動升級被取代**（見 [proposal-model-selection.md](./proposal-model-selection.md)、[proposal-multi-connections.md](./proposal-multi-connections.md)、detailed-design §12.10），僅保留於 `ModelRouter` 的 `target=None` 相容路徑；**隱私閘（第 2 條）不受影響、仍為所有外送的最後防線**
 - 背景：本地 Gemma 4 26B 對部分複雜任務可能反覆做不出可接受結果；需有退路，但不能犧牲隱私。依「建議模型策略」流程圖納入隱私閘、複雜度路由與失敗升級。
 - 決策：
   1. 預設執行器為本地 Gemma；能用非 LLM 規則/小模型解的簡單任務優先省成本。
@@ -263,7 +263,7 @@
 ## DEC-026：外部模型接入（Codex 訂閱制 / OpenAI API）——執行升級與 eval 考官
 
 - 日期：2026-06-19
-- 狀態：Accepted（設計階段，尚未實作）
+- 狀態：Accepted；**已實作**（EM1–EM3 於 2026-06-19 全數交付，見 [tasks/external-model.md](./tasks/external-model.md)）。**2026-06-25 後演進**：「自動升級 / 訂閱制優先自動退回 API key」改為**使用者手動選模型 + 多組具名連線**（migration 0016，detailed-design §12.10）；憑證加密、Codex 橋接、隱私閘等其餘決策不變
 - 背景：本地 Gemma 4 對部分任務反覆做不出可接受結果時，希望能切換到 GPT-5.5；同時希望 eval harness 的考官可選用更強模型評斷 skill 的正確性與效果。使用者需在 profile 綁定自己的外部模型憑證才可使用。延伸自 DEC-023。
 - 決策：
   1. **兩條認證路徑，訂閱制優先、API key 備援**：路徑 A = Codex 訂閱制（優先）；路徑 B = OpenAI API key（穩定備援）。provider 抽象成同一介面；訂閱制不可用時自動退回 API key，功能不中斷。
