@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react'
+import { Check, SkipForward, X } from 'lucide-react'
 
 import type { WorkflowStepResult } from '@/api/types'
 
@@ -28,6 +28,7 @@ function withCount(total: number, listing: string): string {
 }
 
 function summarize(result: WorkflowStepResult): string {
+  if (result.skipped) return result.error ?? 'Skipped (upstream failure)'
   if (!result.ok) return result.error ?? 'Failed'
   const output = result.output
   if (output && typeof output === 'object' && !Array.isArray(output)) {
@@ -54,6 +55,11 @@ export function StepResultList({ results }: { results: WorkflowStepResult[] }) {
         <li key={result.index} className="flex items-start gap-1.5">
           {result.ok ? (
             <Check className="mt-0.5 size-3 shrink-0 text-emerald-600" aria-hidden="true" />
+          ) : result.skipped ? (
+            <SkipForward
+              className="mt-0.5 size-3 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
           ) : (
             <X className="mt-0.5 size-3 shrink-0 text-destructive" aria-hidden="true" />
           )}

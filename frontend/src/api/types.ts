@@ -181,6 +181,8 @@ export interface WorkflowStepResult {
   ok: boolean
   output?: unknown
   error?: string | null
+  /** True when the step never ran because an upstream dependency failed. */
+  skipped?: boolean
 }
 
 export interface WorkflowPlanView {
