@@ -46,16 +46,21 @@ def _compose_failure_message(results: list[StepResult], *, retried: bool = False
     execution failed. The facts (which steps ran, which failed, that nothing
     further was changed) come from StepResults, not from the model."""
 
-    failed = next(result for result in results if not result.ok)
     completed = [result for result in results if result.ok]
+    failures = [result for result in results if not result.ok and not result.skipped]
+    skipped = [result for result in results if result.skipped]
     prefix = "我重新規劃並重試了一次仍然失敗。" if retried else ""
-    detail = f"執行未完成:第 {failed.index + 1} 步({failed.skill})失敗:{failed.error}。"
+    summary = f"執行完成 {len(completed)}/{len(results)} 步。"
+    details = "".join(
+        f"第 {result.index + 1} 步({result.skill})失敗:{result.error}。" for result in failures
+    )
+    skip_note = f"另有 {len(skipped)} 步因上游失敗而跳過。" if skipped else ""
     if completed:
         done = "、".join(result.skill for result in completed)
-        tail = f"已完成 {len(completed)} 步({done}),其後的步驟未執行,沒有進一步的變更。"
+        tail = f"已完成:{done}。除上述外沒有進一步的變更。"
     else:
         tail = "沒有任何步驟完成,也沒有做出任何變更。"
-    return prefix + detail + tail
+    return prefix + summary + details + skip_note + tail
 
 
 def _execution_feedback(message: str, results: list[StepResult]) -> str:
@@ -70,6 +75,8 @@ def _execution_feedback(message: str, results: list[StepResult]) -> str:
             if len(output) > 300:
                 output = output[:300] + "…"
             lines.append(f"- step {result.index} {result.skill}: ok, output={output}")
+        elif result.skipped:
+            lines.append(f"- step {result.index} {result.skill}: SKIPPED (upstream failure)")
         else:
             lines.append(f"- step {result.index} {result.skill}: FAILED — {result.error}")
     return (

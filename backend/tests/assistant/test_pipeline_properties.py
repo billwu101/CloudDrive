@@ -148,17 +148,38 @@ def test_validate_plan_is_total_and_sound(steps: list[PlannedStep]) -> None:
 
 @settings(max_examples=200, deadline=None)
 @given(planned_steps)
-def test_executor_never_raises_and_stops_on_first_failure(steps: list[PlannedStep]) -> None:
+def test_executor_never_raises_and_isolates_failures(steps: list[PlannedStep]) -> None:
     registry = build_registry()
     executor = WorkflowExecutor(registry=registry)
     results = asyncio.run(executor.execute(user_id=uuid4(), steps=_to_workflow_steps(steps)))
 
     assert isinstance(results, list)
-    assert len(results) <= len(steps)
-    failures = [i for i, r in enumerate(results) if not r.ok]
-    # At most one failure, and it is the last result (execution stops on error).
-    if failures:
-        assert failures == [len(results) - 1]
+    # Failure isolation invariants: every step gets exactly one result, in order.
+    assert [r.index for r in results] == list(range(len(steps)))
+    unavailable: set[int] = set()
+    for result in results:
+        if result.skipped:
+            # Skipped implies not ok and at least one unavailable dependency
+            # (explicit depends_on or a from_step argument reference).
+            assert not result.ok
+            step = steps[result.index]
+            deps = {
+                v["from_step"]
+                for v in step.arguments.values()
+                if is_step_ref(v) and isinstance(v.get("from_step"), int)
+            }
+            assert deps & unavailable
+        if not result.ok:
+            unavailable.add(result.index)
+        else:
+            # An ok step never consumed a failed/skipped dependency.
+            step = steps[result.index]
+            deps = {
+                v["from_step"]
+                for v in step.arguments.values()
+                if is_step_ref(v) and isinstance(v.get("from_step"), int)
+            }
+            assert not (deps & unavailable)
 
 
 @settings(max_examples=300, deadline=None)
