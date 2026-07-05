@@ -2934,6 +2934,14 @@ plan-then-execute 的兩個結構性問題與對策（詳細理由與「為何�
 - **失敗才 replan（第 1 級，僅 chat 快速路徑）**：執行失敗 → `_execution_feedback()` 把逐步真實結果餵回 planner 重規劃一次（budget=1）→ 護欄：新計畫必須全 read-only auto-confirmable 且不含 requires_selection，否則放棄且不建 pending；replan 再失敗落回誠實報告（加註已重試）。兩次嘗試各記一筆 run（第二筆 source_nl 帶 `[replan]`）。成功路徑維持一次 LLM 呼叫。
 - confirm / rerun **無 replan**：核可後偷換步驟破壞同意邊界；saved workflow 是固定配方。
 
+**執行隔離（2026-07-05，DAG 第一階段）**：executor 不再遇錯全域 break。仍**串行、單一 request session**（並行留待第二階段——所有技能共用同一 AsyncSession，並發使用不安全）。語意：
+
+- 失敗只斷「真正的下游」：`_blocked_dependencies()` 合併顯式 `depends_on` 與引數 `from_step` 引用，踩到已失敗/已跳過的上游 → 記 `StepResult(skipped=True)`（error 註明依賴哪步）且不執行、不發 hook；無關步驟照常執行。
+- 新不變量：**每步恰有一筆結果**（`len(results) == len(steps)`），三態 ok / failed / skipped（hypothesis property test 鎖定）。
+- `StepResult.skipped: bool = False` 為 additive 欄位（DB JSON / API / 前端型別皆向後相容）；前端 `StepResultList` 以 skip 圖示區別渲染。
+- 誠實報告升級為分支彙總：「執行完成 X/N 步。第 i 步(skill)失敗:原因。另有 M 步因上游失敗而跳過。」；replan 回饋含 SKIPPED 行。
+- 引用「不存在的 index」仍記 failed（非法計畫引用 ≠ 上游失敗）；`_run_status` 與 replan 觸發/護欄不變。
+
 ## 13. 時光機（Snapshots）
 
 ### 13.1 目的

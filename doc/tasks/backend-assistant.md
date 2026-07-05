@@ -105,10 +105,16 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 
 **動機**：一次勾選 5 個檔案壓縮時，`expand_selection_steps` 會展開成 5 個獨立步驟（`depends_on=[]`），但 executor 目前是循序 for 迴圈且**遇第一個錯就 break**（`workflow.py` execute）——(1) 5 個互不相依的步驟被迫排隊浪費時間；(2) 第 1 個失敗後其餘 4 個「全部沒做」，即使它們毫無關聯。
 
+**第一階段（失敗隔離，2026-07-05 完成）**——串行、單 session 不動：
+
+- [x] 失敗隔離：某步失敗只跳過**它的下游相依步驟**（`depends_on` ∪ `from_step` 引用，標記 skipped＋原因），無關分支照常執行完——取代全域 break。新不變量：每步恰一筆結果（property test 鎖定）。
+- [x] `StepResult.skipped: bool = False`（additive）；`_run_status` 維持 succeeded/failed 不加 partial（避免 API 值域變更）。
+- [x] 誠實報告分支彙總（「執行完成 4/5 步。第 2 步(…)失敗:…。另有 1 步因上游失敗而跳過。」）；replan 回饋含 SKIPPED 行。
+- [x] 前端：`WorkflowStepResult.skipped?` + `StepResultList` skip 圖示區別渲染。
+
+**第二階段（並行，未做）**——前置:解「所有技能共用同一 AsyncSession」問題（每步獨立 session 或分相執行,見 DEC-029 討論）：
+
 - [ ] executor 改 DAG 波次執行：依 `depends_on` 做拓撲分層，同層無相依步驟用 `asyncio.gather` 並行；加並行上限（semaphore，避免打爆 DB/storage/沙箱）。
-- [ ] 失敗隔離：某步失敗只跳過**它的下游相依步驟**（標記 skipped＋原因），無關分支照常執行完——取代現在的全域 break。
-- [ ] `StepResult` 增加 skipped 語意（新欄位或 error 慣例），`_run_status` 增加 partial 狀態考量（全成/部分成/全敗）。
-- [ ] 誠實報告配合升級：分支彙總（「5 個檔案：4 個成功、1 個失敗（原因）、0 個跳過」）。
 - [ ] replan 互動釐清：部分失敗時 replan 的輸入應只含失敗分支；已成功分支不得重跑（副作用）。
 - [ ] 沙箱技能並行時的資源上限確認（`asyncio.to_thread` × N 個 `python -I` 子行程的 CPU/記憶體）。
-- [ ] 測試：獨立步驟確實並行（時序或呼叫順序斷言）、失敗隔離（1 敗 4 成）、下游 skip、相依鏈仍守順序、並行上限生效。
+- [ ] 測試：獨立步驟確實並行（時序或呼叫順序斷言）、相依鏈仍守順序、並行上限生效。
