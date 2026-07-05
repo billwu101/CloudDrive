@@ -336,3 +336,21 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 | rerun | 使用者具名儲存的**固定配方** | 誠實回報 | saved workflow 的價值就是確定性；偷換步驟違反「儲存」契約 |
 
 合規的 confirm 補救設計（未做、不違反本決策）：失敗後 replan 但**不執行**，改產生新 pending 請使用者再確認一次——保住同意邊界，代價是多一輪往返。等 eval 數據顯示 destructive 失敗夠常見再評估。
+
+## DEC-030：工作流執行維持串行，暫不並行（DAG 第二階段延後）
+
+- 日期：2026-07-05
+- 狀態：Accepted
+- 背景：計畫資料結構本來就是 DAG（`depends_on` 邊 + `from_step` 資料流）。第一階段（失敗隔離，見 §12.11）已讓 executor 依圖的語意傳播失敗——失敗只斷真正的下游、無關分支照常執行、每步恰有一筆 ok/failed/skipped 結果。剩下的「用圖排程」（拓撲分層 + 無相依步驟並行）可再省延遲：5 個獨立壓縮步驟可從「5 份時間」縮到「約 1 份時間」。本決策記錄為何**現在不做並行**。
+- 決策：executor 維持**串行執行、單一 request-scoped AsyncSession**。並行排程列為第二階段，需先解決下述前置問題並重新評估。
+- 不並行的理由：
+  1. **共用 DB session 不允許並發（最硬的技術阻礙）**：`assistant/router.py` 在請求開頭用同一個 `AsyncSession` 蓋出整套 service（DriveService/UploadService/TrashService…），技能 handler 閉包住這些 service——session 在組裝鏈最上游就被固定，下游沒有任何位置可以指定「這步改用別的 session」。SQLAlchemy 明文規定 AsyncSession 不可並發使用；naive 的 `asyncio.gather` 會直接拋 `InvalidRequestError`。連旗艦場景（壓縮）也躲不掉：沙箱階段純 CPU 不碰 DB，但解壓後寫回 drive 走 UploadService（碰 DB）。
+  2. **交易語意改變**：現在整個工作流共用一筆交易，結尾一起 commit、出錯可整體回滾。每步獨立 session 意味每步各自 commit——做到一半炸掉時，前面的變更已永久生效，無法整體撤銷。這是語意上的真實改變，必須被有意識地接受而非順手發生。
+  3. **同使用者資料競爭**：並行後 N 筆交易同時操作同一使用者的資料——配額 check-then-write 競賽（兩步都判定額度夠 → 都寫入 → 超額）、同名資料夾撞唯一性約束、交易間死鎖。串行時這些天然不存在。
+  4. **連線池耗盡**：每步一通連線 × 每請求 N 步 × 併發使用者數，很快抽乾預設 5-10 的 pool，拖垮整個後端——必須配 semaphore 上限設計。
+  5. **價值/成本不對稱**：失敗隔離（已完成）解掉了「1 個 fail 害 4 個沒做」這個正確性問題，成本是 executor 內幾十行、零架構風險；並行只省延遲，卻要付上述 1–4 的設計成本。且本產品工作流多為 2-5 步、讀取類步驟毫秒級完成，並行收益集中在沙箱 CPU 型技能（壓縮/解壓）一類。
+- 第二階段的兩條候選路線（屆時二選一）：
+  - **每步獨立 session**：把 session factory 傳進技能層，每步「開 session → 現場組 service → commit → 關閉」。乾淨但侵入大（router 十餘個組裝函式、所有 handler、測試 fake 全要改），並須正面處理理由 2–4。
+  - **分相執行**：不碰 DB 的重活（沙箱 CPU）並行，碰 DB 的收尾（寫回 drive）維持單 session 排隊。改動小、繞開理由 1–4 的大部分，代價是寫回階段不並行、架構稍不對稱。
+- 已知取捨：5 個獨立步驟仍排隊執行（延遲未改善）；沙箱 CPU 型批次操作是最吃虧的場景。
+- 影響範圍：`backend/app/assistant/workflow.py`（現狀維持）、`doc/tasks/backend-assistant.md` 第二階段清單、`doc/detailed-design.md` §12.11。

@@ -112,7 +112,7 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [x] 誠實報告分支彙總（「執行完成 4/5 步。第 2 步(…)失敗:…。另有 1 步因上游失敗而跳過。」）；replan 回饋含 SKIPPED 行。
 - [x] 前端：`WorkflowStepResult.skipped?` + `StepResultList` skip 圖示區別渲染。
 
-**第二階段（並行，未做）**——前置:解「所有技能共用同一 AsyncSession」問題（每步獨立 session 或分相執行,見 DEC-029 討論）：
+**第二階段（並行，未做）**——前置:解「所有技能共用同一 AsyncSession」問題（每步獨立 session 或分相執行,決策與理由見 DEC-030）：
 
 - [ ] executor 改 DAG 波次執行：依 `depends_on` 做拓撲分層，同層無相依步驟用 `asyncio.gather` 並行；加並行上限（semaphore，避免打爆 DB/storage/沙箱）。
 - [ ] replan 互動釐清：部分失敗時 replan 的輸入應只含失敗分支；已成功分支不得重跑（副作用）。
