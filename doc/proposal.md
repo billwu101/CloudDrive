@@ -398,6 +398,7 @@
 
 - **聊天面板**：浮動於各受保護頁；訊息泡泡、計畫確認卡、技能核可/程式碼審查、已存工作流程清單、使用者訊息複製鈕。
 - **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
+- **外部模型連線設定（Settings）**：管理多組外部模型連線——連線列表、新增（含 Gemini／OpenAI／Ollama cloud／Codex presets，自動帶入對應 base_url）、刪除；顯示遮罩提示與連線狀態。
 
 > 各頁面/元件的詳細結構與 props 見 [detailed-design.md](./detailed-design.md) §5。
 
@@ -449,6 +450,7 @@
 - **工作流程重用**：計畫可命名儲存，之後一鍵重跑。
 - **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
 - **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
+- **多組具名外部模型連線**：使用者可建立**多個**外部模型連線，每個自訂名稱、選類型（OpenAI 相容／Ollama／Codex 訂閱）並填 base_url + model + API key（取代「每 provider 一把」）。「OpenAI 相容」是**協定不是廠商**——同一介面可接 OpenAI／Gemini／Ollama cloud／Groq 等；Codex 為訂閱制特例。連線驗證失敗自動標記 invalid；憑證加密儲存、只回遮罩不回明文。**規劃中**再支援 Anthropic／Claude 連線。
 - **模型選擇（對話內手動選、選定則無自動 fallback）**：助理面板下拉列出「本機 + 使用者已設定的外部模型連線」，每則訊息帶所選模型、可同一 session 中途更換；**選定即只用該模型、不自動退回其他模型**（上述自動升級僅適用於未指定模型的預設路徑）。所選模型失敗時**明確分類回報**（連不到／憑證被拒／額度或速率／其他）並**快速失敗**（本機連線逾時數秒、不卡分鐘級）；未設定的連線在選單停用。錯誤訊息只給分類與建議，不洩漏金鑰或內部細節。
 
 **HARNESS 引擎架構**：助理後端是一個 agent harness 引擎，由數個核心組件構成——
@@ -592,6 +594,7 @@ API base path：`/api/v1`。下表為各端點對應的動作（介面需求）�
 | POST | `/assistant/skills/{id}/approve` · `/execute` | 核可安裝 / 執行（生成技能於沙箱執行並寫回 drive） |
 | PATCH | `/assistant/skills/{id}` | 編輯描述/程式碼（改碼重跑 codeguard）；切換 `chat_enabled`（允許在對話中使用） |
 | DELETE | `/assistant/skills/{id}` | 刪除技能（連同右鍵動作）；回 204 |
+| GET/POST/PUT/DELETE | `/users/me/model-connections` | 多組具名外部模型連線 CRUD（憑證加密、只回遮罩；取代舊 `/external-credentials`） |
 
 ### 15.8 Time Machine API
 
@@ -856,7 +859,7 @@ volumes:
 | LLM_BASE_URL / LLM_API_KEY / ASSISTANT_MODEL | 本地或相容 API 模型設定；若含密鑰不得提交版控 |
 | EMBEDDING_ENABLED / EMBEDDING_MODEL | 語意搜尋設定 |
 | CREDENTIAL_ENCRYPTION_KEY | 加密使用者外部模型憑證；正式環境必須由 secret manager 或受控環境注入 |
-| EXTERNAL_API_BASE_URL / EXTERNAL_CHAT_MODEL | 外部模型升級設定 |
+| EXTERNAL_API_BASE_URL / EXTERNAL_CHAT_MODEL | 舊自動升級路徑的外部模型設定；多組具名連線後每連線自帶 base_url/model（見 §12 多組具名外部模型連線） |
 
 **AI Assistant 完整環境變數**（屬 §12 功能）：`ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
 
@@ -872,7 +875,7 @@ secret 管理原則：
 1. 本機開發：可由 `.env` 提供，`.env` 不進版控；`.env.example` 只放可啟動的示範值。
 2. 正式環境：`JWT_SECRET_KEY`、`POSTGRES_PASSWORD`、`SMTP_PASSWORD`、LLM API key、`CREDENTIAL_ENCRYPTION_KEY` 應由 secret manager、CI/CD secret 或受控環境變數注入。
 3. 資料庫內不保存明文 refresh token、share token；只保存 hash。
-4. 使用者外部模型憑證若啟用，保存於 `user_external_credentials.secret_encrypted`，只回傳遮罩提示，不回傳明文。
+4. 使用者外部模型連線憑證若啟用，保存於 `external_model_connections.secret_encrypted`（多組具名連線，取代舊 `user_external_credentials`），只回傳遮罩提示，不回傳明文。
 
 ## 22. 測試計畫
 
