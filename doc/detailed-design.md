@@ -2572,7 +2572,10 @@ WorkflowRun {
 
 ### 8.95.2 生成式技能（現場生成、需核可+沙箱）
 
-任何內建未涵蓋的能力（如 `decompress_7z`、`compress_zip`、`convert_image`、`extract_pdf_text`…）由 `author_skill` 經 3.1 子流程生成、核可、沙箱、安裝。安裝後即與內建技能一樣可被工作流程編排，並可掛右鍵選單。
+任何內建未涵蓋的能力（如 `decompress_7z`、`compress_zip`、`convert_image`、`extract_pdf_text`…）由 `author_skill` 經 3.1 子流程生成、核可、沙箱、安裝。安裝後**可掛右鍵選單對單檔執行**；但**預設不進對話 planner**——自建／生成技能屬不可信程式碼，需逐個手動開啟 `chat_enabled`（「允許在對話中使用」）才會被載入 planner registry，且一律以 **write 級**編排、用到即進確認閘、經沙盒執行（完整設計見 §8.95.4）。
+
+<!-- 原 v1 設計（已由 §8.95.4 chat_enabled 安全閘取代）：「安裝後即與內建技能一樣可被工作流程編排，並可掛右鍵選單。」——舊做法為安裝即自動可被 planner 編排、無 opt-in 閘；新做法改為預設關閉、逐個手動開啟、用到必確認，以收緊不可信程式碼的執行面。 -->
+
 
 ### 8.95.3 技能管理（檢視 / 編輯 / 刪除）
 
@@ -2583,6 +2586,19 @@ WorkflowRun {
 - **刪除**：`DELETE /assistant/skills/{id}`（回 204），連同其右鍵動作一併移除。
 - service 層 `update_skill`/`delete_skill`、repository `update`/`delete`；皆依 `user_id` 隔離。
 
+### 8.95.4 自建技能在對話中使用（chat_enabled）
+
+> **落地狀態**：本節設計已於 main 分支實作（2026-06-25），**fix 分支待落地**。需求面見 proposal §12（「自建技能用於對話」「勾選檔案帶入」「Skills 頁 toggle」）。落地時 §8.9 資料模型加 `chat_enabled` 欄、§13.5 端點清單與 §7.12 Migration 演進表需同步。
+
+原本 planner 只認內建 skill；自建／生成的 skill（如 `compress_zip`）只能透過右鍵 `POST /assistant/skills/{id}/execute` 對單檔執行，對話中說「用我的 skill 壓縮」會被回「沒有這個功能」。本功能讓自建 skill 也能被 planner 排進計畫——因屬**不可信程式碼**，採多層管控（呼應 §8.95.2 已解衝突的新說法：安裝不再等於自動可編排）。
+
+- **逐個 opt-in（D3）**：`assistant_skills` 加 `chat_enabled BOOLEAN NOT NULL DEFAULT false`（migration，落地時併入 §7.12 演進表）。**只有 `installed` 且 `chat_enabled`** 的 skill 才載入 planner registry；`PATCH /assistant/skills/{id}` 可切換（前端 SkillsPage 卡片 toggle）。
+- **一律 write 級（D1）**：載入時以 `tier="write"` + 固定參數 `{ item_id }` + **橋接 closure handler** 註冊——closure 捕捉 `AssistantSkillService`，被呼叫時把該 skill 的 DB `code` 交沙盒執行（重用 `execute_skill` → `_execute_generated`：複製原檔 → 沙盒 → 可信層上傳，執行前先快照，見 §12.134.3）。用到自建 skill 的計畫**一律進確認閘**（`is_auto_confirmable` 回 false），不自動執行。
+- **勾選帶入目標檔（D2）**：`AssistantChatRequest` 加 `selected_item_ids: list[UUID]`；自建 skill 步驟的 `item_id` 由**勾選清單**帶入（不靠 LLM 猜檔名）。勾一個 → 對該檔執行；**勾多個 → 對每檔各跑一次（批次，執行層迴圈）**；勾零個 → 提示先選檔。前端沿用硬碟頁多選 state，對話框顯示已選檔 chips（可單獨移除）。
+- **名稱衝突（FR6）**：自建 skill 名稱與內建衝突 → **跳過不載入並提示改名**。
+- **安全多層**：預設關 + 逐個 opt-in → write 級必確認 → codeguard 靜態掃描 + 沙盒隔離（網路／檔案／行程封鎖）→ 執行前自動快照；沙盒在本機執行，不送外部模型。
+
+**影響範圍（落地時）**：`assistant_skills.chat_enabled` migration、`assistant/{router,service,planner}.py`（registry 載入橋接 handler、`selected_item_ids` 下傳）、`assistant/schemas.py`、前端 `pages/SkillsPage.tsx`（toggle）+ `components/assistant/AssistantPanel.tsx`（已選檔 chips）。
 
 ### 8.6 端到端範例
 

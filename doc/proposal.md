@@ -443,7 +443,9 @@
 - **對話操作**：登入後 CloudDrive shell 內的浮動聊天面板，用自然語言列檔／搜尋／整理／改名／移動／分享／壓縮解壓等。
 - **計畫確認**：寫入/破壞性操作先產生計畫（步驟、權限層級、是否需確認），唯讀操作可 fast-path 自動執行；使用者確認後才執行，破壞性操作**絕不自動執行**。
 - **現場生成新技能**：缺少的能力由助理現場生成（例如「做一個 7zip 解壓縮功能」），經 **codegen → 靜態驗證（codeguard）→ 使用者核可 → 受限沙箱執行**，產出檔案寫回 drive。
-- **技能管理**：側欄 **Skills 頁（`/skills`）**檢視已安裝技能數量、編輯（描述/程式碼，改碼重跑 codeguard）、刪除。
+- **自建技能用於對話（需逐個開啟）**：生成／自建技能預設只能透過右鍵對單一檔案執行；若要讓助理在對話中直接調用，須在 Skills 頁逐個開啟「允許在對話中使用」。開啟後助理可把該技能排進計畫，但因屬不可信程式碼，**一律需使用者確認、經沙盒執行、執行前自動快照**，不會自動執行。
+- **勾選檔案帶入**：在對話中使用技能時，「要對哪些檔操作」由使用者在硬碟頁**勾選**帶入（對話框顯示已選檔、可單獨移除）；勾一個對該檔執行、**勾多個對每檔各跑一次**、未勾則提示先選檔——不靠 AI 猜檔名。
+- **技能管理**：側欄 **Skills 頁（`/skills`）**檢視已安裝技能數量、編輯（描述/程式碼，改碼重跑 codeguard）、刪除、**逐個開關「允許在對話中使用」**。
 - **工作流程重用**：計畫可命名儲存，之後一鍵重跑。
 - **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
 - **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
@@ -580,13 +582,13 @@ API base path：`/api/v1`。下表為各端點對應的動作（介面需求）�
 
 | Method | Path | 用途 |
 |---|---|---|
-| POST | `/assistant/chat` | 對話；回計畫或技能提案；記錄 session/訊息 |
+| POST | `/assistant/chat` | 對話；回計畫或技能提案；記錄 session/訊息；可帶 `selected_item_ids`（勾選檔，供自建技能帶入目標檔） |
 | GET | `/assistant/sessions`、`/assistant/sessions/{id}/messages` | 對話歷史 |
 | POST | `/assistant/workflows/{id}/confirm` · `/cancel` | 確認/取消 pending 計畫 |
 | POST | `/assistant/workflows/save`、GET `/workflows/saved`、POST `/workflows/saved/{id}/rerun` | 命名儲存與一鍵重跑 |
 | GET | `/assistant/skills?status=installed` | 列出已安裝技能 |
 | POST | `/assistant/skills/{id}/approve` · `/execute` | 核可安裝 / 執行（生成技能於沙箱執行並寫回 drive） |
-| PATCH | `/assistant/skills/{id}` | 編輯描述/程式碼（改碼重跑 codeguard） |
+| PATCH | `/assistant/skills/{id}` | 編輯描述/程式碼（改碼重跑 codeguard）；切換 `chat_enabled`（允許在對話中使用） |
 | DELETE | `/assistant/skills/{id}` | 刪除技能（連同右鍵動作）；回 204 |
 
 ### 15.8 Time Machine API
