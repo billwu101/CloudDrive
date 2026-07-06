@@ -214,6 +214,8 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         fallback_base_urls=(
             [settings.llm_fallback_base_url] if settings.llm_fallback_base_url else []
         ),
+        num_predict=settings.llm_num_predict,
+        structured_temperature=settings.llm_structured_temperature,
     )
     # Global env-configured external client (DEC-023), used when a user has no
     # per-user credential.
