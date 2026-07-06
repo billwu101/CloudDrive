@@ -3189,6 +3189,7 @@ EM1~EM3 的 `user_external_credentials` 是 `(user_id, provider)` 單筆，痛�
 - `api/externalModelApi.ts` → `modelConnectionApi`（CRUD）；`hooks/useExternalCredentials.ts` → `useModelConnections` 等。
 - `components/settings/ExternalModelSettings.tsx`：連線**列表** + 新增表單（label / kind 下拉 / base_url / model / key）+ **presets**（Gemini / OpenAI / Ollama cloud / Codex，自動帶入對應 base_url 降低混淆；Claude preset 待 §11.10.5 接線後補）。
 - `components/assistant/AssistantPanel.tsx`：下拉列出 local + 各連線 label；未設定者停用；送出帶 `model`；錯誤顯示後端分類訊息。
+- **預設選擇（Q2）**：載入 models 後自動挑預設——有可用外部連線則預設該外部、否則預設本機；未選到任何可用模型時送出鈕停用。
 
 #### 11.10.8 實機驗證與安全待辦
 
