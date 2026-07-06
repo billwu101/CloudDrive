@@ -223,6 +223,6 @@ Use Vitest + MSW. Per-test MSW overrides: `server.use(http.get(...))` inside the
 | `doc/proposal.md` | Product requirements and feature design |
 | `doc/tasks/<module>.md` | Per-module task checklist (checked = implemented + tested) |
 | `doc/tasks/progress.md` | Overall 28-module completion status |
-| `doc/decisions.md` | Architecture decision records (DEC-XXX format) |
+| `doc/detailed-design.md` 附錄 A | Architecture decision records (DEC-XXX format) — 原 `doc/decisions.md`，已併入 detailed-design 附錄 A |
 
 **After adding any new feature**, update `doc/prompt.md` (Stage extra requirements + file ownership table), `doc/detailed-design.md` (relevant module section), and the affected `doc/tasks/<module>.md` (new items, checked).

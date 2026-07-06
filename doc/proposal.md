@@ -58,7 +58,7 @@
 | API 文件、ERD、架構／部署／時序圖（**開發文件紀錄**） | 是 | 端點/request/response/錯誤碼、資料表與權限·搜尋·快照·助理、資料流與部署邊界；皆**由 `detailed-design.md` 與 OpenAPI 匯出／節錄**，供交付方審查 |
 | 測試與 Assistant Eval Harness 報告 | 是 | 證明核心流程、E2E、AI agent 評測有被驗證 |
 
-也就是說，`detailed-design.md`、`decisions.md`、`progress.md` 與 `tasks/*.md` 為**內部文件、不納入交付**；正式需求文件本身應能獨立說明系統需求。
+也就是說，`detailed-design.md`（含附錄 A 架構決策紀錄）、`progress.md` 與 `tasks/*.md` 為**內部文件、不納入交付**；正式需求文件本身應能獨立說明系統需求。
 
 ### 1.3 文件維護方式
 
@@ -438,7 +438,7 @@
 
 ## 12. In-App AI Assistant
 
-於網頁應用內提供一個**可對話、可自我擴充的 AI 助理**。使用者用自然語言描述需求，助理把需求轉成**可檢視、可確認、可執行、可記錄的 Workflow**，以既有或現場生成的技能完成檔案／資料夾操作。完整設計見 [detailed-design.md §9](./detailed-design.md)，評測見 [detailed-design.md §11](./detailed-design.md)，決策見 [decisions.md](./decisions.md) 的 DEC-016～023。
+於網頁應用內提供一個**可對話、可自我擴充的 AI 助理**。使用者用自然語言描述需求，助理把需求轉成**可檢視、可確認、可執行、可記錄的 Workflow**，以既有或現場生成的技能完成檔案／資料夾操作。完整設計見 [detailed-design.md §9](./detailed-design.md)，評測見 [detailed-design.md §11](./detailed-design.md)，決策見 [detailed-design.md 附錄 A](./detailed-design.md) 的 DEC-016～023。
 
 - **對話操作**：登入後 CloudDrive shell 內的浮動聊天面板，用自然語言列檔／搜尋／整理／改名／移動／分享／壓縮解壓等。
 - **計畫確認**：寫入/破壞性操作先產生計畫（步驟、權限層級、是否需確認），唯讀操作可 fast-path 自動執行；使用者確認後才執行，破壞性操作**絕不自動執行**。
