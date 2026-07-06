@@ -67,10 +67,17 @@ def _post_json(url: str, body: dict[str, Any], timeout: float = 15.0) -> dict[st
     return data if isinstance(data, dict) else {}
 
 
-def _wait_ready(base_url: str, timeout_sec: float = 90.0) -> None:
+def _wait_ready(
+    base_url: str, proc: subprocess.Popen[bytes] | None = None, timeout_sec: float = 90.0
+) -> None:
     deadline = time.monotonic() + timeout_sec
     login = f"{base_url}/auth/login"
     while time.monotonic() < deadline:
+        if proc is not None and proc.poll() is not None:
+            raise RuntimeError(
+                f"backend exited with code {proc.returncode} before becoming ready "
+                "(port already in use? check with `ss -tlnp`)"
+            )
         try:
             _post_json(login, {})
         except urllib.error.HTTPError as exc:
@@ -202,7 +209,7 @@ def main() -> int:
         print(f"[sweep] temperature={temperature}: booting backend on :{args.port}", flush=True)
         proc = _boot_backend(args.port, temperature)
         try:
-            _wait_ready(base_url)
+            _wait_ready(base_url, proc)
             email, password = _register(base_url, tag=str(temperature).replace(".", ""))
             token = _login(base_url, email, password)
             # Warm-up: the model may need a cold (re)load after keep_alive
