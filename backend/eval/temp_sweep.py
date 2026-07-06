@@ -82,13 +82,17 @@ def _wait_ready(base_url: str, timeout_sec: float = 90.0) -> None:
     raise RuntimeError(f"backend at {base_url} not ready within {timeout_sec}s")
 
 
-def _register_and_login(base_url: str, tag: str) -> str:
+def _register(base_url: str, tag: str) -> tuple[str, str]:
     stamp = f"{tag}{int(time.time())}"
     email, password = f"sweep-{stamp}@test.local", "SweepPass123!"
     _post_json(
         f"{base_url}/auth/register",
         {"email": email, "password": password, "username": f"sweep{stamp}"},
     )
+    return email, password
+
+
+def _login(base_url: str, email: str, password: str) -> str:
     token = _post_json(f"{base_url}/auth/login", {"email": email, "password": password}).get(
         "access_token"
     )
@@ -199,7 +203,8 @@ def main() -> int:
         proc = _boot_backend(args.port, temperature)
         try:
             _wait_ready(base_url)
-            token = _register_and_login(base_url, tag=str(temperature).replace(".", ""))
+            email, password = _register(base_url, tag=str(temperature).replace(".", ""))
+            token = _login(base_url, email, password)
             # Warm-up: the model may need a cold (re)load after keep_alive
             # expiry; without this the first sample conflates load time with a
             # loop. Discarded from the stats.
@@ -207,6 +212,11 @@ def main() -> int:
             print(f"[sweep]   warmup (discarded): {warmup}", flush=True)
             samples: list[dict[str, Any]] = []
             for case in cases:
+                # Access tokens live 30 minutes; a block with slow (looping)
+                # samples can outlast that, turning late cases into bogus 401
+                # failures (this contaminated the 2026-07-06 run). Re-login per
+                # case keeps the token fresh.
+                token = _login(base_url, email, password)
                 for i in range(args.runs):
                     sample = _run_sample(case, base_url, token)
                     samples.append(sample)

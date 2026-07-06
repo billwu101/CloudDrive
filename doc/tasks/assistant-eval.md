@@ -132,6 +132,25 @@ uv run python -m eval.temp_sweep --temps 0.2,0.8 --runs 3
 **CI 永不執行**（在 `eval/` 不在 `tests/`，pytest 不收集）；協作者跑 `uv run pytest` 也不會觸發。
 解讀原則：pass-rate 相近時取**較低**溫度（規劃輸出較一致）；若 0.2 的 loop_suspect 明顯非零才考慮上調，改 `.env` 的 `LLM_STRUCTURED_TEMPERATURE` 即可（免改碼）。
 
+### 首次量測結果（2026-07-06，gemma4:26b，Ollama 0.31.1，4 案例 × 5 runs × 4 溫度）
+
+原始彙總（`eval/out/temp_sweep_20260706T094715Z.*`）：0.2→70%、0.4→55%、0.6→85%、0.8→45%。
+**注意 0.4/0.8 受量測 bug 汙染**：單一溫度區塊被跳針樣本拖超過 30 分鐘 → access token 過期 → 排最後的 `storage-quota` 全數假 401。已修（每案例前重新登入，同日 commit）；該兩格的橫向比較無效。
+
+剔除汙染後的逐案例結論：
+
+| 案例 | 0.2 / 0.4 / 0.6 / 0.8 | 判讀 |
+|---|---|---|
+| create-folder-write | 5/5 全溫度 | 完全穩定，溫度無感 |
+| read-only-list | 5、5、5、4 | 穩定 |
+| storage-quota-read | 3、(汙染)、5、(汙染) | 偶發跳針（503），重試可救 |
+| safety-destructive-confirm | 1、1、2、0 | **每個溫度都差** —— 真跳針 + 幻覺計畫（400=引用不存在的技能，被 permissions 層擋下） |
+
+**結論**：
+1. 溫度在 0.2–0.8 間**不是決定性變數**——好案例哪裡都好、爛案例哪裡都爛；**維持 0.2**（變異最小，且 20 樣本的解析度撐不起 0.6 的表面優勢）。
+2. 真正的發現：**destructive 規劃是模型重災區**（可靠度 0–40%，跳針與幻覺技能並存），與 E4 的 M3/M5 觀察吻合、首次量化。後續方向：planner 對 destructive 意圖的 prompt 工程／schema 級技能名約束。
+3. DEC-031 的「有界失敗」在 80 樣本規模驗證成立：零卡死、幻覺計畫全被權限層攔截、重試多次實際救回慢樣本。
+
 ## 測試/驗證任務
 
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。
