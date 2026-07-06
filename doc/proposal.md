@@ -449,6 +449,7 @@
 - **工作流程重用**：計畫可命名儲存，之後一鍵重跑。
 - **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
 - **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
+- **模型選擇（對話內手動選、選定則無自動 fallback）**：助理面板下拉列出「本機 + 使用者已設定的外部模型連線」，每則訊息帶所選模型、可同一 session 中途更換；**選定即只用該模型、不自動退回其他模型**（上述自動升級僅適用於未指定模型的預設路徑）。所選模型失敗時**明確分類回報**（連不到／憑證被拒／額度或速率／其他）並**快速失敗**（本機連線逾時數秒、不卡分鐘級）；未設定的連線在選單停用。錯誤訊息只給分類與建議，不洩漏金鑰或內部細節。
 
 **HARNESS 引擎架構**：助理後端是一個 agent harness 引擎，由數個核心組件構成——
 
@@ -583,6 +584,7 @@ API base path：`/api/v1`。下表為各端點對應的動作（介面需求）�
 | Method | Path | 用途 |
 |---|---|---|
 | POST | `/assistant/chat` | 對話；回計畫或技能提案；記錄 session/訊息；可帶 `selected_item_ids`（勾選檔，供自建技能帶入目標檔） |
+| GET | `/assistant/models` | 列出可選模型目標（本機 + 使用者外部模型連線；含可用狀態） |
 | GET | `/assistant/sessions`、`/assistant/sessions/{id}/messages` | 對話歷史 |
 | POST | `/assistant/workflows/{id}/confirm` · `/cancel` | 確認/取消 pending 計畫 |
 | POST | `/assistant/workflows/save`、GET `/workflows/saved`、POST `/workflows/saved/{id}/rerun` | 命名儲存與一鍵重跑 |
