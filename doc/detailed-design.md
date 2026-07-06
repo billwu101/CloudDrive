@@ -351,27 +351,27 @@ flowchart TD
 
 ```mermaid
 %%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
-stateDiagram-v2
-  [*] --> planning: 收到指令
-  planning --> pending_confirm: 產生計畫
-  pending_confirm --> executing: 使用者確認
-  pending_confirm --> cancelled: 取消
-  executing --> completed: 成功
-  executing --> failed: 失敗
-  completed --> [*]
+flowchart TD
+  S((開始)) -->|收到指令| planning["planning：規劃中"]
+  planning -->|產生計畫| pending_confirm["pending_confirm：待確認"]
+  pending_confirm -->|使用者確認| executing["executing：執行中"]
+  pending_confirm -->|取消| cancelled["cancelled：已取消"]
+  executing -->|成功| completed["completed：完成"]
+  executing -->|失敗| failed["failed：失敗"]
+  completed --> E((結束))
 ```
 
 **upload session 狀態機**
 
 ```mermaid
 %%{init: {'theme':'default','themeVariables':{'fontFamily':'Trebuchet MS, Helvetica, Arial, sans-serif','fontSize':'14px','actorFontSize':'14px','messageFontSize':'14px','noteFontSize':'13px'}}}%%
-stateDiagram-v2
-  [*] --> pending
-  pending --> uploading: 上傳分片
-  uploading --> completed: 合併成功
-  uploading --> failed: 失敗
-  uploading --> cancelled: 取消
-  completed --> [*]
+flowchart TD
+  S((開始)) --> pending["pending：待處理"]
+  pending -->|上傳分片| uploading["uploading：上傳中"]
+  uploading -->|合併成功| completed["completed：完成"]
+  uploading -->|失敗| failed["failed：失敗"]
+  uploading -->|取消| cancelled["cancelled：已取消"]
+  completed --> E((結束))
 ```
 
 ## 4. 已確認設計決策
