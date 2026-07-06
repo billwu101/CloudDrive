@@ -2593,9 +2593,10 @@ WorkflowRun {
 原本 planner 只認內建 skill；自建／生成的 skill（如 `compress_zip`）只能透過右鍵 `POST /assistant/skills/{id}/execute` 對單檔執行，對話中說「用我的 skill 壓縮」會被回「沒有這個功能」。本功能讓自建 skill 也能被 planner 排進計畫——因屬**不可信程式碼**，採多層管控（呼應 §8.95.2 已解衝突的新說法：安裝不再等於自動可編排）。
 
 - **逐個 opt-in（D3）**：`assistant_skills` 加 `chat_enabled BOOLEAN NOT NULL DEFAULT false`（migration，落地時併入 §7.12 演進表）。**只有 `installed` 且 `chat_enabled`** 的 skill 才載入 planner registry；`PATCH /assistant/skills/{id}` 可切換（前端 SkillsPage 卡片 toggle）。
-- **一律 write 級（D1）**：載入時以 `tier="write"` + 固定參數 `{ item_id }` + **橋接 closure handler** 註冊——closure 捕捉 `AssistantSkillService`，被呼叫時把該 skill 的 DB `code` 交沙盒執行（重用 `execute_skill` → `_execute_generated`：複製原檔 → 沙盒 → 可信層上傳，執行前先快照，見 §12.134.3）。用到自建 skill 的計畫**一律進確認閘**（`is_auto_confirmable` 回 false），不自動執行。
+- **一律 write 級（D1）**：載入時以 `tier="write"` + 固定參數 `{ item_id }` + **橋接 closure handler** 註冊——closure 捕捉 `AssistantSkillService`，被呼叫時把該 skill 的 DB `code` 交沙盒執行（重用 `execute_skill` → `_execute_generated`：複製原檔 → 沙盒 → 可信層上傳，執行前先快照，見 §12.134.3）。用到自建 skill 的計畫**一律進確認閘**（`is_auto_confirmable` 回 false），不自動執行；批次（勾多檔）時，確認畫面**逐檔列出對應步驟**（FR5）。
 - **勾選帶入目標檔（D2）**：`AssistantChatRequest` 加 `selected_item_ids: list[UUID]`；自建 skill 步驟的 `item_id` 由**勾選清單**帶入（不靠 LLM 猜檔名）。勾一個 → 對該檔執行；**勾多個 → 對每檔各跑一次（批次，執行層迴圈）**；勾零個 → 提示先選檔。前端沿用硬碟頁多選 state，對話框顯示已選檔 chips（可單獨移除）。
 - **名稱衝突（FR6）**：自建 skill 名稱與內建衝突 → **跳過不載入並提示改名**。
+- **planner prompt**：系統提示告知自建 skill 需 `item_id`、且**僅在有勾選檔時可用**，避免 LLM 在未選檔時把自建 skill 排入計畫。
 - **安全多層**：預設關 + 逐個 opt-in → write 級必確認 → codeguard 靜態掃描 + 沙盒隔離（網路／檔案／行程封鎖）→ 執行前自動快照；沙盒在本機執行，不送外部模型。
 
 **影響範圍（落地時）**：`assistant_skills.chat_enabled` migration、`assistant/{router,service,planner}.py`（registry 載入橋接 handler、`selected_item_ids` 下傳）、`assistant/schemas.py`、前端 `pages/SkillsPage.tsx`（toggle）+ `components/assistant/AssistantPanel.tsx`（已選檔 chips）。
