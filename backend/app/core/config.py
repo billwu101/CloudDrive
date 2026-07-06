@@ -30,6 +30,9 @@ class Settings(BaseSettings):
 
     # In-app AI assistant
     assistant_enabled: bool = True
+    # "ollama" → local Ollama (/api/chat); "openai_compatible" → an endpoint
+    # exposing OpenAI /v1/chat/completions (uses ExternalLLMClient as the local
+    # executor). llm_base_url/assistant_model/llm_api_key apply to both.
     llm_provider: str = "ollama"
     llm_base_url: str = "http://192.168.10.75:11434"
     # Optional fallback Ollama endpoint; tried when llm_base_url is unreachable.

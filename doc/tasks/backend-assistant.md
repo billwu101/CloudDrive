@@ -81,5 +81,8 @@ M3 實作備註（2026-06-17）：完成 sessions/messages 持久化（`0007`）
 - [x] `test_sandbox.py`：逾時/路徑（output 外寫入）/網路/子行程封鎖 + codeguard 靜態拒絕。`test_skill_execution.py`：真實 zip 在沙箱解壓並寫回 drive、沙箱失敗不寫入。
 - [x] `test_hooks.py`：HookRegistry 依序觸發、executor 觸發 before/after/on_error、權限閘讓破壞性/安裝不進 fast-path（需核可）。
 - [x] `ruff format/check`、`mypy app tests`、`pytest` 全綠（M4 切片）。
+- [x] `_build_local_client(settings)` 依 `llm_provider` 分派本機執行器（`ollama`→`OllamaLLMClient`、`openai_compatible`→`ExternalLLMClient`）；`test_router.py` 兩案例驗證。
+
+本機 provider 切換備註（2026-07-07）：`app/assistant/router.py` 抽出 `_build_local_client(settings)`，`llm_provider="openai_compatible"` 時本機改走 `ExternalLLMClient`（OpenAI 相容 `/v1/chat/completions`），供指向 OpenAI 相容 gateway（後端可為 gemma4:26b）。`config.py` 註解、`doc/detailed-design.md` §8.12 同步；`.env` 為本機設定、不進版控。測試：`test_router.py::test_build_local_client_*`。
 
 M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.py`(codegen)、`skills/codeguard.py`(AST 靜態驗證)、`skills/sandbox.py`(子行程沙箱:`-I`+process group+rlimit+audithook 封鎖網路/spawn/越界寫入)、`authoring.py` 生成子流程(意圖→codegen→pending,核可→安裝,執行→沙箱→寫回 drive)。加 `py7zr` 相依。前端右鍵掛載與程式碼審查 dialog 屬 M5。尚未做:生成子流程接進 planner 的「缺技能」自動偵測(目前由 authoring 關鍵字意圖觸發)、7zip 真模型 live 瀏覽器 demo(需重建 Docker 映像)。

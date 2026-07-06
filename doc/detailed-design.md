@@ -2688,6 +2688,8 @@ app/assistant/
 
 ```
 # 本地預設執行器
+# LLM_PROVIDER: "ollama"（原生 /api/chat）| "openai_compatible"（走 /v1/chat/completions，
+# 由 _build_local_client 建 ExternalLLMClient；用於指向 OpenAI 相容 gateway，後端可為 gemma4:26b）
 LLM_PROVIDER=ollama
 LLM_BASE_URL=http://192.168.10.75:11434
 LLM_API_KEY=ollama-local

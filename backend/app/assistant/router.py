@@ -41,7 +41,7 @@ from app.assistant.skills.builtin import build_read_only_registry, register_writ
 from app.assistant.skills.sandbox import SkillSandbox
 from app.assistant.subagent import CodegenSubAgent
 from app.assistant.workflow import WorkflowExecutor
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.dependencies import CurrentUserId, DbSession
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
@@ -127,6 +127,32 @@ def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
     )
 
 
+def _build_local_client(settings: Settings) -> LLMClient:
+    """Build the local assistant executor from `llm_provider`.
+
+    "ollama" (default) uses the native Ollama client (/api/chat); "openai_compatible"
+    targets an OpenAI-compatible endpoint (e.g. a gateway exposing /v1/chat/completions)
+    via ExternalLLMClient. Both share llm_base_url / assistant_model / llm_api_key.
+    """
+    if settings.llm_provider == "openai_compatible":
+        return ExternalLLMClient(
+            base_url=settings.llm_base_url,
+            model=settings.assistant_model,
+            api_key=settings.llm_api_key,
+            timeout=settings.llm_timeout_seconds,
+        )
+    return OllamaLLMClient(
+        base_url=settings.llm_base_url,
+        model=settings.assistant_model,
+        timeout=settings.llm_timeout_seconds,
+        api_key=settings.llm_api_key,
+        keep_alive=settings.llm_keep_alive,
+        fallback_base_urls=(
+            [settings.llm_fallback_base_url] if settings.llm_fallback_base_url else []
+        ),
+    )
+
+
 async def _assistant_service(session: DbSession, current_user_id: CurrentUserId) -> WorkflowService:
     settings = get_settings()
     drive_service = _drive_service(session)
@@ -147,16 +173,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         ),
     )
 
-    local_client = OllamaLLMClient(
-        base_url=settings.llm_base_url,
-        model=settings.assistant_model,
-        timeout=settings.llm_timeout_seconds,
-        api_key=settings.llm_api_key,
-        keep_alive=settings.llm_keep_alive,
-        fallback_base_urls=(
-            [settings.llm_fallback_base_url] if settings.llm_fallback_base_url else []
-        ),
-    )
+    local_client = _build_local_client(settings)
     # Global env-configured external client (DEC-023), used when a user has no
     # per-user credential.
     external_client: ExternalLLMClient | LLMClient | None = None
