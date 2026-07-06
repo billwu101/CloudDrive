@@ -78,6 +78,20 @@ CloudDrive Service Layer（DEC-017：不直接碰 DB/FS）
 PostgreSQL + Storage Provider
 ```
 
-## 6. 報告建議措辭
+## 6. 相關文獻筆記（報告/答辯用）
+
+- **StraTA（arXiv 2605.06642）**：Agentic RL 框架——先從任務初始狀態生成「精簡策略」，
+  再以其為條件指導行動，分層聯訓策略生成與動作執行，提升長軌跡任務的探索與 credit
+  assignment（ALFWorld 93.1% / WebShop 84.2% / SciWorld 63.5%）。
+  - **與本專案的關係**：解的是同一類問題（長程規劃可靠度，即本專案 destructive/M3/M5
+    弱區），且「先抽象策略再執行」與本專案的 Workflow 管線（計畫→確認→執行）、
+    「自我評判」與 validator+repair loop 在設計哲學上同構。
+  - **為何不採用**：StraTA 是**訓練期** RL 方法，需對模型微調（獎勵訊號 + 訓練基礎設施
+    + 大量 GPU）；本專案前提為凍結的本地 gemma4:26b（DEC-018），26B 微調超出範圍。
+  - **答辯用法**：被問「為何不從模型端解決規劃可靠度」時引用——訓練期方法存在但成本
+    不可行，故採 **harness 層推理期補強**（約束解碼 DEC-031/032、驗證重試、確認閘），
+    這正是 harness 作為「LLM 與外部世界間可靠性基礎設施」的價值主張。
+
+## 7. 報告建議措辭
 
 > CloudDrive 的 In-App AI Assistant 採二層設計：Workflow Pipeline 描述「要做什麼」，Agent Harness Runtime 描述「怎麼可靠地跑」。Runtime 對齊 agent harness 文獻的六核心元件（Execution Loop、Tool Registry、Context Manager、State Store、Lifecycle Hooks、Evaluation Interface）；工程實作上，六元件再細分為九個模組以利獨立開發與測試。九模組中的 sub-agents、built-in skills、system prompt assembly、permissions & safety 分別是六元件下的子模組或橫切治理機制，而非獨立最高層。模型來源由使用者逐訊息自選（本機優先、外送必經隱私閘），評測則由獨立的離線 eval harness 以確定性斷言 + LLM judge 持續把關。

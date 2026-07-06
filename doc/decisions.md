@@ -367,3 +367,14 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 理由：迴圈是決定性的，「調大 timeout / 原樣重試」被實驗排除；兩道防線分別解「單次卡死時長」與「掉入迴圈的機率」，且皆可經設定退回原行為（`0`/`0`）。
 - 已知取捨：結構化輸出不再逐 token 決定性（同輸入可能得到不同但皆合法的計畫）——規劃品質仍由既有 schema 驗證 + 確認閘把關；`num_predict` 截斷長 thinking 的極端正常請求時會誤傷（2048 對 ~600 token 的正常規劃仍有 3 倍餘裕；且 2048×2 次嘗試 ≈ 270s < 300s timeout，壞樣本重試可在單次請求預算內完成）。
 - 影響範圍：`core/config.py`、`assistant/llm/ollama.py`、`assistant/router.py`、`tests/assistant/test_ollama_client.py`、eval-prompt-log 記錄問題 prompt；回歸由原整合測試把關。
+
+## DEC-032：planner schema 以 enum 枚舉技能名——幻覺技能改為 grammar 級不可生成
+
+- 日期：2026-07-06
+- 狀態：Accepted（已實作）
+- 背景：E7 溫度掃描（80 樣本）量化出 destructive 規劃可靠度僅 0–40%，其中一類失敗是模型**捏造不存在的技能名**（HTTP 400，被 `permissions.classify_steps` 攔截）。prompt 已要求「只用清單內技能」但無強制力；`_PLAN_RESPONSE_FORMAT` 的 `skill` 為自由字串，約束解碼管不到內容。詳見 [proposal-planner-skill-enum.md](./proposal-planner-skill-enum.md)。
+- 決策：plan() 每次依當下 registry **動態組 schema**，`skill` 欄位以排序後的真實技能名做 `enum`；約束解碼（本地 Ollama grammar / 外部 json_schema）在取樣時直接遮掉其他字串。registry 為空時退回自由字串。`validate_plan`/`classify_steps` 縱深防禦不移除。
+- 理由：把「請求模型遵守」升級為「使其不可違反」——與 DEC-031 同一哲學（能用機制保證的就不靠模型自覺）；零延遲成本、兩條模型路徑通用；可用 E7 sweep 重測驗證效果。
+- 已知取捨：schema 隨 registry 變動，不再是全域常數（每 plan 一次淺開銷，可忽略）；enum 只擋「名稱」，參數錯誤與非法相依仍靠 validator（本就如此）。
+- 補充（同日驗證發現）：enum 後真模型仍偶發 400，錯誤內文為「invalid dependency」——`validate_plan` 未檢查 `depends_on`（權限層有查），壞相依繞過修復迴圈直達 400。已同步修正：`validate_plan` 補上與 `classify_steps` 相同的相依規則，使其觸發修復迴圈。
+- 影響範圍：`app/assistant/planner.py`（schema builder + validate_plan）、`tests/assistant/test_planner.py`、proposal 文件、tasks checklist。
