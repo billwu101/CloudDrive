@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.assistant.llm.client import (
+    ExternalAuthError,
     LLMInvalidResponseError,
     LLMMessage,
     LLMResponse,
@@ -26,6 +27,7 @@ class OllamaLLMClient:
         keep_alive: str = "",
         fallback_base_urls: list[str] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        connect_timeout: float = 5.0,
     ) -> None:
         # Primary first, then any fallbacks; chat() tries them in order and only
         # raises once every endpoint has failed.
@@ -37,6 +39,10 @@ class OllamaLLMClient:
         self._api_key = api_key
         self._keep_alive = keep_alive
         self._transport = transport
+        # Connecting must fail fast (a down/unreachable Ollama shouldn't hang for
+        # the full generation timeout); reading keeps the long timeout for slow
+        # token generation.
+        self._connect_timeout = min(connect_timeout, timeout)
 
     async def chat(
         self,
@@ -44,6 +50,7 @@ class OllamaLLMClient:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self._model,
@@ -51,6 +58,13 @@ class OllamaLLMClient:
             "stream": False,
             "options": {"num_ctx": num_ctx},
         }
+        # Constrained decoding: Ollama compiles the schema in `format` into a
+        # grammar and masks illegal tokens at sampling time, so the response is
+        # guaranteed to match the schema — not just be valid JSON. Temperature is
+        # pinned only for structured requests; plain chat keeps default sampling.
+        if response_format is not None:
+            payload["format"] = _to_ollama_format(response_format)
+            payload["options"]["temperature"] = 0
         if self._keep_alive:
             payload["keep_alive"] = self._keep_alive
         if tools:
@@ -61,7 +75,7 @@ class OllamaLLMClient:
         for base_url in self._base_urls:
             try:
                 async with httpx.AsyncClient(
-                    timeout=self._timeout,
+                    timeout=httpx.Timeout(self._timeout, connect=self._connect_timeout),
                     transport=self._transport,
                 ) as client:
                     response = await client.post(
@@ -71,6 +85,11 @@ class OllamaLLMClient:
                     )
                     response.raise_for_status()
                 return _parse_ollama_response(response.json(), self._model)
+            except httpx.HTTPStatusError as exc:
+                if _is_credential_error(exc.response):
+                    raise ExternalAuthError("Ollama credential was rejected") from exc
+                last_exc = exc
+                continue
             except httpx.HTTPError as exc:
                 last_exc = exc
                 continue
@@ -82,6 +101,35 @@ def _auth_headers(api_key: str) -> Mapping[str, str] | None:
     if not api_key:
         return None
     return {"Authorization": f"Bearer {api_key}"}
+
+
+def _is_credential_error(response: httpx.Response) -> bool:
+    if response.status_code in (401, 403):
+        return True
+    if response.status_code == 429:
+        try:
+            text = str(response.json()).lower()
+        except ValueError:
+            return False
+        return "quota" in text or "billing" in text or "credit" in text
+    return False
+
+
+def _to_ollama_format(response_format: dict[str, Any]) -> dict[str, Any]:
+    """Translate the cross-provider ``response_format`` into Ollama's ``format``.
+
+    Callers express structured output in the OpenAI envelope shape
+    ``{"type": "json_schema", "json_schema": {"name": ..., "schema": {...}}}``
+    (which ``ExternalLLMClient`` forwards verbatim), but Ollama's ``format``
+    only understands the bare inner JSON Schema. A dict that is not an
+    envelope is treated as an already-bare schema and passed through.
+    """
+    json_schema = response_format.get("json_schema")
+    if isinstance(json_schema, dict):
+        schema = json_schema.get("schema")
+        if isinstance(schema, dict):
+            return schema
+    return response_format
 
 
 def _to_ollama_tool(tool: LLMToolDefinition) -> dict[str, Any]:

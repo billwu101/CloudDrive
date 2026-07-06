@@ -217,5 +217,6 @@ Use Vitest + MSW. Per-test MSW overrides: `server.use(http.get(...))` inside the
 | `doc/tasks/<module>.md` | Per-module task checklist (checked = implemented + tested) |
 | `doc/tasks/progress.md` | Overall 28-module completion status |
 | `doc/decisions.md` | Architecture decision records (DEC-XXX format) |
+| `doc/harness-architecture.md` | Six-component ↔ nine-module harness mapping (for reports/presentations) |
 
 **After adding any new feature**, update `doc/prompt.md` (Stage extra requirements + file ownership table), `doc/detailed-design.md` (relevant module section), and the affected `doc/tasks/<module>.md` (new items, checked).

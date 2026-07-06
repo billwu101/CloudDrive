@@ -1,36 +1,46 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { externalModelApi } from '@/api/externalModelApi'
-import type { ExternalCredentialUpsert } from '@/api/types'
+import { modelConnectionApi } from '@/api/externalModelApi'
+import type { ConnectionCreate, ConnectionUpdate } from '@/api/types'
 
-export const externalCredentialKeys = {
-  all: ['external-credentials'] as const,
+export const modelConnectionKeys = {
+  all: ['model-connections'] as const,
 }
 
-export function useExternalCredentials() {
+export function useModelConnections() {
   return useQuery({
-    queryKey: externalCredentialKeys.all,
-    queryFn: () => externalModelApi.list().then((r) => r.data),
+    queryKey: modelConnectionKeys.all,
+    queryFn: () => modelConnectionApi.list().then((r) => r.data),
   })
 }
 
-export function useUpsertExternalCredential() {
+export function useCreateModelConnection() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: ExternalCredentialUpsert) =>
-      externalModelApi.upsert(body).then((r) => r.data),
+    mutationFn: (body: ConnectionCreate) => modelConnectionApi.create(body).then((r) => r.data),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: externalCredentialKeys.all })
+      void queryClient.invalidateQueries({ queryKey: modelConnectionKeys.all })
     },
   })
 }
 
-export function useDeleteExternalCredential() {
+export function useUpdateModelConnection() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (provider: string) => externalModelApi.remove(provider).then((r) => r.data),
+    mutationFn: ({ id, body }: { id: string; body: ConnectionUpdate }) =>
+      modelConnectionApi.update(id, body).then((r) => r.data),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: externalCredentialKeys.all })
+      void queryClient.invalidateQueries({ queryKey: modelConnectionKeys.all })
+    },
+  })
+}
+
+export function useDeleteModelConnection() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => modelConnectionApi.remove(id).then((r) => r.data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: modelConnectionKeys.all })
     },
   })
 }

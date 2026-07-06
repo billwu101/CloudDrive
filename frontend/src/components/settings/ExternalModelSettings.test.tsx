@@ -10,26 +10,29 @@ import { useAuthStore } from '@/stores/authStore'
 import { ExternalModelSettings } from './ExternalModelSettings'
 
 const BASE = 'http://localhost:8000/api/v1'
-const PATH = `${BASE}/users/me/external-credentials`
+const PATH = `${BASE}/users/me/model-connections`
 
-let creds: unknown[] = []
-let lastPut: unknown = null
-let deleted = false
+let connections: unknown[] = []
+let lastPost: unknown = null
+let deletedId: string | null = null
 
 const server = setupServer(
-  http.get(PATH, () => HttpResponse.json(creds)),
-  http.put(PATH, async ({ request }) => {
-    lastPut = await request.json()
+  http.get(PATH, () => HttpResponse.json(connections)),
+  http.post(PATH, async ({ request }) => {
+    lastPost = await request.json()
     return HttpResponse.json({
-      provider: 'openai',
-      auth_type: 'api_key',
-      masked_hint: 'sk-…1234',
+      id: 'conn-1',
+      label: 'My Gemini',
+      kind: 'openai_compatible',
+      base_url: 'https://g/v1',
+      model: 'gemini-2.5-flash-lite',
+      masked_hint: 'AIz…rQ4',
       status: 'active',
-      updated_at: '2026-06-19T00:00:00Z',
+      updated_at: '2026-06-25T00:00:00Z',
     })
   }),
-  http.delete(`${PATH}/openai`, () => {
-    deleted = true
+  http.delete(`${PATH}/conn-1`, () => {
+    deletedId = 'conn-1'
     return new HttpResponse(null, { status: 204 })
   }),
   http.post(`${BASE}/auth/refresh`, () =>
@@ -39,9 +42,9 @@ const server = setupServer(
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
-  creds = []
-  lastPut = null
-  deleted = false
+  connections = []
+  lastPost = null
+  deletedId = null
   useAuthStore.setState({ accessToken: 'test-token', user: null })
 })
 afterEach(() => {
@@ -63,70 +66,49 @@ function renderIt() {
 }
 
 describe('ExternalModelSettings', () => {
-  it('saves a new OpenAI API key', async () => {
+  it('adds a named connection with its own model and key', async () => {
     const user = userEvent.setup()
     renderIt()
-    await user.type(screen.getByLabelText(/^api key$/i), 'sk-mytestkey123')
-    await user.click(screen.getByRole('button', { name: /save key/i }))
+    await user.type(screen.getByLabelText(/connection name/i), 'My Gemini')
+    await user.type(screen.getByLabelText(/api key or token/i), 'AIza-test-key')
+    await user.click(screen.getByRole('button', { name: /add connection/i }))
 
-    expect(await screen.findByText(/saved/i)).toBeInTheDocument()
-    expect(lastPut).toMatchObject({ provider: 'openai', auth_type: 'api_key', secret: 'sk-mytestkey123' })
+    expect(await screen.findByText(/connection added/i)).toBeInTheDocument()
+    expect(lastPost).toMatchObject({ label: 'My Gemini', kind: 'openai_compatible', secret: 'AIza-test-key' })
   })
 
-  it('shows the masked existing key and removes it', async () => {
-    creds = [
+  it('shows an existing connection masked and removes it', async () => {
+    connections = [
       {
-        provider: 'openai',
-        auth_type: 'api_key',
-        masked_hint: 'sk-…1234',
+        id: 'conn-1',
+        label: 'My Gemini',
+        kind: 'openai_compatible',
+        base_url: 'https://g/v1',
+        model: 'gemini-2.5-flash-lite',
+        masked_hint: 'AIz…rQ4',
         status: 'active',
-        updated_at: '2026-06-19T00:00:00Z',
+        updated_at: '2026-06-25T00:00:00Z',
       },
     ]
     const user = userEvent.setup()
     renderIt()
-    expect(await screen.findByText('sk-…1234')).toBeInTheDocument()
+    expect(await screen.findByText('AIz…rQ4')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /remove/i }))
-    await waitFor(() => expect(deleted).toBe(true))
-    expect(await screen.findByText(/removed/i)).toBeInTheDocument()
+    await waitFor(() => expect(deletedId).toBe('conn-1'))
+    expect(await screen.findByText(/connection removed/i)).toBeInTheDocument()
   })
 
-  it('saves a Codex subscription credential', async () => {
+  it('explains when the server has not enabled model connections (503)', async () => {
     server.use(
-      http.put(PATH, async ({ request }) => {
-        lastPut = await request.json()
-        return HttpResponse.json({
-          provider: 'codex',
-          auth_type: 'oauth_token',
-          masked_hint: '…NEW',
-          status: 'active',
-          updated_at: '2026-06-19T00:00:00Z',
-        })
-      }),
+      http.post(PATH, () => HttpResponse.json({ detail: 'not configured' }, { status: 503 })),
     )
     const user = userEvent.setup()
     renderIt()
-    await user.type(screen.getByLabelText(/auth\.json/i), 'codex-token-blob')
-    await user.click(screen.getByRole('button', { name: /save subscription/i }))
+    await user.type(screen.getByLabelText(/connection name/i), 'X')
+    await user.type(screen.getByLabelText(/api key or token/i), 'sk-x')
+    await user.click(screen.getByRole('button', { name: /add connection/i }))
 
-    expect(await screen.findByText(/codex subscription saved/i)).toBeInTheDocument()
-    expect(lastPut).toMatchObject({
-      provider: 'codex',
-      auth_type: 'oauth_token',
-      secret: 'codex-token-blob',
-    })
-  })
-
-  it('explains when the server has not enabled external credentials (503)', async () => {
-    server.use(
-      http.put(PATH, () => HttpResponse.json({ detail: 'not configured' }, { status: 503 })),
-    )
-    const user = userEvent.setup()
-    renderIt()
-    await user.type(screen.getByLabelText(/^api key$/i), 'sk-x')
-    await user.click(screen.getByRole('button', { name: /save key/i }))
-
-    expect(await screen.findByText(/not enabled external credentials/i)).toBeInTheDocument()
+    expect(await screen.findByText(/not enabled model connections/i)).toBeInTheDocument()
   })
 })

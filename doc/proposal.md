@@ -133,7 +133,7 @@
 5. 保持清楚的前後端分層。
 6. 提供可擴充的儲存層抽象，讓本機儲存能在未來替換成物件儲存。
 7. 具備可部署到 Docker 環境的架構。
-8. 以本地模型優先執行 AI 助理，資料預設不外流，必要時才升級外部模型。
+8. 以本地模型優先執行 AI 助理，資料預設不外流；外部模型由使用者明確選擇（具名連線）才使用。
 
 ## 5. 功能範圍
 
@@ -310,7 +310,7 @@
 
 ### 7.6 AI 助理引擎
 
-後端內含對話式 **AI 助理引擎**（HARNESS：while loop、context、skills/tools、sub-agents、沙箱、權限與安全）。預設以**本地 Gemma（Ollama）**為執行器，資料不外流；本地反覆失敗時可升級**外部 GPT-5.5**（Codex 訂閱優先、OpenAI key 備援，使用者自帶加密憑證）。驅動自然語言操作檔案、現場生成技能與工作流程重用。完整規格見 §12；引擎設計見 [detailed-design.md](./detailed-design.md) §7 與 [detailed-design.md §9](./detailed-design.md)。
+後端內含對話式 **AI 助理引擎**（HARNESS：while loop、context、skills/tools、sub-agents、沙箱、權限與安全）。預設以**本地 Gemma（Ollama）**為執行器，資料不外流；使用者可**逐訊息自選外部模型**（多組具名連線：OpenAI 相容端點／Codex 訂閱，自帶加密憑證，無自動 fallback，外送必經隱私閘）。驅動自然語言操作檔案、現場生成技能與工作流程重用。完整規格見 §12；引擎設計見 [detailed-design.md](./detailed-design.md) §7 與 [detailed-design.md §9](./detailed-design.md)。
 
 ## 8. 技術選型
 
@@ -348,7 +348,7 @@
 | --- | --- |
 | PostgreSQL 16 + pgvector | 關聯式資料 + 交易一致性 + 向量檢索（語意搜尋） |
 | 本地檔案系統（Storage Provider 抽象） | 開發用本地，可無痛換物件儲存（見 §7.5） |
-| Ollama（本地 Gemma）+ OpenAI 相容外部模型 | 本地優先、資料不外流；反覆失敗時才升級外部 |
+| Ollama（本地 Gemma）+ OpenAI 相容外部模型 | 本地優先、資料不外流；外部由使用者自選具名連線、必經隱私閘 |
 
 **維運與測試**
 
@@ -446,7 +446,7 @@
 - **技能管理**：側欄 **Skills 頁（`/skills`）**檢視已安裝技能數量、編輯（描述/程式碼，改碼重跑 codeguard）、刪除。
 - **工作流程重用**：計畫可命名儲存，之後一鍵重跑。
 - **動態 UI**：已安裝技能依 manifest 動態掛到檔案右鍵選單；使用者訊息列提供複製鈕（前端全域禁止反白，故以按鈕程式複製）。
-- **模型策略**：預設本地 Gemma（Ollama），達失敗上限且符合隱私條件時才條件式升級外部模型；隱私敏感且無法去識別化則不外送。
+- **模型策略**：預設本地 Gemma（Ollama）；外部模型由使用者**逐訊息手動選擇**（多組具名連線），選定即該次唯一執行器、無自動 fallback；隱私敏感且無法去識別化則不外送（隱私閘不因手動選擇而放行）。
 
 **HARNESS 引擎架構**：助理後端是一個 agent harness 引擎，由數個核心組件構成——
 
@@ -458,7 +458,7 @@
 - **生命週期 hooks**：在 session／tool／skill／code-exec／error 節點插入稽核、權限閘、計畫確認、安裝前驗證。
 - **持久化**：session／訊息／技能／工作流程持久化，啟動時載入使用者已安裝技能與已存工作流程。
 - **權限與安全**：`user_id` 多租戶綁定、分層權限（唯讀自動／破壞性確認／生成碼核可）、受限沙箱（資源／路徑／網路限制）、全程稽核。
-- **模型路由**：本地 Gemma（Ollama）為主，達失敗上限且符合隱私條件時才升級外部模型（見上「模型策略」）。
+- **模型路由**：本地 Gemma（Ollama）為主，外部模型由使用者手動選擇具名連線（見上「模型策略」；原自動升級僅保留於未指定模型的相容路徑）。
 
 各組件的職責與對應實作見 [detailed-design.md §9.7](./detailed-design.md)（HARNESS 九大組件）。
 
@@ -849,7 +849,7 @@ volumes:
 | LLM_BASE_URL / LLM_API_KEY / ASSISTANT_MODEL | 本地或相容 API 模型設定；若含密鑰不得提交版控 |
 | EMBEDDING_ENABLED / EMBEDDING_MODEL | 語意搜尋設定 |
 | CREDENTIAL_ENCRYPTION_KEY | 加密使用者外部模型憑證；正式環境必須由 secret manager 或受控環境注入 |
-| EXTERNAL_API_BASE_URL / EXTERNAL_CHAT_MODEL | 外部模型升級設定 |
+| EXTERNAL_API_BASE_URL / EXTERNAL_CHAT_MODEL | 外部模型連線預設值（per-user 具名連線見 detailed-design §12.10） |
 
 **AI Assistant 完整環境變數**（屬 §12 功能）：`ASSISTANT_ENABLED`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`ASSISTANT_MODEL`、`LLM_NUM_CTX`、`LLM_TIMEOUT_SECONDS`、`LLM_KEEP_ALIVE`、`ASSISTANT_MAX_TOOL_ITERATIONS`、`ASSISTANT_SANDBOX_TIMEOUT_SEC`、`EXTERNAL_LLM_ENABLED`、`MAX_LOCAL_ATTEMPTS`、`EXTERNAL_LLM_BASE_URL`/`EXTERNAL_MODEL`/`EXTERNAL_LLM_API_KEY`、`PRIVACY_DEFAULT`。設計建議模型為本地 Gemma 4 26B（`gemma4:26b`）；實際部署可用 `ASSISTANT_MODEL` 覆寫。
 

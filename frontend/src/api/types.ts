@@ -122,6 +122,7 @@ export interface AssistantSkillResponse {
   manifest: AssistantSkillManifest
   code: string
   status: 'pending' | 'installed' | string
+  chat_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -134,6 +135,7 @@ export interface AssistantSkillApproveResponse {
 export interface AssistantSkillUpdateRequest {
   description?: string
   code?: string
+  chat_enabled?: boolean
 }
 
 export interface AssistantSkillExecuteRequest {
@@ -148,9 +150,20 @@ export interface AssistantSkillExecuteResponse {
   output: Record<string, unknown>
 }
 
+// "local" or a model-connection id (uuid string).
+export type ModelTarget = string
+
 export interface AssistantChatRequest {
   message: string
   session_id?: string
+  model?: ModelTarget
+  selected_item_ids?: string[]
+}
+
+export interface AssistantModelOption {
+  id: ModelTarget
+  label: string
+  available: boolean
 }
 
 export interface WorkflowStep {
@@ -168,6 +181,8 @@ export interface WorkflowStepResult {
   ok: boolean
   output?: unknown
   error?: string | null
+  /** True when the step never ran because an upstream dependency failed. */
+  skipped?: boolean
 }
 
 export interface WorkflowPlanView {
@@ -272,16 +287,30 @@ export interface BackfillResponse {
   remaining: number
 }
 
-export interface ExternalCredentialView {
-  provider: string
-  auth_type: string
+export type ConnectionKind = 'openai_compatible' | 'ollama' | 'codex'
+
+export interface ConnectionView {
+  id: string
+  label: string
+  kind: ConnectionKind
+  base_url: string
+  model: string
   masked_hint: string
   status: string
   updated_at: string
 }
 
-export interface ExternalCredentialUpsert {
-  provider: 'openai' | 'codex'
-  auth_type: 'api_key' | 'oauth_token'
+export interface ConnectionCreate {
+  label: string
+  kind: ConnectionKind
+  base_url?: string
+  model?: string
   secret: string
+}
+
+export interface ConnectionUpdate {
+  label?: string
+  base_url?: string
+  model?: string
+  secret?: string
 }

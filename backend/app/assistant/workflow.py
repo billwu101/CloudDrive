@@ -36,12 +36,62 @@ class StepResult(BaseModel):
     ok: bool
     output: Any | None = None
     error: str | None = None
+    # True when the step was never executed because an upstream dependency
+    # failed (or was itself skipped) — distinct from a step that ran and failed.
+    skipped: bool = False
 
 
 def is_auto_confirmable(steps: list[WorkflowStep]) -> bool:
     """A workflow is fast-path eligible only when every step is read-only."""
 
     return all(not step.requires_approval for step in steps)
+
+
+def requires_file_selection(steps: list[WorkflowStep], registry: SkillRegistry) -> bool:
+    """True if any step uses a skill that needs a user-selected file (self-built)."""
+
+    for step in steps:
+        skill = registry.get(step.skill)
+        if skill is not None and skill.requires_selection:
+            return True
+    return False
+
+
+def expand_selection_steps(
+    steps: list[WorkflowStep],
+    selected_item_ids: list[UUID],
+    registry: SkillRegistry,
+) -> list[WorkflowStep]:
+    """Expand each requires-selection step into one step per selected file, with
+    ``item_id`` injected (never guessed by the LLM). Other steps are preserved and
+    their ``depends_on`` indices remapped to the new numbering."""
+
+    old_to_new: dict[int, list[int]] = {}
+    expanded: list[WorkflowStep] = []
+    for step in steps:
+        skill = registry.get(step.skill)
+        if skill is not None and skill.requires_selection:
+            new_indices: list[int] = []
+            for item_id in selected_item_ids:
+                index = len(expanded)
+                new_indices.append(index)
+                expanded.append(
+                    WorkflowStep(
+                        index=index,
+                        skill=step.skill,
+                        arguments={"item_id": str(item_id)},
+                        depends_on=[],  # self-built skills are leaf operations
+                        permission_tier=step.permission_tier,
+                        requires_approval=step.requires_approval,
+                    )
+                )
+            old_to_new[step.index] = new_indices
+        else:
+            index = len(expanded)
+            new_deps = [new for old in step.depends_on for new in old_to_new.get(old, [old])]
+            expanded.append(step.model_copy(update={"index": index, "depends_on": new_deps}))
+            old_to_new[step.index] = [index]
+    return expanded
 
 
 class StepResolutionError(Exception):
@@ -93,16 +143,50 @@ def resolve_arguments(
     return resolved
 
 
+def _blocked_dependencies(step: WorkflowStep, unavailable: set[int]) -> set[int]:
+    """Dependencies of ``step`` that failed or were skipped. Covers both the
+    explicit ``depends_on`` edges and implicit ``from_step`` argument
+    references — either kind pointing at an unavailable step makes this step
+    unexecutable."""
+
+    deps = set(step.depends_on)
+    for value in step.arguments.values():
+        if is_step_ref(value):
+            from_step = value.get("from_step")
+            if isinstance(from_step, int):
+                deps.add(from_step)
+    return deps & unavailable
+
+
 class WorkflowExecutor:
     def __init__(self, *, registry: SkillRegistry, hooks: HookRegistry | None = None) -> None:
         self._registry = registry
         self._hooks = hooks or HookRegistry()
 
     async def execute(self, *, user_id: UUID, steps: list[WorkflowStep]) -> list[StepResult]:
+        """Sequential execution with failure isolation: a failure only blocks
+        its own dependents (recorded as skipped); unrelated steps still run.
+        Every step gets exactly one result — ok, failed, or skipped."""
+
         context = SkillContext(user_id=user_id)
         results: list[StepResult] = []
+        unavailable: set[int] = set()  # failed or skipped step indices
         await self._hooks.fire("before_execution", HookContext(user_id=user_id, steps=steps))
         for step in steps:
+            blocked = _blocked_dependencies(step, unavailable)
+            if blocked:
+                blocked_list = "、".join(str(index + 1) for index in sorted(blocked))
+                results.append(
+                    StepResult(
+                        index=step.index,
+                        skill=step.skill,
+                        ok=False,
+                        skipped=True,
+                        error=f"skipped: 依賴的第 {blocked_list} 步未成功",
+                    )
+                )
+                unavailable.add(step.index)
+                continue
             await self._hooks.fire(
                 "before_step", HookContext(user_id=user_id, steps=steps, step=step)
             )
@@ -118,10 +202,11 @@ class WorkflowExecutor:
             except Exception as exc:
                 result = StepResult(index=step.index, skill=step.skill, ok=False, error=str(exc))
                 results.append(result)
+                unavailable.add(step.index)
                 await self._hooks.fire(
                     "on_error", HookContext(user_id=user_id, steps=steps, step=step, error=str(exc))
                 )
-                break
+                continue
             result = StepResult(index=step.index, skill=step.skill, ok=True, output=output)
             results.append(result)
             await self._hooks.fire(

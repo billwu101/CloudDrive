@@ -12,9 +12,24 @@ AssistantRole = Literal["system", "user", "assistant", "tool"]
 WorkflowPlanStatus = Literal["auto_executed", "pending_approval"]
 
 
+# Which model the user picked for this turn: "local" = on-prem Ollama, or a
+# connection id (str) for one of the user's named external connections. None =
+# server default (local→external fallback). Validated against availability.
 class AssistantChatRequest(BaseModel):
     session_id: UUID | None = None
     message: str = Field(min_length=1, max_length=4000)
+    model: str | None = None
+    # Drive items the user checked; self-built skills run once per selected file
+    # (their item_id comes from here, never guessed by the LLM).
+    selected_item_ids: list[UUID] = Field(default_factory=list)
+
+
+class AssistantModelOption(BaseModel):
+    """One selectable model in the assistant's picker."""
+
+    id: str  # "local" | "openai" | "codex"
+    label: str
+    available: bool
 
 
 class AssistantToolCall(BaseModel):
@@ -55,6 +70,7 @@ class AssistantSkillResponse(BaseModel):
     manifest: dict[str, Any]
     code: str
     status: str
+    chat_enabled: bool
     created_at: datetime
     updated_at: datetime
 
@@ -67,6 +83,8 @@ class AssistantSkillApproveResponse(BaseModel):
 class AssistantSkillUpdateRequest(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=500)
     code: str | None = Field(default=None, max_length=20000)
+    # Opt the installed skill in/out of the chat planner (None = leave unchanged).
+    chat_enabled: bool | None = None
 
 
 class AssistantSkillExecuteRequest(BaseModel):

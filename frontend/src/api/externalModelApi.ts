@@ -1,9 +1,11 @@
-import type { ExternalCredentialUpsert, ExternalCredentialView } from './types'
+import type { ConnectionCreate, ConnectionUpdate, ConnectionView } from './types'
 import { api } from './client'
 
-export const externalModelApi = {
-  list: () => api.get<ExternalCredentialView[]>('/users/me/external-credentials'),
-  upsert: (body: ExternalCredentialUpsert) =>
-    api.put<ExternalCredentialView>('/users/me/external-credentials', body),
-  remove: (provider: string) => api.delete(`/users/me/external-credentials/${provider}`),
+const BASE = '/users/me/model-connections'
+
+export const modelConnectionApi = {
+  list: () => api.get<ConnectionView[]>(BASE),
+  create: (body: ConnectionCreate) => api.post<ConnectionView>(BASE, body),
+  update: (id: string, body: ConnectionUpdate) => api.put<ConnectionView>(`${BASE}/${id}`, body),
+  remove: (id: string) => api.delete(`${BASE}/${id}`),
 }

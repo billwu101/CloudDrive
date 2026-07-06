@@ -7,6 +7,7 @@ import re
 import shutil
 import tempfile
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.assistant.llm.client import (
     ExternalAuthError,
@@ -72,7 +73,10 @@ class CodexSubscriptionClient:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
+        # response_format (structured output) isn't expressible through the codex
+        # CLI bridge, so it's accepted for interface parity and ignored here.
         home = tempfile.mkdtemp(prefix="codex_home_")
         try:
             auth_path = os.path.join(home, "auth.json")

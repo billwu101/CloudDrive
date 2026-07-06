@@ -70,6 +70,7 @@ class MemAssistantSkillRepo(AbstractAssistantSkillRepository):
                 manifest=manifest,
                 code=code,
                 status="pending",
+                chat_enabled=False,
                 created_at=now,
                 updated_at=now,
             )
@@ -105,6 +106,16 @@ class MemAssistantSkillRepo(AbstractAssistantSkillRepository):
         skill.description = description
         skill.manifest = manifest
         skill.code = code
+        skill.updated_at = datetime.now(UTC)
+        return skill
+
+    async def set_chat_enabled(
+        self, *, user_id: UUID, skill_id: UUID, enabled: bool
+    ) -> AssistantSkill | None:
+        skill = await self.get_by_id(user_id=user_id, skill_id=skill_id)
+        if skill is None:
+            return None
+        skill.chat_enabled = enabled
         skill.updated_at = datetime.now(UTC)
         return skill
 
