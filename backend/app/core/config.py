@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     llm_num_ctx: int = 65536
     llm_timeout_seconds: float = 300
     llm_keep_alive: str = "15m"
+    # Anti-loop guards for the local model (DEC-031): cap generated tokens so a
+    # degenerate repetition loop fails bounded instead of eating the full read
+    # timeout (0 = uncapped), and use a small non-zero temperature for
+    # structured requests so greedy decoding cannot lock into a repetition
+    # cycle — the output format is guaranteed by the grammar, not temperature.
+    llm_num_predict: int = 2048
+    llm_structured_temperature: float = 0.2
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
 

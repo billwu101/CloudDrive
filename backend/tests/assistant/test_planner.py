@@ -5,7 +5,13 @@ from typing import Any, cast
 from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolDefinition
 from app.assistant.llm.router import ModelRouter
-from app.assistant.planner import _PLAN_RESPONSE_FORMAT, PlanResult, WorkflowPlanner, validate_plan
+from app.assistant.planner import (
+    _PLAN_RESPONSE_FORMAT,
+    PlanResult,
+    WorkflowPlanner,
+    build_plan_response_format,
+    validate_plan,
+)
 from app.assistant.skills.registry import RegisteredSkill, SkillRegistry
 from app.assistant.workflow import PlannedStep
 
@@ -89,10 +95,27 @@ async def test_planner_parses_plain_json() -> None:
 
 async def test_planner_requests_structured_output_on_every_call() -> None:
     # The plan schema must reach the LLM client so providers can enforce it with
-    # constrained decoding (Ollama format / OpenAI json_schema).
+    # constrained decoding (Ollama format / OpenAI json_schema). DEC-032: the
+    # schema constrains `skill` to the registry's real names (sorted), so a
+    # hallucinated skill is unrepresentable at sampling time.
     llm = ScriptedLLM([LLMResponse(content='{"reply": "ok", "steps": []}')])
     await _planner(llm).plan(message="hi")
-    assert llm.response_formats == [_PLAN_RESPONSE_FORMAT]
+    assert len(llm.response_formats) == 1
+    sent = cast(dict[str, Any], llm.response_formats[0])
+    step_props = sent["json_schema"]["schema"]["properties"]["steps"]["items"]["properties"]
+    assert step_props["skill"]["enum"] == ["list_items", "search"]
+
+
+def test_plan_response_format_enum_matches_registry() -> None:
+    # DEC-032 round-trip: enum == sorted registry names; an empty registry must
+    # fall back to a free string (an empty enum is invalid JSON Schema).
+    sent = cast(dict[str, Any], build_plan_response_format(_registry()))
+    step_props = sent["json_schema"]["schema"]["properties"]["steps"]["items"]["properties"]
+    assert step_props["skill"] == {"type": "string", "enum": ["list_items", "search"]}
+
+    empty = cast(dict[str, Any], build_plan_response_format(SkillRegistry()))
+    empty_props = empty["json_schema"]["schema"]["properties"]["steps"]["items"]["properties"]
+    assert empty_props["skill"] == {"type": "string"}
 
 
 def test_plan_response_format_stays_in_sync_with_models() -> None:
@@ -145,6 +168,34 @@ def test_validate_plan_flags_unknown_skill_and_missing_required_arg() -> None:
 def test_validate_plan_accepts_complete_plan() -> None:
     problems = validate_plan([PlannedStep(skill="search", arguments={"q": "test"})], _registry())
     assert problems == []
+
+
+def test_validate_plan_flags_invalid_depends_on() -> None:
+    # Mirrors classify_steps' rule so a bad depends_on triggers the planner's
+    # repair loop instead of a 400 from the permission layer (real gemma emitted
+    # a self-dependency: "Step 0 has an invalid dependency: 0").
+    self_dep = validate_plan(
+        [PlannedStep(skill="search", arguments={"q": "x"}, depends_on=[0])], _registry()
+    )
+    assert any("depends_on must point to an earlier step, got 0" in p for p in self_dep)
+
+    forward = validate_plan(
+        [
+            PlannedStep(skill="search", arguments={"q": "x"}, depends_on=[]),
+            PlannedStep(skill="list_items", arguments={}, depends_on=[2]),
+        ],
+        _registry(),
+    )
+    assert any("depends_on must point to an earlier step, got 2" in p for p in forward)
+
+    valid = validate_plan(
+        [
+            PlannedStep(skill="search", arguments={"q": "x"}),
+            PlannedStep(skill="list_items", arguments={}, depends_on=[0]),
+        ],
+        _registry(),
+    )
+    assert valid == []
 
 
 def test_validate_plan_accepts_step_reference_for_required_arg() -> None:

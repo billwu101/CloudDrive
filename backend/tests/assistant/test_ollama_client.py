@@ -22,7 +22,7 @@ _ENVELOPE_FORMAT: dict[str, object] = {
 }
 
 
-def _capturing_client(captured: dict[str, object]) -> OllamaLLMClient:
+def _capturing_client(captured: dict[str, object], **kwargs: object) -> OllamaLLMClient:
     async def handler(request: httpx.Request) -> httpx.Response:
         captured["payload"] = json.loads(request.content.decode())
         return httpx.Response(200, json={"message": {"content": "{}"}})
@@ -31,6 +31,7 @@ def _capturing_client(captured: dict[str, object]) -> OllamaLLMClient:
         base_url="http://ollama.test",
         model="gemma4:26b",
         transport=httpx.MockTransport(handler),
+        **kwargs,  # type: ignore[arg-type]
     )
 
 
@@ -52,8 +53,53 @@ async def test_ollama_client_passes_bare_schema_as_format() -> None:
     json_schema = _ENVELOPE_FORMAT["json_schema"]
     assert isinstance(json_schema, dict)
     assert payload["format"] == json_schema["schema"]
-    # Structured output requests pin sampling for reproducible plans.
+    # Default construction keeps the original pinned-0 sampling behaviour.
     assert payload["options"]["temperature"] == 0
+
+
+async def test_ollama_client_uses_configured_structured_temperature() -> None:
+    # DEC-031: structured requests use the configured temperature (low, non-zero)
+    # instead of a hard-pinned 0 — the grammar guarantees the format at any
+    # temperature, while non-zero sampling breaks greedy repetition loops.
+    captured: dict[str, object] = {}
+    client = _capturing_client(captured, structured_temperature=0.2)
+
+    await client.chat(
+        [LLMMessage(role="user", content="plan it")],
+        [],
+        num_ctx=4096,
+        response_format=_ENVELOPE_FORMAT,
+    )
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["options"]["temperature"] == 0.2
+
+
+async def test_ollama_client_caps_generation_with_num_predict() -> None:
+    # DEC-031: num_predict bounds every local request so a repetition loop fails
+    # bounded instead of eating the full read timeout — plain chat included.
+    captured: dict[str, object] = {}
+    client = _capturing_client(captured, num_predict=4096)
+
+    await client.chat([LLMMessage(role="user", content="hi")], [], num_ctx=4096)
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["options"]["num_predict"] == 4096
+
+
+async def test_ollama_client_omits_num_predict_when_uncapped() -> None:
+    # num_predict=0 (and the default) must leave generation uncapped for
+    # backward compatibility — e.g. external named Ollama connections.
+    captured: dict[str, object] = {}
+    client = _capturing_client(captured, num_predict=0)
+
+    await client.chat([LLMMessage(role="user", content="hi")], [], num_ctx=4096)
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert "num_predict" not in payload["options"]
 
 
 async def test_ollama_client_passes_bare_schema_dict_through() -> None:

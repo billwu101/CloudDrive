@@ -93,6 +93,34 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [ ] （後續）`llm/anthropic.py` 改用 `output_config.format` 結構化輸出（目前只加「Respond with valid JSON only」prompt，無硬約束）。
 - [ ] （後續）`subagent.py` codegen 呼叫補 `response_format`（期待 JSON 但目前純靠 prompt + 自身 repair loop）。
 
+## 結構化解碼防跳針（2026-07-06，DEC-031）
+
+> 背景：真模型整合測試穩定卡滿 timeout——temp=0 貪婪解碼在 gemma4 thinking 段掉入決定性重複迴圈（300s/900s 均跑不完）。見 [proposal-structured-decoding-stability.md](../proposal-structured-decoding-stability.md)、eval-prompt-log §2.7。
+
+- [x] `core/config.py`：`llm_num_predict`（預設 2048，0=不設限）、`llm_structured_temperature`（預設 0.2）。
+- [x] `llm/ollama.py`：所有本地請求帶 `options.num_predict`（>0 時）；結構化請求 temperature 改用設定值（低而非零，格式保證仍由 grammar 遮罩負責）。
+- [x] `assistant/router.py`：`_assistant_service` 接線兩個新設定。
+- [x] `test_ollama_client.py`：結構化 temperature 用設定值、num_predict 帶入/`=0` 不帶、plain chat 仍不帶 temperature。
+- [x] 真模型驗證：原卡死的整合測試通過（40/40）。
+
+## planner schema 技能名 enum（2026-07-06，DEC-032）
+
+> 背景：E7 溫度掃描量化出 destructive 規劃可靠度 0–40%，一類失敗是模型捏造技能名（400，被 permissions 攔截）。把「只用清單內技能」從 prompt 請求升級為 grammar 硬約束。見 [proposal-planner-skill-enum.md](../proposal-planner-skill-enum.md)。
+
+- [x] `planner.py`：`_plan_response_format(skill_names)` 參數化 schema；`build_plan_response_format(registry)` 依當下 registry 注入排序後的 `skill` enum（自建技能會改變清單 → 每次 plan 動態組）；空 registry 退回自由字串。
+- [x] `plan()` 改用動態 schema；`validate_plan`/`classify_steps` 縱深防禦不移除。
+- [x] `test_planner.py`：response_format 含 enum（排序）斷言、空 registry 無 enum、既有 drift 測試不變。
+- [x] 真模型 spot check：safety-destructive 單案例 sweep，確認 400（幻覺技能）類失敗消失。
+
+## planner schema 技能名 enum（2026-07-06，DEC-032）
+
+> 背景：E7 溫度掃描量化出 destructive 規劃可靠度 0–40%，其一病因是模型捏造技能名（400，被 permissions 攔截）。把「只用清單內技能」從 prompt 請求升級為 grammar 硬約束。見 [proposal-planner-skill-enum.md](../proposal-planner-skill-enum.md)。
+
+- [x] `planner.py`：`_plan_response_format(skill_names)` 建構器 + `build_plan_response_format(registry)`（排序、空 registry 退回自由字串）；`plan()` 每次依當下 registry 動態組 schema。
+- [x] `test_planner.py`：response_format 含 enum（等於 registry 排序名單）、空 registry 無 enum、既有 drift 測試不退化。
+- [x] 真模型 spot check 發現第二病因：400 實為 `depends_on` 非法相依（自我/向前依賴），`validate_plan` 漏查（權限層有查）→ 補上同規則使其觸發修復迴圈；enum 本身確認有效（成功樣本技能名全合法）。
+- [x] `test_planner.py`：`validate_plan` 自我相依/向前相依標記、合法相依通過。
+
 ## 執行失敗處理（2026-07-04，DEC-029）
 
 - [x] `service.py`：`_compose_failure_message()` 誠實報告——三條執行路徑（chat fast-path / confirm / rerun）失敗時不再回規劃期的 `plan.reply` 或固定成功句，改回 StepResult 組合的事實報告。

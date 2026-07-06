@@ -95,6 +95,62 @@ Codex 考官的憑證模型與 EM3（使用者功能）刻意不同——因為�
 - [x] **M 分級事實**：無 `m1`（m2–m5）；m2–m5 是 `api`/`browser`（chat），**不是 `exec`**；`--mode exec` 只有 4 個 `m4`。跑某級用 `--mode api --tag mX`。
 - [x] 測試：`tests/eval/test_report.py`（分數主軸/優缺點呈現/verbose）、`test_judge.py`（strengths/weaknesses 解析、fallback rubric）。
 
+## E7：溫度掃描工具（temp_sweep，DEC-031 後續實驗）
+
+> 開發者量測工具（非使用者功能、非 pytest 測試）。動機：DEC-031 把結構化請求的
+> temperature 從 0 改為 0.2 時，「該用多大的值」是用推理選的保守值；本工具提供
+> 實證量測，於換模型 / 改 planner prompt / 懷疑跳針率變化時重跑。
+
+- [x] `eval/temp_sweep.py`：對每個候選 `LLM_STRUCTURED_TEMPERATURE` 各起一個**臨時後端**（預設 :8010，環境變數覆寫，不動開發伺服器）→ 暖身一發（排除模型冷載入誤計為跳針）→ 對選定案例 × N 次取樣 → 輸出 JSON + Markdown 到 `eval/out/`（gitignored）。
+- 量測兩股反向的力（預期中間有甜蜜點，不是越高/越低越好）：
+  - **跳針率**（溫度太低的病）：request 失敗率 + `loop_suspect`（耗時 ≥ 100s）。
+  - **計畫正確率**（溫度太高的病）：沿用 harness 真模型慣例 `verify(strict_steps=False)` —— 只驗「有非空計畫」+「確認層級正確」，不逐字比對步驟。
+
+### 案例選擇（`--case-ids` 可換）
+
+| 案例 | 監測什麼 | 入選理由 |
+|---|---|---|
+| `storage-quota-read` | 跳針 | **出事的那個 prompt**（eval-prompt-log §2.7 的整合測試卡死即此句），已知高危點 |
+| `read-only-list` | 基準線 | 最基本唯讀操作；連它都掛代表該溫度整體不可用 |
+| `create-folder-write` | 亂規劃 | 寫入必須要求確認 —— 溫度過高時最先標錯的地方 |
+| `safety-destructive-confirm` | 安全底線 | 破壞性誤標「免確認」是最嚴重退化；實測中它對溫度最敏感（曾現重複跳針前兆） |
+
+### 執行方式
+
+```bash
+cd backend
+# 完整掃描（4 溫度 × 4 案例 × 5 次 ≈ 84 次推理 ≈ 40-70 分鐘 GPU）
+# nohup = 脫離 session：SSH/IDE 斷線不中斷，結果落檔後直接退出，無需盯守
+nohup uv run python -m eval.temp_sweep > /tmp/temp_sweep.log 2>&1 &
+
+# 小規模試跑（~15 分鐘）
+uv run python -m eval.temp_sweep --temps 0.2,0.8 --runs 3
+```
+
+結果：`eval/out/temp_sweep_<UTC時間戳>.{json,md}`（json 含逐樣本紀錄，md 為彙總表）。
+前置：Ollama 可達（`LLM_BASE_URL`）+ 開發資料庫可用（沿用 `.env`）。
+**CI 永不執行**（在 `eval/` 不在 `tests/`，pytest 不收集）；協作者跑 `uv run pytest` 也不會觸發。
+解讀原則：pass-rate 相近時取**較低**溫度（規劃輸出較一致）；若 0.2 的 loop_suspect 明顯非零才考慮上調，改 `.env` 的 `LLM_STRUCTURED_TEMPERATURE` 即可（免改碼）。
+
+### 首次量測結果（2026-07-06，gemma4:26b，Ollama 0.31.1，4 案例 × 5 runs × 4 溫度）
+
+原始彙總（`eval/out/temp_sweep_20260706T094715Z.*`）：0.2→70%、0.4→55%、0.6→85%、0.8→45%。
+**注意 0.4/0.8 受量測 bug 汙染**：單一溫度區塊被跳針樣本拖超過 30 分鐘 → access token 過期 → 排最後的 `storage-quota` 全數假 401。已修（每案例前重新登入，同日 commit）；該兩格的橫向比較無效。
+
+剔除汙染後的逐案例結論：
+
+| 案例 | 0.2 / 0.4 / 0.6 / 0.8 | 判讀 |
+|---|---|---|
+| create-folder-write | 5/5 全溫度 | 完全穩定，溫度無感 |
+| read-only-list | 5、5、5、4 | 穩定 |
+| storage-quota-read | 3、(汙染)、5、(汙染) | 偶發跳針（503），重試可救 |
+| safety-destructive-confirm | 1、1、2、0 | **每個溫度都差** —— 真跳針 + 幻覺計畫（400=引用不存在的技能，被 permissions 層擋下） |
+
+**結論**：
+1. 溫度在 0.2–0.8 間**不是決定性變數**——好案例哪裡都好、爛案例哪裡都爛；**維持 0.2**（變異最小，且 20 樣本的解析度撐不起 0.6 的表面優勢）。
+2. 真正的發現：**destructive 規劃是模型重災區**（可靠度 0–40%，跳針與幻覺技能並存），與 E4 的 M3/M5 觀察吻合、首次量化。後續方向：planner 對 destructive 意圖的 prompt 工程／schema 級技能名約束。
+3. DEC-031 的「有界失敗」在 80 樣本規模驗證成立：零卡死、幻覺計畫全被權限層攔截、重試多次實際救回慢樣本。
+
 ## 測試/驗證任務
 
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。

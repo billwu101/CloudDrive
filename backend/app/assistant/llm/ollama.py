@@ -28,6 +28,8 @@ class OllamaLLMClient:
         fallback_base_urls: list[str] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         connect_timeout: float = 5.0,
+        num_predict: int = 0,
+        structured_temperature: float = 0.0,
     ) -> None:
         # Primary first, then any fallbacks; chat() tries them in order and only
         # raises once every endpoint has failed.
@@ -43,6 +45,14 @@ class OllamaLLMClient:
         # the full generation timeout); reading keeps the long timeout for slow
         # token generation.
         self._connect_timeout = min(connect_timeout, timeout)
+        # DEC-031 anti-loop guards. num_predict bounds generation so a
+        # repetition loop is cut off instead of running until the read timeout
+        # (0 = uncapped). structured_temperature replaces the old hard-pinned 0
+        # for structured requests: the grammar guarantees the format at any
+        # temperature, while a small non-zero value keeps greedy decoding from
+        # locking into a deterministic repetition cycle in the thinking phase.
+        self._num_predict = num_predict
+        self._structured_temperature = structured_temperature
 
     async def chat(
         self,
@@ -58,13 +68,15 @@ class OllamaLLMClient:
             "stream": False,
             "options": {"num_ctx": num_ctx},
         }
+        if self._num_predict > 0:
+            payload["options"]["num_predict"] = self._num_predict
         # Constrained decoding: Ollama compiles the schema in `format` into a
         # grammar and masks illegal tokens at sampling time, so the response is
         # guaranteed to match the schema — not just be valid JSON. Temperature is
-        # pinned only for structured requests; plain chat keeps default sampling.
+        # set only for structured requests; plain chat keeps default sampling.
         if response_format is not None:
             payload["format"] = _to_ollama_format(response_format)
-            payload["options"]["temperature"] = 0
+            payload["options"]["temperature"] = self._structured_temperature
         if self._keep_alive:
             payload["keep_alive"] = self._keep_alive
         if tools:

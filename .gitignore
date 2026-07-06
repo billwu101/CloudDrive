@@ -65,3 +65,4 @@ temp/
 # File
 *.pdf
 *.docx
+backend/eval/out/
