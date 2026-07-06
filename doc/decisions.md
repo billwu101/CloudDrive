@@ -354,3 +354,16 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
   - **分相執行**：不碰 DB 的重活（沙箱 CPU）並行，碰 DB 的收尾（寫回 drive）維持單 session 排隊。改動小、繞開理由 1–4 的大部分，代價是寫回階段不並行、架構稍不對稱。
 - 已知取捨：5 個獨立步驟仍排隊執行（延遲未改善）；沙箱 CPU 型批次操作是最吃虧的場景。
 - 影響範圍：`backend/app/assistant/workflow.py`（現狀維持）、`doc/tasks/backend-assistant.md` 第二階段清單、`doc/detailed-design.md` §12.11。
+
+## DEC-031：結構化解碼防跳針——num_predict 上限 + 非零 temperature
+
+- 日期：2026-07-06
+- 狀態：Accepted（已實作）
+- 背景：真模型整合測試 `test_chat_persists_session_and_messages` 穩定失敗——規劃請求每次卡滿 LLM timeout（300s 與 900s 實驗均跑不完，906s 失敗），Ollama 端證實生成確實在進行（單併發排隊探測）。根本原因：`OllamaLLMClient` 對結構化請求（帶 `format` grammar）把 temperature 釘 0，貪婪解碼在 gemma4 的 thinking 段（不受 grammar 約束）掉入**決定性重複迴圈**——特定 prompt+context 100% 重現、重試無效、拉長 timeout 無效。使用者體感：等滿 300s 收到 503，且單併發下卡死請求會讓其他使用者排隊級聯超時。詳見 [proposal-structured-decoding-stability.md](./proposal-structured-decoding-stability.md)。
+- 決策：
+  1. **`num_predict` 生成上限（保底）**：本地請求一律帶 `options.num_predict`（`LLM_NUM_PREDICT`，預設 2048，0=不設限）。跳針時有界截斷 → 解析失敗走既有錯誤路徑，不再吃滿 timeout。
+  2. **結構化請求 temperature 改低而非零（治本）**：`LLM_STRUCTURED_TEMPERATURE` 預設 0.2。格式保證來自 grammar 遮罩、與 temperature 無關；微量隨機性打破貪婪迴圈黏性，並使 `MAX_LOCAL_ATTEMPTS` 重試真正有效（temp=0 重試必得同結果）。
+  3. plain chat 行為不變（本就不釘 temperature）；外部模型路徑不受影響。
+- 理由：迴圈是決定性的，「調大 timeout / 原樣重試」被實驗排除；兩道防線分別解「單次卡死時長」與「掉入迴圈的機率」，且皆可經設定退回原行為（`0`/`0`）。
+- 已知取捨：結構化輸出不再逐 token 決定性（同輸入可能得到不同但皆合法的計畫）——規劃品質仍由既有 schema 驗證 + 確認閘把關；`num_predict` 截斷長 thinking 的極端正常請求時會誤傷（2048 對 ~600 token 的正常規劃仍有 3 倍餘裕；且 2048×2 次嘗試 ≈ 270s < 300s timeout，壞樣本重試可在單次請求預算內完成）。
+- 影響範圍：`core/config.py`、`assistant/llm/ollama.py`、`assistant/router.py`、`tests/assistant/test_ollama_client.py`、eval-prompt-log 記錄問題 prompt；回歸由原整合測試把關。

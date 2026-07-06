@@ -75,6 +75,14 @@
 
 ---
 
+### 2.7 `How much storage space is left?`（整合測試 context）— temp=0 生成迴圈 — ✅ 已解決（DEC-031）
+
+- **現象（2026-07-06）**：`tests/integration/test_assistant_flow.py::test_chat_persists_session_and_messages` 對真實 gemma4:26b 穩定失敗——規劃請求卡滿 LLM timeout 回 503；300s 與 900s（906s 失敗）均跑不完；Ollama 端探測證實生成真的在進行（單併發排隊 60s+）。同檔另兩個真模型測試 ~40s 通過。
+- **原因**：模型限制 + harness 參數選擇。結構化請求把 temperature 釘 0，gemma4 的 thinking 段（不受 grammar 約束）在貪婪解碼下掉入決定性重複迴圈——同一 prompt+context 100% 重現。輕微形式先前即在 eval 回覆中出現（同句重複 2-4 次，storage-quota / safety 案例）。
+- **判定**：非程式碼回歸；「調大 timeout / 原樣重試」實驗排除（決定性）。
+- **修法（DEC-031）**：`num_predict` 上限（預設 4096，保底截斷）+ 結構化 temperature 改 0.2（打破迴圈黏性）。
+- **回歸方式**：原整合測試即回歸守門（真模型必跑、不跳過）。**不加 mock case**——mock LLM 無法重現真模型解碼迴圈，硬造 case 只會製造恆過的假安心。
+
 ## 3. 新增「出問題的 prompt」要怎麼記（流程）
 
 1. 在本檔 §2 加一條：prompt 原文、現象、原因（harness bug 還是模型限制）、判定、下次驗證方式。

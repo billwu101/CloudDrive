@@ -2169,6 +2169,7 @@ DB metadata 與實體 blob 分屬 PostgreSQL 與檔案系統，**檔案操作不
 - **外部模型路徑（2026-06-25 起為使用者手動選擇）**：使用者於聊天面板**逐訊息自選**模型來源——本機或任一筆具名外部連線（§12.10）；選定即該次唯一執行器，無自動 fallback，外送一律經隱私閘。原「反覆失敗自動升級」（DEC-023）僅保留於 `target=None` 相容路徑（見 9.91.3 更新註記）。
 - 後端以 `LLMClient` 抽象封裝本地與外部執行器；本地端只用 `httpx`，外部端為可設定、可關閉、且受隱私閘控管。
 - 26B 本地模型 function-calling 與規劃可靠度有限，因此管線的**結構化輸出 + 驗證 + 修復重試 + 升級 + 使用者確認閘**特別重要。
+- **防跳針（DEC-031）**：本地請求帶 `num_predict` 生成上限（跳針時有界失敗，不吃滿 timeout）；結構化請求 temperature 低而非零（格式由 grammar 保證，微量隨機性打破 thinking 段的貪婪重複迴圈）。
 
 ### 9.91.2 方案抉擇（沿用）
 
@@ -2431,6 +2432,8 @@ ASSISTANT_MODEL=gemma4:26b
 LLM_NUM_CTX=65536
 LLM_TIMEOUT_SECONDS=300
 LLM_KEEP_ALIVE=15m
+LLM_NUM_PREDICT=2048              # 本地生成 token 上限（防跳針保底，0=不設限；DEC-031）
+LLM_STRUCTURED_TEMPERATURE=0.2    # 結構化請求 temperature（低而非零，打破貪婪迴圈；DEC-031）
 ASSISTANT_ENABLED=true
 ASSISTANT_MAX_TOOL_ITERATIONS=8
 ASSISTANT_SANDBOX_TIMEOUT_SEC=30

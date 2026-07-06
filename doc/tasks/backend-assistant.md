@@ -93,6 +93,16 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [ ] （後續）`llm/anthropic.py` 改用 `output_config.format` 結構化輸出（目前只加「Respond with valid JSON only」prompt，無硬約束）。
 - [ ] （後續）`subagent.py` codegen 呼叫補 `response_format`（期待 JSON 但目前純靠 prompt + 自身 repair loop）。
 
+## 結構化解碼防跳針（2026-07-06，DEC-031）
+
+> 背景：真模型整合測試穩定卡滿 timeout——temp=0 貪婪解碼在 gemma4 thinking 段掉入決定性重複迴圈（300s/900s 均跑不完）。見 [proposal-structured-decoding-stability.md](../proposal-structured-decoding-stability.md)、eval-prompt-log §2.7。
+
+- [x] `core/config.py`：`llm_num_predict`（預設 2048，0=不設限）、`llm_structured_temperature`（預設 0.2）。
+- [x] `llm/ollama.py`：所有本地請求帶 `options.num_predict`（>0 時）；結構化請求 temperature 改用設定值（低而非零，格式保證仍由 grammar 遮罩負責）。
+- [x] `assistant/router.py`：`_assistant_service` 接線兩個新設定。
+- [x] `test_ollama_client.py`：結構化 temperature 用設定值、num_predict 帶入/`=0` 不帶、plain chat 仍不帶 temperature。
+- [x] 真模型驗證：原卡死的整合測試通過（40/40）。
+
 ## 執行失敗處理（2026-07-04，DEC-029）
 
 - [x] `service.py`：`_compose_failure_message()` 誠實報告——三條執行路徑（chat fast-path / confirm / rerun）失敗時不再回規劃期的 `plan.reply` 或固定成功句，改回 StepResult 組合的事實報告。
