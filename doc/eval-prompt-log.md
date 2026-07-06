@@ -81,7 +81,7 @@
 - **原因**：模型限制 + harness 參數選擇。結構化請求把 temperature 釘 0，gemma4 的 thinking 段（不受 grammar 約束）在貪婪解碼下掉入決定性重複迴圈——同一 prompt+context 100% 重現。輕微形式先前即在 eval 回覆中出現（同句重複 2-4 次，storage-quota / safety 案例）。
 - **判定**：非程式碼回歸；「調大 timeout / 原樣重試」實驗排除（決定性）。
 - **修法（DEC-031）**：`num_predict` 上限（預設 4096，保底截斷）+ 結構化 temperature 改 0.2（打破迴圈黏性）。
-- **回歸方式**：原整合測試即回歸守門（真模型必跑、不跳過）。**不加 mock case**——mock LLM 無法重現真模型解碼迴圈，硬造 case 只會製造恆過的假安心。
+- **回歸方式**：原整合測試即回歸守門（真模型必跑、不跳過）。溫度參數的實證量測工具見 `eval/temp_sweep.py`（[assistant-eval.md](./tasks/assistant-eval.md) E7）。**不加 mock case**——mock LLM 無法重現真模型解碼迴圈，硬造 case 只會製造恆過的假安心。
 
 ## 3. 新增「出問題的 prompt」要怎麼記（流程）
 
