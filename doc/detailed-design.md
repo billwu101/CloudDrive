@@ -2503,7 +2503,7 @@ LLM 解析需求
 | **5. 權限與安全檢查** | 逐步驟判定權限層級（唯讀/破壞性/需沙箱）、綁定 `user_id`、標記需使用者核可的步驟；不通過則擋下並說明。 | 09 permissions、08 hooks |
 | **6. 顯示執行計畫** | 把 workflow 計畫（步驟、影響範圍、破壞性/沙箱標記、預估）回前端供檢視。 | 08 hooks（before_execution） |
 | **7. 使用者確認?** | 是/否閘。**否** → 修改需求或取消，帶使用者修正回階段 2。**是** → 執行。唯讀且非破壞的工作流程可依權限設定自動確認（fast-path）。 | 09 permissions、前端 |
-| **8. 執行 Workflow** | 依序執行每步驟：呼叫 skill handler（經 service 層或沙箱，帶 `user_id`），處理相依與錯誤（單步失敗可中止或續做，依設定）。 | 01 loop、09 safety、04 sub-agents |
+| **8. 執行 Workflow** | 依序執行每步驟：呼叫 skill handler（經 service 層或沙箱，帶 `user_id`）；失敗處理與執行隔離語意（失敗只斷真正下游、每步恰一筆 ok/failed/skipped、誠實報告 + 有限度 replan）見 §11.11（規劃／待落地）。 | 01 loop、09 safety、04 sub-agents |
 | **9. 記錄操作與結果** | 每步驟與整體結果寫入稽核（activity_logs）與 workflow run 持久化；成功的工作流程可另存重用。 | 09 audit、06 persistence |
 
 ### 8.93.1 生成技能子流程（缺技能 → 現場生成，workflow 化）
@@ -2899,7 +2899,7 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 
 ## 11. 外部模型接入（Codex/OpenAI）
 
-### 11.0 實作現況（2026-06-19）
+### 11.0 實作現況（2026-06-19；規劃中的「多組具名連線」改版見 §11.10、失敗處理見 §11.11，兩者尚未落到 fix 分支）
 
 | 區塊 | 設計 § | 階段 | 實作落點 | 狀態 |
 | --- | --- | --- | --- | --- |
@@ -2908,8 +2908,11 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 | 路徑 B：OpenAI API key | §11.2.2 | EM2 | `app/assistant/llm/external.py`（`ExternalLLMClient`） | ✅ |
 | 失敗／額度耗盡 → 標 `invalid` | §11.2.2 | EM2 | `external.py`（401/403/429-quota 分類）+ `service._CredentialTrackingClient` | ✅ |
 | 路徑 A：Codex 訂閱 | §11.2.1 | EM3 | `app/external_model/codex_client.py`（`CodexSubscriptionClient`） | ✅ |
-| provider 選擇／退回 | §11.2.3 | EM3 | `service.build_chat_client` + `_FallbackClient` | ✅ |
+| provider 選擇／退回 | §11.2.3 | EM3 | `service.build_chat_client` + `_FallbackClient` | ✅（規劃中改版後手動選擇不再自動退回，見 §11.10.4） |
 | eval 考官 provider（+ 評 exec 產出） | §11.5 | E6 | `eval/judge.py`、`eval/run.py`（任務在 `tasks/assistant-eval.md`） | ✅ |
+| **多組具名連線 + 模型可選 + 無自動 fallback** | **§11.10** | **EM4** | `app/models/external_model_connection.py`、migration **0016**、`external_model/{repository,service,router,schemas}.py`、`assistant/{router,planner,llm}.py`、`components/settings/ExternalModelSettings.tsx`、`components/assistant/AssistantPanel.tsx` | 🔶 **main 已實作（2026-06-25）；fix 分支待落地** |
+| **執行失敗誠實報告 + 有限度重規劃 + 執行隔離** | **§11.11** | — | `app/assistant/service.py`、`app/assistant/workflow.py`、`tests/assistant/test_workflow.py` | 🔶 **main 已實作（2026-07-04／07-05，DEC-029／DEC-030）；fix 分支待落地** |
+| **Anthropic／Claude 連線** | §11.10.5 | EM4+ | `app/assistant/llm/anthropic.py`（`AnthropicLLMClient`） | ⚠️ **client 類別已備、尚未接線**（`ConnectionKind` 未含 `anthropic`、`build_clients` 未加分支；main 亦未接線） |
 
 
 ### 11.1 目標
@@ -3098,6 +3101,109 @@ openclaw 的關鍵機制（讀其 `extensions/acpx/src/codex-auth-bridge.ts` 確
 - **判定：跨機可用已證實——token 不綁機、可搬。** 多使用者集中式在「技術可搬性」這關**通過**。
 - 過程插曲（非授權問題）：首次失敗是 codex 的「Not inside a trusted directory」目錄檢查，加 `--skip-git-repo-check` 後即正常——印證「環境/用法錯 ≠ 綁機」。
 - 尚未實測：① **refresh 未觸發**（token 仍新、`last_refresh` 未變）；refresh token 在 auth.json 內、屬標準 OAuth 續期，預期可跨機（低風險）。② 多地多 IP 的 ChatGPT 風控。
+
+### 11.10 多組「具名模型連線」+ 模型可選 + 無自動 fallback（EM4）
+
+> **落地狀態**：本節設計已於 `main` 分支實作完成（2026-06-25），**尚未合併進 `fix/core-stability` 分支的程式碼**——先納入設計文件，程式碼待後續 cherry-pick／實作。落地時，§11.0 現況表、§7.12 Migration 演進表（新增 0016）、§13.5 端點清單需同步更新。取代 §11.3「每使用者每 provider 一把憑證」。決策沿用 DEC-026 並擴充。
+
+#### 11.10.1 動機
+
+EM1~EM3 的 `user_external_credentials` 是 `(user_id, provider)` 單筆，痛點：① 某模型免費額度用完無法換另一把 key；② 不能存多把、不能自己命名；③ UI 寫「OpenAI key」但實連 Gemini（走 OpenAI 相容端點），名稱誤導；④ 不同來源（OpenAI / Gemini / Ollama cloud / Codex）呼叫方式不同；⑤ 不同 key／來源要能選不同模型。
+
+核心洞見：「**OpenAI 相容」是協定不是廠商**——OpenAI / Gemini / Ollama cloud / Groq 等多半提供相容 `/chat/completions`，差別只在 `base_url + model + key`；Codex（訂閱）是唯一特例（CLI bridge）。
+
+#### 11.10.2 資料模型
+
+`external_model_connections`〔Alembic migration **0016**：drop `user_external_credentials`、建新表、**不遷移**舊資料（舊為測試用）〕：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `id` (PK uuid) | 連線 id（可多筆） |
+| `user_id` (FK CASCADE) | 擁有者 |
+| `label` | 使用者自取名稱（顯示在下拉/設定） |
+| `kind` | `openai_compatible` / `ollama` / `codex`（規劃擴充 `anthropic`，見 §11.10.5） |
+| `base_url` | `openai_compatible`/`ollama` 必填；`codex` 不需 |
+| `model` | 該連線使用的模型（如 `gemini-2.5-flash-lite`） |
+| `secret_encrypted` | API key（或 codex auth.json），Fernet 加密 |
+| `masked_hint` | 遮罩提示（僅顯示末 4 碼） |
+| `status` | `active` / `invalid`（驗證失敗時標記） |
+| `created_at` / `updated_at` | |
+
+#### 11.10.3 後端
+
+- `app/models/external_model_connection.py`（新）、刪 `user_external_credential.py`。
+- `external_model/repository.py`：`SQLConnectionRepository`（CRUD by id）。
+- `external_model/service.py`：`ExternalModelConnectionService`，`build_clients(user_id) -> dict[str, LLMClient]`（keyed by `str(connection.id)`）；依 `kind` 建 client：
+  - `openai_compatible` → `ExternalLLMClient(base_url, model, key)`
+  - `ollama` → `OllamaLLMClient(base_url, model, api_key)`（原生 `/api/chat`）
+  - `codex` → `CodexSubscriptionClient`
+  - 失敗（`ExternalAuthError`）→ `_CredentialTrackingClient` 標記該連線 `invalid`；Codex token refresh 回寫（by `user_id` + `connection_id`）。
+- `external_model/schemas.py`：`ConnectionCreate/Update/View`（只回遮罩，永不回明文）。
+- `external_model/router.py`：`GET/POST/PUT/DELETE /users/me/model-connections`（取代舊 `/external-credentials`）。
+- `assistant/router.py`：`external_clients = build_connection_service(...).build_clients(user)`；`GET /assistant/models` 回 local + 每筆連線（`id=str(id)`、`label="{label} · {model}"`、`available=status=="active"`）；chat 的 `target` = 連線 id（或 `"local"`）。
+- `AssistantChatRequest.model: str | None`（連線 id 或 `"local"`）。
+
+#### 11.10.4 模型可選 + 無自動 fallback（取代 §11.4 的自動升級路徑）
+
+- 助理面板每則訊息帶上所選 `model`；`ModelRouter.chat(target=...)` 指定時 **local-only 或該連線 only**，**不再自動 fallback**（不再 codex→openai 串接，也不再「本地反覆失敗才升級」）。`target=None` 維持 §11.4 / DEC-023 舊自動行為以保相容。
+- 隱私閘沿用（手動選外部仍須通過隱私規則；敏感且未去識別化 → 拒送並說明）。
+- **明確錯誤 + 快速失敗**：失敗回可區分訊息——連不到（連線失敗/逾時）、憑證被拒（401/403）、額度/速率（429/quota）、其他。`OllamaLLMClient` 加 `connect_timeout`（預設 **5s**），連不到的本機數秒內失敗，不再卡 `LLM_TIMEOUT_SECONDS`（300s）。
+
+#### 11.10.5 Anthropic／Claude 連線（client 已備、尚未接線）
+
+- **現況（誠實標註）**：`app/assistant/llm/anthropic.py` 已備 `AnthropicLLMClient`（Anthropic Messages API：`system`/`messages` 拆分、`response_format` 時附「Respond with valid JSON only.」、`ExternalAuthError`/`LLMUnavailableError` 分類），**但尚未接線**——`ConnectionKind` 只含 `openai_compatible/ollama/codex`、`service.build_clients` 沒有 `anthropic` 分支、前端 preset 無 Claude，因此目前**無法從 UI 建立 Claude 連線**（`main` 分支亦同）。
+- **待接線設計（EM4+，規劃）**：`ConnectionKind` 增列 `anthropic`；`build_clients` 加分支 `anthropic → AnthropicLLMClient(base_url, model, api_key)`；`base_url` 預設 `https://api.anthropic.com`、`model` 如 `claude-sonnet-*`；前端 `ExternalModelSettings` presets 增 Claude（自動帶入 base_url）。Claude 屬「非 OpenAI 相容協定」，走專屬 client（同 Codex 的特例定位）。
+- 落地前，本項在 §11.0 現況表維持 ⚠️「client 已備、尚未接線」狀態，不得標為完成。
+
+#### 11.10.6 外部模型結構化輸出（json_schema）
+
+外部模型（如 Gemini）原本不遵守 planner 要求的 JSON 格式（`{"reply","steps":[{"skill","arguments","depends_on"}]}`）→ 只閒聊不執行。修法：
+
+- `LLMClient.chat` 加 `response_format: dict | None`，從 `planner` → `ModelRouter` → 各 client 串下去（**本機與外部路徑都轉發**；先前只有外部，`router.py` 本機呼叫漏傳，由 planner 防護測試抓出補上）；`ExternalLLMClient` 原樣放進 payload。
+- `_PLAN_RESPONSE_FORMAT`（定義於 `planner.py`）是 plan 的 json_schema，**不加 `strict`**（strict 要求 `additionalProperties:false`，與開放的 `arguments` 物件衝突，OpenAI 會拒）。**維持手寫、不用 `model_json_schema()`**——Pydantic model 欄位皆有預設值，自動產生的 schema 會沒有 `required`，約束反而變弱；改以 drift test（`test_plan_response_format_stays_in_sync_with_models`）鎖定 schema 與 `PlanResult`/`PlannedStep` 欄位一致。
+- 本機 Ollama：有 `response_format` 時，`_to_ollama_format()` 從信封拆出裸 schema 放進 `format`（Ollama 據此做 grammar 級約束解碼，取代先前只保證合法 JSON 的 `format:"json"` 弱檔），並同時 `options.temperature=0` 提升計畫可重現性；自然語言回覆、codegen 不帶 `response_format`，取樣與輸出皆不受影響。
+- 語意防線不變：schema 只保證形狀，hallucinated skill 名/缺參數仍由 `validate_plan` + repair loop 攔截。
+- 前置修正：planner 規劃時未告知「使用者已選 N 個檔」→ 外部模型一直反問哪個檔。`planner.plan(selected_count=...)` 加一條系統訊息告知。
+
+#### 11.10.7 前端
+
+- `api/types.ts`：`ModelTarget = string`、`ConnectionView/Create/Update/Kind`。
+- `api/externalModelApi.ts` → `modelConnectionApi`（CRUD）；`hooks/useExternalCredentials.ts` → `useModelConnections` 等。
+- `components/settings/ExternalModelSettings.tsx`：連線**列表** + 新增表單（label / kind 下拉 / base_url / model / key）+ **presets**（Gemini / OpenAI / Ollama cloud / Codex，自動帶入對應 base_url 降低混淆；Claude preset 待 §11.10.5 接線後補）。
+- `components/assistant/AssistantPanel.tsx`：下拉列出 local + 各連線 label；未設定者停用；送出帶 `model`；錯誤顯示後端分類訊息。
+
+#### 11.10.8 實機驗證與安全待辦
+
+- **Gemini**：`openai_compatible` + `https://generativelanguage.googleapis.com/v1beta/openai` 可用（free tier 每日有限、偶發 503）。
+- **Ollama cloud**：**必須用 `openai_compatible` + `https://ollama.com/v1`**（不是 `ollama` kind——原生 `/api/chat` + `/v1` base_url 會變 `/v1/api/chat` 404）；`/v1` 支援 json_schema；模型用目錄內名稱（如 `gpt-oss:20b`）；**免費 key 有限流（撞到回 401）**。preset 已對應修正。
+- ⚠️ **SSRF 未控管**：`base_url` 目前任填，未做 https 限制/白名單——使用者可填任意 URL（含內網）。**待補**。
+- 連線**編輯 UI 未接**（PUT 端點有，UI 只做新增/刪除）。
+
+### 11.11 執行失敗處理：誠實報告 + 有限度重規劃 + 執行隔離（DEC-029／DEC-030）
+
+> **落地狀態**：main 已實作（誠實報告＋replan 2026-07-04；執行隔離 2026-07-05），**fix 分支待落地**。**決策 DEC-029／DEC-030 目前僅記於 main 分支的 `decisions.md`；fix 的 `decisions.md` 止於 DEC-028**，故此處內嵌核心決策，待與程式碼一併補記 `decisions.md`（避免文件引用不存在的 DEC）。本節對應 §8.3 workflow 管線第 8 階段「執行 Workflow」的錯誤處理語意。
+
+plan-then-execute 的兩個結構性問題與對策：
+
+- **誠實報告（第 0 級）**：`plan.reply` 是規劃時的預測，執行失敗時不得回給使用者。`service.py` 的三條執行路徑（chat 快速路徑 / confirm / rerun）統一：全成功才用原訊息；有失敗改回 `_compose_failure_message()` 從 `StepResult` 組合的事實報告（失敗步驟+原因、已完成步驟、其後未執行且無進一步變更）。程式組合、不經 LLM。API status 欄位不變（前端契約）。
+- **失敗才 replan（第 1 級，僅 chat 快速路徑）**：執行失敗 → `_execution_feedback()` 把逐步真實結果餵回 planner 重規劃一次（budget=1）→ 護欄：新計畫必須全 read-only auto-confirmable 且不含 requires_selection，否則放棄且不建 pending；replan 再失敗落回誠實報告（加註已重試）。兩次嘗試各記一筆 run（第二筆 `source_nl` 帶 `[replan]`）。成功路徑維持一次 LLM 呼叫。
+- **confirm / rerun 無 replan**：核可後偷換步驟破壞同意邊界；saved workflow 是固定配方。
+
+**為何不做 agentic loop（DEC-029 摘要）**：① 權限模型依賴完整計畫先行——destructive 步驟整批分類、事前一次核可；逐步決策會讓「使用者核可了什麼」失去邊界。② 弱模型跑長程多輪 loop 容易漂移；一次規劃 + 約束解碼 + `validate_plan` 把弱模型鎖在能力範圍內。③ 成本/延遲——工作流多為 2-3 步，「失敗才 replan」讓成功路徑維持一次呼叫。④ 可先量再改，不排除未來翻案。
+
+**授權邊界（DEC-029 補充）**：replan 只在「授權是給**規則**、不是給**那份計畫**」的路徑合法——chat 快速路徑的授權來自「read-only 免確認」系統規則（replan 新計畫仍受同一規則約束，最壞只浪費 token）；confirm 授權的是那份具體步驟清單、rerun 是具名固定配方，兩者失敗只誠實回報、不得偷換步驟。
+
+**執行隔離（DAG 第一階段）**：executor 不再遇錯全域 break。仍**串行、單一 request session**（並行留待第二階段，見下 DEC-030）。語意：
+
+- 失敗只斷「真正的下游」：`_blocked_dependencies()` 合併顯式 `depends_on` 與引數 `from_step` 引用，踩到已失敗/已跳過的上游 → 記 `StepResult(skipped=True)`（error 註明依賴哪步）且不執行、不發 hook；無關步驟照常執行。
+- 新不變量：**每步恰有一筆結果**（`len(results) == len(steps)`），三態 ok / failed / skipped（hypothesis property test 鎖定）。
+- `StepResult.skipped: bool = False` 為 additive 欄位（DB JSON / API / 前端型別皆向後相容）；前端 `StepResultList` 以 skip 圖示區別渲染。
+- 誠實報告升級為分支彙總：「執行完成 X/N 步。第 i 步(skill)失敗:原因。另有 M 步因上游失敗而跳過。」；replan 回饋含 SKIPPED 行。
+- 引用「不存在的 index」仍記 failed（非法計畫引用 ≠ 上游失敗）。
+
+**維持串行、暫不並行（DEC-030 摘要）**：計畫本是 DAG，第一階段已依圖語意傳播失敗；「用圖排程並行」列第二階段。現在不並行的主因：① 共用 request-scoped `AsyncSession` 不允許並發（SQLAlchemy 明文禁止；`asyncio.gather` 會拋 `InvalidRequestError`）——session 在 router 組裝鏈最上游被固定，下游無處替換。② 交易語意改變——現為單筆交易結尾一起 commit、可整體回滾；每步獨立 session 會各自 commit，中途失敗無法整體撤銷。③ 同使用者資料競爭（配額 check-then-write 競賽、同名唯一性、死鎖）。④ 連線池耗盡。第二階段候選路線：每步獨立 session（乾淨但侵入大）或分相執行（CPU 重活並行、碰 DB 收尾維持單 session 排隊）。
+
+**影響範圍**：`backend/app/assistant/service.py`、`workflow.py`、`tests/assistant/test_workflow.py`；落地時補記 `decisions.md` DEC-029／DEC-030。
 
 ## 12. 時光機（Snapshots）
 
