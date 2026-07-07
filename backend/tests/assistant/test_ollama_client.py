@@ -76,6 +76,25 @@ async def test_ollama_client_uses_configured_structured_temperature() -> None:
     assert payload["options"]["temperature"] == 0.2
 
 
+async def test_ollama_client_per_call_temperature_overrides_structured_pin() -> None:
+    # A caller (codegen) may need full sampling despite sending a format grammar
+    # — the per-call temperature must win over the structured pin.
+    captured: dict[str, object] = {}
+    client = _capturing_client(captured, structured_temperature=0.2)
+
+    await client.chat(
+        [LLMMessage(role="user", content="write a skill")],
+        [],
+        num_ctx=4096,
+        response_format=_ENVELOPE_FORMAT,
+        temperature=0.8,
+    )
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["options"]["temperature"] == 0.8
+
+
 async def test_ollama_client_caps_generation_with_num_predict() -> None:
     # DEC-031: num_predict bounds every local request so a repetition loop fails
     # bounded instead of eating the full read timeout — plain chat included.

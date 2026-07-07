@@ -39,6 +39,7 @@ class ScriptedLLM:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         self.calls += 1
         self.prompts.append("\n".join(m.content for m in messages))

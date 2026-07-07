@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # cycle — the output format is guaranteed by the grammar, not temperature.
     llm_num_predict: int = 2048
     llm_structured_temperature: float = 0.2
+    # Codegen needs full sampling: at 0.2 the model produced broken code
+    # (baseline at Ollama's default 0.8 authored valid skills 2/2 — see
+    # proposal-planner-skill-enum §7). Overrides the structured pin per call.
+    llm_codegen_temperature: float = 0.8
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
 

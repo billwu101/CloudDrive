@@ -61,6 +61,7 @@ class OllamaLLMClient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self._model,
@@ -72,11 +73,18 @@ class OllamaLLMClient:
             payload["options"]["num_predict"] = self._num_predict
         # Constrained decoding: Ollama compiles the schema in `format` into a
         # grammar and masks illegal tokens at sampling time, so the response is
-        # guaranteed to match the schema — not just be valid JSON. Temperature is
-        # set only for structured requests; plain chat keeps default sampling.
+        # guaranteed to match the schema — not just be valid JSON. Structured
+        # requests default to the pinned low temperature, but a caller may
+        # override per call (codegen needs full sampling: 0.2 produced broken
+        # code, see proposal-planner-skill-enum §7). Plain chat keeps server
+        # default sampling unless the caller asks otherwise.
         if response_format is not None:
             payload["format"] = _to_ollama_format(response_format)
-            payload["options"]["temperature"] = self._structured_temperature
+            payload["options"]["temperature"] = (
+                temperature if temperature is not None else self._structured_temperature
+            )
+        elif temperature is not None:
+            payload["options"]["temperature"] = temperature
         if self._keep_alive:
             payload["keep_alive"] = self._keep_alive
         if tools:

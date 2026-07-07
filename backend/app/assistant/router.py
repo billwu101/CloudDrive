@@ -260,7 +260,12 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         snapshot_before_write_hook(_build_snapshot_service(session)),
     )
     executor = WorkflowExecutor(registry=registry, hooks=hooks)
-    codegen = CodegenSubAgent(llm=model_router, context=context, num_ctx=settings.llm_num_ctx)
+    codegen = CodegenSubAgent(
+        llm=model_router,
+        context=context,
+        num_ctx=settings.llm_num_ctx,
+        temperature=settings.llm_codegen_temperature,
+    )
     return WorkflowService(
         planner=planner,
         executor=executor,

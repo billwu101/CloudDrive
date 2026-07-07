@@ -40,6 +40,7 @@ class ExternalLLMClient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self._model,
@@ -47,6 +48,8 @@ class ExternalLLMClient:
         }
         if response_format is not None:
             payload["response_format"] = response_format
+        if temperature is not None:
+            payload["temperature"] = temperature
         if tools:
             payload["tools"] = [_to_openai_tool(t) for t in tools]
 

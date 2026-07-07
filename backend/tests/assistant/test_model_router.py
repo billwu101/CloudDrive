@@ -22,6 +22,7 @@ class FailingLLM:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         self.calls += 1
         raise LLMUnavailableError("no model")
@@ -39,6 +40,7 @@ class SuccessfulLLM:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         self.calls += 1
         return LLMResponse(content=self._content)
@@ -161,6 +163,7 @@ class CapturingLLM:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         self.response_format = response_format
         return LLMResponse(content="ok")

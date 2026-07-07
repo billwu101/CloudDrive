@@ -74,9 +74,10 @@ class CodexSubscriptionClient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
-        # response_format (structured output) isn't expressible through the codex
-        # CLI bridge, so it's accepted for interface parity and ignored here.
+        # response_format (structured output) and temperature aren't expressible
+        # through the codex CLI bridge; accepted for interface parity, ignored.
         home = tempfile.mkdtemp(prefix="codex_home_")
         try:
             auth_path = os.path.join(home, "auth.json")

@@ -55,6 +55,7 @@ class _ScriptedLLM:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         if not self._responses:
             return LLMResponse(content=json.dumps({"reply": "", "steps": []}))

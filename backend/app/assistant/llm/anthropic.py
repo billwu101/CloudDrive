@@ -40,6 +40,7 @@ class AnthropicLLMClient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         system_parts: list[str] = []
         request_messages: list[dict[str, Any]] = []
@@ -57,6 +58,8 @@ class AnthropicLLMClient:
             "max_tokens": min(num_ctx, 4096),
             "messages": request_messages,
         }
+        if temperature is not None:
+            payload["temperature"] = temperature
         if system_parts:
             payload["system"] = "\n\n".join(system_parts)
         if tools:

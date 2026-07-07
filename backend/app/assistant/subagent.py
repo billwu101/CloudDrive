@@ -48,6 +48,51 @@ _CODEGEN_SYSTEM = (
 )
 
 
+# Structured-output schema for the skill proposal (same mechanism as the
+# planner's plan schema, DEC-031/032): constrained decoding guarantees the
+# {name, description, version, code, ui} envelope at sampling time, so the
+# repair loop only has to argue about semantics (manifest rules, codeguard),
+# never about JSON shape. `name`'s identifier rule and handler==name stay with
+# validate_manifest — grammar-level regex support varies across providers.
+_CODEGEN_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "skill_proposal",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "description": {"type": "string"},
+                "version": {"type": "string"},
+                "code": {"type": "string"},
+                "ui": {
+                    "type": "object",
+                    "properties": {
+                        "context_menu": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {"type": "string"},
+                                    "handler": {"type": "string"},
+                                    "item_types": {
+                                        "type": "array",
+                                        "items": {"type": "string", "enum": ["FILE", "FOLDER"]},
+                                    },
+                                },
+                                "required": ["label", "handler", "item_types"],
+                            },
+                        }
+                    },
+                    "required": ["context_menu"],
+                },
+            },
+            "required": ["name", "description", "version", "code", "ui"],
+        },
+    },
+}
+
+
 @dataclass
 class CodegenResult:
     ok: bool
@@ -93,6 +138,18 @@ def _split_manifest_and_code(content: str) -> tuple[dict[str, Any], str] | None:
         "version": data.get("version", "1.0.0"),
         "ui": data.get("ui", {"context_menu": []}),
     }
+    # handler MUST equal the skill name (validate_manifest rule) — it is a
+    # derived field, so set it mechanically rather than asking the model to
+    # repeat itself (a one-letter handler/name mismatch was a real observed
+    # authoring failure).
+    name = manifest["name"]
+    ui = manifest.get("ui")
+    if isinstance(name, str) and name and isinstance(ui, dict):
+        items = ui.get("context_menu")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    item["handler"] = name
     return manifest, code
 
 
@@ -115,11 +172,16 @@ class CodegenSubAgent:
         context: ContextManager,
         num_ctx: int,
         max_repair: int = 3,
+        temperature: float | None = None,
     ) -> None:
         self._llm = llm
         self._context = context
         self._num_ctx = num_ctx
         self._max_repair = max(0, max_repair)
+        # Overrides the client's structured-temperature pin (0.2 breaks code
+        # generation; authoring wants full sampling — see proposal §7). None
+        # falls back to the client's structured default.
+        self._temperature = temperature
 
     async def author(self, *, request: str) -> CodegenResult:
         messages = [
@@ -135,6 +197,8 @@ class CodegenSubAgent:
                 self._context.trim(messages),
                 [],
                 num_ctx=self._num_ctx,
+                response_format=_CODEGEN_RESPONSE_FORMAT,
+                temperature=self._temperature,
             )
             parsed = _split_manifest_and_code(response.content)
             if parsed is None:

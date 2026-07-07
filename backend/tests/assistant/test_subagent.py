@@ -32,6 +32,8 @@ class _ScriptedLLM:
     def __init__(self, responses: list[str]) -> None:
         self._responses = responses
         self._i = 0
+        self.response_formats: list[dict[str, Any] | None] = []
+        self.temperatures: list[float | None] = []
 
     async def chat(
         self,
@@ -40,7 +42,10 @@ class _ScriptedLLM:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
+        self.response_formats.append(response_format)
+        self.temperatures.append(temperature)
         item = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1
         return LLMResponse(content=item)
@@ -57,6 +62,39 @@ def _agent(responses: list[str], *, max_repair: int = 2) -> CodegenSubAgent:
     return CodegenSubAgent(
         llm=router, context=ContextManager(num_ctx=4096), num_ctx=4096, max_repair=max_repair
     )
+
+
+async def test_author_requests_structured_output() -> None:
+    # Codegen must carry the skill-proposal json_schema so constrained decoding
+    # guarantees the {name, description, version, code, ui} envelope (same
+    # mechanism as the planner's plan schema, DEC-031/032).
+    llm = _ScriptedLLM([json.dumps(_proposal())])
+    router = ModelRouter(
+        local_client=llm,
+        external_client=None,
+        external_enabled=False,
+        max_local_attempts=1,
+        privacy_default="non_sensitive",
+    )
+    agent = CodegenSubAgent(
+        llm=router,
+        context=ContextManager(num_ctx=4096),
+        num_ctx=4096,
+        max_repair=0,
+        temperature=0.8,
+    )
+
+    await agent.author(request="make a zip extractor")
+
+    assert len(llm.response_formats) == 1
+    sent = llm.response_formats[0]
+    assert sent is not None
+    schema = sent["json_schema"]["schema"]
+    assert set(schema["required"]) == {"name", "description", "version", "code", "ui"}
+    assert schema["properties"]["code"] == {"type": "string"}
+    # Codegen must override the structured-temperature pin: 0.2 breaks code
+    # generation (baseline at full sampling authored valid skills — proposal §7).
+    assert llm.temperatures == [0.8]
 
 
 async def test_author_returns_validated_proposal() -> None:
@@ -95,7 +133,10 @@ async def test_author_gives_up_with_problems_not_unsafe_code() -> None:
     assert any("socket" in p for p in result.problems)
 
 
-async def test_author_rejects_handler_name_mismatch() -> None:
+async def test_author_normalizes_handler_to_skill_name() -> None:
+    # handler must equal the skill name — a derived field, so a model slip
+    # (observed live: 'seven_script_extract' vs 'seven_zip_extract') is fixed
+    # mechanically instead of burning a repair round or failing the proposal.
     bad = _proposal()
     bad["ui"] = {
         "context_menu": [{"label": "x", "handler": "something_else", "item_types": ["FILE"]}]
@@ -104,8 +145,9 @@ async def test_author_rejects_handler_name_mismatch() -> None:
 
     result = await agent.author(request="zip")
 
-    assert result.ok is False
-    assert any("manifest" in p for p in result.problems)
+    assert result.ok is True
+    assert result.manifest is not None
+    assert result.manifest["ui"]["context_menu"][0]["handler"] == result.name
 
 
 async def test_author_handles_non_json_response() -> None:

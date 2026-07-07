@@ -58,4 +58,5 @@ class LLMClient(Protocol):
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse: ...
