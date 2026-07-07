@@ -42,6 +42,27 @@ def test_verify_and_score_read_only_pass() -> None:
     assert score.score == 1.0
 
 
+def test_steps_arg_contains_passes_and_fails_on_content() -> None:
+    # Multi-turn reference check: the substring must appear in the serialised plan
+    # steps (skill + arguments), and it holds in real mode (strict_steps=False).
+    case = _case(
+        expect={
+            "workflow": {"steps_include": ["rename_item"], "steps_arg_contains": ["RenamedByAgent"]}
+        }
+    )
+    resolved = {
+        "plan": {
+            "status": "pending_approval",
+            "steps": [{"skill": "rename_item", "arguments": {"new_name": "RenamedByAgent"}}],
+        }
+    }
+    assert all(c.ok for c in verify(case, resolved, strict_steps=False))
+
+    unresolved = {"plan": {"status": "pending_approval", "steps": [{"skill": "search"}]}}
+    checks = verify(case, unresolved, strict_steps=False)
+    assert any(not c.ok and "RenamedByAgent" in c.name for c in checks)
+
+
 def test_verify_detects_wrong_skill_and_status() -> None:
     case = _case()
     response = {

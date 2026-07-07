@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -57,6 +58,19 @@ def verify(
                     f"plan skills={skills}",
                 )
             )
+        # Content check (holds in every mode): the serialised steps must contain
+        # each substring — used by multi-turn cases to assert a reference resolved.
+        if workflow.steps_arg_contains:
+            steps_json = json.dumps(steps, ensure_ascii=False)
+            for needle in workflow.steps_arg_contains:
+                checks.append(
+                    CheckResult(
+                        "correctness",
+                        f"plan contains {needle!r}",
+                        needle in steps_json,
+                        f"plan steps={steps_json}",
+                    )
+                )
         if workflow.requires_confirmation is not None:
             expected = "pending_approval" if workflow.requires_confirmation else "auto_executed"
             checks.append(
