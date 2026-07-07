@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # (baseline at Ollama's default 0.8 authored valid skills 2/2 — see
     # proposal-planner-skill-enum §7). Overrides the structured pin per call.
     llm_codegen_temperature: float = 0.8
+    # E8 experiment knob: send Ollama `think: false` on every local request.
+    # Loops live in the thinking phase; this measures whether disabling it
+    # cures them without hurting plan quality. Off by default.
+    llm_disable_thinking: bool = False
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
 

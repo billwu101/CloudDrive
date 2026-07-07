@@ -108,6 +108,24 @@ async def test_ollama_client_caps_generation_with_num_predict() -> None:
     assert payload["options"]["num_predict"] == 4096
 
 
+async def test_ollama_client_disable_thinking_flag() -> None:
+    # E8 experiment knob: when enabled every request carries think=false;
+    # default construction must not send the field at all.
+    captured: dict[str, object] = {}
+    client = _capturing_client(captured, disable_thinking=True)
+    await client.chat([LLMMessage(role="user", content="hi")], [], num_ctx=4096)
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["think"] is False
+
+    captured2: dict[str, object] = {}
+    default_client = _capturing_client(captured2)
+    await default_client.chat([LLMMessage(role="user", content="hi")], [], num_ctx=4096)
+    payload2 = captured2["payload"]
+    assert isinstance(payload2, dict)
+    assert "think" not in payload2
+
+
 async def test_ollama_client_omits_num_predict_when_uncapped() -> None:
     # num_predict=0 (and the default) must leave generation uncapped for
     # backward compatibility — e.g. external named Ollama connections.

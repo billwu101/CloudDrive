@@ -30,6 +30,7 @@ class OllamaLLMClient:
         connect_timeout: float = 5.0,
         num_predict: int = 0,
         structured_temperature: float = 0.0,
+        disable_thinking: bool = False,
     ) -> None:
         # Primary first, then any fallbacks; chat() tries them in order and only
         # raises once every endpoint has failed.
@@ -53,6 +54,9 @@ class OllamaLLMClient:
         # locking into a deterministic repetition cycle in the thinking phase.
         self._num_predict = num_predict
         self._structured_temperature = structured_temperature
+        # E8 experiment knob: ask Ollama to skip the thinking phase entirely
+        # (loops live there). Off by default; enable via LLM_DISABLE_THINKING.
+        self._disable_thinking = disable_thinking
 
     async def chat(
         self,
@@ -71,6 +75,8 @@ class OllamaLLMClient:
         }
         if self._num_predict > 0:
             payload["options"]["num_predict"] = self._num_predict
+        if self._disable_thinking:
+            payload["think"] = False
         # Constrained decoding: Ollama compiles the schema in `format` into a
         # grammar and masks illegal tokens at sampling time, so the response is
         # guaranteed to match the schema — not just be valid JSON. Structured

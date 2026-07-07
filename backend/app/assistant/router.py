@@ -216,6 +216,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         ),
         num_predict=settings.llm_num_predict,
         structured_temperature=settings.llm_structured_temperature,
+        disable_thinking=settings.llm_disable_thinking,
     )
     # Global env-configured external client (DEC-023), used when a user has no
     # per-user credential.
