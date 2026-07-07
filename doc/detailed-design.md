@@ -2436,6 +2436,7 @@ LLM_NUM_PREDICT=2048              # 本地生成 token 上限（防跳針保底�
 LLM_STRUCTURED_TEMPERATURE=0.2    # 結構化請求 temperature（低而非零，打破貪婪迴圈；DEC-031）
 LLM_CODEGEN_TEMPERATURE=0.8       # codegen 覆寫結構化釘值——產碼需完整採樣（proposal-planner-skill-enum §7）
 LLM_PLANNER_DISABLE_THINKING=true # planner 預設關 thinking（DEC-033；E8 實測跳針歸零、快 ~10x、規劃品質無損；codegen 不連動）
+ASSISTANT_HISTORY_MAX_MESSAGES=12 # 對話記憶:回放最近 N 則進 planner（0=關閉單輪；trim 仍按 num_ctx 保上限）
 ASSISTANT_ENABLED=true
 ASSISTANT_MAX_TOOL_ITERATIONS=8
 ASSISTANT_SANDBOX_TIMEOUT_SEC=30

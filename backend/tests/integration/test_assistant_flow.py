@@ -93,6 +93,38 @@ async def test_chat_create_folder_pending_confirm_creates_real_item(
     )
 
 
+@pytest.mark.needs_llm
+async def test_chat_second_turn_carries_history_and_result_summary(client: AsyncClient) -> None:
+    """Conversation memory end-to-end: a read turn's result summary is folded into
+    the persisted assistant message, and a second turn on the same session drives
+    the planner with that history without breaking (proposal-assistant-memory)."""
+    h = auth_headers(await register_and_login(client, email="mem1@test.com", username="mem1"))
+
+    first = await client.post(
+        CHAT, json={"message": "How much storage space do I have left?"}, headers=h
+    )
+    assert first.status_code == 200, first.text
+    session_id = first.json()["session_id"]
+
+    # Second turn on the same session — the router replays turn 1 as history.
+    second = await client.post(
+        CHAT,
+        json={"message": "Thanks. Remind me what that number was?", "session_id": session_id},
+        headers=h,
+    )
+    assert second.status_code == 200, second.text
+
+    messages = await client.get(f"{SESSIONS}/{session_id}/messages", headers=h)
+    assert messages.status_code == 200
+    body = messages.json()
+    # Both turns accumulated in order under one session.
+    assert [m["role"] for m in body] == ["user", "assistant", "user", "assistant"]
+    # The storage read auto-executes; its result summary must be folded into the
+    # stored assistant reply so the next turn can reference it (100% reliable read
+    # per the DEC-033 sweep).
+    assert "[executed]" in body[1]["content"], body[1]["content"]
+
+
 # ── Deterministic flows (no model needed) ─────────────────────────────────────
 
 

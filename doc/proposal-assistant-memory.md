@@ -1,8 +1,20 @@
 # 需求草案：助理對話記憶（多輪 context 回讀）
 
-> 狀態：**草案，待確認**。2026-07-07。依 CLAUDE.md 文件先行。
+> 狀態：**v1 已實作並驗證**。2026-07-07。依 CLAUDE.md 文件先行。
 > 關聯：[detailed-design.md §9](./detailed-design.md)、[backend-assistant.md](./tasks/backend-assistant.md)、
 > DEC-033（planner 路徑）。
+>
+> **實作與驗證（2026-07-07）**：
+> - 新增 `app/assistant/memory.py`（`summarise_results` / `append_result_summary` /
+>   `history_to_messages`）;`WorkflowPlanner.plan` 加 `history`（夾在 system 與當前 user 之間）;
+>   `WorkflowService.chat`（含 replan）透傳;router `/chat` 載入最近 N 則 → 傳入,並在持久化
+>   assistant 訊息時把結果摘要接到 content。設定 `assistant_history_max_messages=12`（0=關閉）。
+> - **真模型**：tool 角色 vs assistant 文字 A/B（gemma4,4 runs）→ **assistant 文字 4/4**、
+>   tool 角色 0/4（故採 assistant 文字承載,零 migration）。
+> - **整合（真模型+Postgres）**：多輪對話端到端 **41/41**——歷史回放、結果摘要持久化、
+>   雙輪累積皆正確。
+> - **單輪無退化**：記憶落地後重跑 sweep 仍 **100%、0 跳針、9.7s**（空歷史為 no-op）。
+> - 單元：628 passed（+10）、mypy、ruff 全綠。
 
 ## 1. 背景與動機（實際使用回報）
 

@@ -15,12 +15,14 @@ from app.assistant.llm.client import (
     ExternalAuthError,
     LLMClient,
     LLMClientError,
+    LLMMessage,
     LLMUnavailableError,
 )
 from app.assistant.llm.external import ExternalLLMClient
 from app.assistant.llm.ollama import OllamaLLMClient
 from app.assistant.llm.privacy import PrivacyDefault
 from app.assistant.llm.router import ModelRouter
+from app.assistant.memory import append_result_summary, history_to_messages
 from app.assistant.planner import WorkflowPlanner
 from app.assistant.repository import (
     AbstractAssistantSessionRepository,
@@ -334,6 +336,16 @@ async def chat(
             status_code=503,
         )
     label = "the local model" if body.model in (None, "local") else "the selected model"
+    # Conversation memory: replay the recent turns of an existing session so the
+    # planner can resolve references ("rename the first one"). New sessions have
+    # none; the current message is persisted only after this call, so it is never
+    # in the loaded history.
+    history: list[LLMMessage] = []
+    if body.session_id is not None:
+        prior = await session_repo.list_messages(
+            user_id=current_user_id, session_id=body.session_id
+        )
+        history = history_to_messages(prior, max_messages=settings.assistant_history_max_messages)
     try:
         response = await service.chat(
             user_id=current_user_id,
@@ -341,6 +353,7 @@ async def chat(
             message=body.message,
             target=body.model,
             selected_item_ids=body.selected_item_ids,
+            history=history,
         )
     except ExternalAuthError as exc:
         # The provider rejected the credential itself (invalid key / quota).
@@ -376,7 +389,11 @@ async def chat(
     await session_repo.add_message(
         session_id=response.session_id,
         role="assistant",
-        content=response.message,
+        # Fold the run's result summary into the stored reply so the next turn can
+        # resolve references against what actually ran. The live response.message
+        # stays clean (results render as a table); only the persisted content —
+        # visible on reload and replayed to the model — carries the summary.
+        content=append_result_summary(response.message, response.results),
         tool_calls=[tc.model_dump(mode="json") for tc in response.tool_calls],
     )
     # Persist skill proposals, fast-path runs, and pending workflows.

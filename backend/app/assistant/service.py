@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from uuid import UUID, uuid4
 
+from app.assistant.llm.client import LLMMessage
 from app.assistant.permissions import classify_steps
 from app.assistant.planner import WorkflowPlanner
 from app.assistant.repository import (
@@ -118,6 +119,7 @@ class WorkflowService:
         session_id: UUID | None = None,
         target: str | None = None,
         selected_item_ids: list[UUID] | None = None,
+        history: list[LLMMessage] | None = None,
     ) -> AssistantChatResponse:
         active_session_id = session_id or uuid4()
         selected = selected_item_ids or []
@@ -135,7 +137,7 @@ class WorkflowService:
                 )
 
         plan = await self._planner.plan(
-            message=message, target=target, selected_count=len(selected)
+            message=message, target=target, selected_count=len(selected), history=history
         )
         if not plan.steps:
             return AssistantChatResponse(session_id=active_session_id, message=plan.reply)
@@ -172,6 +174,7 @@ class WorkflowService:
                     selected_count=len(selected),
                     session_id=active_session_id,
                     results=results,
+                    history=history,
                 )
                 if replanned is not None:
                     return replanned
@@ -207,6 +210,7 @@ class WorkflowService:
         selected_count: int,
         session_id: UUID,
         results: list[StepResult],
+        history: list[LLMMessage] | None = None,
     ) -> AssistantChatResponse | None:
         """Execution-time counterpart of the planner's repair loop: feed the
         failed run's real observations back and try one revised plan.
@@ -223,6 +227,7 @@ class WorkflowService:
             message=_execution_feedback(message, results),
             target=target,
             selected_count=selected_count,
+            history=history,
         )
         if not replan.steps:
             return None

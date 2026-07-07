@@ -22,6 +22,7 @@ class ScriptedLLM:
         self.calls = 0
         self.response_formats: list[dict[str, Any] | None] = []
         self.disable_thinkings: list[bool | None] = []
+        self.messages_seen: list[list[LLMMessage]] = []
 
     async def chat(
         self,
@@ -36,6 +37,7 @@ class ScriptedLLM:
         self.calls += 1
         self.response_formats.append(response_format)
         self.disable_thinkings.append(disable_thinking)
+        self.messages_seen.append(list(messages))
         return self.responses.pop(0)
 
 
@@ -105,6 +107,28 @@ async def test_planner_disables_thinking_on_every_call() -> None:
     )
     await _planner(llm).plan(message="find x")
     assert llm.disable_thinkings == [True, True]
+
+
+async def test_planner_threads_history_between_system_and_current_message() -> None:
+    # Conversation memory: prior turns must land after the system framing and
+    # before the current user message, so references resolve against context.
+    llm = ScriptedLLM([LLMResponse(content='{"reply": "ok", "steps": []}')])
+    history = [
+        LLMMessage(role="user", content="list Reports"),
+        LLMMessage(role="assistant", content="[executed] list_items: ok → budget.xlsx"),
+    ]
+    await _planner(llm).plan(message="rename the first one", history=history)
+    seen = llm.messages_seen[0]
+    assert seen[0].role == "system"
+    non_system = [m for m in seen if m.role != "system"]
+    assert non_system == [*history, LLMMessage(role="user", content="rename the first one")]
+
+
+async def test_planner_without_history_is_single_turn() -> None:
+    llm = ScriptedLLM([LLMResponse(content='{"reply": "ok", "steps": []}')])
+    await _planner(llm).plan(message="hi")
+    non_system = [m for m in llm.messages_seen[0] if m.role != "system"]
+    assert non_system == [LLMMessage(role="user", content="hi")]
 
 
 async def test_planner_parses_plain_json() -> None:
