@@ -41,7 +41,10 @@ class AnthropicLLMClient:
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
+        # disable_thinking is Ollama-native; the Anthropic path has no equivalent
+        # knob here — accepted for interface parity, ignored.
         system_parts: list[str] = []
         request_messages: list[dict[str, Any]] = []
         for message in messages:

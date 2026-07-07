@@ -52,8 +52,16 @@ class Settings(BaseSettings):
     llm_codegen_temperature: float = 0.8
     # E8 experiment knob: send Ollama `think: false` on every local request.
     # Loops live in the thinking phase; this measures whether disabling it
-    # cures them without hurting plan quality. Off by default.
+    # cures them without hurting plan quality. Off by default. This is the
+    # client-wide constructor default; a per-call value (below) wins over it.
     llm_disable_thinking: bool = False
+    # DEC-033: the planner runs with thinking disabled by default. E8 (60 samples,
+    # real model) showed think:false cured all repetition loops and cut planner
+    # latency ~10x with no measurable loss in plan quality on gemma4:26b. Codegen
+    # is deliberately excluded — its structured protection was validated with
+    # thinking on. Set False to restore planner thinking (e.g. after swapping in a
+    # stronger thinking model; re-run the E8 A/B before flipping).
+    llm_planner_disable_thinking: bool = True
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
 

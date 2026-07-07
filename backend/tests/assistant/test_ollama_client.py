@@ -126,6 +126,40 @@ async def test_ollama_client_disable_thinking_flag() -> None:
     assert "think" not in payload2
 
 
+async def test_ollama_client_per_call_disable_thinking_overrides_default() -> None:
+    # DEC-033: the planner asks for think:false per call. A per-call value must win
+    # over the constructor default in both directions; None defers to the default.
+    # Per-call True over a False-default client.
+    on_over_off: dict[str, object] = {}
+    client = _capturing_client(on_over_off, disable_thinking=False)
+    await client.chat(
+        [LLMMessage(role="user", content="hi")], [], num_ctx=4096, disable_thinking=True
+    )
+    payload = on_over_off["payload"]
+    assert isinstance(payload, dict)
+    assert payload["think"] is False
+
+    # Per-call False over a True-default client.
+    off_over_on: dict[str, object] = {}
+    client = _capturing_client(off_over_on, disable_thinking=True)
+    await client.chat(
+        [LLMMessage(role="user", content="hi")], [], num_ctx=4096, disable_thinking=False
+    )
+    payload = off_over_on["payload"]
+    assert isinstance(payload, dict)
+    assert "think" not in payload
+
+    # None defers to the constructor default (here True).
+    deferred: dict[str, object] = {}
+    client = _capturing_client(deferred, disable_thinking=True)
+    await client.chat(
+        [LLMMessage(role="user", content="hi")], [], num_ctx=4096, disable_thinking=None
+    )
+    payload = deferred["payload"]
+    assert isinstance(payload, dict)
+    assert payload["think"] is False
+
+
 async def test_ollama_client_omits_num_predict_when_uncapped() -> None:
     # num_predict=0 (and the default) must leave generation uncapped for
     # backward compatibility — e.g. external named Ollama connections.

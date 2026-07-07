@@ -66,6 +66,7 @@ class OllamaLLMClient:
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self._model,
@@ -75,7 +76,10 @@ class OllamaLLMClient:
         }
         if self._num_predict > 0:
             payload["options"]["num_predict"] = self._num_predict
-        if self._disable_thinking:
+        # Per-call value wins over the constructor default: the planner asks for
+        # think:false per request (DEC-033) while the global E8 knob sets the
+        # client-wide default. None means "use the client default".
+        if disable_thinking if disable_thinking is not None else self._disable_thinking:
             payload["think"] = False
         # Constrained decoding: Ollama compiles the schema in `format` into a
         # grammar and masks illegal tokens at sampling time, so the response is

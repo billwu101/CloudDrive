@@ -225,6 +225,7 @@ class _ScriptedLLM:
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         plan = self._plans[min(self._index, len(self._plans) - 1)]
         self._index += 1

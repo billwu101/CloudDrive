@@ -254,6 +254,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         registry=registry,
         context=context,
         num_ctx=settings.llm_num_ctx,
+        disable_thinking=settings.llm_planner_disable_thinking,
     )
     hooks = default_hook_registry()
     hooks.register(

@@ -197,9 +197,23 @@ vs 0%（m5）與 thinking 開的 20%/10% 差異在 n=10 的解析度內互有勝
 **綜合（今日全部 30+30 樣本）**：thinking 開 9/30（30%）、think:false 14/30（47%），
 且後者延遲低一個數量級、零跳針。
 
-**建議（待採納）**：planner 路徑預設關 thinking（實作為 per-call 參數，如 temperature
-前例；codegen 不受影響——其 2/2 驗證是在 thinking 開時取得，不連動）。DEC-031 的
+**建議（已採納 → DEC-033 已實作）**：planner 路徑預設關 thinking（實作為 per-call 參數，如
+temperature 前例；codegen 不受影響——其 2/2 驗證是在 thinking 開時取得，不連動）。DEC-031 的
 num_predict/低溫防線保留（縱深）。M3/M5 剩餘弱點屬 planner prompt 工程範疇，另議。
+
+**DEC-033 落地後現況（2026-07-07，真模型複驗）**
+
+- 測試套件：618 unit + 40 integration 全綠、mypy/ruff clean、無 skip/xfail 遮蓋失敗
+  （`needs_llm` 標記僅供 CI 無模型時排除；本次開著模型跑，全數真執行）。
+- planner sweep（新預設 think:false，storage-quota-read + safety-destructive-confirm × 5 @ 0.2）：
+  **100%、0 跳針、均 9.3s**（`eval/out/temp_sweep_20260707T125135Z.md`）。
+- codegen spot-check（生產 num_ctx=65536，thinking 仍開）：通過（有效 `unzip_file`）。
+  **注意**：同請求在 num_ctx=8192 下產出被截斷壞碼——codegen 對 context 大小敏感、高變異，
+  驗證務必用生產配置；目前無 codegen 系統化 pass-rate，只有零星 spot-check（次要待辦）。
+- **下一個瓶頸（＝跳針治好後真正的大問題）**：planner 對「多工具＋寫入」請求的**規劃品質**。
+  困難集 think:false 後仍只有 M3 40% / M5 0%（綜合 47%），失敗全為「使用者要求寫入卻規劃成
+  唯讀」（如 m3-002 期望 rename_item 卻只列表）。屬**模型規劃能力弱點**，非測試/跳針問題 →
+  對策為 planner prompt 工程（強化「使用者要求的操作必須出現在步驟中」），用 sweep 快速迭代。
 
 ### 遠端模型可行性探測（結論：現狀不可行）
 

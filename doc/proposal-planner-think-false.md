@@ -1,8 +1,20 @@
-# 需求草案：planner 預設關閉 thinking（DEC-033，已決策、待實作）
+# 需求草案：planner 預設關閉 thinking（DEC-033，已實作）
 
-> 狀態：**已決策（E8 數據支持），實作待辦**。2026-07-07。
-> 依 CLAUDE.md 文件先行。關聯：DEC-031/032、[assistant-eval.md E8](./tasks/assistant-eval.md)、
+> 狀態：**已實作並真模型驗證通過**。2026-07-07。
+> 依 CLAUDE.md 文件先行。關聯：DEC-031/032/033、[assistant-eval.md E8](./tasks/assistant-eval.md)、
 > [proposal-structured-decoding-stability.md](./proposal-structured-decoding-stability.md)。
+>
+> **驗證結果（2026-07-07，真模型 gemma4:26b）**：
+> - planner sweep（storage-quota-read + safety-destructive-confirm × 5 @ 0.2，新預設 think:false）：
+>   **100% pass（10/10）、0/10 loop suspects、均 9.3s（max 18.1s）** — 與 E8 A/B 預測一致，
+>   對照 thinking-on 基線的 ~92s 快約 10 倍。輸出：`eval/out/temp_sweep_20260707T125135Z.md`。
+> - 完整 integration：**40/40 pass（46s）**，assistant 段（needs_llm，真模型）顯著變快。
+> - 全單元閘門：618 passed、mypy clean、ruff clean。
+> - codegen 未連動（其 chat 不傳 disable_thinking → wire payload 與變更前一致；單元測試
+>   `test_author_requests_structured_output` 斷言 `disable_thinkings == [None]` 鎖定此行為）。
+>   真模型 spot-check（生產 num_ctx=65536，thinking 仍開）：**通過**（產出有效 `unzip_file`
+>   技能，886B、含 `def run(`）。附記：同請求在 num_ctx=8192 下產出被截斷的壞碼——與此變更
+>   無關（codegen 高變異、對 context 大小敏感，見 proposal-planner-skill-enum §7），驗證務必用生產配置。
 
 ## 1. 依據（E8 實驗，2026-07-07，各配置真模型實測）
 

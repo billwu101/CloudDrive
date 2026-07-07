@@ -34,6 +34,7 @@ class _ScriptedLLM:
         self._i = 0
         self.response_formats: list[dict[str, Any] | None] = []
         self.temperatures: list[float | None] = []
+        self.disable_thinkings: list[bool | None] = []
 
     async def chat(
         self,
@@ -43,9 +44,11 @@ class _ScriptedLLM:
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         self.response_formats.append(response_format)
         self.temperatures.append(temperature)
+        self.disable_thinkings.append(disable_thinking)
         item = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1
         return LLMResponse(content=item)
@@ -95,6 +98,10 @@ async def test_author_requests_structured_output() -> None:
     # Codegen must override the structured-temperature pin: 0.2 breaks code
     # generation (baseline at full sampling authored valid skills — proposal §7).
     assert llm.temperatures == [0.8]
+    # DEC-033 excludes codegen from think:false — its structured protection was
+    # validated with thinking on, so it must not send the flag (defers to the
+    # client default), unlike the planner.
+    assert llm.disable_thinkings == [None]
 
 
 async def test_author_returns_validated_proposal() -> None:

@@ -51,6 +51,7 @@ class ModelRouter:
         target: str | None = None,
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         # Explicit external provider: use only that client — no local attempt and
         # no fallback. Selecting it is itself the user's opt-in to externalize.
@@ -66,6 +67,7 @@ class ModelRouter:
                 last_error=None,
                 response_format=response_format,
                 temperature=temperature,
+                disable_thinking=disable_thinking,
             )
 
         last_error: Exception | None = None
@@ -77,6 +79,7 @@ class ModelRouter:
                     num_ctx=num_ctx,
                     response_format=response_format,
                     temperature=temperature,
+                    disable_thinking=disable_thinking,
                 )
             except LLMClientError as exc:
                 last_error = exc
@@ -96,6 +99,7 @@ class ModelRouter:
             last_error=last_error,
             response_format=response_format,
             temperature=temperature,
+            disable_thinking=disable_thinking,
         )
 
     async def _try_external(
@@ -107,6 +111,7 @@ class ModelRouter:
         last_error: Exception | None,
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         if not self._external_enabled or self._external is None:
             raise LLMUnavailableError("Local model failed and external fallback is disabled") from (
@@ -120,6 +125,7 @@ class ModelRouter:
             last_error=last_error,
             response_format=response_format,
             temperature=temperature,
+            disable_thinking=disable_thinking,
         )
 
     async def _call_external(
@@ -132,6 +138,7 @@ class ModelRouter:
         last_error: Exception | None,
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         joined = "\n".join(m.content for m in messages)
         privacy = classify_and_deidentify(joined, default=self._privacy_default)
@@ -149,4 +156,5 @@ class ModelRouter:
             num_ctx=num_ctx,
             response_format=response_format,
             temperature=temperature,
+            disable_thinking=disable_thinking,
         )

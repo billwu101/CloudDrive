@@ -21,6 +21,7 @@ class ScriptedLLM:
         self.responses = responses
         self.calls = 0
         self.response_formats: list[dict[str, Any] | None] = []
+        self.disable_thinkings: list[bool | None] = []
 
     async def chat(
         self,
@@ -30,9 +31,11 @@ class ScriptedLLM:
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         self.calls += 1
         self.response_formats.append(response_format)
+        self.disable_thinkings.append(disable_thinking)
         return self.responses.pop(0)
 
 
@@ -68,7 +71,9 @@ def _registry() -> SkillRegistry:
     return registry
 
 
-def _planner(llm: ScriptedLLM, *, max_repair: int = 2) -> WorkflowPlanner:
+def _planner(
+    llm: ScriptedLLM, *, max_repair: int = 2, disable_thinking: bool | None = True
+) -> WorkflowPlanner:
     router = ModelRouter(
         local_client=llm,
         external_client=None,
@@ -82,7 +87,24 @@ def _planner(llm: ScriptedLLM, *, max_repair: int = 2) -> WorkflowPlanner:
         context=ContextManager(num_ctx=2048),
         num_ctx=2048,
         max_repair=max_repair,
+        disable_thinking=disable_thinking,
     )
+
+
+async def test_planner_disables_thinking_on_every_call() -> None:
+    # DEC-033: the planner runs with Ollama's thinking phase off (E8 — cured
+    # repetition loops, ~10x faster). The flag must reach the LLM client on every
+    # plan call, including repair retries.
+    llm = ScriptedLLM(
+        [
+            LLMResponse(content='{"reply": "", "steps": [{"skill": "search"}]}'),
+            LLMResponse(
+                content='{"reply": "ok", "steps": [{"skill": "search", "arguments": {"q": "x"}}]}'
+            ),
+        ]
+    )
+    await _planner(llm).plan(message="find x")
+    assert llm.disable_thinkings == [True, True]
 
 
 async def test_planner_parses_plain_json() -> None:
