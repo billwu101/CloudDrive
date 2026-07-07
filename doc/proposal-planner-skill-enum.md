@@ -60,3 +60,36 @@ approval）技能名全部合法。
 唯一失敗為 1 發 503（DEC-031 已知跳針殘餘，另兩個慢樣本由重試救回）。結論：
 「結構非法計畫」這一失敗類別已從機制上關閉（技能名擋在生成時、壞相依進修復迴圈），
 destructive 剩餘弱點只剩跳針一項。結果檔：`eval/out/temp_sweep_20260706T174239Z.*`。
+
+## 7. 延伸：codegen 子代理同等保護（2026-07-06）
+
+DEC-032 完成後，repo 內仍有一個 LLM 結構化呼叫點未受 grammar 保護：`CodegenSubAgent.author`
+（技能生成，期待 `{name, description, version, code, ui}` JSON 但純靠 prompt + 自身
+repair loop）。補上 `_CODEGEN_RESPONSE_FORMAT`（skill_proposal json_schema）——與
+planner 同機制。
+
+**第一版的教訓（同日發現並修正）**：帶上 response_format 使 codegen 落入 client
+「結構化請求釘 temperature 0.2」的規則——真模型 A/B 對照顯示這造成**退化**：
+- baseline（main，無 schema、Ollama 預設採樣 ~0.8）：**2/2 成功**（58s/104s，
+  `seven_zip_extract`/`extract_7z`）
+- 第一版（schema + 被拖進 0.2）：**0/4**——信封完好（grammar 有效，失敗全為語意層：
+  handler 空字串、程式碼語法錯誤），但**產碼品質崩壞**。低溫利於「填表」（規劃），
+  害於「寫作」（產碼）。
+
+**修正**：`LLMClient.chat` 加 per-call `temperature` 覆寫（全部 7 個實作 + 測試 fake
+同步，前例：response_format 當初同樣加遍）；`LLM_CODEGEN_TEMPERATURE`（預設 0.8，
+與 baseline 證據一致）經 `CodegenSubAgent` 傳入——**codegen 拿到 grammar 保證 +
+完整採樣**，planner 維持 0.2 不變。真模型驗證見 tasks checklist。
+
+**設計原則沉澱**：temperature 依「任務類型」而非「是否結構化」決定——結構化輸出
+（grammar）與採樣溫度是獨立旋鈕，規劃要一致性（低溫）、產碼要生成品質（全採樣）。
+
+**第二個機械化修正**：修復後首輪驗證 1/2，失敗為 handler 手抄錯一字
+（'seven_script_extract' vs 'seven_zip_extract'）。handler 規則上必等於 name
+（衍生欄位）→ `_split_manifest_and_code` 解析時機械正規化 `handler := name`，
+不再要求模型手抄、也不再為此燒修復輪。
+
+**最終驗證**：修正組合（grammar + temperature 0.8 覆寫 + handler 正規化）有效樣本
+**2/2 產出合法提案**（`seven_zip_extractor`）；「信封破碎」與「handler 錯字」兩類
+失敗已從機制上不可能。已知取捨：帶 grammar 的生成比 baseline 慢（~260-460s vs
+~60-100s，含內部重試與 thinking），authoring 屬低頻操作、可接受，列為觀察項。
