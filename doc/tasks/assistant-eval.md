@@ -151,6 +151,52 @@ uv run python -m eval.temp_sweep --temps 0.2,0.8 --runs 3
 2. 真正的發現：**destructive 規劃是模型重災區**（可靠度 0–40%，跳針與幻覺技能並存），與 E4 的 M3/M5 觀察吻合、首次量化。後續方向：planner 對 destructive 意圖的 prompt 工程／schema 級技能名約束。
 3. DEC-031 的「有界失敗」在 80 樣本規模驗證成立：零卡死、幻覺計畫全被權限層攔截、重試多次實際救回慢樣本。
 
+## E8：待跑實驗與遠端模型可行性探測（2026-07-07）
+
+> 兩個由數據指出、已設計好但尚未執行的實驗；以及「用協作者遠端 GPU 跑」的可行性
+> 探測結論（不可行，原因見下）。憑證與完整端點**不記錄於文件**（安全規則）。
+
+### 待跑實驗（等 GPU 時機）
+
+1. **think:false 對照**（跳針治本候選）：DEC-031 後跳針仍以 ~10–20% 機率殘存於特定
+   prompt（有界失敗 + 重試緩解中）。迴圈全部發生在 thinking 段——若對結構化請求關閉
+   thinking，可能直接根治 + 大幅加速規劃；代價是規劃品質未知，**必須先量測**（教訓：
+   codegen 第一版退化就是「沒量就上」）。前置已完成：本地 Ollama 實測 `think:false`
+   可用（回應無 thinking 欄位、內容正常）。設計：sweep 對 loop 高危案例
+   （storage-quota、safety-destructive）A/B，各 5 runs，~15 分鐘。
+2. **M3/M5 重測**（更新 E4 結論）：DEC-032 修的兩個病因（幻覺技能、壞相依）正是 E4
+   判 M3/M5「不可靠」的失敗型態，分數大概率已被動提升但無新數據。設計：generated
+   案例各抽 5 個，`temp_sweep --case-ids`，~20–30 分鐘。報告價值：補齊
+   「修正前 X% → 修正後 Y%」的敘事線。
+
+### 遠端模型可行性探測（結論：現狀不可行）
+
+協作者提供一個遠端 gemma4:26b 端點（自建 gateway，**僅 OpenAI 相容 `/v1`**，
+Bearer key 驗證）。探測結果（2026-07-07）：
+
+| 探測 | 結果 |
+|---|---|
+| `/v1/chat/completions` 基本對話 | ✅ 正常（~6.5s，gateway 轉 gemma4:26b） |
+| Ollama 原生 `/api/version`、`/api/chat` | ❌ 404——gateway 未代理原生 API |
+| `response_format`（json_schema 結構化輸出） | ❌ **不轉譯**——模型回自由文字+自編 JSON，schema 完全未生效 |
+
+**為何兩個實驗都不能用它跑**：
+- think:false 的 `think` 參數只存在於 Ollama 原生協定，OpenAI 協定無此欄位。
+- M3/M5 重測若走此端點，約束解碼（DEC-031/032 全套機制）失效 → 量到的是「無保護
+  的系統」，而實驗目的恰是「DEC-032 改善多少」——參照系錯誤，數字無意義。
+- 通則：**本專案的可靠性機制（grammar/num_predict/temperature/think）全部住在
+  Ollama 原生協定層**；同一顆模型經不同協定的門，可控性完全不同。
+
+**兩條路（待決定）**：
+- 路 A：請協作者的 gateway 代理原生 `/api/chat`（沿用同一把 key；`OllamaLLMClient`
+  本就支援 Bearer）→ `LLM_BASE_URL`/`LLM_API_KEY` 指過去，全套管線原樣可用、燒遠端 GPU。
+- 路 B：實驗照原設計在本地 GPU 跑（合計 ~35–45 分鐘）。
+
+**附帶結論（產品面）**：該遠端端點作為**使用者的具名外部連線**（模型下拉選單）是
+可用的——基本對話正常；但因無結構化輸出，規劃品質會退回「prompt 約束 + 修復重試」
+水準。另注意該端點為純 HTTP 無加密，且 `PRIVACY_DEFAULT` 在開發 `.env` 為
+non_sensitive（內容會實際外送），使用時需有意識。
+
 ## 測試/驗證任務
 
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。
