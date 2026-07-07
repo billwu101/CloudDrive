@@ -378,3 +378,14 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 已知取捨：schema 隨 registry 變動，不再是全域常數（每 plan 一次淺開銷，可忽略）；enum 只擋「名稱」，參數錯誤與非法相依仍靠 validator（本就如此）。
 - 補充（同日驗證發現）：enum 後真模型仍偶發 400，錯誤內文為「invalid dependency」——`validate_plan` 未檢查 `depends_on`（權限層有查），壞相依繞過修復迴圈直達 400。已同步修正：`validate_plan` 補上與 `classify_steps` 相同的相依規則，使其觸發修復迴圈。
 - 影響範圍：`app/assistant/planner.py`（schema builder + validate_plan）、`tests/assistant/test_planner.py`、proposal 文件、tasks checklist。
+
+## DEC-033：planner 預設關閉 thinking（think:false）
+
+- 日期：2026-07-07
+- 狀態：Accepted，**已實作**（2026-07-07；實作規格見 [proposal-planner-think-false.md](./proposal-planner-think-false.md)）
+- 背景：DEC-031/032 後跳針仍以 ~10–20% 殘存；E8 實驗定位跳針唯一棲息地為 thinking 段（grammar 管不到）。A/B 實測（60 樣本）：think:false 使跳針**歸零**、pass 60%→100%（代表案例）/ 30%→47%（全體）、規劃延遲快 10–30 倍；thinking 對本模型規劃品質無可量測貢獻（M3/M5 剩餘失敗與 thinking 無關，屬規劃能力弱點）。
+- 決策：planner 呼叫預設 `think:false`（per-call 參數，沿 temperature 前例）；codegen 不連動（其驗證於 thinking 開時取得）；DEC-031 防線保留為縱深；`LLM_PLANNER_DISABLE_THINKING` 可關回。
+- 理由：資料驅動——收益（跳針根治+延遲降一個數量級）實測明確，代價（規劃品質）實測為零；與「temperature 依任務類型」同一原則：thinking 依任務類型決定，規劃不需要、產碼未驗證故不動。
+- 已知取捨：換更強 thinking 模型時應重跑 E8 A/B 再定；外部路徑無法控制此參數（忽略，與現狀一致）。
+- 影響範圍：`llm/client.py` 協定 + 7 個 chat() 實作 + 測試 fake、`planner.py`、`core/config.py`、`assistant/router.py`、E8 文件。
+- 實作註記（2026-07-07）：`LLMClient.chat` 新增 `disable_thinking: bool | None`（None＝沿用 client 建構子預設），7 個實作全數同步——`OllamaLLMClient` per-call 值優先於建構子（True 時 payload 帶 `think:false`），external/anthropic/codex/tracking-wrapper 依協定接受並轉傳或忽略，`ModelRouter` 三個方法透傳。`WorkflowPlanner` 建構子加 `disable_thinking`，`plan()` 每次（含 repair 重試）帶入；`assistant/router.py` 以 `settings.llm_planner_disable_thinking`（預設 True）接線；codegen 不傳（維持 None）。新增測試：ollama per-call 雙向覆寫 + None 遞延、planner 每呼叫傳 True、codegen 傳 None。全閘門通過（618 unit / mypy / ruff）。真模型驗證見 proposal §「驗證結果」。

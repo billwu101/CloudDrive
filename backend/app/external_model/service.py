@@ -40,10 +40,17 @@ class _CredentialTrackingClient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         try:
             return await self._inner.chat(
-                messages, tools, num_ctx=num_ctx, response_format=response_format
+                messages,
+                tools,
+                num_ctx=num_ctx,
+                response_format=response_format,
+                temperature=temperature,
+                disable_thinking=disable_thinking,
             )
         except ExternalAuthError:
             await self._on_auth_error()

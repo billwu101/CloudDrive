@@ -50,6 +50,8 @@ class ModelRouter:
         validator: ResponseValidator | None = None,
         target: str | None = None,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         # Explicit external provider: use only that client — no local attempt and
         # no fallback. Selecting it is itself the user's opt-in to externalize.
@@ -64,13 +66,20 @@ class ModelRouter:
                 num_ctx=num_ctx,
                 last_error=None,
                 response_format=response_format,
+                temperature=temperature,
+                disable_thinking=disable_thinking,
             )
 
         last_error: Exception | None = None
         for _ in range(self._max_local_attempts):
             try:
                 response = await self._local.chat(
-                    messages, tools, num_ctx=num_ctx, response_format=response_format
+                    messages,
+                    tools,
+                    num_ctx=num_ctx,
+                    response_format=response_format,
+                    temperature=temperature,
+                    disable_thinking=disable_thinking,
                 )
             except LLMClientError as exc:
                 last_error = exc
@@ -84,7 +93,13 @@ class ModelRouter:
             raise LLMUnavailableError("Local model is unavailable") from last_error
 
         return await self._try_external(
-            messages, tools, num_ctx=num_ctx, last_error=last_error, response_format=response_format
+            messages,
+            tools,
+            num_ctx=num_ctx,
+            last_error=last_error,
+            response_format=response_format,
+            temperature=temperature,
+            disable_thinking=disable_thinking,
         )
 
     async def _try_external(
@@ -95,6 +110,8 @@ class ModelRouter:
         num_ctx: int,
         last_error: Exception | None,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         if not self._external_enabled or self._external is None:
             raise LLMUnavailableError("Local model failed and external fallback is disabled") from (
@@ -107,6 +124,8 @@ class ModelRouter:
             num_ctx=num_ctx,
             last_error=last_error,
             response_format=response_format,
+            temperature=temperature,
+            disable_thinking=disable_thinking,
         )
 
     async def _call_external(
@@ -118,6 +137,8 @@ class ModelRouter:
         num_ctx: int,
         last_error: Exception | None,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         joined = "\n".join(m.content for m in messages)
         privacy = classify_and_deidentify(joined, default=self._privacy_default)
@@ -130,5 +151,10 @@ class ModelRouter:
         if privacy.deidentified:
             external_messages = [LLMMessage(role="user", content=privacy.text_for_external)]
         return await client.chat(
-            external_messages, tools, num_ctx=num_ctx, response_format=response_format
+            external_messages,
+            tools,
+            num_ctx=num_ctx,
+            response_format=response_format,
+            temperature=temperature,
+            disable_thinking=disable_thinking,
         )

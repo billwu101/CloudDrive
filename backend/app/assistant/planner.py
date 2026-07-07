@@ -167,12 +167,17 @@ class WorkflowPlanner:
         context: ContextManager,
         num_ctx: int,
         max_repair: int = 2,
+        disable_thinking: bool | None = None,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._context = context
         self._num_ctx = num_ctx
         self._max_repair = max(0, max_repair)
+        # DEC-033: planning runs with Ollama's thinking phase disabled by default
+        # (E8 — cured repetition loops, ~10x faster, no plan-quality loss). Passed
+        # through to every plan() chat call; None defers to the client default.
+        self._disable_thinking = disable_thinking
 
     async def plan(
         self, *, message: str, target: str | None = None, selected_count: int = 0
@@ -213,6 +218,7 @@ class WorkflowPlanner:
                 validator=_valid,
                 target=target,
                 response_format=build_plan_response_format(self._registry),
+                disable_thinking=self._disable_thinking,
             )
             result = _parse(response.content)
             if result is None:

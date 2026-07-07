@@ -252,6 +252,8 @@ class _BoomAuth:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         raise ExternalAuthError("credential rejected")
 
@@ -264,6 +266,8 @@ class _BoomTransient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         raise LLMUnavailableError("temporary outage")
 
@@ -276,6 +280,8 @@ class _Ok:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         return LLMResponse(content="ok")
 

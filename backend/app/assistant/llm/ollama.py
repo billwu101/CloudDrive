@@ -30,6 +30,7 @@ class OllamaLLMClient:
         connect_timeout: float = 5.0,
         num_predict: int = 0,
         structured_temperature: float = 0.0,
+        disable_thinking: bool = False,
     ) -> None:
         # Primary first, then any fallbacks; chat() tries them in order and only
         # raises once every endpoint has failed.
@@ -53,6 +54,9 @@ class OllamaLLMClient:
         # locking into a deterministic repetition cycle in the thinking phase.
         self._num_predict = num_predict
         self._structured_temperature = structured_temperature
+        # E8 experiment knob: ask Ollama to skip the thinking phase entirely
+        # (loops live there). Off by default; enable via LLM_DISABLE_THINKING.
+        self._disable_thinking = disable_thinking
 
     async def chat(
         self,
@@ -61,6 +65,8 @@ class OllamaLLMClient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self._model,
@@ -70,13 +76,25 @@ class OllamaLLMClient:
         }
         if self._num_predict > 0:
             payload["options"]["num_predict"] = self._num_predict
+        # Per-call value wins over the constructor default: the planner asks for
+        # think:false per request (DEC-033) while the global E8 knob sets the
+        # client-wide default. None means "use the client default".
+        if disable_thinking if disable_thinking is not None else self._disable_thinking:
+            payload["think"] = False
         # Constrained decoding: Ollama compiles the schema in `format` into a
         # grammar and masks illegal tokens at sampling time, so the response is
-        # guaranteed to match the schema — not just be valid JSON. Temperature is
-        # set only for structured requests; plain chat keeps default sampling.
+        # guaranteed to match the schema — not just be valid JSON. Structured
+        # requests default to the pinned low temperature, but a caller may
+        # override per call (codegen needs full sampling: 0.2 produced broken
+        # code, see proposal-planner-skill-enum §7). Plain chat keeps server
+        # default sampling unless the caller asks otherwise.
         if response_format is not None:
             payload["format"] = _to_ollama_format(response_format)
-            payload["options"]["temperature"] = self._structured_temperature
+            payload["options"]["temperature"] = (
+                temperature if temperature is not None else self._structured_temperature
+            )
+        elif temperature is not None:
+            payload["options"]["temperature"] = temperature
         if self._keep_alive:
             payload["keep_alive"] = self._keep_alive
         if tools:

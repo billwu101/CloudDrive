@@ -216,6 +216,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         ),
         num_predict=settings.llm_num_predict,
         structured_temperature=settings.llm_structured_temperature,
+        disable_thinking=settings.llm_disable_thinking,
     )
     # Global env-configured external client (DEC-023), used when a user has no
     # per-user credential.
@@ -253,6 +254,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         registry=registry,
         context=context,
         num_ctx=settings.llm_num_ctx,
+        disable_thinking=settings.llm_planner_disable_thinking,
     )
     hooks = default_hook_registry()
     hooks.register(
@@ -260,7 +262,12 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         snapshot_before_write_hook(_build_snapshot_service(session)),
     )
     executor = WorkflowExecutor(registry=registry, hooks=hooks)
-    codegen = CodegenSubAgent(llm=model_router, context=context, num_ctx=settings.llm_num_ctx)
+    codegen = CodegenSubAgent(
+        llm=model_router,
+        context=context,
+        num_ctx=settings.llm_num_ctx,
+        temperature=settings.llm_codegen_temperature,
+    )
     return WorkflowService(
         planner=planner,
         executor=executor,

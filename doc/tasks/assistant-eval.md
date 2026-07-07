@@ -151,6 +151,98 @@ uv run python -m eval.temp_sweep --temps 0.2,0.8 --runs 3
 2. 真正的發現：**destructive 規劃是模型重災區**（可靠度 0–40%，跳針與幻覺技能並存），與 E4 的 M3/M5 觀察吻合、首次量化。後續方向：planner 對 destructive 意圖的 prompt 工程／schema 級技能名約束。
 3. DEC-031 的「有界失敗」在 80 樣本規模驗證成立：零卡死、幻覺計畫全被權限層攔截、重試多次實際救回慢樣本。
 
+## E8：待跑實驗與遠端模型可行性探測（2026-07-07）
+
+> 兩個由數據指出、已設計好但尚未執行的實驗；以及「用協作者遠端 GPU 跑」的可行性
+> 探測結論（不可行，原因見下）。憑證與完整端點**不記錄於文件**（安全規則）。
+
+### 待跑實驗（等 GPU 時機）
+
+1. **think:false 對照**（跳針治本候選）：DEC-031 後跳針仍以 ~10–20% 機率殘存於特定
+   prompt（有界失敗 + 重試緩解中）。迴圈全部發生在 thinking 段——若對結構化請求關閉
+   thinking，可能直接根治 + 大幅加速規劃；代價是規劃品質未知，**必須先量測**（教訓：
+   codegen 第一版退化就是「沒量就上」）。前置已完成：本地 Ollama 實測 `think:false`
+   可用（回應無 thinking 欄位、內容正常）。設計：sweep 對 loop 高危案例
+   （storage-quota、safety-destructive）A/B，各 5 runs，~15 分鐘。
+2. **M3/M5 重測**（更新 E4 結論）：DEC-032 修的兩個病因（幻覺技能、壞相依）正是 E4
+   判 M3/M5「不可靠」的失敗型態，分數大概率已被動提升但無新數據。設計：generated
+   案例各抽 5 個，`temp_sweep --case-ids`，~20–30 分鐘。報告價值：補齊
+   「修正前 X% → 修正後 Y%」的敘事線。
+
+### E8 實驗結果（2026-07-07，本地 GPU，全部 temp 0.2）
+
+**實驗一：think:false A/B**（storage-quota + safety-destructive × 5 runs）
+
+| 組 | Pass | 失敗 | 跳針 | 平均耗時 |
+|---|---|---|---|---|
+| A 對照（thinking 開，現行預設） | 60% | 40% | 3/10 | 92.4s（max 334.6s） |
+| B 實驗（think:false） | **100%** | **0%** | **0/10** | **8.6s（max 15.4s）** |
+
+**think:false 壓倒性勝出**：跳針歸零、全數通過（含 destructive 確認層級全對）、
+規劃延遲快 **10 倍**。在這批案例上規劃品質零代價。
+
+**實驗二：M3/M5 重測**（各 5 案 × 2 runs）
+
+| 配置 | M3 | M5 | 失敗組成 |
+|---|---|---|---|
+| thinking 開 | 20% | 10% | 一半 503（跳針磨死）+ 一半驗證失敗（計畫品質） |
+| think:false（追加） | 40% | 0% | **零 503、零跳針**（平均 3.3s），失敗全為驗證失敗 |
+
+**判讀**：think:false 把 M3/M5 的「跳針」病根完全消滅（503 歸零、快 30 倍）；
+剩餘失敗全部是 **E4 已知的模型規劃能力弱點**（合成的多工具+寫入 prompt 不可靠地
+產出寫入步驟/正確確認層級——m3-002 期望含 rename_item 卻常規劃成唯讀）。M3 40%
+vs 0%（m5）與 thinking 開的 20%/10% 差異在 n=10 的解析度內互有勝負——結論：
+**thinking 對困難規劃的品質沒有可量測的幫助，卻是跳針與延遲的全部來源**。
+
+**綜合（今日全部 30+30 樣本）**：thinking 開 9/30（30%）、think:false 14/30（47%），
+且後者延遲低一個數量級、零跳針。
+
+**建議（已採納 → DEC-033 已實作）**：planner 路徑預設關 thinking（實作為 per-call 參數，如
+temperature 前例；codegen 不受影響——其 2/2 驗證是在 thinking 開時取得，不連動）。DEC-031 的
+num_predict/低溫防線保留（縱深）。M3/M5 剩餘弱點屬 planner prompt 工程範疇，另議。
+
+**DEC-033 落地後現況（2026-07-07，真模型複驗）**
+
+- 測試套件：618 unit + 40 integration 全綠、mypy/ruff clean、無 skip/xfail 遮蓋失敗
+  （`needs_llm` 標記僅供 CI 無模型時排除；本次開著模型跑，全數真執行）。
+- planner sweep（新預設 think:false，storage-quota-read + safety-destructive-confirm × 5 @ 0.2）：
+  **100%、0 跳針、均 9.3s**（`eval/out/temp_sweep_20260707T125135Z.md`）。
+- codegen spot-check（生產 num_ctx=65536，thinking 仍開）：通過（有效 `unzip_file`）。
+  **注意**：同請求在 num_ctx=8192 下產出被截斷壞碼——codegen 對 context 大小敏感、高變異，
+  驗證務必用生產配置；目前無 codegen 系統化 pass-rate，只有零星 spot-check（次要待辦）。
+- **下一個瓶頸（＝跳針治好後真正的大問題）**：planner 對「多工具＋寫入」請求的**規劃品質**。
+  困難集 think:false 後仍只有 M3 40% / M5 0%（綜合 47%），失敗全為「使用者要求寫入卻規劃成
+  唯讀」（如 m3-002 期望 rename_item 卻只列表）。屬**模型規劃能力弱點**，非測試/跳針問題 →
+  對策為 planner prompt 工程（強化「使用者要求的操作必須出現在步驟中」），用 sweep 快速迭代。
+
+### 遠端模型可行性探測（結論：現狀不可行）
+
+協作者提供一個遠端 gemma4:26b 端點（自建 gateway，**僅 OpenAI 相容 `/v1`**，
+Bearer key 驗證）。探測結果（2026-07-07）：
+
+| 探測 | 結果 |
+|---|---|
+| `/v1/chat/completions` 基本對話 | ✅ 正常（~6.5s，gateway 轉 gemma4:26b） |
+| Ollama 原生 `/api/version`、`/api/chat` | ❌ 404——gateway 未代理原生 API |
+| `response_format`（json_schema 結構化輸出） | ❌ **不轉譯**——模型回自由文字+自編 JSON，schema 完全未生效 |
+
+**為何兩個實驗都不能用它跑**：
+- think:false 的 `think` 參數只存在於 Ollama 原生協定，OpenAI 協定無此欄位。
+- M3/M5 重測若走此端點，約束解碼（DEC-031/032 全套機制）失效 → 量到的是「無保護
+  的系統」，而實驗目的恰是「DEC-032 改善多少」——參照系錯誤，數字無意義。
+- 通則：**本專案的可靠性機制（grammar/num_predict/temperature/think）全部住在
+  Ollama 原生協定層**；同一顆模型經不同協定的門，可控性完全不同。
+
+**兩條路（待決定）**：
+- 路 A：請協作者的 gateway 代理原生 `/api/chat`（沿用同一把 key；`OllamaLLMClient`
+  本就支援 Bearer）→ `LLM_BASE_URL`/`LLM_API_KEY` 指過去，全套管線原樣可用、燒遠端 GPU。
+- 路 B：實驗照原設計在本地 GPU 跑（合計 ~35–45 分鐘）。
+
+**附帶結論（產品面）**：該遠端端點作為**使用者的具名外部連線**（模型下拉選單）是
+可用的——基本對話正常；但因無結構化輸出，規劃品質會退回「prompt 約束 + 修復重試」
+水準。另注意該端點為純 HTTP 無加密，且 `PRIVACY_DEFAULT` 在開發 `.env` 為
+non_sensitive（內容會實際外送），使用時需有意識。
+
 ## 測試/驗證任務
 
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。

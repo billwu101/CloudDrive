@@ -40,7 +40,11 @@ class AnthropicLLMClient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
+        # disable_thinking is Ollama-native; the Anthropic path has no equivalent
+        # knob here — accepted for interface parity, ignored.
         system_parts: list[str] = []
         request_messages: list[dict[str, Any]] = []
         for message in messages:
@@ -57,6 +61,8 @@ class AnthropicLLMClient:
             "max_tokens": min(num_ctx, 4096),
             "messages": request_messages,
         }
+        if temperature is not None:
+            payload["temperature"] = temperature
         if system_parts:
             payload["system"] = "\n\n".join(system_parts)
         if tools:

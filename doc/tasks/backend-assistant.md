@@ -91,7 +91,9 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [x] `test_ollama_client.py`：信封拆殼、裸 schema 通過、無 response_format 時不加 format/temperature（TDD 先紅後綠）。
 - [x] `test_planner.py`：planner 每次呼叫帶 `_PLAN_RESPONSE_FORMAT`、首次合法計畫只呼叫 LLM 一次、手寫 schema 與 `PlanResult`/`PlannedStep` 欄位 drift test。`validate_plan` + repair loop 語意防線測試維持不變。
 - [ ] （後續）`llm/anthropic.py` 改用 `output_config.format` 結構化輸出（目前只加「Respond with valid JSON only」prompt，無硬約束）。
-- [ ] （後續）`subagent.py` codegen 呼叫補 `response_format`（期待 JSON 但目前純靠 prompt + 自身 repair loop）。
+- [x] `subagent.py` codegen 呼叫補 `response_format`（2026-07-06）：`_CODEGEN_RESPONSE_FORMAT`（skill_proposal json_schema：五欄全 required、context_menu 結構、item_types enum）接進 `author()`——信封形狀由 grammar 保證；識別字/handler==name 仍由 validate_manifest 把關。
+- [x] **per-call temperature 覆寫**（同日，修第一版退化）：真模型 A/B 顯示 codegen 被結構化 0.2 拖垮（baseline 2/2 vs 0/4，失敗皆語意層=grammar 有效但產碼崩）→ `LLMClient.chat` 加 `temperature` 參數（7 實作+全 fake），`LLM_CODEGEN_TEMPERATURE`（預設 0.8）由 CodegenSubAgent 傳入；planner 維持 0.2。原則：temperature 依任務類型（規劃=低溫求一致、產碼=全採樣求品質），與是否結構化無關。`test_subagent.py`/`test_ollama_client.py` 驗 schema 送達、temperature 覆寫。
+- [x] **handler 機械正規化**（同日）：handler 規則上必等於 name（衍生欄位），解析時直接設定，不靠模型手抄（實測抄錯一字導致提案被拒）。最終真模型驗證：修正組合有效樣本 2/2；生成延遲較 baseline 高（grammar+thinking+重試），authoring 低頻可接受，列觀察項。
 
 ## 結構化解碼防跳針（2026-07-06，DEC-031）
 

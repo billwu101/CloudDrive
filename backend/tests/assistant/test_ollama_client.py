@@ -76,6 +76,25 @@ async def test_ollama_client_uses_configured_structured_temperature() -> None:
     assert payload["options"]["temperature"] == 0.2
 
 
+async def test_ollama_client_per_call_temperature_overrides_structured_pin() -> None:
+    # A caller (codegen) may need full sampling despite sending a format grammar
+    # — the per-call temperature must win over the structured pin.
+    captured: dict[str, object] = {}
+    client = _capturing_client(captured, structured_temperature=0.2)
+
+    await client.chat(
+        [LLMMessage(role="user", content="write a skill")],
+        [],
+        num_ctx=4096,
+        response_format=_ENVELOPE_FORMAT,
+        temperature=0.8,
+    )
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["options"]["temperature"] == 0.8
+
+
 async def test_ollama_client_caps_generation_with_num_predict() -> None:
     # DEC-031: num_predict bounds every local request so a repetition loop fails
     # bounded instead of eating the full read timeout — plain chat included.
@@ -87,6 +106,58 @@ async def test_ollama_client_caps_generation_with_num_predict() -> None:
     payload = captured["payload"]
     assert isinstance(payload, dict)
     assert payload["options"]["num_predict"] == 4096
+
+
+async def test_ollama_client_disable_thinking_flag() -> None:
+    # E8 experiment knob: when enabled every request carries think=false;
+    # default construction must not send the field at all.
+    captured: dict[str, object] = {}
+    client = _capturing_client(captured, disable_thinking=True)
+    await client.chat([LLMMessage(role="user", content="hi")], [], num_ctx=4096)
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["think"] is False
+
+    captured2: dict[str, object] = {}
+    default_client = _capturing_client(captured2)
+    await default_client.chat([LLMMessage(role="user", content="hi")], [], num_ctx=4096)
+    payload2 = captured2["payload"]
+    assert isinstance(payload2, dict)
+    assert "think" not in payload2
+
+
+async def test_ollama_client_per_call_disable_thinking_overrides_default() -> None:
+    # DEC-033: the planner asks for think:false per call. A per-call value must win
+    # over the constructor default in both directions; None defers to the default.
+    # Per-call True over a False-default client.
+    on_over_off: dict[str, object] = {}
+    client = _capturing_client(on_over_off, disable_thinking=False)
+    await client.chat(
+        [LLMMessage(role="user", content="hi")], [], num_ctx=4096, disable_thinking=True
+    )
+    payload = on_over_off["payload"]
+    assert isinstance(payload, dict)
+    assert payload["think"] is False
+
+    # Per-call False over a True-default client.
+    off_over_on: dict[str, object] = {}
+    client = _capturing_client(off_over_on, disable_thinking=True)
+    await client.chat(
+        [LLMMessage(role="user", content="hi")], [], num_ctx=4096, disable_thinking=False
+    )
+    payload = off_over_on["payload"]
+    assert isinstance(payload, dict)
+    assert "think" not in payload
+
+    # None defers to the constructor default (here True).
+    deferred: dict[str, object] = {}
+    client = _capturing_client(deferred, disable_thinking=True)
+    await client.chat(
+        [LLMMessage(role="user", content="hi")], [], num_ctx=4096, disable_thinking=None
+    )
+    payload = deferred["payload"]
+    assert isinstance(payload, dict)
+    assert payload["think"] is False
 
 
 async def test_ollama_client_omits_num_predict_when_uncapped() -> None:

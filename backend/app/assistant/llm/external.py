@@ -40,13 +40,19 @@ class ExternalLLMClient:
         *,
         num_ctx: int,
         response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
+        # disable_thinking is Ollama-native; the OpenAI-compatible path has no
+        # equivalent knob — accepted for interface parity, ignored.
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
         if response_format is not None:
             payload["response_format"] = response_format
+        if temperature is not None:
+            payload["temperature"] = temperature
         if tools:
             payload["tools"] = [_to_openai_tool(t) for t in tools]
 
