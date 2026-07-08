@@ -2428,6 +2428,7 @@ CREATE INDEX idx_file_embeddings_item_id ON file_embeddings(item_id);
 - **預設：Gemma 4 26B（本地）**，經 Ollama（`/api/chat`，支援 tools）或 OpenAI 相容端點。
 - **升級路徑**：當本地 Gemma 反覆做不出可接受結果，且符合隱私條件時，可升級呼叫**外部大型模型 API**（見 1.3）。
 - 後端以 `LLMClient` 抽象封裝本地與外部執行器；本地端只用 `httpx`，外部端為可設定、可關閉、且受隱私閘控管。
+- **本機執行器 provider（`llm_provider`）**：`router.py` 的 `_build_local_client(settings)` 依 `llm_provider` 建本機 client——`ollama`→`OllamaLLMClient`（原生 `/api/chat`）；`openai_compatible`→`ExternalLLMClient`（OpenAI 相容 `POST /v1/chat/completions`，可指向本機 Ollama 的 `/v1`、或任何 OpenAI 相容 gateway，後端仍可為 gemma4:26b）。兩者共用 `LLM_BASE_URL`／`ASSISTANT_MODEL`／`LLM_API_KEY`（見 §8.12）；`openai_compatible` 路徑不帶 `num_ctx`／`keep_alive`（Ollama 專屬），由 gateway 後端自理。
 - 26B 本地模型 function-calling 與規劃可靠度有限，因此管線的**結構化輸出 + 驗證 + 修復重試 + 升級 + 使用者確認閘**特別重要。
 
 ### 8.91.2 方案抉擇（沿用）
