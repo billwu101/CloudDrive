@@ -438,8 +438,20 @@ async def confirm_workflow(
     current_user_id: CurrentUserId,
     session: DbSession,
     service: AssistantServiceDep,
+    session_repo: AssistantSessionRepoDep,
 ) -> AssistantWorkflowConfirmResponse:
     response = await service.confirm(user_id=current_user_id, workflow_id=workflow_id)
+    # Record the execution outcome into the conversation so the next turn knows
+    # the confirmed workflow actually ran (memory v1 only persisted /chat turns,
+    # leaving a confirmed write invisible — "how did that go?" saw just the
+    # pending reply). The summary is folded into the assistant content, same as
+    # an auto-executed turn.
+    if response.session_id is not None:
+        await session_repo.add_message(
+            session_id=response.session_id,
+            role="assistant",
+            content=append_result_summary(response.message, response.results),
+        )
     await session.commit()
     return response
 

@@ -94,6 +94,36 @@ async def test_chat_create_folder_pending_confirm_creates_real_item(
 
 
 @pytest.mark.needs_llm
+async def test_confirmed_execution_is_recorded_in_session_history(client: AsyncClient) -> None:
+    """A confirmed (manually approved) write must land its outcome in the session
+    history — otherwise the next turn only sees the pending reply and wrongly
+    reports the action as still awaiting confirmation (memory-after-confirm bug)."""
+    h = auth_headers(await register_and_login(client, email="conf1@test.com", username="conf1"))
+    folder_name = f"ConfirmMem_{uuid4().hex[:8]}"
+
+    chat = await client.post(
+        CHAT, json={"message": f'Create a folder named "{folder_name}".'}, headers=h
+    )
+    assert chat.status_code == 200, chat.text
+    body = chat.json()
+    session_id = body["session_id"]
+    plan = body.get("plan")
+    assert plan is not None and plan["status"] == "pending_approval", body
+
+    confirm = await client.post(
+        f"/api/v1/assistant/workflows/{plan['workflow_id']}/confirm", headers=h
+    )
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["status"] == "executed"
+
+    messages = await client.get(f"{SESSIONS}/{session_id}/messages", headers=h)
+    assert messages.status_code == 200
+    contents = [m["content"] for m in messages.json() if m["role"] == "assistant"]
+    # The execution outcome (not just the pending reply) must be in history.
+    assert any("[executed]" in c for c in contents), contents
+
+
+@pytest.mark.needs_llm
 async def test_chat_second_turn_carries_history_and_result_summary(client: AsyncClient) -> None:
     """Conversation memory end-to-end: a read turn's result summary is folded into
     the persisted assistant message, and a second turn on the same session drives

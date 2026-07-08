@@ -279,6 +279,10 @@ class WorkflowService:
             status="executed",
             message="Workflow executed." if _all_ok(results) else _compose_failure_message(results),
             results=results,
+            # Carry the session so the router can record this execution into the
+            # conversation history — otherwise a confirmed write is invisible to
+            # the next turn ("how did that go?" would see only the pending reply).
+            session_id=workflow.session_id,
         )
 
     async def save_workflow(

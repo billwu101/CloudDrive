@@ -264,6 +264,10 @@ async def test_confirm_executes_pending_workflow() -> None:
     assert executed == ["delete_item"]
     assert repo.workflows[pending.plan.workflow_id].status == WORKFLOW_EXECUTED
     assert repo.runs[-1].workflow_id == pending.plan.workflow_id
+    # confirm must carry the originating session so the router can record the
+    # execution into history — otherwise a confirmed write is invisible to the
+    # next turn ("how did that go?" would see only the pending reply).
+    assert confirmed.session_id == pending.session_id
 
 
 async def test_cancel_marks_workflow_cancelled() -> None:
