@@ -139,6 +139,10 @@ class AssistantWorkflowConfirmResponse(BaseModel):
     status: Literal["executed", "cancelled"]
     message: str
     results: list[StepResult] = Field(default_factory=list)
+    # Set only when the execution belongs to a chat conversation (confirm of a
+    # pending plan) so the router can record the outcome into that session's
+    # history. None for standalone saved-workflow reruns.
+    session_id: UUID | None = None
 
 
 class AssistantSaveWorkflowRequest(BaseModel):

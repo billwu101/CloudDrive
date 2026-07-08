@@ -95,6 +95,26 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [x] **per-call temperature 覆寫**（同日，修第一版退化）：真模型 A/B 顯示 codegen 被結構化 0.2 拖垮（baseline 2/2 vs 0/4，失敗皆語意層=grammar 有效但產碼崩）→ `LLMClient.chat` 加 `temperature` 參數（7 實作+全 fake），`LLM_CODEGEN_TEMPERATURE`（預設 0.8）由 CodegenSubAgent 傳入；planner 維持 0.2。原則：temperature 依任務類型（規劃=低溫求一致、產碼=全採樣求品質），與是否結構化無關。`test_subagent.py`/`test_ollama_client.py` 驗 schema 送達、temperature 覆寫。
 - [x] **handler 機械正規化**（同日）：handler 規則上必等於 name（衍生欄位），解析時直接設定，不靠模型手抄（實測抄錯一字導致提案被拒）。最終真模型驗證：修正組合有效樣本 2/2；生成延遲較 baseline 高（grammar+thinking+重試），authoring 低頻可接受，列觀察項。
 
+## 對話記憶（多輪 context 回讀，2026-07-07）
+
+規格見 [proposal-assistant-memory.md](../proposal-assistant-memory.md)、設計見 detailed-design §9.31。
+
+- [x] `app/assistant/memory.py`（新）：`summarise_results`（StepResults→精簡文字,每步截斷 200 字）、
+  `append_result_summary`、`history_to_messages`（最近 N 則 user/assistant → LLMMessage）。
+- [x] `planner.py`：`WorkflowPlanner.plan(history=…)` 把歷史夾在 system 與當前 user 之間;`trim` 保上限。
+- [x] `service.py`：`WorkflowService.chat(history=…)` 透傳,含失敗 replan 路徑。
+- [x] `router.py`：`/chat` 載入最近 `assistant_history_max_messages` 則傳入;持久化 assistant 訊息時
+  把結果摘要接到 content。`core/config.py`：`assistant_history_max_messages=12`（0=關閉）。
+- [x] **工具結果承載**：真模型 A/B（gemma4）→ `tool` 角色 0/4、assistant 文字 4/4 → 採 assistant
+  文字承載,零 migration（重載訊息本就不帶 results 表格）。
+- [x] **確認執行寫回（修復）**：`/confirm` 端點原不寫歷史 → 下一輪誤答「還在等確認」。`confirm` 回傳
+  帶 `session_id`,端點執行後把結果摘要以 assistant 訊息寫回 session。
+- [x] 單元：`test_memory.py`（摘要/映射/視窗/關閉）、`test_planner.py`（歷史夾層、單輪無歷史）、
+  `test_workflow.py`（confirm 帶 session_id）。整合：多輪指涉端到端、confirm 後歷史含 `[executed]`。
+- [x] 真模型:多輪 eval 指涉 10/10（純對話 5/5 + 工具結果 5/5,`eval/multiturn-memory` 分支）;
+  單輪重跑 sweep 100% 無退化;live 8001 使用者實測通過。
+- [ ] （後續 v2）舊對話摘要壓縮、語意檢索、跨 session/使用者畫像（見 proposal §6）。
+
 ## 結構化解碼防跳針（2026-07-06，DEC-031）
 
 > 背景：真模型整合測試穩定卡滿 timeout——temp=0 貪婪解碼在 gemma4 thinking 段掉入決定性重複迴圈（300s/900s 均跑不完）。見 [proposal-structured-decoding-stability.md](../proposal-structured-decoding-stability.md)、eval-prompt-log §2.7。

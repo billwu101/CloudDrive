@@ -180,7 +180,12 @@ class WorkflowPlanner:
         self._disable_thinking = disable_thinking
 
     async def plan(
-        self, *, message: str, target: str | None = None, selected_count: int = 0
+        self,
+        *,
+        message: str,
+        target: str | None = None,
+        selected_count: int = 0,
+        history: list[LLMMessage] | None = None,
     ) -> PlanResult:
         messages = [
             LLMMessage(role="system", content=build_planner_prompt(self._registry)),
@@ -199,6 +204,11 @@ class WorkflowPlanner:
                     ),
                 )
             )
+        # Prior turns (conversation memory) sit between the system framing and the
+        # current request so references like "rename the first one" resolve against
+        # what actually ran. ContextManager.trim caps the total below num_ctx.
+        if history:
+            messages.extend(history)
         messages.append(LLMMessage(role="user", content=message))
 
         def _valid(response: LLMResponse) -> bool:

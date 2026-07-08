@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     llm_planner_disable_thinking: bool = True
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
+    # Conversation memory: how many of the most recent stored messages (user +
+    # assistant) are replayed into the planner as context so follow-ups can
+    # resolve references ("rename the first one"). 0 disables memory (single-turn).
+    # ContextManager.trim still enforces the hard num_ctx budget on top of this.
+    assistant_history_max_messages: int = 12
 
     # Optional external model fallback. Disabled by default; privacy gates apply first.
     external_llm_enabled: bool = False
