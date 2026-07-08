@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.assistant.memory import (
+    _MAX_OUTPUT_CHARS,
     append_result_summary,
     history_to_messages,
     summarise_results,
@@ -44,6 +45,42 @@ def test_summarise_results_truncates_long_output() -> None:
     )
     assert "…" in summary
     assert len(summary) < 300  # bounded, not the full 500-char payload
+
+
+def test_summarise_results_extracts_names_from_item_page() -> None:
+    # A page of drive-item dicts must render as names (not raw UUID-laden dicts)
+    # so a follow-up "what were they called?" can recall them — the recall-0/5 fix.
+    page = {
+        "items": [
+            {"id": "a" * 36, "name": "ZebraReports", "item_type": "folder"},
+            {"id": "b" * 36, "name": "YakArchive", "item_type": "folder"},
+            {"id": "c" * 36, "name": "XylophoneBackups", "item_type": "folder"},
+        ],
+        "total": 3,
+    }
+    summary = summarise_results([StepResult(index=0, skill="list_items", ok=True, output=page)])
+    assert "3 items: ZebraReports, YakArchive, XylophoneBackups" in summary
+    assert "a" * 36 not in summary  # UUID dropped — it ate the budget before
+    assert len(summary) < _MAX_OUTPUT_CHARS + 40  # compact: all 3 names, no truncation
+
+
+def test_summarise_results_bare_list_and_single_item() -> None:
+    # recent() returns a bare list of item dicts; get_info() a single item dict.
+    bare = summarise_results(
+        [StepResult(index=0, skill="recent", ok=True, output=[{"id": "x", "name": "a.txt"}])]
+    )
+    assert "1 items: a.txt" in bare
+    single = summarise_results(
+        [StepResult(index=0, skill="get_info", ok=True, output={"id": "x", "name": "report.pdf"})]
+    )
+    assert "get_info: ok → report.pdf" in single
+
+
+def test_summarise_results_abbreviates_long_listing() -> None:
+    page = {"items": [{"id": str(i), "name": f"file{i}.txt"} for i in range(50)]}
+    summary = summarise_results([StepResult(index=0, skill="list_items", ok=True, output=page)])
+    assert summary.startswith("[executed] list_items: ok → 50 items: file0.txt")
+    assert "more)" in summary or "…" in summary  # count preserved, tail abbreviated
 
 
 def test_summarise_results_empty_is_blank() -> None:
