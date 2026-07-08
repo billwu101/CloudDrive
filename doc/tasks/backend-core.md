@@ -1,6 +1,6 @@
 # Backend Core 模組任務
 
-來源：`proposal.md`、`detailed-design.md` 的 Core、錯誤處理與環境設定章節。
+來源：`proposal.md`、`detailed-design/` 的 Core、錯誤處理與環境設定章節。
 
 ## 完成定義
 

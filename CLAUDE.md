@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - 在重要問題尚未確認前，不得直接進入設計或程式實作。
    - 可以提出建議方案，但必須明確標示為「建議」，並由使用者確認。
 2. **文件先行，程式後做（使AI成果不發散）**
-   - 開發前必須依序完成：`doc/proposal.md` → `doc/detailed-design.md` → `doc/tasks/` → `doc/prompt.md`。
+   - 開發前必須依序完成：`doc/proposal.md` → `doc/detailed-design/` → `doc/tasks/` → `doc/prompt.md`。
    - 文件內容未確認完成前，不得直接大量產生程式碼。
 3. **模組化與低耦合**：系統拆分成職責清楚、相互獨立、可獨立開發測試驗收的模組；模組間只透過明確介面／資料結構／API 溝通。
 4. **任務必須最小化**：每個任務只處理一個清楚、可驗證的目標，具備輸入、輸出、依賴、實作要求與驗收條件。
@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 二、標準專案文件流程
 
 - **階段 1 需求（`doc/proposal.md`）**：專案背景與目標、使用者角色、使用情境、功能／非功能需求、執行平台、輸入輸出、技術限制、安全與授權、不在範圍、驗收標準、待確認事項。不清楚處逐項提問；不自行決定未確認範圍；不把未確認方案寫成既定事實；目標須能轉成可測試驗收條件。
-- **階段 2 詳細設計（`doc/detailed-design.md`）**：整體架構、模組劃分與職責、依賴關係、資料流程、核心資料結構、類別／函式／介面設計、API／事件格式、錯誤處理、日誌、設定與環境變數、效能限制、安全考量、測試設計、各模組驗收條件。每模組只負責一類工作；禁止循環依賴；核心邏輯不綁定 UI／FS／外部服務；外部依賴經抽象介面隔離；支援 Mock/Stub/Fake；公開介面說明輸入／輸出／錯誤／副作用；設計須可直接供任務拆分。
+- **階段 2 詳細設計（`doc/detailed-design/`）**：整體架構、模組劃分與職責、依賴關係、資料流程、核心資料結構、類別／函式／介面設計、API／事件格式、錯誤處理、日誌、設定與環境變數、效能限制、安全考量、測試設計、各模組驗收條件。每模組只負責一類工作；禁止循環依賴；核心邏輯不綁定 UI／FS／外部服務；外部依賴經抽象介面隔離；支援 Mock/Stub/Fake；公開介面說明輸入／輸出／錯誤／副作用；設計須可直接供任務拆分。
 - **階段 3 任務拆分（`doc/tasks/<module>.md` + `progress.md`）**：每模組一份任務文件（目標／範圍／不含範圍／前置依賴／輸入／輸出／公開介面／子任務 checklist／測試要求／驗收條件／風險／完成紀錄）。子任務狀態：`[ ]` 未完成、`[-]` 進行中、`[x]` 完成、`[!]` 阻塞。標示依賴順序與可平行任務；不同 Agent 不得同時改同檔；任務變更時同步更新設計與進度。
 - **階段 4 Prompt（`doc/prompt.md`）**：定義專案目標、文件讀取順序、主／子 Agent 責任、任務分派、依賴處理、平行規則、測試與品質要求、進度更新、問題處理、整合與最終驗收、禁止事項。
 
@@ -45,15 +45,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 五、需求與變更管理
 
 1. 新需求不得直接插入實作階段。
-2. 需求變更依序更新 `proposal.md` → `detailed-design.md` → `tasks/` → `prompt.md`。
+2. 需求變更依序更新 `proposal.md` → `detailed-design/` → `tasks/` → `prompt.md`。
 3. 每次變更記錄：原因、影響模組、是否影響公開介面、是否需 Migration、是否需新增／修改測試。
 4. 需求與現有設計衝突時，停止開發並要求確認。
 5. 不得為了快速完成而默默改變驗收標準。
-6. **程式碼／功能變更完成後，必須回填同步設計文件**（即使是先實作再補文件的情況也一樣）：把該變更寫進 `doc/proposal.md` 與 `doc/detailed-design.md`。
-   - **分層**：`proposal.md` 只寫**需求面**（使用者可見的功能、行為、對應的 API 端點）；`detailed-design.md` 寫**實作面**（模組職責、資料結構、公開介面、設定與決策，例如 CORS／檔名規則／串流方式等）。實作細節不要寫進 proposal。
+6. **程式碼／功能變更完成後，必須回填同步設計文件**（即使是先實作再補文件的情況也一樣）：把該變更寫進 `doc/proposal.md` 與 `doc/detailed-design/`。
+   - **分層**：`proposal.md` 只寫**需求面**（使用者可見的功能、行為、對應的 API 端點）；`detailed-design/` 寫**實作面**（模組職責、資料結構、公開介面、設定與決策，例如 CORS／檔名規則／串流方式等）。實作細節不要寫進 proposal。
    - **不重複**：兩份文件中**已經提到的就不再重寫**，只補真正缺漏或被本次變更改動的部分。
    - **不確定就問**：某項該進 proposal 還是 detailed、是否算「已提到」、要補到哪個章節不清楚時，**先停下來問使用者，不擅自決定範圍**。
-7. **動到 `proposal.md` 或 `detailed-design.md` 時，必須確認新增／修改的內容在兩份文件間能相互依賴、彼此對應**：proposal（需求面）的每個功能需求都要能在 detailed-design（實作面）找到對應設計；detailed-design 的每個模組／介面／端點都要能追溯回某個需求。發現一邊有、另一邊缺或彼此矛盾時，**補齊或提出確認，不留下對不上的內容**。
+7. **動到 `proposal.md` 或 `detailed-design/` 時，必須確認新增／修改的內容在兩份文件間能相互依賴、彼此對應**：proposal（需求面）的每個功能需求都要能在 detailed-design（實作面）找到對應設計；detailed-design 的每個模組／介面／端點都要能追溯回某個需求。發現一邊有、另一邊缺或彼此矛盾時，**補齊或提出確認，不留下對不上的內容**。
 8. **開始寫真正的程式碼前，必須先確認要動工的檔案已列進對應的 `doc/tasks/<module>.md`**：依文件先行原則，實作前檢查該模組任務文件是否涵蓋本次要新增／修改的檔案與子任務；**若沒有，先補進 `tasks/`（含子任務 checklist 與驗收條件）再動工**，不在任務清單之外擅自開工。
 
 ### 六、安全與敏感資訊規則
@@ -219,10 +219,10 @@ Use Vitest + MSW. Per-test MSW overrides: `server.use(http.get(...))` inside the
 | File | Purpose |
 |---|---|
 | `doc/prompt.md` | Codex multi-agent orchestration prompt + confirmed technical decisions |
-| `doc/detailed-design.md` | Module-level architecture, service interfaces, API contracts |
+| `doc/detailed-design/` | Module-level architecture, service interfaces, API contracts |
 | `doc/proposal.md` | Product requirements and feature design |
 | `doc/tasks/<module>.md` | Per-module task checklist (checked = implemented + tested) |
 | `doc/tasks/progress.md` | Overall 28-module completion status |
-| `doc/detailed-design.md` 附錄 A | Architecture decision records (DEC-XXX format) — 原 `doc/decisions.md`，已併入 detailed-design 附錄 A |
+| `doc/detailed-design/` 附錄 A | Architecture decision records (DEC-XXX format) — 原 `doc/decisions.md`，已併入 detailed-design 附錄 A |
 
-**After adding any new feature**, update `doc/prompt.md` (Stage extra requirements + file ownership table), `doc/detailed-design.md` (relevant module section), and the affected `doc/tasks/<module>.md` (new items, checked).
+**After adding any new feature**, update `doc/prompt.md` (Stage extra requirements + file ownership table), `doc/detailed-design/` (relevant module section), and the affected `doc/tasks/<module>.md` (new items, checked).

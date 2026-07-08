@@ -55,10 +55,10 @@
 | 文件 | 交付方是否需要 | 說明 |
 | --- | --- | --- |
 | 正式需求文件（本文件整理版） | 是 | 放功能範圍、使用者目標、使用情境、角色與限制 |
-| API 文件、ERD、架構／部署／時序圖（**開發文件紀錄**） | 是 | 端點/request/response/錯誤碼、資料表與權限·搜尋·快照·助理、資料流與部署邊界；皆**由 `detailed-design.md` 與 OpenAPI 匯出／節錄**，供交付方審查 |
+| API 文件、ERD、架構／部署／時序圖（**開發文件紀錄**） | 是 | 端點/request/response/錯誤碼、資料表與權限·搜尋·快照·助理、資料流與部署邊界；皆**由 `detailed-design/` 與 OpenAPI 匯出／節錄**，供交付方審查 |
 | 測試與 Assistant Eval Harness 報告 | 是 | 證明核心流程、E2E、AI agent 評測有被驗證 |
 
-也就是說，`detailed-design.md`（含附錄 A 架構決策紀錄）、`progress.md` 與 `tasks/*.md` 為**內部文件、不納入交付**；正式需求文件本身應能獨立說明系統需求。
+也就是說，`detailed-design/`（含附錄 A 架構決策紀錄）、`progress.md` 與 `tasks/*.md` 為**內部文件、不納入交付**；正式需求文件本身應能獨立說明系統需求。
 
 ### 1.3 文件維護方式
 
@@ -283,15 +283,15 @@
 
 ### 7.1 架構總覽
 
-**前後端分離**：React 前端 ──(HTTPS REST API)──> FastAPI 後端 ──(SQLAlchemy / asyncpg)──> PostgreSQL；檔案 binary 經 Storage Provider 存獨立儲存層（metadata 與 binary 分離，見 §7.5）。後端另內含 **AI 助理引擎**（本地 Gemma + 可選外部 GPT-5.5，見 §7.6）。完整架構圖與分層見 [detailed-design.md](./detailed-design.md) §3。
+**前後端分離**：React 前端 ──(HTTPS REST API)──> FastAPI 後端 ──(SQLAlchemy / asyncpg)──> PostgreSQL；檔案 binary 經 Storage Provider 存獨立儲存層（metadata 與 binary 分離，見 §7.5）。後端另內含 **AI 助理引擎**（本地 Gemma + 可選外部 GPT-5.5，見 §7.6）。完整架構圖與分層見 [detailed-design/](./detailed-design/01-overview.md) §3。
 
 ### 7.2 前端技術
 
-核心：**React + TypeScript + Vite**；伺服器狀態用 TanStack Query、UI 狀態用 Zustand。其餘選型（路由、表單、驗證、樣式庫等）見 [detailed-design.md](./detailed-design.md) §5。
+核心：**React + TypeScript + Vite**；伺服器狀態用 TanStack Query、UI 狀態用 Zustand。其餘選型（路由、表單、驗證、樣式庫等）見 [detailed-design/](./detailed-design/01-overview.md) §5。
 
 ### 7.3 後端技術
 
-核心：**FastAPI + Python 3.12+ + SQLAlchemy 2.x（async）+ PostgreSQL**；Alembic 管 migration、Pydantic 管 I/O 驗證。其餘選型（JWT／密碼雜湊套件、背景工作機制等）見 [detailed-design.md](./detailed-design.md) §7。
+核心：**FastAPI + Python 3.12+ + SQLAlchemy 2.x（async）+ PostgreSQL**；Alembic 管 migration、Pydantic 管 I/O 驗證。其餘選型（JWT／密碼雜湊套件、背景工作機制等）見 [detailed-design/](./detailed-design/01-overview.md) §7。
 
 ### 7.4 資料庫
 
@@ -306,11 +306,11 @@
 - **取檔流程**：先查 DB（驗權限 + 取 `storage_key`），再用 key 向儲存層取 binary——**權限與定位永遠經過 DB，binary 不經 DB**。
 - 儲存層抽象為 **Storage Provider** 介面，底層可換（本地檔案系統／MinIO／S3／Azure Blob）而不動業務邏輯：開發用本地、正式可換物件儲存。
 
-> Provider 介面方法與 `LocalStorageProvider` 實作見 [detailed-design.md](./detailed-design.md) §7.6。
+> Provider 介面方法與 `LocalStorageProvider` 實作見 [detailed-design/](./detailed-design/01-overview.md) §7.6。
 
 ### 7.6 AI 助理引擎
 
-後端內含對話式 **AI 助理引擎**（HARNESS：while loop、context、skills/tools、sub-agents、沙箱、權限與安全）。預設以**本地 Gemma（Ollama）**為執行器，資料不外流；本地反覆失敗時可升級**外部 GPT-5.5**（Codex 訂閱優先、OpenAI key 備援，使用者自帶加密憑證）。驅動自然語言操作檔案、現場生成技能與工作流程重用。完整規格見 §12；引擎設計見 [detailed-design.md](./detailed-design.md) §7 與 [detailed-design.md §9](./detailed-design.md)。
+後端內含對話式 **AI 助理引擎**（HARNESS：while loop、context、skills/tools、sub-agents、沙箱、權限與安全）。預設以**本地 Gemma（Ollama）**為執行器，資料不外流；本地反覆失敗時可升級**外部 GPT-5.5**（Codex 訂閱優先、OpenAI key 備援，使用者自帶加密憑證）。驅動自然語言操作檔案、現場生成技能與工作流程重用。完整規格見 §12；引擎設計見 [detailed-design/](./detailed-design/01-overview.md) §7 與 [detailed-design/ §9](./detailed-design/01-overview.md)。
 
 ## 8. 技術選型
 
@@ -400,7 +400,7 @@
 - **Skills 管理頁（`/skills`）**：已安裝技能列表（數量、描述、右鍵動作、更新時間）+ 編輯/刪除。
 - **外部模型連線設定（Settings）**：管理多組外部模型連線——連線列表、新增（含 Gemini／OpenAI／Ollama cloud／Codex presets，自動帶入對應 base_url）、刪除；顯示遮罩提示與連線狀態。
 
-> 各頁面/元件的詳細結構與 props 見 [detailed-design.md](./detailed-design.md) §5。
+> 各頁面/元件的詳細結構與 props 見 [detailed-design/](./detailed-design/01-overview.md) §5。
 
 ## 10. 後端目錄結構
 
@@ -419,11 +419,11 @@
 - **基礎服務層**：操作紀錄、權限判斷、寄信等沒有對外路由、由其他服務層注入的內部能力。
 - **API 聚合層**：彙整各模組路由為單一對外 API。
 
-各層對應的實際模組清單、檔案與邊界見 [detailed-design.md](./detailed-design.md) §6（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
+各層對應的實際模組清單、檔案與邊界見 [detailed-design/](./detailed-design/01-overview.md) §6（模組拆分原則）與 §6（後端核心）；實際以 `backend/app/` 程式碼為準。
 
 ## 11. 資料庫設計
 
-下表為各資料表的需求；**欄位型別與長度原則、各表 DDL（欄位、型別、索引）見 [detailed-design.md](./detailed-design.md) §8**，對應小節列於最右欄。
+下表為各資料表的需求；**欄位型別與長度原則、各表 DDL（欄位、型別、索引）見 [detailed-design/](./detailed-design/01-overview.md) §8**，對應小節列於最右欄。
 
 | 資料表 | 需求 | DDL |
 | --- | --- | --- |
@@ -439,7 +439,7 @@
 
 ## 12. In-App AI Assistant
 
-於網頁應用內提供一個**可對話、可自我擴充的 AI 助理**。使用者用自然語言描述需求，助理把需求轉成**可檢視、可確認、可執行、可記錄的 Workflow**，以既有或現場生成的技能完成檔案／資料夾操作。完整設計見 [detailed-design.md §9](./detailed-design.md)，評測見 [detailed-design.md §11](./detailed-design.md)，決策見 [detailed-design.md 附錄 A](./detailed-design.md) 的 DEC-016～023。
+於網頁應用內提供一個**可對話、可自我擴充的 AI 助理**。使用者用自然語言描述需求，助理把需求轉成**可檢視、可確認、可執行、可記錄的 Workflow**，以既有或現場生成的技能完成檔案／資料夾操作。完整設計見 [detailed-design/ §9](./detailed-design/01-overview.md)，評測見 [detailed-design/ §11](./detailed-design/01-overview.md)，決策見 [detailed-design/ 附錄 A](./detailed-design/01-overview.md) 的 DEC-016～023。
 
 - **對話操作**：登入後 CloudDrive shell 內的浮動聊天面板，用自然語言列檔／搜尋／整理／改名／移動／分享／壓縮解壓等。
 - **計畫確認**：寫入/破壞性操作先產生計畫（步驟、權限層級、是否需確認），唯讀操作可 fast-path 自動執行；使用者確認後才執行，破壞性操作**絕不自動執行**。
@@ -465,11 +465,11 @@
 - **權限與安全**：`user_id` 多租戶綁定、分層權限（唯讀自動／破壞性確認／生成碼核可）、受限沙箱（資源／路徑／網路限制）、全程稽核。
 - **模型路由**：本地 Gemma（Ollama）為主，達失敗上限且符合隱私條件時才升級外部模型（見上「模型策略」）。
 
-各組件的職責與對應實作見 [detailed-design.md §9.7](./detailed-design.md)（HARNESS 九大組件）。
+各組件的職責與對應實作見 [detailed-design/ §9.7](./detailed-design/01-overview.md)（HARNESS 九大組件）。
 
 ## 13. 時光機（Snapshots，核心功能）
 
-類 Apple Time Machine 的整碟時間點還原。完整設計見 [detailed-design.md §13](./detailed-design.md)，決策見 DEC-024。**狀態：S1-S5 已實作並測試完成；仍有非阻擋限制：還原時硬配額檢查待補強。**
+類 Apple Time Machine 的整碟時間點還原。完整設計見 [detailed-design/ §13](./detailed-design/01-overview.md)，決策見 DEC-024。**狀態：S1-S5 已實作並測試完成；仍有非阻擋限制：還原時硬配額檢查待補強。**
 
 ### 13.1 功能範圍
 
@@ -520,7 +520,7 @@
 
 ## 15. API 設計
 
-API base path：`/api/v1`。下表為各端點對應的動作（介面需求）；**完整 request/response 規格見 OpenAPI 匯出（程式碼自動生成）** 與 [detailed-design.md](./detailed-design.md) §14（通用規則：統一錯誤格式、分頁、`DriveItemResponse`、API↔模組對應）。
+API base path：`/api/v1`。下表為各端點對應的動作（介面需求）；**完整 request/response 規格見 OpenAPI 匯出（程式碼自動生成）** 與 [detailed-design/](./detailed-design/01-overview.md) §14（通用規則：統一錯誤格式、分頁、`DriveItemResponse`、API↔模組對應）。
 
 ### 15.1 Auth API
 
@@ -581,7 +581,7 @@ API base path：`/api/v1`。下表為各端點對應的動作（介面需求）�
 
 ### 15.7 Assistant API
 
-前綴同 `/api/v1`；完整流程見 [detailed-design.md §9](./detailed-design.md)。
+前綴同 `/api/v1`；完整流程見 [detailed-design/ §9](./detailed-design/01-overview.md)。
 
 | Method | Path | 用途 |
 |---|---|---|
@@ -598,7 +598,7 @@ API base path：`/api/v1`。下表為各端點對應的動作（介面需求）�
 
 ### 15.8 Time Machine API
 
-前綴同 `/api/v1`；完整設計見 [detailed-design.md §13](./detailed-design.md)、資料表見 §13.3。
+前綴同 `/api/v1`；完整設計見 [detailed-design/ §13](./detailed-design/01-overview.md)、資料表見 §13.3。
 
 | 端點 | 動作 |
 | --- | --- |
@@ -696,7 +696,7 @@ Permanent delete
 3. refresh token 有效時間建議 7 到 30 天。
 4. refresh token 需可撤銷。
 5. 密碼使用 bcrypt 或 argon2 雜湊。
-6. access token 僅存於前端記憶體（不寫 localStorage／sessionStorage）、refresh token 存 HttpOnly cookie；頁面重整後以 **silent refresh**（app 啟動時呼叫 `POST /auth/refresh`）用 refresh cookie 續期維持登入，失敗則導向登入。實作見 [detailed-design.md](./detailed-design.md) §5.2.1。
+6. access token 僅存於前端記憶體（不寫 localStorage／sessionStorage）、refresh token 存 HttpOnly cookie；頁面重整後以 **silent refresh**（app 啟動時呼叫 `POST /auth/refresh`）用 refresh cookie 續期維持登入，失敗則導向登入。實作見 [detailed-design/](./detailed-design/01-overview.md) §5.2.1。
 
 ### 17.2 權限安全
 
@@ -773,7 +773,7 @@ Permanent delete
 | 410 | 分享連結已過期或停用 |
 | 413 | 檔案過大 |
 
-> 錯誤格式見 [detailed-design.md](./detailed-design.md) §14.1；完整錯誤碼表（`code` ↔ HTTP 狀態）見 [detailed-design.md](./detailed-design.md) §16。
+> 錯誤格式見 [detailed-design/](./detailed-design/01-overview.md) §14.1；完整錯誤碼表（`code` ↔ HTTP 狀態）見 [detailed-design/](./detailed-design/01-overview.md) §16。
 
 ## 20. Docker 開發環境
 
@@ -1045,7 +1045,7 @@ secret 管理原則：
 - 正式 image **只由 CI 建立**，部署一律使用**完整 commit SHA**（不用 `latest`）。
 - `main` 分支保護：禁止直接 push、需 PR + review + CI 通過；workflow／Dockerfile／部署設定由 maintainer 審查（CODEOWNERS）。
 
-> CI/CD workflow（`.github/workflows/ci.yml`·`deploy.yml`）、正式 compose 與部署腳本的實作見專案實際檔案與 [detailed-design.md](./detailed-design.md)。
+> CI/CD workflow（`.github/workflows/ci.yml`·`deploy.yml`）、正式 compose 與部署腳本的實作見專案實際檔案與 [detailed-design/](./detailed-design/01-overview.md)。
 
 ## 27. 結論
 

@@ -56,7 +56,7 @@
 ## 驗收
 
 - [x] 對照 proposal.md MVP 驗收標準逐項檢查。
-- [x] 對照 detailed-design.md 模組完成定義逐項檢查。
+- [x] 對照 detailed-design/ 模組完成定義逐項檢查。
 - [x] 確認無使用者可存取未授權檔案。
 - [x] 確認 Docker 開發環境可從零啟動。
 - [x] 確認 README 啟動步驟可重現。

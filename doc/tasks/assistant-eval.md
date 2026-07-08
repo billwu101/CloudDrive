@@ -1,6 +1,6 @@
 # Assistant 驗證與評分 Harness 任務
 
-對應設計：[detailed-design.md §11](../detailed-design.md)
+對應設計：[detailed-design/ §11](../detailed-design/01-overview.md)
 
 ## 完成定義
 

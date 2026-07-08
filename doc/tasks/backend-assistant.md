@@ -1,6 +1,6 @@
 # Backend Assistant 模組任務（HARNESS 引擎 + Workflow 管線）
 
-對應設計：[detailed-design.md §9](../detailed-design.md)
+對應設計：[detailed-design/ §9](../detailed-design/01-overview.md)
 模型：Gemma 4 26B（本地，Ollama / OpenAI 相容）。
 
 ## 完成定義
@@ -83,6 +83,6 @@ M3 實作備註（2026-06-17）：完成 sessions/messages 持久化（`0007`）
 - [x] `ruff format/check`、`mypy app tests`、`pytest` 全綠（M4 切片）。
 - [x] `_build_local_client(settings)` 依 `llm_provider` 分派本機執行器（`ollama`→`OllamaLLMClient`、`openai_compatible`→`ExternalLLMClient`）；`test_router.py` 兩案例驗證。
 
-本機 provider 切換備註（2026-07-07）：`app/assistant/router.py` 抽出 `_build_local_client(settings)`，`llm_provider="openai_compatible"` 時本機改走 `ExternalLLMClient`（OpenAI 相容 `/v1/chat/completions`），供指向 OpenAI 相容 gateway（後端可為 gemma4:26b）。`config.py` 註解、`doc/detailed-design.md` §8.12 同步；`.env` 為本機設定、不進版控。測試：`test_router.py::test_build_local_client_*`。
+本機 provider 切換備註（2026-07-07）：`app/assistant/router.py` 抽出 `_build_local_client(settings)`，`llm_provider="openai_compatible"` 時本機改走 `ExternalLLMClient`（OpenAI 相容 `/v1/chat/completions`），供指向 OpenAI 相容 gateway（後端可為 gemma4:26b）。`config.py` 註解、`doc/detailed-design/` §8.12 同步；`.env` 為本機設定、不進版控。測試：`test_router.py::test_build_local_client_*`。
 
 M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.py`(codegen)、`skills/codeguard.py`(AST 靜態驗證)、`skills/sandbox.py`(子行程沙箱:`-I`+process group+rlimit+audithook 封鎖網路/spawn/越界寫入)、`authoring.py` 生成子流程(意圖→codegen→pending,核可→安裝,執行→沙箱→寫回 drive)。加 `py7zr` 相依。前端右鍵掛載與程式碼審查 dialog 屬 M5。尚未做:生成子流程接進 planner 的「缺技能」自動偵測(目前由 authoring 關鍵字意圖觸發)、7zip 真模型 live 瀏覽器 demo(需重建 Docker 映像)。

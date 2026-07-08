@@ -28,7 +28,7 @@
 
 開始前必須閱讀：
 
-1. `doc/detailed-design.md`
+1. `doc/detailed-design/`
 2. `doc/tasks/*.md`
 3. `doc/proposal.md`
 4. `doc/tasks/progress.md`
@@ -37,7 +37,7 @@
 
 ```text
 本 Prompt 中的已確認決策
-> doc/detailed-design.md
+> doc/detailed-design/
 > 對應的 doc/tasks/<module-name>.md
 > doc/proposal.md
 ```
@@ -138,7 +138,7 @@
 
 ### 擴充範圍：In-App AI Assistant（28 模組之後新增）
 
-原 28 模組完成後，新增 AI 助理功能（設計見 `doc/detailed-design.md §8` 與 `doc/detailed-design.md §10`，決策見 DEC-016~023）。此擴充以下列三個任務文件為範圍，對應 Stage 12~14：
+原 28 模組完成後，新增 AI 助理功能（設計見 `doc/detailed-design/ §8` 與 `doc/detailed-design/ §10`，決策見 DEC-016~023）。此擴充以下列三個任務文件為範圍，對應 Stage 12~14：
 
 - `doc/tasks/backend-assistant.md`
 - `doc/tasks/frontend-assistant.md`
@@ -152,7 +152,7 @@
 
 ### 擴充範圍：外部模型接入（Codex/OpenAI）（Assistant 之後新增）
 
-本地 Gemma 4 反覆失敗時升級 GPT-5.5（設計見 `doc/detailed-design.md §11`，決策 DEC-026，延伸 DEC-023）。以下列任務文件為範圍，對應 Stage 15~17（**設計完成、尚未實作**）：
+本地 Gemma 4 反覆失敗時升級 GPT-5.5（設計見 `doc/detailed-design/ §11`，決策 DEC-026，延伸 DEC-023）。以下列任務文件為範圍，對應 Stage 15~17（**設計完成、尚未實作**）：
 
 - `doc/tasks/external-model.md`（使用者功能：EM1 共用基礎 → EM2 路徑 B API key → EM3 路徑 A Codex 訂閱）；考官 provider 見 `assistant-eval.md` E6
 
@@ -254,7 +254,7 @@ chore: complete cloud drive implementation
 權威任務文件：doc/tasks/<module-name>.md
 你必須先閱讀：
 - doc/prompt.md
-- doc/detailed-design.md
+- doc/detailed-design/
 - doc/proposal.md
 - doc/tasks/<module-name>.md
 - doc/decisions.md（若存在）
