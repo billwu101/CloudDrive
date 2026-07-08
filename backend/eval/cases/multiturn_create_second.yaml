@@ -1,0 +1,21 @@
+id: multiturn-create-second
+name: Multi-turn — resolve "the second one" from the prior turn (conversational memory)
+prompt: Create the second one.
+mode: [api]
+tags: [memory, multi-turn]
+# No seeding: this measures whether history threading alone lets the model resolve
+# a positional reference against the text of the previous turn.
+context_turns:
+  - "I want to organize my photos into folders by year: 2022, 2023, and 2024."
+expect:
+  workflow:
+    # Creating a folder is a write action, so it must be gated for confirmation.
+    requires_confirmation: true
+    steps_include: [create_folder]
+    # The reference "the second one" must resolve to 2023 — proof the model used
+    # the prior turn. Fails if memory is off (the model has no list to index into).
+    steps_arg_contains: ["2023"]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+runs: 5

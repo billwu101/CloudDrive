@@ -13,6 +13,12 @@ class WorkflowExpect(BaseModel):
     requires_confirmation: bool | None = None
     steps_include: list[str] = Field(default_factory=list)
     skill_generated: str | None = None
+    # Substrings that must appear in the JSON-serialised plan steps (skill names +
+    # arguments). Unlike steps_include this is a content check that also holds in
+    # real mode, so a multi-turn case can assert the model resolved a reference
+    # (e.g. the plan renames to "Renamed", proving it pulled an item_id from the
+    # prior turn's result summary rather than asking which file).
+    steps_arg_contains: list[str] = Field(default_factory=list)
 
 
 class StateExpect(BaseModel):
@@ -52,6 +58,11 @@ class Expect(BaseModel):
     state: StateExpect | None = None
     rubric: str | None = None  # for the optional LLM judge (E3)
     execute: ExecuteSpec | None = None
+    # Substrings that must appear in the assistant's reply text (response.message).
+    # Used by multi-turn recall cases: after a listing, asking "what were they
+    # called?" and asserting every name is recalled proves the tool-result summary
+    # reached the model accurately — no item-id/ordering assumption needed.
+    reply_contains: list[str] = Field(default_factory=list)
 
 
 class Scoring(BaseModel):
@@ -90,6 +101,13 @@ class EvalCase(BaseModel):
     scoring: Scoring = Field(default_factory=Scoring)
     runs: int = 1
     mock_llm: MockLLM | None = None
+    # Multi-turn conversation memory (api/real mode). ``seed_folders`` are created
+    # at the drive root before the turns run (idempotent — an existing name is
+    # reused) so a case can reference real items. ``context_turns`` are sent first
+    # on one session to build history; ``prompt`` is the final turn that gets
+    # verified. Empty ⇒ ordinary single-turn case (unchanged behaviour).
+    seed_folders: list[str] = Field(default_factory=list)
+    context_turns: list[str] = Field(default_factory=list)
 
 
 def load_cases(directory: str | Path) -> list[EvalCase]:
