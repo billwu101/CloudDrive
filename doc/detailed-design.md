@@ -2250,6 +2250,28 @@ LLM 解析需求
 | **8. 執行 Workflow** | 依序執行每步驟：呼叫 skill handler（經 service 層或沙箱，帶 `user_id`），處理相依與錯誤（單步失敗可中止或續做，依設定）。 | 01 loop、09 safety、04 sub-agents |
 | **9. 記錄操作與結果** | 每步驟與整體結果寫入稽核（activity_logs）與 workflow run 持久化；成功的工作流程可另存重用。 | 09 audit、06 persistence |
 
+### 9.31 對話記憶（多輪 context 回讀，已實作 2026-07-07）
+
+助理原本每輪只把當前訊息交給 planner（歷史有存 DB、但沒回讀），故多輪指涉失效
+（「幫我把它改名」不知道「它」是誰）。記憶 v1 把既有對話歷史接回 planner：
+
+- **載入點（router `/chat`）**：呼叫 `service.chat()` 前 `list_messages` → 取最近
+  `assistant_history_max_messages`（預設 12,≈6 輪）則 user/assistant 訊息 → 映成 `LLMMessage`
+  傳入。讀寫記憶同層（該端點本就負責寫訊息）。
+- **planner 串接**：`WorkflowPlanner.plan(history=…)` 把歷史夾在 `[system,（選檔）, *history, 當前 user]`;
+  `ContextManager.trim` 按 `num_ctx` 保硬上限（留最近丟最舊）。`WorkflowService.chat` 及其失敗
+  replan 一併透傳。
+- **工具結果承載＝assistant 文字（非 `tool` 角色）**：真模型 A/B（gemma4）顯示 `tool` 角色訊息
+  不被消化（0/4 幻覺假檔名）、assistant 文字 4/4。故 router 持久化 assistant 訊息時,把
+  `summarise_results(結果)`（每步 skill/ok/輸出截斷 `_MAX_OUTPUT_CHARS=200` 字）接到 `content`
+  尾端（`app/assistant/memory.py`）。零 migration:重載訊息本就不帶 results 表格。
+- **確認執行寫回（修復）**：「pending → 手動確認」走 `/confirm` 端點,原本不寫歷史 → 下一輪
+  誤答「還在等確認」。修法:`confirm` 回傳帶 `session_id`,端點執行後把結果摘要以 assistant
+  訊息寫回該 session（與自動執行同一套摘要）。
+- **關閉**：`ASSISTANT_HISTORY_MAX_MESSAGES=0` 退回單輪（空歷史為 no-op,單輪行為不變）。
+- **已知限制**：滑動視窗（~6 輪、200 字截斷）、單 session、無摘要壓縮、靠最近非相關——
+  詳見 [proposal-assistant-memory §6](./proposal-assistant-memory.md)。
+
 ### 9.93.1 生成技能子流程（缺技能 → 現場生成，workflow 化）
 
 當階段 4 發現需要的能力未內建/未安裝，把「生成該技能」本身表達成一段**前置子流程**，接到主工作流程之前：
