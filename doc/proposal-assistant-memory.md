@@ -13,6 +13,12 @@
 >   tool 角色 0/4（故採 assistant 文字承載,零 migration）。
 > - **整合（真模型+Postgres）**：多輪對話端到端 **41/41**——歷史回放、結果摘要持久化、
 >   雙輪累積皆正確。
+> - **多輪 eval（真模型,指涉解析,填上「無 committed 指涉測試」缺口）**：
+>   `multiturn-create-second`（純對話指涉,「第二個=2023」）**5/5**;
+>   `multiturn-rename-first`（工具結果指涉,從列檔摘要取 item_id 改名）**5/5**;
+>   綜合 **10/10、0 跳針、均 14.7s**（`eval/out/temp_sweep_20260707T173641Z.md`）。
+>   200 字摘要截斷未影響 id 傳遞（不需調長）。但書:B 類驗「產出有效 rename_item plan」
+>   （item_id 只能來自歷史,故證明記憶生效）,未嚴格驗「字面第一個」——後者需比對 UUID。
 > - **單輪無退化**：記憶落地後重跑 sweep 仍 **100%、0 跳針、9.7s**（空歷史為 no-op）。
 > - 單元：628 passed（+10）、mypy、ruff 全綠。
 
