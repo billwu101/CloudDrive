@@ -101,6 +101,21 @@ def verify(
                 )
             )
 
+    # Reply-text content check (holds in every mode): recall cases assert the
+    # model accurately reported listed contents from memory.
+    if case.expect.reply_contains:
+        message = response.get("message")
+        text = message if isinstance(message, str) else ""
+        for needle in case.expect.reply_contains:
+            checks.append(
+                CheckResult(
+                    "correctness",
+                    f"reply contains {needle!r}",
+                    needle in text,
+                    f"reply={text[:200]}",
+                )
+            )
+
     if not checks:
         checks.append(
             CheckResult(

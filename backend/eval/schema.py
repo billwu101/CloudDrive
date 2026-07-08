@@ -58,6 +58,11 @@ class Expect(BaseModel):
     state: StateExpect | None = None
     rubric: str | None = None  # for the optional LLM judge (E3)
     execute: ExecuteSpec | None = None
+    # Substrings that must appear in the assistant's reply text (response.message).
+    # Used by multi-turn recall cases: after a listing, asking "what were they
+    # called?" and asserting every name is recalled proves the tool-result summary
+    # reached the model accurately — no item-id/ordering assumption needed.
+    reply_contains: list[str] = Field(default_factory=list)
 
 
 class Scoring(BaseModel):

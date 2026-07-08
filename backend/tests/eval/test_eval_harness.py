@@ -63,6 +63,17 @@ def test_steps_arg_contains_passes_and_fails_on_content() -> None:
     assert any(not c.ok and "RenamedByAgent" in c.name for c in checks)
 
 
+def test_reply_contains_checks_message_text() -> None:
+    # Recall case: every needle must appear in the assistant reply, in any mode.
+    case = _case(expect={"reply_contains": ["ZebraReports", "YakArchive"]})
+    ok = {"message": "You have ZebraReports and YakArchive.", "plan": {"steps": []}}
+    assert all(c.ok for c in verify(case, ok, strict_steps=False))
+
+    missing = {"message": "You have ZebraReports.", "plan": {"steps": []}}
+    checks = verify(case, missing, strict_steps=False)
+    assert any(not c.ok and "YakArchive" in c.name for c in checks)
+
+
 def test_verify_detects_wrong_skill_and_status() -> None:
     case = _case()
     response = {
