@@ -20,13 +20,17 @@
 >   200 字摘要截斷未影響 id 傳遞（不需調長）。
 > - **嚴謹版（補上 rename 案例的代理性缺口）**：`multiturn-recall-listed-names`——列檔後要求
 >   「不重列、只從對話」報出**全部三個資料夾名**（`reply_contains` 驗回覆文字,無 id/排序假設）。
->   真模型跑分（2026-07-08,3 案例 × 5）：create-second 5/5、rename-first 5/5、
->   **recall-listed-names 0/5**（`eval/out/temp_sweep_20260708T034239Z.md`）。
-> - **嚴謹案例揭露的真限制（重要）**：0/5 **不是管線壞,是摘要保真度不足**。根因假設:
->   `summarise_results` 對 list_items 用 `str(output)`（原始 item dict,含 36 字 UUID）→ 三項
->   遠超 `_MAX_OUTPUT_CHARS=200` → 第一項就被截斷 → 記憶只留第一個名字 → 回想不出全部三個。
->   rename 只需「第一個」的 id（在前 200 字內存活）故 5/5;回想需全三名故 0/5。**代理測試遮住的,
->   嚴謹測試抓到了。** 待辦見 §7。
+>   初次跑分(2026-07-08)：create-second 5/5、rename-first 5/5、**recall 0/5**。
+> - **recall 0/5 的真因（診斷後更正,兩個疊加 bug；教訓見 §7）**：
+>   1. **主因**:模型列根目錄時傳 `parent_id="root"`(而非 null),`_optional_uuid` 硬把 "root"
+>      當 UUID 解析 → 崩「Invalid UUID」→ **list_items 失敗 → 記憶根本沒有檔名**。
+>   2. **次因**:即使列檔成功,`summarise_results` 對 list_items 用 `str(原始 dict)`(含 36 字
+>      UUID)→ 三項超 `_MAX_OUTPUT_CHARS=200` 截斷 → 只留第一名。
+>   rename 只需「第一個」的 id + 其驗證寬鬆故 5/5,遮住了列檔失敗;recall 需全三名故 0/5 暴露。
+> - **修復並驗證(2026-07-09)**：①`_optional_uuid` 接受 root 哨兵({root,null,none,/})→ None;
+>   ②摘要對集合型輸出萃取檔名(`N items: name1, …`)不 dump UUID。兩者缺一不可。真模型 eval
+>   重跑:**recall 0/5 → 5/5**、三案例綜合 **100%(15/15)、0 跳針**
+>   (`eval/out/temp_sweep_20260709T011132Z.md`)。
 > - **單輪無退化**：記憶落地後重跑 sweep 仍 **100%、0 跳針、9.7s**（空歷史為 no-op）。
 > - 單元：628 passed（+10）、mypy、ruff 全綠。
 
@@ -144,16 +148,24 @@
 **v2 方向(優先序)**：①調參(最便宜,治標) → ②舊對話摘要壓縮(長對話不失憶) →
 ③語意檢索(複用搜尋的 pgvector,取「相關」而非「最近」) → ④跨 session／使用者畫像(最大)。
 
-## 7. 後續規劃（多輪 eval 揭露後,2026-07-08）
+## 7. 回想案例 0/5 的診斷與修復（已完成,2026-07-09）
 
-回想案例 0/5 揭露「摘要保真度」缺口,優先於上面的 v2 條目(因為它是 v1 就該修好的保真問題,
-不是 v1 刻意不做的範圍)。
+**方法論教訓(誠實記錄)**：初次把 0/5 判為「摘要截斷」是**憑讀碼推理的假設,未診斷**——
+且該假設預設了「list_items 有成功、只是輸出被截斷」。照假設先改了摘要格式,**重跑仍 0/5**。
+真正做了 verbose 診斷(印出實際回覆與記憶內容)才發現:**列檔根本失敗,壓根沒有輸出可截斷**。
+→ 印證「真實診斷才是 oracle;憑程式碼往前推、預設上游成功,是最典型的認知陷阱」。
 
-1. **先診斷確認根因**（一發 verbose 真模型跑):看 recall 失敗時模型回覆——是(a)摘要截斷只留一個名,
-   還是(b)模型改成重新列檔而非從記憶回答。決定修法方向。
-2. **若為截斷(假設)——改摘要格式而非只調長**：`summarise_results` 對集合型輸出(list_items)
-   不要 `str(原始 dict)`(UUID 佔滿預算),改**只萃取關鍵欄位**(如檔名清單),或對 list 型
-   給「N 項:name1, name2, …」。這樣三名輕鬆入 200 字,且不需犧牲 context。再重跑 recall 案例驗證。
-3. **rename 案例補強(選配)**：目前驗「產出有效 rename plan」;可加驗 item_id 屬實際 seed 的資料夾
-   (需 runner 回傳 seed ids),把代理性再降一級。
-4. 完成後把 recall 案例納入常態多輪 eval 集,作為「摘要保真」的回歸守門。
+**診斷出的兩個疊加 bug**:
+1. **主因(blocker)**:模型列根目錄傳 `parent_id="root"`,`_optional_uuid("root")` 想解析成 UUID
+   → 崩 → list_items 失敗 → 記憶無檔名。
+2. **次因**:即使列檔成功,`summarise_results` dump 原始 dict(UUID 佔滿 200 字預算)→ 截斷丟名。
+
+**修復(兩者缺一不可)**:
+1. `read_only/write._optional_uuid`:根目錄哨兵 `{root, root_folder, null, none, /}` → None(根);
+   真正的非法 UUID 仍報錯(不靜默變根)。單元 `test_builtin_uuid_args`。
+2. `summarise_results`:集合型輸出(page/list of items)萃取檔名,呈「N items: name1, …」,不 dump
+   UUID。單元 `test_memory` 覆蓋。
+
+**驗證**:端到端真模型——list_items ok → 記憶存「3 items: …」→ 第二輪正確回想全三名(plan=None,
+從記憶答)。eval 重跑 **recall 0/5 → 5/5**、三案例綜合 **100%(15/15)、0 跳針**。
+→ recall 案例納入常態多輪 eval,作為「列根目錄 + 摘要保真」的回歸守門。

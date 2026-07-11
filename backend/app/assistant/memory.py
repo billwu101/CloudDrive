@@ -13,6 +13,8 @@ context:
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.assistant.llm.client import LLMMessage
 from app.assistant.workflow import StepResult
 from app.models.assistant_session import AssistantMessage
@@ -20,13 +22,17 @@ from app.models.assistant_session import AssistantMessage
 # Cap each step's serialized output so a large payload (e.g. a long file listing)
 # cannot dominate the context budget; the head keeps the useful identifiers.
 _MAX_OUTPUT_CHARS = 200
+# Names to list from a collection before abbreviating — keeps a long listing
+# bounded while preserving the count and the leading identifiers.
+_MAX_ITEMS = 15
 
 
 def summarise_results(results: list[StepResult]) -> str:
     """A compact one-line-per-step summary, or "" when there is nothing to add.
 
-    Carries the key identifiers (skill, ok/fail, truncated output) so a follow-up
-    turn can resolve references like "the first one" against what actually ran.
+    Carries the key identifiers (skill, ok/fail, output names) so a follow-up turn
+    can resolve references like "the first one" or recall listed names against what
+    actually ran.
     """
     lines: list[str] = []
     for result in results:
@@ -40,11 +46,44 @@ def summarise_results(results: list[StepResult]) -> str:
         if result.error:
             detail = f" error={_truncate(result.error)}"
         elif result.output is not None:
-            detail = f" → {_truncate(str(result.output))}"
+            detail = f" → {_summarise_output(result.output)}"
         lines.append(f"{result.skill}: {status}{detail}")
     if not lines:
         return ""
     return "[executed] " + "; ".join(lines)
+
+
+def _summarise_output(output: Any) -> str:
+    """High-fidelity, compact rendering of a step's output.
+
+    Collections (a page or list of drive items) are rendered as their **names**,
+    not raw dicts: a raw dump is dominated by 36-char UUIDs and gets truncated
+    before the useful identifiers survive — which is exactly why a "list then
+    recall the names" turn failed (recall 0/5). Names are what the next turn
+    actually references.
+    """
+    if isinstance(output, dict) and isinstance(output.get("items"), list):
+        return _summarise_items(output["items"])
+    if isinstance(output, list):
+        return _summarise_items(output)
+    if isinstance(output, dict):
+        name = output.get("name")
+        if isinstance(name, str) and name:
+            return name
+    return _truncate(str(output))
+
+
+def _summarise_items(items: list[Any]) -> str:
+    names = [
+        item["name"]
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    ]
+    if not names:
+        return _truncate(str(items))
+    shown = names[:_MAX_ITEMS]
+    more = f" …(+{len(names) - len(shown)} more)" if len(names) > len(shown) else ""
+    return _truncate(f"{len(names)} items: " + ", ".join(shown) + more)
 
 
 def append_result_summary(reply: str, results: list[StepResult]) -> str:
