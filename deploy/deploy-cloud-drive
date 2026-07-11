@@ -35,34 +35,34 @@ echo "準備部署版本：${IMAGE_TAG}"
 
 # 先確認新 Image 可以正常拉取
 docker --config "${DOCKER_CONFIG_DIR}" compose \
-  -f "${COMPOSE_FILE}" --env-file "${TEMP_ENV}" pull
+  -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${TEMP_ENV}" pull
 
 # pull 成功後才更新目前版本紀錄
 install -m 600 -o root -g root "${TEMP_ENV}" "${STATE_FILE}"
 
 docker --config "${DOCKER_CONFIG_DIR}" compose \
-  -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" up -d --remove-orphans
+  -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${STATE_FILE}" up -d --remove-orphans
 
 echo "執行健康檢查……"
 for _ in $(seq 1 30); do
   if curl --fail --silent "${HEALTH_URL}" >/dev/null; then
     echo "部署成功：${IMAGE_TAG}"
-    docker compose -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" ps
+    docker compose -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${STATE_FILE}" ps
     exit 0
   fi
   sleep 2
 done
 
 echo "新版本健康檢查失敗。"
-docker compose -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" logs --tail=100
+docker compose -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${STATE_FILE}" logs --tail=100
 
 if [[ "${OLD_TAG}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "開始回滾至：${OLD_TAG}"
   printf 'IMAGE_TAG=%s\n' "${OLD_TAG}" > "${STATE_FILE}"
   docker --config "${DOCKER_CONFIG_DIR}" compose \
-    -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" pull || true
+    -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${STATE_FILE}" pull || true
   docker --config "${DOCKER_CONFIG_DIR}" compose \
-    -f "${COMPOSE_FILE}" --env-file "${STATE_FILE}" up -d --remove-orphans
+    -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${STATE_FILE}" up -d --remove-orphans
   echo "已執行回滾。"
 else
   echo "沒有可使用的上一個版本。"
