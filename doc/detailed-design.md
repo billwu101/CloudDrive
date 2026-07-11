@@ -1,11 +1,32 @@
 # 詳細設計（Detailed Design）
 
-> 本檔由 `doc/detailed-design/` 資料夾各章節彙整而成，方便單檔閱讀／匯出；各章節的權威來源仍為 `doc/detailed-design/` 內對應檔案。
+## 目錄
 
+- [1. 文件目的](#1-文件目的)
+- [2. 本文件範圍](#2-本文件範圍)
+- [3. 整體架構](#3-整體架構)
+- [4. 已確認設計決策](#4-已確認設計決策)
+- [5. 前端詳細設計](#5-前端詳細設計)
+- [6. 後端核心設計](#6-後端核心設計)
+- [7. 資料庫詳細設計](#7-資料庫詳細設計)
+- [8. In-App AI Assistant（引擎設計）](#8-in-app-ai-assistant引擎設計)
+- [9. In-App AI Assistant 前端聊天切片](#9-in-app-ai-assistant-前端聊天切片)
+- [10. Assistant 驗證與評分 Harness](#10-assistant-驗證與評分-harness)
+- [11. 外部模型接入（Codex/OpenAI）](#11-外部模型接入codexopenai)
+- [12. 時光機（Snapshots）](#12-時光機snapshots)
+- [13. API 詳細設計](#13-api-詳細設計)
+- [14. 非功能設計](#14-非功能設計)
+- [15. 錯誤碼設計](#15-錯誤碼設計)
+- [16. 模組獨立測試策略](#16-模組獨立測試策略)
+- [17. 開發順序建議](#17-開發順序建議)
+- [18. 驗收對應](#18-驗收對應)
+- [19. 第三階段擴充點](#19-第三階段擴充點)
+- [20. 未固定參數](#20-未固定參數)
+- [22. 結論](#22-結論)
+- [21. CI/CD 與部署實作](#21-cicd-與部署實作)
+- [附錄 A. 架構決策紀錄（ADR）](#附錄-a-架構決策紀錄adr)
 
 ---
-
-<!-- source: doc/detailed-design/01-overview.md -->
 
 ## 1. 文件目的
 
@@ -49,10 +70,7 @@
 
 上述項目可保留資料表欄位或抽象接口，但不在本文件中展開成完整實作。
 
-
 ---
-
-<!-- source: doc/detailed-design/03-architecture.md -->
 
 ## 3. 整體架構
 
@@ -378,10 +396,7 @@ flowchart TD
 
 > 上述決策的延伸說明（欄位型別與長度、星號權威來源、metadata/storage 一致性、暴露面與 secret 管理等）已敘述於對應章節（§7.0、§7.3.1、§7.9、§8.9、§21）並彙整於[附錄 A](./appendix-a-decisions.md)（DEC-027、DEC-028），不另立問答清單。
 
-
 ---
-
-<!-- source: doc/detailed-design/05-frontend.md -->
 
 ## 5. 前端詳細設計
 
@@ -902,10 +917,7 @@ ExternalModelSettings   # 外部模型憑證（components/settings/）
 3. 密碼修改需提供正確的目前密碼。
 4. 外部憑證新增／刪除後列表更新；只顯示遮罩、不顯示明文。
 
-
 ---
-
-<!-- source: doc/detailed-design/06-backend.md -->
 
 ## 6. 後端核心設計
 
@@ -2118,10 +2130,7 @@ SnapshotRepository:
     is_referenced_by_snapshot(storage_key) -> bool
 ```
 
-
 ---
-
-<!-- source: doc/detailed-design/07-database.md -->
 
 ## 7. 資料庫詳細設計
 
@@ -2406,10 +2415,7 @@ CREATE INDEX idx_file_embeddings_item_id ON file_embeddings(item_id);
 
 > 部署時 `alembic upgrade head` 套用全鏈（見 §21）。**新增 migration 必須接在鏈尾並回填本表**，維持文件與 schema 同步。
 
-
 ---
-
-<!-- source: doc/detailed-design/08-assistant-engine.md -->
 
 ## 8. In-App AI Assistant（引擎設計）
 
@@ -2753,10 +2759,7 @@ Assistant 的使用入口位於登入後 CloudDrive shell，而不是 Swagger/AP
 
 前端 assistant 功能已完整：直接 chat、計畫確認卡、技能核可與 code review、manifest 驅動右鍵選單、已存工作流程一鍵重跑，以及側欄 Skills 管理頁（列表/編輯/刪除）。測試涵蓋 `AssistantPanel`、`SkillApprovalDialog`、`SavedWorkflowsPanel`、`SkillsPage` 等。
 
-
 ---
-
-<!-- source: doc/detailed-design/10-assistant-eval.md -->
 
 ## 10. Assistant 驗證與評分 Harness
 
@@ -2927,10 +2930,7 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 3. **E3 LLM judge + real Gemma eval 套件 + baseline 回歸**：量測實際品質。
 4. **E4 內建案例覆蓋九大 tag**（read-only/daily-ops/skill-generation/safety/workflow-reuse/context）。
 
-
 ---
-
-<!-- source: doc/detailed-design/11-external-model.md -->
 
 ## 11. 外部模型接入（Codex/OpenAI）
 
@@ -3241,10 +3241,7 @@ plan-then-execute 的兩個結構性問題與對策：
 
 **影響範圍**：`backend/app/assistant/service.py`、`workflow.py`、`tests/assistant/test_workflow.py`；落地時補列[附錄 A](./appendix-a-decisions.md) DEC-029／DEC-030。
 
-
 ---
-
-<!-- source: doc/detailed-design/12-time-machine.md -->
 
 ## 12. 時光機（Snapshots）
 
@@ -3414,10 +3411,7 @@ tests/snapshot/
 - 快照 pin/unpin、改 label、刪除 endpoint 尚未實作；目前 API 以建立、列表、瀏覽、還原、設定為主。
 - back-end list snapshot items 目前回傳 list，未做分頁；前端以目前資料量可接受的方式瀏覽。
 
-
 ---
-
-<!-- source: doc/detailed-design/13-api.md -->
 
 ## 13. API 詳細設計
 
@@ -3597,10 +3591,7 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | PUT | `/users/me/external-credentials` | 設定外部模型憑證（加密存） | 🔐 |
 | DELETE | `/users/me/external-credentials/{provider}` | 刪除憑證 | 🔐 |
 
-
 ---
-
-<!-- source: doc/detailed-design/14-nonfunctional-misc.md -->
 
 ## 14. 非功能設計
 
@@ -3797,10 +3788,7 @@ MVP 可以先完成一般檔案上傳、下載、資料夾管理、垃圾桶、�
 
 ---
 
-
 ---
-
-<!-- source: doc/detailed-design/21-cicd.md -->
 
 ## 21. CI/CD 與部署實作
 
@@ -3904,10 +3892,7 @@ CREDENTIAL_ENCRYPTION_KEY=<Fernet key> # 啟用外部模型憑證才需
 - **CODEOWNERS**：`.github/workflows/`、`*/Dockerfile`、部署設定由 maintainer review。
 - **必要安全規則**：self-hosted 只用於 private repo、只跑 CD；PR 一律 `ubuntu-latest`、禁止 PR 用 self-hosted；Runner 非 root、不入 docker 群組、只能 sudo 固定腳本；正式 image 只由 CI 建、**用完整 SHA 不用 `latest`**；`.env` 只存主機；第三方 Action 正式上線釘完整 commit SHA。
 
-
 ---
-
-<!-- source: doc/detailed-design/appendix-a-decisions.md -->
 
 ## 附錄 A. 架構決策紀錄（ADR）
 
