@@ -7,6 +7,13 @@ on:
         description: "要部署的完整 Git commit SHA（40 字元）"
         required: true
         type: string
+  # merge 到 main → CI 建好映像並成功後，自動部署該 commit。
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -19,6 +26,12 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Ubuntu
+    # 手動觸發一律執行；CI 自動觸發時，只在「push 到 main 且 CI 成功」才部署
+    # （排除 PR 的 CI，以及失敗的 CI）。
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on:
       - self-hosted
       - linux
@@ -28,7 +41,8 @@ jobs:
     # GitHub 方案支援 Private Repository Environment 時可啟用人工核准
     # environment: production
     env:
-      IMAGE_TAG: ${{ inputs.image_tag }}
+      # 手動：用輸入的 SHA；自動：用觸發 CI 的 commit SHA。
+      IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || github.event.workflow_run.head_sha }}
     steps:
       - name: Validate image tag
         shell: bash
@@ -46,4 +60,5 @@ jobs:
       - name: Deploy
         shell: bash
         run: |
+          echo "觸發來源：${{ github.event_name }}，部署 SHA：${IMAGE_TAG}"
           sudo /usr/local/sbin/deploy-cloud-drive "${IMAGE_TAG}"

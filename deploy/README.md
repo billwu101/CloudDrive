@@ -49,7 +49,10 @@ sudo chmod 440 /etc/sudoers.d/cloud-drive-deploy
 
 1. feature branch → PR → CI 通過 + review → merge `main`
 2. merge 後 CI 自動建 image、以 commit SHA 推 GHCR
-3. **GitHub → Actions → Deploy production → Run workflow**，輸入要部署的 40 字元 commit SHA
+3. **自動部署**：CI 在 `main` 成功後，`deploy.yml` 由 `workflow_run` 自動觸發，部署該 commit（`head_sha`）到 self-hosted runner。無需手動操作。
 4. self-hosted runner 執行 `deploy-cloud-drive`：pull → up -d → `/health` 檢查 → 成功或自動回滾
 
-> ⚠️ 不使用 `latest` 部署；一律用完整 commit SHA。`.env` 只存主機、不進 Git。
+**手動部署／回滾**（仍保留）：**GitHub → Actions → Deploy production → Run workflow**，輸入要部署的 40 字元 commit SHA。用於重新部署舊版或回滾。
+
+> ⚠️ 不使用 `latest` 部署；一律用完整 commit SHA（自動觸發用 CI commit 的 `head_sha`）。`.env` 只存主機、不進 Git。
+> ⚠️ 自動觸發只在「push 到 `main` 且 CI 成功」時發生；PR 的 CI 與失敗的 CI 不會部署。

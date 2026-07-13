@@ -93,6 +93,68 @@ async def test_chat_create_folder_pending_confirm_creates_real_item(
     )
 
 
+@pytest.mark.needs_llm
+async def test_confirmed_execution_is_recorded_in_session_history(client: AsyncClient) -> None:
+    """A confirmed (manually approved) write must land its outcome in the session
+    history — otherwise the next turn only sees the pending reply and wrongly
+    reports the action as still awaiting confirmation (memory-after-confirm bug)."""
+    h = auth_headers(await register_and_login(client, email="conf1@test.com", username="conf1"))
+    folder_name = f"ConfirmMem_{uuid4().hex[:8]}"
+
+    chat = await client.post(
+        CHAT, json={"message": f'Create a folder named "{folder_name}".'}, headers=h
+    )
+    assert chat.status_code == 200, chat.text
+    body = chat.json()
+    session_id = body["session_id"]
+    plan = body.get("plan")
+    assert plan is not None and plan["status"] == "pending_approval", body
+
+    confirm = await client.post(
+        f"/api/v1/assistant/workflows/{plan['workflow_id']}/confirm", headers=h
+    )
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["status"] == "executed"
+
+    messages = await client.get(f"{SESSIONS}/{session_id}/messages", headers=h)
+    assert messages.status_code == 200
+    contents = [m["content"] for m in messages.json() if m["role"] == "assistant"]
+    # The execution outcome (not just the pending reply) must be in history.
+    assert any("[executed]" in c for c in contents), contents
+
+
+@pytest.mark.needs_llm
+async def test_chat_second_turn_carries_history_and_result_summary(client: AsyncClient) -> None:
+    """Conversation memory end-to-end: a read turn's result summary is folded into
+    the persisted assistant message, and a second turn on the same session drives
+    the planner with that history without breaking (proposal-assistant-memory)."""
+    h = auth_headers(await register_and_login(client, email="mem1@test.com", username="mem1"))
+
+    first = await client.post(
+        CHAT, json={"message": "How much storage space do I have left?"}, headers=h
+    )
+    assert first.status_code == 200, first.text
+    session_id = first.json()["session_id"]
+
+    # Second turn on the same session — the router replays turn 1 as history.
+    second = await client.post(
+        CHAT,
+        json={"message": "Thanks. Remind me what that number was?", "session_id": session_id},
+        headers=h,
+    )
+    assert second.status_code == 200, second.text
+
+    messages = await client.get(f"{SESSIONS}/{session_id}/messages", headers=h)
+    assert messages.status_code == 200
+    body = messages.json()
+    # Both turns accumulated in order under one session.
+    assert [m["role"] for m in body] == ["user", "assistant", "user", "assistant"]
+    # The storage read auto-executes; its result summary must be folded into the
+    # stored assistant reply so the next turn can reference it (100% reliable read
+    # per the DEC-033 sweep).
+    assert "[executed]" in body[1]["content"], body[1]["content"]
+
+
 # ── Deterministic flows (no model needed) ─────────────────────────────────────
 
 

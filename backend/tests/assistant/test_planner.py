@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolDefinition
 from app.assistant.llm.router import ModelRouter
-from app.assistant.planner import WorkflowPlanner, validate_plan
+from app.assistant.planner import (
+    _PLAN_RESPONSE_FORMAT,
+    PlanResult,
+    WorkflowPlanner,
+    build_plan_response_format,
+    validate_plan,
+)
 from app.assistant.skills.registry import RegisteredSkill, SkillRegistry
 from app.assistant.workflow import PlannedStep
 
@@ -12,6 +20,9 @@ class ScriptedLLM:
     def __init__(self, responses: list[LLMResponse]) -> None:
         self.responses = responses
         self.calls = 0
+        self.response_formats: list[dict[str, Any] | None] = []
+        self.disable_thinkings: list[bool | None] = []
+        self.messages_seen: list[list[LLMMessage]] = []
 
     async def chat(
         self,
@@ -19,8 +30,14 @@ class ScriptedLLM:
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse:
         self.calls += 1
+        self.response_formats.append(response_format)
+        self.disable_thinkings.append(disable_thinking)
+        self.messages_seen.append(list(messages))
         return self.responses.pop(0)
 
 
@@ -56,7 +73,9 @@ def _registry() -> SkillRegistry:
     return registry
 
 
-def _planner(llm: ScriptedLLM, *, max_repair: int = 2) -> WorkflowPlanner:
+def _planner(
+    llm: ScriptedLLM, *, max_repair: int = 2, disable_thinking: bool | None = True
+) -> WorkflowPlanner:
     router = ModelRouter(
         local_client=llm,
         external_client=None,
@@ -70,7 +89,46 @@ def _planner(llm: ScriptedLLM, *, max_repair: int = 2) -> WorkflowPlanner:
         context=ContextManager(num_ctx=2048),
         num_ctx=2048,
         max_repair=max_repair,
+        disable_thinking=disable_thinking,
     )
+
+
+async def test_planner_disables_thinking_on_every_call() -> None:
+    # DEC-033: the planner runs with Ollama's thinking phase off (E8 — cured
+    # repetition loops, ~10x faster). The flag must reach the LLM client on every
+    # plan call, including repair retries.
+    llm = ScriptedLLM(
+        [
+            LLMResponse(content='{"reply": "", "steps": [{"skill": "search"}]}'),
+            LLMResponse(
+                content='{"reply": "ok", "steps": [{"skill": "search", "arguments": {"q": "x"}}]}'
+            ),
+        ]
+    )
+    await _planner(llm).plan(message="find x")
+    assert llm.disable_thinkings == [True, True]
+
+
+async def test_planner_threads_history_between_system_and_current_message() -> None:
+    # Conversation memory: prior turns must land after the system framing and
+    # before the current user message, so references resolve against context.
+    llm = ScriptedLLM([LLMResponse(content='{"reply": "ok", "steps": []}')])
+    history = [
+        LLMMessage(role="user", content="list Reports"),
+        LLMMessage(role="assistant", content="[executed] list_items: ok → budget.xlsx"),
+    ]
+    await _planner(llm).plan(message="rename the first one", history=history)
+    seen = llm.messages_seen[0]
+    assert seen[0].role == "system"
+    non_system = [m for m in seen if m.role != "system"]
+    assert non_system == [*history, LLMMessage(role="user", content="rename the first one")]
+
+
+async def test_planner_without_history_is_single_turn() -> None:
+    llm = ScriptedLLM([LLMResponse(content='{"reply": "ok", "steps": []}')])
+    await _planner(llm).plan(message="hi")
+    non_system = [m for m in llm.messages_seen[0] if m.role != "system"]
+    assert non_system == [LLMMessage(role="user", content="hi")]
 
 
 async def test_planner_parses_plain_json() -> None:
@@ -78,6 +136,48 @@ async def test_planner_parses_plain_json() -> None:
     result = await _planner(llm).plan(message="show files")
     assert result.reply == "ok"
     assert result.steps[0].skill == "list_items"
+    # A valid first plan must not trigger the repair loop — exactly one LLM call.
+    assert llm.calls == 1
+
+
+async def test_planner_requests_structured_output_on_every_call() -> None:
+    # The plan schema must reach the LLM client so providers can enforce it with
+    # constrained decoding (Ollama format / OpenAI json_schema). DEC-032: the
+    # schema constrains `skill` to the registry's real names (sorted), so a
+    # hallucinated skill is unrepresentable at sampling time.
+    llm = ScriptedLLM([LLMResponse(content='{"reply": "ok", "steps": []}')])
+    await _planner(llm).plan(message="hi")
+    assert len(llm.response_formats) == 1
+    sent = cast(dict[str, Any], llm.response_formats[0])
+    step_props = sent["json_schema"]["schema"]["properties"]["steps"]["items"]["properties"]
+    assert step_props["skill"]["enum"] == ["list_items", "search"]
+
+
+def test_plan_response_format_enum_matches_registry() -> None:
+    # DEC-032 round-trip: enum == sorted registry names; an empty registry must
+    # fall back to a free string (an empty enum is invalid JSON Schema).
+    sent = cast(dict[str, Any], build_plan_response_format(_registry()))
+    step_props = sent["json_schema"]["schema"]["properties"]["steps"]["items"]["properties"]
+    assert step_props["skill"] == {"type": "string", "enum": ["list_items", "search"]}
+
+    empty = cast(dict[str, Any], build_plan_response_format(SkillRegistry()))
+    empty_props = empty["json_schema"]["schema"]["properties"]["steps"]["items"]["properties"]
+    assert empty_props["skill"] == {"type": "string"}
+
+
+def test_plan_response_format_stays_in_sync_with_models() -> None:
+    # _PLAN_RESPONSE_FORMAT is hand-written (deliberately: the Pydantic models
+    # have defaults, so model_json_schema() would emit no `required` and weaken
+    # constrained decoding). This drift test fails if the models gain/lose/rename
+    # fields without the schema being updated to match.
+    json_schema = cast(dict[str, Any], _PLAN_RESPONSE_FORMAT["json_schema"])
+    plan_schema = json_schema["schema"]
+    assert set(plan_schema["properties"]) == set(PlanResult.model_fields)
+    assert set(plan_schema["required"]) == set(PlanResult.model_fields)
+
+    step_schema = plan_schema["properties"]["steps"]["items"]
+    assert set(step_schema["properties"]) == set(PlannedStep.model_fields)
+    assert set(step_schema["required"]) == set(PlannedStep.model_fields)
 
 
 async def test_planner_strips_code_fences() -> None:
@@ -115,6 +215,34 @@ def test_validate_plan_flags_unknown_skill_and_missing_required_arg() -> None:
 def test_validate_plan_accepts_complete_plan() -> None:
     problems = validate_plan([PlannedStep(skill="search", arguments={"q": "test"})], _registry())
     assert problems == []
+
+
+def test_validate_plan_flags_invalid_depends_on() -> None:
+    # Mirrors classify_steps' rule so a bad depends_on triggers the planner's
+    # repair loop instead of a 400 from the permission layer (real gemma emitted
+    # a self-dependency: "Step 0 has an invalid dependency: 0").
+    self_dep = validate_plan(
+        [PlannedStep(skill="search", arguments={"q": "x"}, depends_on=[0])], _registry()
+    )
+    assert any("depends_on must point to an earlier step, got 0" in p for p in self_dep)
+
+    forward = validate_plan(
+        [
+            PlannedStep(skill="search", arguments={"q": "x"}, depends_on=[]),
+            PlannedStep(skill="list_items", arguments={}, depends_on=[2]),
+        ],
+        _registry(),
+    )
+    assert any("depends_on must point to an earlier step, got 2" in p for p in forward)
+
+    valid = validate_plan(
+        [
+            PlannedStep(skill="search", arguments={"q": "x"}),
+            PlannedStep(skill="list_items", arguments={}, depends_on=[0]),
+        ],
+        _registry(),
+    )
+    assert valid == []
 
 
 def test_validate_plan_accepts_step_reference_for_required_arg() -> None:

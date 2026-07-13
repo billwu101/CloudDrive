@@ -8,12 +8,20 @@ export const assistantKeys = {
   all: ['assistant'] as const,
   skills: (status: string) => [...assistantKeys.all, 'skills', status] as const,
   savedWorkflows: () => [...assistantKeys.all, 'saved-workflows'] as const,
+  models: () => [...assistantKeys.all, 'models'] as const,
 }
 
 export function useAssistantChatMutation() {
   return useMutation({
     mutationFn: (body: AssistantChatRequest) =>
       assistantApi.chat(body).then((response) => response.data),
+  })
+}
+
+export function useAssistantModels() {
+  return useQuery({
+    queryKey: assistantKeys.models(),
+    queryFn: () => assistantApi.listModels().then((response) => response.data),
   })
 }
 

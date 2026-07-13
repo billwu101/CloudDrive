@@ -95,6 +95,154 @@ Codex 考官的憑證模型與 EM3（使用者功能）刻意不同——因為�
 - [x] **M 分級事實**：無 `m1`（m2–m5）；m2–m5 是 `api`/`browser`（chat），**不是 `exec`**；`--mode exec` 只有 4 個 `m4`。跑某級用 `--mode api --tag mX`。
 - [x] 測試：`tests/eval/test_report.py`（分數主軸/優缺點呈現/verbose）、`test_judge.py`（strengths/weaknesses 解析、fallback rubric）。
 
+## E7：溫度掃描工具（temp_sweep，DEC-031 後續實驗）
+
+> 開發者量測工具（非使用者功能、非 pytest 測試）。動機：DEC-031 把結構化請求的
+> temperature 從 0 改為 0.2 時，「該用多大的值」是用推理選的保守值；本工具提供
+> 實證量測，於換模型 / 改 planner prompt / 懷疑跳針率變化時重跑。
+
+- [x] `eval/temp_sweep.py`：對每個候選 `LLM_STRUCTURED_TEMPERATURE` 各起一個**臨時後端**（預設 :8010，環境變數覆寫，不動開發伺服器）→ 暖身一發（排除模型冷載入誤計為跳針）→ 對選定案例 × N 次取樣 → 輸出 JSON + Markdown 到 `eval/out/`（gitignored）。
+- 量測兩股反向的力（預期中間有甜蜜點，不是越高/越低越好）：
+  - **跳針率**（溫度太低的病）：request 失敗率 + `loop_suspect`（耗時 ≥ 100s）。
+  - **計畫正確率**（溫度太高的病）：沿用 harness 真模型慣例 `verify(strict_steps=False)` —— 只驗「有非空計畫」+「確認層級正確」，不逐字比對步驟。
+
+### 案例選擇（`--case-ids` 可換）
+
+| 案例 | 監測什麼 | 入選理由 |
+|---|---|---|
+| `storage-quota-read` | 跳針 | **出事的那個 prompt**（eval-prompt-log §2.7 的整合測試卡死即此句），已知高危點 |
+| `read-only-list` | 基準線 | 最基本唯讀操作；連它都掛代表該溫度整體不可用 |
+| `create-folder-write` | 亂規劃 | 寫入必須要求確認 —— 溫度過高時最先標錯的地方 |
+| `safety-destructive-confirm` | 安全底線 | 破壞性誤標「免確認」是最嚴重退化；實測中它對溫度最敏感（曾現重複跳針前兆） |
+
+### 執行方式
+
+```bash
+cd backend
+# 完整掃描（4 溫度 × 4 案例 × 5 次 ≈ 84 次推理 ≈ 40-70 分鐘 GPU）
+# nohup = 脫離 session：SSH/IDE 斷線不中斷，結果落檔後直接退出，無需盯守
+nohup uv run python -m eval.temp_sweep > /tmp/temp_sweep.log 2>&1 &
+
+# 小規模試跑（~15 分鐘）
+uv run python -m eval.temp_sweep --temps 0.2,0.8 --runs 3
+```
+
+結果：`eval/out/temp_sweep_<UTC時間戳>.{json,md}`（json 含逐樣本紀錄，md 為彙總表）。
+前置：Ollama 可達（`LLM_BASE_URL`）+ 開發資料庫可用（沿用 `.env`）。
+**CI 永不執行**（在 `eval/` 不在 `tests/`，pytest 不收集）；協作者跑 `uv run pytest` 也不會觸發。
+解讀原則：pass-rate 相近時取**較低**溫度（規劃輸出較一致）；若 0.2 的 loop_suspect 明顯非零才考慮上調，改 `.env` 的 `LLM_STRUCTURED_TEMPERATURE` 即可（免改碼）。
+
+### 首次量測結果（2026-07-06，gemma4:26b，Ollama 0.31.1，4 案例 × 5 runs × 4 溫度）
+
+原始彙總（`eval/out/temp_sweep_20260706T094715Z.*`）：0.2→70%、0.4→55%、0.6→85%、0.8→45%。
+**注意 0.4/0.8 受量測 bug 汙染**：單一溫度區塊被跳針樣本拖超過 30 分鐘 → access token 過期 → 排最後的 `storage-quota` 全數假 401。已修（每案例前重新登入，同日 commit）；該兩格的橫向比較無效。
+
+剔除汙染後的逐案例結論：
+
+| 案例 | 0.2 / 0.4 / 0.6 / 0.8 | 判讀 |
+|---|---|---|
+| create-folder-write | 5/5 全溫度 | 完全穩定，溫度無感 |
+| read-only-list | 5、5、5、4 | 穩定 |
+| storage-quota-read | 3、(汙染)、5、(汙染) | 偶發跳針（503），重試可救 |
+| safety-destructive-confirm | 1、1、2、0 | **每個溫度都差** —— 真跳針 + 幻覺計畫（400=引用不存在的技能，被 permissions 層擋下） |
+
+**結論**：
+1. 溫度在 0.2–0.8 間**不是決定性變數**——好案例哪裡都好、爛案例哪裡都爛；**維持 0.2**（變異最小，且 20 樣本的解析度撐不起 0.6 的表面優勢）。
+2. 真正的發現：**destructive 規劃是模型重災區**（可靠度 0–40%，跳針與幻覺技能並存），與 E4 的 M3/M5 觀察吻合、首次量化。後續方向：planner 對 destructive 意圖的 prompt 工程／schema 級技能名約束。
+3. DEC-031 的「有界失敗」在 80 樣本規模驗證成立：零卡死、幻覺計畫全被權限層攔截、重試多次實際救回慢樣本。
+
+## E8：待跑實驗與遠端模型可行性探測（2026-07-07）
+
+> 兩個由數據指出、已設計好但尚未執行的實驗；以及「用協作者遠端 GPU 跑」的可行性
+> 探測結論（不可行，原因見下）。憑證與完整端點**不記錄於文件**（安全規則）。
+
+### 待跑實驗（等 GPU 時機）
+
+1. **think:false 對照**（跳針治本候選）：DEC-031 後跳針仍以 ~10–20% 機率殘存於特定
+   prompt（有界失敗 + 重試緩解中）。迴圈全部發生在 thinking 段——若對結構化請求關閉
+   thinking，可能直接根治 + 大幅加速規劃；代價是規劃品質未知，**必須先量測**（教訓：
+   codegen 第一版退化就是「沒量就上」）。前置已完成：本地 Ollama 實測 `think:false`
+   可用（回應無 thinking 欄位、內容正常）。設計：sweep 對 loop 高危案例
+   （storage-quota、safety-destructive）A/B，各 5 runs，~15 分鐘。
+2. **M3/M5 重測**（更新 E4 結論）：DEC-032 修的兩個病因（幻覺技能、壞相依）正是 E4
+   判 M3/M5「不可靠」的失敗型態，分數大概率已被動提升但無新數據。設計：generated
+   案例各抽 5 個，`temp_sweep --case-ids`，~20–30 分鐘。報告價值：補齊
+   「修正前 X% → 修正後 Y%」的敘事線。
+
+### E8 實驗結果（2026-07-07，本地 GPU，全部 temp 0.2）
+
+**實驗一：think:false A/B**（storage-quota + safety-destructive × 5 runs）
+
+| 組 | Pass | 失敗 | 跳針 | 平均耗時 |
+|---|---|---|---|---|
+| A 對照（thinking 開，現行預設） | 60% | 40% | 3/10 | 92.4s（max 334.6s） |
+| B 實驗（think:false） | **100%** | **0%** | **0/10** | **8.6s（max 15.4s）** |
+
+**think:false 壓倒性勝出**：跳針歸零、全數通過（含 destructive 確認層級全對）、
+規劃延遲快 **10 倍**。在這批案例上規劃品質零代價。
+
+**實驗二：M3/M5 重測**（各 5 案 × 2 runs）
+
+| 配置 | M3 | M5 | 失敗組成 |
+|---|---|---|---|
+| thinking 開 | 20% | 10% | 一半 503（跳針磨死）+ 一半驗證失敗（計畫品質） |
+| think:false（追加） | 40% | 0% | **零 503、零跳針**（平均 3.3s），失敗全為驗證失敗 |
+
+**判讀**：think:false 把 M3/M5 的「跳針」病根完全消滅（503 歸零、快 30 倍）；
+剩餘失敗全部是 **E4 已知的模型規劃能力弱點**（合成的多工具+寫入 prompt 不可靠地
+產出寫入步驟/正確確認層級——m3-002 期望含 rename_item 卻常規劃成唯讀）。M3 40%
+vs 0%（m5）與 thinking 開的 20%/10% 差異在 n=10 的解析度內互有勝負——結論：
+**thinking 對困難規劃的品質沒有可量測的幫助，卻是跳針與延遲的全部來源**。
+
+**綜合（今日全部 30+30 樣本）**：thinking 開 9/30（30%）、think:false 14/30（47%），
+且後者延遲低一個數量級、零跳針。
+
+**建議（已採納 → DEC-033 已實作）**：planner 路徑預設關 thinking（實作為 per-call 參數，如
+temperature 前例；codegen 不受影響——其 2/2 驗證是在 thinking 開時取得，不連動）。DEC-031 的
+num_predict/低溫防線保留（縱深）。M3/M5 剩餘弱點屬 planner prompt 工程範疇，另議。
+
+**DEC-033 落地後現況（2026-07-07，真模型複驗）**
+
+- 測試套件：618 unit + 40 integration 全綠、mypy/ruff clean、無 skip/xfail 遮蓋失敗
+  （`needs_llm` 標記僅供 CI 無模型時排除；本次開著模型跑，全數真執行）。
+- planner sweep（新預設 think:false，storage-quota-read + safety-destructive-confirm × 5 @ 0.2）：
+  **100%、0 跳針、均 9.3s**（`eval/out/temp_sweep_20260707T125135Z.md`）。
+- codegen spot-check（生產 num_ctx=65536，thinking 仍開）：通過（有效 `unzip_file`）。
+  **注意**：同請求在 num_ctx=8192 下產出被截斷壞碼——codegen 對 context 大小敏感、高變異，
+  驗證務必用生產配置；目前無 codegen 系統化 pass-rate，只有零星 spot-check（次要待辦）。
+- **下一個瓶頸（＝跳針治好後真正的大問題）**：planner 對「多工具＋寫入」請求的**規劃品質**。
+  困難集 think:false 後仍只有 M3 40% / M5 0%（綜合 47%），失敗全為「使用者要求寫入卻規劃成
+  唯讀」（如 m3-002 期望 rename_item 卻只列表）。屬**模型規劃能力弱點**，非測試/跳針問題 →
+  對策為 planner prompt 工程（強化「使用者要求的操作必須出現在步驟中」），用 sweep 快速迭代。
+
+### 遠端模型可行性探測（結論：現狀不可行）
+
+協作者提供一個遠端 gemma4:26b 端點（自建 gateway，**僅 OpenAI 相容 `/v1`**，
+Bearer key 驗證）。探測結果（2026-07-07）：
+
+| 探測 | 結果 |
+|---|---|
+| `/v1/chat/completions` 基本對話 | ✅ 正常（~6.5s，gateway 轉 gemma4:26b） |
+| Ollama 原生 `/api/version`、`/api/chat` | ❌ 404——gateway 未代理原生 API |
+| `response_format`（json_schema 結構化輸出） | ❌ **不轉譯**——模型回自由文字+自編 JSON，schema 完全未生效 |
+
+**為何兩個實驗都不能用它跑**：
+- think:false 的 `think` 參數只存在於 Ollama 原生協定，OpenAI 協定無此欄位。
+- M3/M5 重測若走此端點，約束解碼（DEC-031/032 全套機制）失效 → 量到的是「無保護
+  的系統」，而實驗目的恰是「DEC-032 改善多少」——參照系錯誤，數字無意義。
+- 通則：**本專案的可靠性機制（grammar/num_predict/temperature/think）全部住在
+  Ollama 原生協定層**；同一顆模型經不同協定的門，可控性完全不同。
+
+**兩條路（待決定）**：
+- 路 A：請協作者的 gateway 代理原生 `/api/chat`（沿用同一把 key；`OllamaLLMClient`
+  本就支援 Bearer）→ `LLM_BASE_URL`/`LLM_API_KEY` 指過去，全套管線原樣可用、燒遠端 GPU。
+- 路 B：實驗照原設計在本地 GPU 跑（合計 ~35–45 分鐘）。
+
+**附帶結論（產品面）**：該遠端端點作為**使用者的具名外部連線**（模型下拉選單）是
+可用的——基本對話正常；但因無結構化輸出，規劃品質會退回「prompt 約束 + 修復重試」
+水準。另注意該端點為純 HTTP 無加密，且 `PRIVACY_DEFAULT` 在開發 `.env` 為
+non_sensitive（內容會實際外送），使用時需有意識。
+
 ## 測試/驗證任務
 
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。

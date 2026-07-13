@@ -25,6 +25,9 @@ class RegisteredSkill:
     parameters: dict[str, Any]
     permission_tier: str
     handler: SkillHandler
+    # True for self-built skills: the planner does not fill ``item_id`` — it is
+    # injected from the user's selected files, once per file (batch).
+    requires_selection: bool = False
 
     def to_tool_definition(self) -> LLMToolDefinition:
         return LLMToolDefinition(

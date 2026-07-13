@@ -132,8 +132,10 @@ class PreviewService:
         if ptype == PreviewType.TEXT:
             stream = _limited_text_stream(self._storage.open_read(item.storage_key))
             return ptype, item.mime_type or "text/plain", stream
-        return ptype, item.mime_type or "application/octet-stream", self._storage.open_read(
-            item.storage_key
+        return (
+            ptype,
+            item.mime_type or "application/octet-stream",
+            self._storage.open_read(item.storage_key),
         )
 
     async def _document_pdf_stream(self, item: DriveItem) -> AsyncGenerator[bytes, None]:

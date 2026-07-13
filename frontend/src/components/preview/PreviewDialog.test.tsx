@@ -52,12 +52,29 @@ const server = setupServer(
     }
     return HttpResponse.json({ code: 'NOT_FOUND' }, { status: 404 })
   }),
+  // Preview content is loaded as an auth'd blob: raw file via /download/:id,
+  // PDF-converted Office docs via /preview/:id/content.
+  http.get(`${BASE}/download/:id`, () =>
+    HttpResponse.arrayBuffer(new ArrayBuffer(8), {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    }),
+  ),
+  http.get(`${BASE}/preview/:id/content`, () =>
+    HttpResponse.arrayBuffer(new ArrayBuffer(8), {
+      headers: { 'Content-Type': 'application/pdf' },
+    }),
+  ),
   http.post(`${BASE}/auth/refresh`, () =>
     HttpResponse.json({ code: 'UNAUTHORIZED' }, { status: 401 }),
   ),
 )
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => {
+  // jsdom implements neither; the blob-preview hook needs both.
+  globalThis.URL.createObjectURL = vi.fn(() => 'blob:mock-preview')
+  globalThis.URL.revokeObjectURL = vi.fn()
+  server.listen({ onUnhandledRequest: 'error' })
+})
 afterEach(() => {
   cleanup()
   server.resetHandlers()
@@ -98,7 +115,7 @@ describe('PreviewDialog', () => {
     await waitFor(() =>
       expect(screen.getByText('Preview not available for this file type.')).toBeInTheDocument(),
     )
-    expect(screen.getAllByRole('link', { name: /download/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /download/i }).length).toBeGreaterThan(0)
   })
 
   it('calls onClose when Escape is pressed', async () => {

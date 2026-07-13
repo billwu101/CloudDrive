@@ -26,27 +26,28 @@ export function usePreviewBlobUrl(itemId: string | null, converted: boolean) {
   const [isError, setIsError] = useState(false)
 
   useEffect(() => {
-    if (!itemId) {
-      setUrl(null)
-      return
-    }
+    if (!itemId) return
     let objectUrl: string | null = null
     let cancelled = false
-    setUrl(null)
-    setIsError(false)
     previewApi
       .getContentBlob(itemId, { converted })
       .then((r) => {
         if (cancelled) return
         objectUrl = URL.createObjectURL(r.data)
         setUrl(objectUrl)
+        setIsError(false)
       })
       .catch(() => {
         if (!cancelled) setIsError(true)
       })
+    // Reset (and revoke) on itemId/converted change or unmount — done in cleanup
+    // rather than synchronously in the effect body so a stale preview is cleared
+    // before the next one loads without a cascading synchronous re-render.
     return () => {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
+      setUrl(null)
+      setIsError(false)
     }
   }, [itemId, converted])
 

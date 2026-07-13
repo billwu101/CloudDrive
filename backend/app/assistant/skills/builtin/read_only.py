@@ -175,10 +175,18 @@ def _required_uuid(args: Mapping[str, Any], key: str) -> UUID:
     return _parse_uuid(value, key)
 
 
+# The model spells "the root folder" as a sentinel string ("root"/"null"/…) far
+# more often than it passes null — an unambiguous intent that must not crash the
+# whole listing. Map these to None (root); a genuine non-UUID still errors.
+_ROOT_SENTINELS = {"root", "root_folder", "null", "none", "/"}
+
+
 def _optional_uuid(value: Any) -> UUID | None:
     if value is None:
         return None
     if not isinstance(value, str) or not value.strip():
+        return None
+    if value.strip().lower() in _ROOT_SENTINELS:
         return None
     return _parse_uuid(value, "parent_id")
 

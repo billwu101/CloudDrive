@@ -1,6 +1,7 @@
 import type {
   AssistantChatRequest,
   AssistantChatResponse,
+  AssistantModelOption,
   AssistantSavedWorkflowResponse,
   AssistantSaveWorkflowRequest,
   AssistantSkillApproveResponse,
@@ -15,6 +16,7 @@ import { api } from './client'
 export const assistantApi = {
   chat: (body: AssistantChatRequest) =>
     api.post<AssistantChatResponse>('/assistant/chat', body),
+  listModels: () => api.get<AssistantModelOption[]>('/assistant/models'),
   confirmWorkflow: (workflowId: string) =>
     api.post<AssistantWorkflowConfirmResponse>(`/assistant/workflows/${workflowId}/confirm`),
   cancelWorkflow: (workflowId: string) =>

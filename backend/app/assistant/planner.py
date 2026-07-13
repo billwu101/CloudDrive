@@ -11,6 +11,57 @@ from app.assistant.skills.registry import SkillRegistry
 from app.assistant.workflow import PlannedStep, is_step_ref
 
 
+# Structured-output schema for the plan, sent as ``response_format`` on external
+# models so they emit the exact ``{reply, steps[...]}`` shape (local Ollama already
+# follows it; external models like Gemini otherwise reply in free text). Not
+# "strict" so the open ``arguments`` object stays valid across providers.
+def _plan_response_format(skill_names: list[str] | None = None) -> dict[str, object]:
+    skill_schema: dict[str, object] = {"type": "string"}
+    if skill_names:
+        skill_schema["enum"] = skill_names
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "workflow_plan",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "reply": {"type": "string"},
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "skill": skill_schema,
+                                "arguments": {"type": "object"},
+                                "depends_on": {"type": "array", "items": {"type": "integer"}},
+                            },
+                            "required": ["skill", "arguments", "depends_on"],
+                        },
+                    },
+                },
+                "required": ["reply", "steps"],
+            },
+        },
+    }
+
+
+_PLAN_RESPONSE_FORMAT: dict[str, object] = _plan_response_format()
+
+
+def build_plan_response_format(registry: SkillRegistry) -> dict[str, object]:
+    """Plan schema with ``skill`` constrained to the registry's real names.
+
+    Constrained decoding then makes a hallucinated skill name unrepresentable —
+    the grammar masks it at sampling time instead of `classify_steps` rejecting
+    it after the fact (DEC-032). Built per request because installed self-built
+    skills change the registry; names are sorted for a stable schema. An empty
+    registry falls back to a free string (an empty enum is invalid JSON Schema).
+    """
+    names = sorted(skill.name for skill in registry.list_skills())
+    return _plan_response_format(names or None)
+
+
 class PlanResult(BaseModel):
     reply: str = ""
     steps: list[PlannedStep] = Field(default_factory=list)
@@ -80,6 +131,14 @@ def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str
         if skill is None:
             problems.append(f"step {index}: unknown skill '{step.skill}'")
             continue
+        # Mirror classify_steps' dependency rule here so a bad depends_on (self/
+        # forward reference) triggers the repair loop instead of surfacing as a
+        # 400 from the permission layer after planning succeeded (DEC-032).
+        for dependency in step.depends_on:
+            if dependency < 0 or dependency >= index:
+                problems.append(
+                    f"step {index}: depends_on must point to an earlier step, got {dependency}"
+                )
         for arg_value in step.arguments.values():
             if is_step_ref(arg_value):
                 from_step = arg_value.get("from_step")
@@ -108,18 +167,49 @@ class WorkflowPlanner:
         context: ContextManager,
         num_ctx: int,
         max_repair: int = 2,
+        disable_thinking: bool | None = None,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._context = context
         self._num_ctx = num_ctx
         self._max_repair = max(0, max_repair)
+        # DEC-033: planning runs with Ollama's thinking phase disabled by default
+        # (E8 — cured repetition loops, ~10x faster, no plan-quality loss). Passed
+        # through to every plan() chat call; None defers to the client default.
+        self._disable_thinking = disable_thinking
 
-    async def plan(self, *, message: str) -> PlanResult:
+    async def plan(
+        self,
+        *,
+        message: str,
+        target: str | None = None,
+        selected_count: int = 0,
+        history: list[LLMMessage] | None = None,
+    ) -> PlanResult:
         messages = [
             LLMMessage(role="system", content=build_planner_prompt(self._registry)),
-            LLMMessage(role="user", content=message),
         ]
+        # Tell the planner about the user's current file selection so skills that
+        # operate on selected files can be used directly, without asking which file.
+        if selected_count > 0:
+            messages.append(
+                LLMMessage(
+                    role="system",
+                    content=(
+                        f"The user currently has {selected_count} file(s) selected. "
+                        "Skills that operate on the user's selected file(s) can be used "
+                        "directly on the selection — do NOT ask which file; just call the "
+                        "skill (its item_id is supplied automatically per selected file)."
+                    ),
+                )
+            )
+        # Prior turns (conversation memory) sit between the system framing and the
+        # current request so references like "rename the first one" resolve against
+        # what actually ran. ContextManager.trim caps the total below num_ctx.
+        if history:
+            messages.extend(history)
+        messages.append(LLMMessage(role="user", content=message))
 
         def _valid(response: LLMResponse) -> bool:
             return _parse(response.content) is not None
@@ -136,6 +226,9 @@ class WorkflowPlanner:
                 [],
                 num_ctx=self._num_ctx,
                 validator=_valid,
+                target=target,
+                response_format=build_plan_response_format(self._registry),
+                disable_thinking=self._disable_thinking,
             )
             result = _parse(response.content)
             if result is None:

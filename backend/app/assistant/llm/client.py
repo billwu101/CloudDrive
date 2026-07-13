@@ -57,4 +57,7 @@ class LLMClient(Protocol):
         tools: list[LLMToolDefinition],
         *,
         num_ctx: int,
+        response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        disable_thinking: bool | None = None,
     ) -> LLMResponse: ...

@@ -42,8 +42,36 @@ class Settings(BaseSettings):
     llm_num_ctx: int = 65536
     llm_timeout_seconds: float = 300
     llm_keep_alive: str = "15m"
+    # Anti-loop guards for the local model (DEC-031): cap generated tokens so a
+    # degenerate repetition loop fails bounded instead of eating the full read
+    # timeout (0 = uncapped), and use a small non-zero temperature for
+    # structured requests so greedy decoding cannot lock into a repetition
+    # cycle — the output format is guaranteed by the grammar, not temperature.
+    llm_num_predict: int = 2048
+    llm_structured_temperature: float = 0.2
+    # Codegen needs full sampling: at 0.2 the model produced broken code
+    # (baseline at Ollama's default 0.8 authored valid skills 2/2 — see
+    # proposal-planner-skill-enum §7). Overrides the structured pin per call.
+    llm_codegen_temperature: float = 0.8
+    # E8 experiment knob: send Ollama `think: false` on every local request.
+    # Loops live in the thinking phase; this measures whether disabling it
+    # cures them without hurting plan quality. Off by default. This is the
+    # client-wide constructor default; a per-call value (below) wins over it.
+    llm_disable_thinking: bool = False
+    # DEC-033: the planner runs with thinking disabled by default. E8 (60 samples,
+    # real model) showed think:false cured all repetition loops and cut planner
+    # latency ~10x with no measurable loss in plan quality on gemma4:26b. Codegen
+    # is deliberately excluded — its structured protection was validated with
+    # thinking on. Set False to restore planner thinking (e.g. after swapping in a
+    # stronger thinking model; re-run the E8 A/B before flipping).
+    llm_planner_disable_thinking: bool = True
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
+    # Conversation memory: how many of the most recent stored messages (user +
+    # assistant) are replayed into the planner as context so follow-ups can
+    # resolve references ("rename the first one"). 0 disables memory (single-turn).
+    # ContextManager.trim still enforces the hard num_ctx budget on top of this.
+    assistant_history_max_messages: int = 12
 
     # Optional external model fallback. Disabled by default; privacy gates apply first.
     external_llm_enabled: bool = False

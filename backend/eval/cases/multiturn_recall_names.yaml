@@ -1,0 +1,19 @@
+id: multiturn-recall-listed-names
+name: Multi-turn — recall the exact listed folder names from memory (rigorous)
+# Rigour upgrade over multiturn-rename-first: instead of a proxy (a valid rename
+# plan), this asserts the model reports every listed name back accurately — the
+# names only exist in the turn-1 result summary, so recalling all three proves
+# the tool-result memory carried the real contents (no id/ordering assumption; a
+# re-list or a truncated summary fails it).
+prompt: Without listing again, just from our conversation, what are the exact names of those folders?
+mode: [api]
+tags: [memory, multi-turn]
+seed_folders: [ZebraReports, YakArchive, XylophoneBackups]
+context_turns:
+  - "List my folders."
+expect:
+  reply_contains: [ZebraReports, YakArchive, XylophoneBackups]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+runs: 5

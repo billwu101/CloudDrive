@@ -265,11 +265,17 @@ def _required_uuid(args: Mapping[str, Any], key: str) -> UUID:
     return _parse_uuid(value, key)
 
 
+# Root-folder sentinels the model emits instead of null (see read_only._optional_uuid).
+_ROOT_SENTINELS = {"root", "root_folder", "null", "none", "/"}
+
+
 def _optional_uuid(value: Any) -> UUID | None:
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     if not isinstance(value, str):
         raise AppError(ErrorCode.INVALID_OPERATION, "Expected a UUID string or null")
+    if value.strip().lower() in _ROOT_SENTINELS:
+        return None
     return _parse_uuid(value, "parent_id")
 
 

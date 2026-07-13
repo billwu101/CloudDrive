@@ -4,107 +4,112 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user_external_credential import UserExternalCredential
+from app.models.external_model_connection import ExternalModelConnection
 
 
-class AbstractExternalCredentialRepository(ABC):
+class AbstractConnectionRepository(ABC):
     @abstractmethod
-    async def list_by_user(self, user_id: UUID) -> list[UserExternalCredential]: ...
-
-    @abstractmethod
-    async def get(self, user_id: UUID, provider: str) -> UserExternalCredential | None: ...
+    async def list_by_user(self, user_id: UUID) -> list[ExternalModelConnection]: ...
 
     @abstractmethod
-    async def upsert(
+    async def get(self, user_id: UUID, connection_id: UUID) -> ExternalModelConnection | None: ...
+
+    @abstractmethod
+    async def create(self, connection: ExternalModelConnection) -> ExternalModelConnection: ...
+
+    @abstractmethod
+    async def update(
         self,
         *,
         user_id: UUID,
-        provider: str,
-        auth_type: str,
-        secret_encrypted: str,
-        masked_hint: str,
+        connection_id: UUID,
+        label: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+        secret_encrypted: str | None = None,
+        masked_hint: str | None = None,
+        status: str | None = None,
         updated_at: datetime,
-    ) -> None: ...
+    ) -> ExternalModelConnection | None: ...
 
     @abstractmethod
-    async def delete(self, user_id: UUID, provider: str) -> None: ...
+    async def delete(self, user_id: UUID, connection_id: UUID) -> bool: ...
 
     @abstractmethod
-    async def set_status(self, user_id: UUID, provider: str, status: str) -> None: ...
+    async def set_status(self, user_id: UUID, connection_id: UUID, status: str) -> None: ...
 
 
-class SQLExternalCredentialRepository(AbstractExternalCredentialRepository):  # pragma: no cover
+class SQLConnectionRepository(AbstractConnectionRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def list_by_user(self, user_id: UUID) -> list[UserExternalCredential]:
+    async def list_by_user(self, user_id: UUID) -> list[ExternalModelConnection]:
         result = await self._session.execute(
-            select(UserExternalCredential).where(UserExternalCredential.user_id == user_id)
+            select(ExternalModelConnection)
+            .where(ExternalModelConnection.user_id == user_id)
+            .order_by(ExternalModelConnection.created_at.asc())
         )
         return list(result.scalars().all())
 
-    async def get(self, user_id: UUID, provider: str) -> UserExternalCredential | None:
+    async def get(self, user_id: UUID, connection_id: UUID) -> ExternalModelConnection | None:
         result = await self._session.execute(
-            select(UserExternalCredential).where(
-                UserExternalCredential.user_id == user_id,
-                UserExternalCredential.provider == provider,
+            select(ExternalModelConnection).where(
+                ExternalModelConnection.user_id == user_id,
+                ExternalModelConnection.id == connection_id,
             )
         )
         return result.scalar_one_or_none()
 
-    async def upsert(
+    async def create(self, connection: ExternalModelConnection) -> ExternalModelConnection:
+        self._session.add(connection)
+        await self._session.flush()
+        return connection
+
+    async def update(
         self,
         *,
         user_id: UUID,
-        provider: str,
-        auth_type: str,
-        secret_encrypted: str,
-        masked_hint: str,
+        connection_id: UUID,
+        label: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+        secret_encrypted: str | None = None,
+        masked_hint: str | None = None,
+        status: str | None = None,
         updated_at: datetime,
-    ) -> None:
-        values = {
-            "user_id": user_id,
-            "provider": provider,
-            "auth_type": auth_type,
-            "secret_encrypted": secret_encrypted,
-            "masked_hint": masked_hint,
-            "status": "active",
-            "updated_at": updated_at,
-        }
-        stmt = pg_insert(UserExternalCredential).values(**values)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[
-                UserExternalCredential.user_id,
-                UserExternalCredential.provider,
-            ],
-            set_={
-                "auth_type": auth_type,
-                "secret_encrypted": secret_encrypted,
-                "masked_hint": masked_hint,
-                "status": "active",
-                "updated_at": updated_at,
-            },
-        )
-        await self._session.execute(stmt)
+    ) -> ExternalModelConnection | None:
+        conn = await self.get(user_id, connection_id)
+        if conn is None:
+            return None
+        if label is not None:
+            conn.label = label
+        if base_url is not None:
+            conn.base_url = base_url
+        if model is not None:
+            conn.model = model
+        if secret_encrypted is not None:
+            conn.secret_encrypted = secret_encrypted
+        if masked_hint is not None:
+            conn.masked_hint = masked_hint
+        if status is not None:
+            conn.status = status
+        conn.updated_at = updated_at
+        await self._session.flush()
+        return conn
 
-    async def delete(self, user_id: UUID, provider: str) -> None:
-        await self._session.execute(
-            delete(UserExternalCredential).where(
-                UserExternalCredential.user_id == user_id,
-                UserExternalCredential.provider == provider,
-            )
-        )
+    async def delete(self, user_id: UUID, connection_id: UUID) -> bool:
+        conn = await self.get(user_id, connection_id)
+        if conn is None:
+            return False
+        await self._session.delete(conn)
+        await self._session.flush()
+        return True
 
-    async def set_status(self, user_id: UUID, provider: str, status: str) -> None:
-        await self._session.execute(
-            update(UserExternalCredential)
-            .where(
-                UserExternalCredential.user_id == user_id,
-                UserExternalCredential.provider == provider,
-            )
-            .values(status=status)
-        )
+    async def set_status(self, user_id: UUID, connection_id: UUID, status: str) -> None:
+        conn = await self.get(user_id, connection_id)
+        if conn is not None:
+            conn.status = status
+            await self._session.flush()

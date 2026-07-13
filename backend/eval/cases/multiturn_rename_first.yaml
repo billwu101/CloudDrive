@@ -1,0 +1,24 @@
+id: multiturn-rename-first
+name: Multi-turn — rename "the first one" from a listed result (tool-result memory)
+prompt: Rename the first one to RenamedByAgent.
+mode: [api]
+tags: [memory, multi-turn]
+# Seed distinctive folders so the first turn's listing has something to reference.
+# Idempotent: existing names are reused across runs, and the rename is only
+# planned (gated for approval, never executed), so the listing stays stable.
+seed_folders: [ZebraReports, YakArchive, XylophoneBackups]
+context_turns:
+  - "List my folders."
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include: [rename_item]
+    # rename_item needs an item_id — the only source is the prior turn's result
+    # summary. A plan carrying the new name proves the summary reached the model
+    # and it acted on a listed item rather than asking which file. (Whether it
+    # picked the literal first item is inspected in --verbose.)
+    steps_arg_contains: ["rename_item", "RenamedByAgent"]
+scoring:
+  weights: { correctness: 1.0 }
+  pass_threshold: 1.0
+runs: 5

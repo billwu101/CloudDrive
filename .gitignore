@@ -61,3 +61,8 @@ temp/
 
 # Claude Code local/personal settings (not shared with team)
 .claude/settings.local.json
+
+# File
+*.pdf
+*.docx
+backend/eval/out/

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -11,18 +11,14 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 
-from app.assistant.llm.external import ExternalLLMClient
-from app.assistant.llm.ollama import OllamaLLMClient
 from app.assistant.repository import AbstractAssistantSessionRepository
 from app.assistant.router import (
     _assistant_service,
     _assistant_session_repo,
-    _build_local_client,
 )
 from app.assistant.router import router as assistant_router
 from app.assistant.schemas import AssistantChatResponse
 from app.assistant.service import WorkflowService
-from app.core.config import Settings
 from app.core.dependencies import get_db
 from app.core.exceptions import AppError
 from app.core.security import create_access_token
@@ -158,34 +154,3 @@ async def test_chat_requires_auth() -> None:
         resp = await client.post("/assistant/chat", json={"message": "hello"})
 
     assert resp.status_code in (401, 403)
-
-
-def _llm_settings(**overrides: Any) -> Settings:
-    base = {
-        "llm_provider": "ollama",
-        "llm_base_url": "http://localhost:11434",
-        "assistant_model": "gemma4:26b",
-        "llm_api_key": "ollama-local",
-        "llm_timeout_seconds": 300.0,
-        "llm_keep_alive": "15m",
-        "llm_fallback_base_url": "",
-    }
-    base.update(overrides)
-    return cast(Settings, SimpleNamespace(**base))
-
-
-def test_build_local_client_defaults_to_ollama() -> None:
-    client = _build_local_client(_llm_settings(llm_provider="ollama"))
-    assert isinstance(client, OllamaLLMClient)
-
-
-def test_build_local_client_openai_compatible_uses_external() -> None:
-    client = _build_local_client(
-        _llm_settings(
-            llm_provider="openai_compatible",
-            llm_base_url="http://192.168.10.75:8000/v1",
-            assistant_model="gemma4",
-            llm_api_key="sk-test",
-        )
-    )
-    assert isinstance(client, ExternalLLMClient)

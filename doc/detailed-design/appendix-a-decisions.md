@@ -216,7 +216,7 @@
 ### DEC-023：模型策略 —— 預設本地，反覆失敗時條件式升級外部 API
 
 - 日期：2026-06-16
-- 狀態：Accepted（修訂 DEC-018）
+- 狀態：Accepted（修訂 DEC-018）；**2026-06-25 起助理聊天路徑改為「使用者逐訊息手動選模型」，自動升級被取代**（見 [proposal-model-selection.md](./proposal-model-selection.md)、[proposal-multi-connections.md](./proposal-multi-connections.md)、detailed-design §12.10），僅保留於 `ModelRouter` 的 `target=None` 相容路徑；**隱私閘（第 2 條）不受影響、仍為所有外送的最後防線**
 - 背景：本地 Gemma 4 26B 對部分複雜任務可能反覆做不出可接受結果；需有退路，但不能犧牲隱私。依「建議模型策略」流程圖納入隱私閘、複雜度路由與失敗升級。
 - 決策：
   1. 預設執行器為本地 Gemma；能用非 LLM 規則/小模型解的簡單任務優先省成本。
@@ -266,7 +266,7 @@
 ### DEC-026：外部模型接入（Codex 訂閱制 / OpenAI API）——執行升級與 eval 考官
 
 - 日期：2026-06-19
-- 狀態：Accepted（設計階段，尚未實作）
+- 狀態：Accepted；**已實作**（EM1–EM3 於 2026-06-19 全數交付，見 [tasks/external-model.md](./tasks/external-model.md)）。**2026-06-25 後演進**：「自動升級 / 訂閱制優先自動退回 API key」改為**使用者手動選模型 + 多組具名連線**（migration 0016，detailed-design §12.10）；憑證加密、Codex 橋接、隱私閘等其餘決策不變
 - 背景：本地 Gemma 4 對部分任務反覆做不出可接受結果時，希望能切換到 GPT-5.5；同時希望 eval harness 的考官可選用更強模型評斷 skill 的正確性與效果。使用者需在 profile 綁定自己的外部模型憑證才可使用。延伸自 DEC-023。
 - 決策：
   1. **兩條認證路徑，訂閱制優先、API key 備援**：路徑 A = Codex 訂閱制（優先）；路徑 B = OpenAI API key（穩定備援）。provider 抽象成同一介面；訂閱制不可用時自動退回 API key，功能不中斷。
@@ -310,3 +310,85 @@
 - 理由：同源 nginx 入口最容易部署也最容易收斂 CORS/HTTPS/cookie 行為；DB 與 backend 留內網可降低暴露面；secret 與範例設定分離可避免把 demo 設定誤當正式安全設定。
 - 已知取捨：本機展示時為了方便仍會看到 `8000/5432` port 映射；正式部署需用防火牆、安全群組或 compose override 移除/限制這些映射。
 - 影響範圍：`docker-compose.yml`、`.env.example`、`README.md`、正式部署手冊。
+
+## DEC-029：執行失敗處理 —— 誠實報告 + 有限度重規劃，不採 agentic loop
+
+- 日期：2026-07-04
+- 狀態：Accepted
+- 背景：planner 一次產出完整計畫（plan-then-execute），executor 遇錯即停。兩個問題：(1) `plan.reply` 是規劃時（執行前）由 LLM 寫的預測，卻在執行後原樣回給使用者——執行失敗時等於「沒做完卻說做完」；confirm/rerun 更固定回 "Workflow executed."。(2) 步驟失敗（多為規劃假設落空，如 search 回空導致 `from_step` 引用解析失敗）後沒有任何補救路徑。
+- 決策：
+  1. **第 0 級（誠實報告）**：三條執行路徑（chat 快速路徑 / confirm / rerun）統一——全成功才用原訊息；任何失敗改回程式從 `StepResult` 組合的事實報告（哪步失敗+原因、已完成哪些、其後未執行且無進一步變更）。不經 LLM，杜絕粉飾。
+  2. **第 1 級（失敗才 replan，僅 chat 快速路徑）**：執行失敗時把逐步真實結果（成功步驟輸出截斷 300 字、失敗錯誤全文）餵回 planner 重規劃一次（budget=1）。護欄：replan 產出必須全為 read-only auto-confirmable 且不含 requires_selection 技能，否則放棄且不建 pending；再失敗即落回第 0 級報告。兩次嘗試各自記 run。
+  3. **不做第 2 級（逐步 agentic loop / native function calling）**。
+- 不做 agentic loop 的理由：
+  1. **權限模型依賴完整計畫先行**：destructive 步驟是整批分類、事前一次核可（DEC 系列的 plan-and-confirm 管線）。逐步決策會讓「使用者核可了什麼」失去明確邊界——要嘛每步彈確認（UX 不可接受），要嘛事後追認（掏空確認閘）。
+  2. **弱模型穩定性**：本機小模型跑長程多輪 loop 容易漂移；一次規劃 + schema 約束解碼 + validate_plan，是把弱模型鎖在能力範圍內的設計。
+  3. **成本/延遲**：本產品的工作流以 2-3 步為主，agentic loop 讓所有成功案例都付 N 倍呼叫成本，替少數失敗案例買保險不划算；「失敗才 replan」讓成功路徑維持一次呼叫。
+  4. **可先量再改**：若 eval 顯示假設落空類失敗經單次 replan 仍大量殘留，屆時再評估升級，本決策不排除未來翻案。
+- 已知取捨：confirm/rerun 路徑失敗只有誠實報告、無自動補救（同意問題與儲存契約優先）；replan 需多一次 LLM 呼叫與少量 token（僅失敗時發生）；replan 只能用 read-only 步驟兜路，無法自動補救需寫入權限的失敗。
+- 影響範圍：`backend/app/assistant/service.py`、`tests/assistant/test_workflow.py`、`doc/detailed-design.md` §12.11、`doc/tasks/backend-assistant.md`。
+
+### DEC-029 補充：三條路徑的授權邊界（2026-07-04）
+
+replan 的本質是「在使用者視線外執行一份新計畫」，因此只在「授權是給**規則**、不是給**那份計畫**」的路徑上合法：
+
+| 路徑 | 執行授權來源 | 失敗時 | 理由 |
+|---|---|---|---|
+| chat 快速路徑 | 「read-only 免確認」的系統規則 | replan 一次（新計畫仍受同一規則約束） | replan 未取得任何原本沒有的權力；read-only 重試最壞只浪費 token，不可能改資料 |
+| confirm | 使用者對**那份具體步驟清單**的核可 | 誠實回報 | 核可的是那份計畫、不是目標本身；偷換步驟讓「看過的」與「執行的」不再是同一份，事前確認閘形同虛設；destructive 盲目重試最壞是刪錯且不可逆 |
+| rerun | 使用者具名儲存的**固定配方** | 誠實回報 | saved workflow 的價值就是確定性；偷換步驟違反「儲存」契約 |
+
+合規的 confirm 補救設計（未做、不違反本決策）：失敗後 replan 但**不執行**，改產生新 pending 請使用者再確認一次——保住同意邊界，代價是多一輪往返。等 eval 數據顯示 destructive 失敗夠常見再評估。
+
+## DEC-030：工作流執行維持串行，暫不並行（DAG 第二階段延後）
+
+- 日期：2026-07-05
+- 狀態：Accepted
+- 背景：計畫資料結構本來就是 DAG（`depends_on` 邊 + `from_step` 資料流）。第一階段（失敗隔離，見 §12.11）已讓 executor 依圖的語意傳播失敗——失敗只斷真正的下游、無關分支照常執行、每步恰有一筆 ok/failed/skipped 結果。剩下的「用圖排程」（拓撲分層 + 無相依步驟並行）可再省延遲：5 個獨立壓縮步驟可從「5 份時間」縮到「約 1 份時間」。本決策記錄為何**現在不做並行**。
+- 決策：executor 維持**串行執行、單一 request-scoped AsyncSession**。並行排程列為第二階段，需先解決下述前置問題並重新評估。
+- 不並行的理由：
+  1. **共用 DB session 不允許並發（最硬的技術阻礙）**：`assistant/router.py` 在請求開頭用同一個 `AsyncSession` 蓋出整套 service（DriveService/UploadService/TrashService…），技能 handler 閉包住這些 service——session 在組裝鏈最上游就被固定，下游沒有任何位置可以指定「這步改用別的 session」。SQLAlchemy 明文規定 AsyncSession 不可並發使用；naive 的 `asyncio.gather` 會直接拋 `InvalidRequestError`。連旗艦場景（壓縮）也躲不掉：沙箱階段純 CPU 不碰 DB，但解壓後寫回 drive 走 UploadService（碰 DB）。
+  2. **交易語意改變**：現在整個工作流共用一筆交易，結尾一起 commit、出錯可整體回滾。每步獨立 session 意味每步各自 commit——做到一半炸掉時，前面的變更已永久生效，無法整體撤銷。這是語意上的真實改變，必須被有意識地接受而非順手發生。
+  3. **同使用者資料競爭**：並行後 N 筆交易同時操作同一使用者的資料——配額 check-then-write 競賽（兩步都判定額度夠 → 都寫入 → 超額）、同名資料夾撞唯一性約束、交易間死鎖。串行時這些天然不存在。
+  4. **連線池耗盡**：每步一通連線 × 每請求 N 步 × 併發使用者數，很快抽乾預設 5-10 的 pool，拖垮整個後端——必須配 semaphore 上限設計。
+  5. **價值/成本不對稱**：失敗隔離（已完成）解掉了「1 個 fail 害 4 個沒做」這個正確性問題，成本是 executor 內幾十行、零架構風險；並行只省延遲，卻要付上述 1–4 的設計成本。且本產品工作流多為 2-5 步、讀取類步驟毫秒級完成，並行收益集中在沙箱 CPU 型技能（壓縮/解壓）一類。
+- 第二階段的兩條候選路線（屆時二選一）：
+  - **每步獨立 session**：把 session factory 傳進技能層，每步「開 session → 現場組 service → commit → 關閉」。乾淨但侵入大（router 十餘個組裝函式、所有 handler、測試 fake 全要改），並須正面處理理由 2–4。
+  - **分相執行**：不碰 DB 的重活（沙箱 CPU）並行，碰 DB 的收尾（寫回 drive）維持單 session 排隊。改動小、繞開理由 1–4 的大部分，代價是寫回階段不並行、架構稍不對稱。
+- 已知取捨：5 個獨立步驟仍排隊執行（延遲未改善）；沙箱 CPU 型批次操作是最吃虧的場景。
+- 影響範圍：`backend/app/assistant/workflow.py`（現狀維持）、`doc/tasks/backend-assistant.md` 第二階段清單、`doc/detailed-design.md` §12.11。
+
+## DEC-031：結構化解碼防跳針——num_predict 上限 + 非零 temperature
+
+- 日期：2026-07-06
+- 狀態：Accepted（已實作）
+- 背景：真模型整合測試 `test_chat_persists_session_and_messages` 穩定失敗——規劃請求每次卡滿 LLM timeout（300s 與 900s 實驗均跑不完，906s 失敗），Ollama 端證實生成確實在進行（單併發排隊探測）。根本原因：`OllamaLLMClient` 對結構化請求（帶 `format` grammar）把 temperature 釘 0，貪婪解碼在 gemma4 的 thinking 段（不受 grammar 約束）掉入**決定性重複迴圈**——特定 prompt+context 100% 重現、重試無效、拉長 timeout 無效。使用者體感：等滿 300s 收到 503，且單併發下卡死請求會讓其他使用者排隊級聯超時。詳見 [proposal-structured-decoding-stability.md](./proposal-structured-decoding-stability.md)。
+- 決策：
+  1. **`num_predict` 生成上限（保底）**：本地請求一律帶 `options.num_predict`（`LLM_NUM_PREDICT`，預設 2048，0=不設限）。跳針時有界截斷 → 解析失敗走既有錯誤路徑，不再吃滿 timeout。
+  2. **結構化請求 temperature 改低而非零（治本）**：`LLM_STRUCTURED_TEMPERATURE` 預設 0.2。格式保證來自 grammar 遮罩、與 temperature 無關；微量隨機性打破貪婪迴圈黏性，並使 `MAX_LOCAL_ATTEMPTS` 重試真正有效（temp=0 重試必得同結果）。
+  3. plain chat 行為不變（本就不釘 temperature）；外部模型路徑不受影響。
+- 理由：迴圈是決定性的，「調大 timeout / 原樣重試」被實驗排除；兩道防線分別解「單次卡死時長」與「掉入迴圈的機率」，且皆可經設定退回原行為（`0`/`0`）。
+- 已知取捨：結構化輸出不再逐 token 決定性（同輸入可能得到不同但皆合法的計畫）——規劃品質仍由既有 schema 驗證 + 確認閘把關；`num_predict` 截斷長 thinking 的極端正常請求時會誤傷（2048 對 ~600 token 的正常規劃仍有 3 倍餘裕；且 2048×2 次嘗試 ≈ 270s < 300s timeout，壞樣本重試可在單次請求預算內完成）。
+- 影響範圍：`core/config.py`、`assistant/llm/ollama.py`、`assistant/router.py`、`tests/assistant/test_ollama_client.py`、eval-prompt-log 記錄問題 prompt；回歸由原整合測試把關。
+
+## DEC-032：planner schema 以 enum 枚舉技能名——幻覺技能改為 grammar 級不可生成
+
+- 日期：2026-07-06
+- 狀態：Accepted（已實作）
+- 背景：E7 溫度掃描（80 樣本）量化出 destructive 規劃可靠度僅 0–40%，其中一類失敗是模型**捏造不存在的技能名**（HTTP 400，被 `permissions.classify_steps` 攔截）。prompt 已要求「只用清單內技能」但無強制力；`_PLAN_RESPONSE_FORMAT` 的 `skill` 為自由字串，約束解碼管不到內容。詳見 [proposal-planner-skill-enum.md](./proposal-planner-skill-enum.md)。
+- 決策：plan() 每次依當下 registry **動態組 schema**，`skill` 欄位以排序後的真實技能名做 `enum`；約束解碼（本地 Ollama grammar / 外部 json_schema）在取樣時直接遮掉其他字串。registry 為空時退回自由字串。`validate_plan`/`classify_steps` 縱深防禦不移除。
+- 理由：把「請求模型遵守」升級為「使其不可違反」——與 DEC-031 同一哲學（能用機制保證的就不靠模型自覺）；零延遲成本、兩條模型路徑通用；可用 E7 sweep 重測驗證效果。
+- 已知取捨：schema 隨 registry 變動，不再是全域常數（每 plan 一次淺開銷，可忽略）；enum 只擋「名稱」，參數錯誤與非法相依仍靠 validator（本就如此）。
+- 補充（同日驗證發現）：enum 後真模型仍偶發 400，錯誤內文為「invalid dependency」——`validate_plan` 未檢查 `depends_on`（權限層有查），壞相依繞過修復迴圈直達 400。已同步修正：`validate_plan` 補上與 `classify_steps` 相同的相依規則，使其觸發修復迴圈。
+- 影響範圍：`app/assistant/planner.py`（schema builder + validate_plan）、`tests/assistant/test_planner.py`、proposal 文件、tasks checklist。
+
+## DEC-033：planner 預設關閉 thinking（think:false）
+
+- 日期：2026-07-07
+- 狀態：Accepted，**已實作**（2026-07-07；實作規格見 [proposal-planner-think-false.md](./proposal-planner-think-false.md)）
+- 背景：DEC-031/032 後跳針仍以 ~10–20% 殘存；E8 實驗定位跳針唯一棲息地為 thinking 段（grammar 管不到）。A/B 實測（60 樣本）：think:false 使跳針**歸零**、pass 60%→100%（代表案例）/ 30%→47%（全體）、規劃延遲快 10–30 倍；thinking 對本模型規劃品質無可量測貢獻（M3/M5 剩餘失敗與 thinking 無關，屬規劃能力弱點）。
+- 決策：planner 呼叫預設 `think:false`（per-call 參數，沿 temperature 前例）；codegen 不連動（其驗證於 thinking 開時取得）；DEC-031 防線保留為縱深；`LLM_PLANNER_DISABLE_THINKING` 可關回。
+- 理由：資料驅動——收益（跳針根治+延遲降一個數量級）實測明確，代價（規劃品質）實測為零；與「temperature 依任務類型」同一原則：thinking 依任務類型決定，規劃不需要、產碼未驗證故不動。
+- 已知取捨：換更強 thinking 模型時應重跑 E8 A/B 再定；外部路徑無法控制此參數（忽略，與現狀一致）。
+- 影響範圍：`llm/client.py` 協定 + 7 個 chat() 實作 + 測試 fake、`planner.py`、`core/config.py`、`assistant/router.py`、E8 文件。
+- 實作註記（2026-07-07）：`LLMClient.chat` 新增 `disable_thinking: bool | None`（None＝沿用 client 建構子預設），7 個實作全數同步——`OllamaLLMClient` per-call 值優先於建構子（True 時 payload 帶 `think:false`），external/anthropic/codex/tracking-wrapper 依協定接受並轉傳或忽略，`ModelRouter` 三個方法透傳。`WorkflowPlanner` 建構子加 `disable_thinking`，`plan()` 每次（含 repair 重試）帶入；`assistant/router.py` 以 `settings.llm_planner_disable_thinking`（預設 True）接線；codegen 不傳（維持 None）。新增測試：ollama per-call 雙向覆寫 + None 遞延、planner 每呼叫傳 True、codegen 傳 None。全閘門通過（618 unit / mypy / ruff）。真模型驗證見 proposal §「驗證結果」。
