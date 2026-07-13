@@ -302,6 +302,49 @@ flowchart TD
   completed --> E((結束))
 ```
 
+### 3.8 Harness 架構歸類：六核心元件 ↔ 九實作模組（概念架構，報告/簡報用）
+
+> 參考視角，不改變任何實作與介面；工程事實來源為 [§8.7](./08-assistant-engine.md)（HARNESS 九大組件）與 [§10](./10-assistant-eval.md)（驗證/評分 harness）。關聯 DEC-016～023、026、029。
+
+agent harness 文獻（survey）將 harness 定義為六元組 `H = (E, T, C, S, L, V)`：Execution Loop、Tool Registry、Context Manager、State Store、Lifecycle Hooks、Evaluation Interface。本專案在**程式碼層**拆成九個實作模組（§8.7 的 01–09），粒度是為了**可測試性**（各模組 test 獨立、LLM 一律 mock）；但九模組不在同一抽象層級（有主元件、子元件、也有橫切關注點）。因此對外採**二層說法**：**Workflow Pipeline**（描述「要做什麼」：NL → 候選 workflow → 技能檢查 → 權限/安全 → 確認 → 執行 → 記錄）＋ **Agent Harness Runtime**（描述「怎麼可靠地跑」：對齊 survey 六元件）。**一句話：程式碼九層（實作模組），報告六層（概念架構）。**
+
+**六元件 ↔ 九模組對照**
+
+| Survey 元件 | 對應九模組 | 主要檔案 | 說明 |
+|---|---|---|---|
+| **E** Execution Loop | 01 while loop、04 sub-agents、workflow 執行器 | `service.py`、`workflow.py`、`subagent.py`、`llm/router.py` | 主迴圈驅動「送訊息→解析→執行→回填」；workflow 執行器負責步驟相依/錯誤策略（DEC-029/030）；可派生 bounded sub-agent；**model interface（ModelRouter）也歸此** |
+| **T** Tool / Skill Registry | 03 skills & tools、05 built-in skills | `skills/registry.py`、`skills/manifest.py`、`skills/authoring.py`、`skills/builtin/` | 內建／自建／現場生成技能都是 registry 的技能來源；manifest 定義 schema/權限標記/handler dispatch |
+| **C** Context Manager | 02 context management、07 system prompt assembly | `context.py`、`planner.py`、`subagent.py` | token 預算、裁切/摘要、工具輸出瘦身、技能清單注入、prompt 組裝；07 無獨立 `prompt.py`，內嵌於各 agent |
+| **S** State Store | 06 session persistence | `repository.py`（+ migration：sessions/messages/skills/workflows/workflow_runs） | 全部依 `user_id` 隔離（DEC-020） |
+| **L** Lifecycle Hooks | 08 lifecycle hooks、09 permissions & safety | `hooks.py`、`permissions.py`、`skills/codeguard.py`、`skills/sandbox.py` | hooks 是**攔截點**（治理層）；permissions/codeguard/sandbox 是它強制執行的機制。分層權限：唯讀自動／破壞性確認／生成碼核可+沙箱+稽核（DEC-019） |
+| **V** Evaluation Interface | §10 驗證/評分 harness | `backend/eval/` | 確定性斷言 + LLM judge + baseline 回歸；API / browser / exec 三模式 |
+
+**呈現三注意**：① **V 不在請求路徑上**——eval 是 `backend/eval/` 的離線開發者工具，從外部打 `/assistant/chat`，架構圖畫在 runtime **旁側**（箭頭指入）；② **sub-agent 現況誠實**——`subagent.py` 目前唯一實例是 CodegenSubAgent，說法為「主迴圈可派生 bounded sub-agent，目前實例化為 codegen 子代理」；③ **L 的合併**——`sandbox.py`/`codeguard.py` 嚴格說是執行基礎設施而非 hook，正確說法「Lifecycle Hooks 是治理層，permissions/codeguard/sandbox 是它在各攔截點強制執行的機制」。
+
+**模型路由的歸位（本專案特色）**：survey 把 LLM 當黑盒，但本專案模型策略是明確賣點，歸入 **E 的 model interface 子元件、受 L 的隱私閘治理**——使用者每則訊息自選來源（本機 Ollama / 具名外部連線，見 [§12 模型選擇/具名連線](../proposal.md)、[§11](./11-external-model.md)），選定即唯一執行器、無自動 fallback、失敗快速且回可區分錯誤；隱私閘永遠在（DEC-023 第 2 條）。原「連續失敗自動升級」已被手動選擇取代，僅保留於 `ModelRouter` 的 `target=None` 相容路徑（有 eval `model-escalation` 覆蓋）。
+
+**報告用架構圖（V 在旁側）**
+
+```
+使用者自然語言需求
+        ↓
+┌─ Workflow Pipeline ────────────────────────────┐
+│ 需求解析 → 規劃 → 技能檢查 → 權限/安全 → 確認 → 執行 → 記錄 │
+└────────────────────────────────────────────────┘
+        ↓
+┌─ Agent Harness Runtime（六元件） ───────────────┐      ┌─ V Evaluation Interface ─┐
+│ E Execution Loop（while/workflow/子代理/模型介面）│ ◄─── │ 離線開發者工具            │
+│ T Tool/Skill Registry（內建/自建/現場生成+manifest）│ 評測 │ deterministic assertion  │
+│ C Context Manager（裁切/prompt 組裝/技能清單注入） │ 請求 │ API/browser/exec         │
+│ S State Store（sessions/messages/skills/workflows）│      │ LLM judge / baseline     │
+│ L Lifecycle Hooks（治理層：權限/核可/codeguard/    │      └───────────────────────────┘
+│   sandbox/audit —— 含外送隱私閘）                  │
+└─────────────────────────────────────────────────┘
+        ↓  CloudDrive Service Layer（DEC-017）→ PostgreSQL + Storage Provider
+```
+
+**文獻筆記（答辯用）**：StraTA（arXiv 2605.06642）為 Agentic RL 框架（先生成精簡策略再指導行動，分層聯訓），解的是同類長程規劃可靠度問題，設計哲學與本專案「計畫→確認→執行」及 validator+repair 同構；但它是**訓練期** RL、需微調凍結的 gemma4:26b（超出範圍），故本專案改採 **harness 層推理期補強**（約束解碼 DEC-031/032、驗證重試、確認閘）——這正是 harness 作為「LLM 與外部世界間可靠性基礎設施」的價值主張。
+
 ## 4. 已確認設計決策
 
 | 項目 | 決策 |

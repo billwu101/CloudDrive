@@ -314,6 +314,19 @@ PRIVACY_DEFAULT=sensitive         # 預設保守：使用者檔案內容視為�
 4. **M4 自我撰寫 + 安全（04/03/08/09）**：sub-agent codegen + 生成子流程 + 核可閘 + sandbox。完成 7zip 範例端到端。
 5. **M5 動態 UI**：依 manifest 渲染右鍵選單、技能核可/程式碼審查介面、已存工作流程一鍵重跑、側欄 Skills 管理頁（檢視/編輯/刪除，見 5.3）、使用者訊息複製鈕（前端全域 `user-select:none`，故以按鈕程式複製）。
 
+### 8.14 對話記憶（多輪 context 回讀）
+
+助理在**同一 session** 內回讀最近數輪對話，讓使用者能以指涉／省略延續操作（先列檔、下一句「把第一個改名為 X」）。設計原則是「把既有資料接上去」——對話本來就有存（`session_repo.add_message`），只是規劃時沒回讀；本功能把歷史接進 planner，不重建儲存。
+
+- **模組**：`app/assistant/memory.py` 提供 `summarise_results`（把 StepResults 壓成精簡文字）／`append_result_summary`（接到 assistant 訊息尾）／`history_to_messages`（DB 訊息 → `LLMMessage`，取最後 N 則）。
+- **管線接點**：`WorkflowPlanner.plan()` 新增 `history` 參數，組訊息序為 `[system,（選檔提示）, *history, 當前 user]` 後再 `context.trim()`；`WorkflowService.chat()`（含 replan）透傳。
+- **歷史載入點**：router 的 `/chat` handler（已持有 `session_repo`、已負責寫入）在呼叫 `service.chat()` **之前** `list_messages` → 取最後 N 則傳入；因當前 user 訊息在 `chat()` **之後**才寫入，載入的歷史天然不含本輪（讀寫同層、service 維持純度）。
+- **工具結果的承載（真模型 A/B 定案，零 migration）**：工具實際結果在 `results`(StepResult)、不在訊息文字裡。以 **assistant 文字**承載結果摘要——真模型（gemma4）A/B 測得放 `tool` 角色 0/4、放 assistant 文字 4/4（chat template 不消化孤立 tool 訊息）。做法：router 持久化 assistant 訊息時把 `append_result_summary(reply, results)` 接到 `content` 尾（僅在有結果時）；live 回應 `response.message` 維持乾淨（`plan.reply`），僅**持久化**內容多摘要（reload 泡泡因此更完整）。
+- **設定**：`assistant_history_max_messages=12`（≈6 輪；`0`=關閉、退回單輪）。硬上限仍由既有 `ContextManager.trim`（`num_ctx=65536`≈26 萬字元，留最近丟最舊）保護。
+- **範圍**：v1 只接 planner 路徑；codegen（技能生成）為單輪任務、不吃歷史。隱私上歷史與當前訊息走**同一** privacy gate（`_call_external` 對整包 messages 分類），摘要化不引入新外送面。
+- **摘要保真兩個必要修正**（回歸守門，見附錄 A 相關 DEC 與 eval `multiturn-recall-listed-names`）：① `_optional_uuid` 接受根目錄哨兵（`root/null/none//` → None），否則列根目錄崩「Invalid UUID」→ 記憶無檔名；② `summarise_results` 對集合型輸出萃取檔名呈「N items: name1, …」、不 dump UUID，否則 200 字預算被 UUID 佔滿而截斷丟名。
+- **已知限制（v1 刻意做小）**：只記最近 ~6 輪（更早直接丟棄、非壓縮）；工具結果每步只留前 ~200 字；單一 session 內、不跨對話、無長期畫像；靠「最近」非「相關」（無語意檢索）；屬「重讀逐字稿」非「學習」。v2 方向依序：調參 → 舊對話摘要壓縮 → 語意檢索（複用 pgvector）→ 跨 session／使用者畫像。
+
 ## 9. In-App AI Assistant 前端聊天切片
 
 Assistant 的使用入口位於登入後 CloudDrive shell，而不是 Swagger/API docs。`AppShell` 會掛載 `AssistantPanel`，因此 `/drive`、`/recent`、`/starred`、`/shared`、`/trash`、`/search`、`/settings` 等受保護頁面都能開啟同一個浮動對話面板。
