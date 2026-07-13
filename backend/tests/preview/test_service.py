@@ -10,7 +10,12 @@ from app.drive.schemas import ItemType
 from app.models.drive_item import DriveItem
 from app.models.share import Share
 from app.permission.service import PermissionService
-from app.preview.service import _TEXT_MAX_BYTES, PreviewService, PreviewType
+from app.preview.service import (
+    _TEXT_MAX_BYTES,
+    PreviewService,
+    PreviewType,
+    _resolve_preview_type,
+)
 from tests.drive.test_service import MemDriveItemRepo, _item
 from tests.permission.test_service import MemItemRepo, MemShareRepo
 from tests.upload.test_service import MemStorage
@@ -118,4 +123,117 @@ async def test_unsupported_content_raises() -> None:
     svc = _make_svc(items=[file], storage=storage)
     with pytest.raises(AppError) as exc_info:
         await svc.get_content(user, file.id)
+    assert exc_info.value.code == ErrorCode.INVALID_OPERATION
+
+
+# ── Office (document) / Markdown preview ──────────────────────────────────────
+
+_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def _doc(
+    owner_id: UUID,
+    *,
+    name: str,
+    mime: str | None,
+    ext: str,
+    storage_key: str = "k/doc",
+    checksum: str | None = "sum",
+) -> DriveItem:
+    item = _item(owner_id=owner_id, item_type=ItemType.FILE, name=name)
+    item.storage_key = storage_key
+    item.mime_type = mime
+    item.extension = ext
+    item.checksum_sha256 = checksum
+    item.size_bytes = 10
+    return item
+
+
+def test_resolve_markdown_by_ext_or_mime() -> None:
+    assert _resolve_preview_type("text/markdown", "md", office=True) == PreviewType.MARKDOWN
+    assert _resolve_preview_type("text/plain", "markdown", office=False) == PreviewType.MARKDOWN
+
+
+def test_resolve_office_document_when_available() -> None:
+    assert _resolve_preview_type(_DOCX, "docx", office=True) == PreviewType.DOCUMENT
+    assert _resolve_preview_type(None, "xlsx", office=True) == PreviewType.DOCUMENT
+
+
+def test_resolve_office_unsupported_without_libreoffice() -> None:
+    assert _resolve_preview_type(_DOCX, "docx", office=False) == PreviewType.UNSUPPORTED
+
+
+def test_resolve_csv_document_or_text() -> None:
+    # csv with LibreOffice -> document (tabular); without -> plain text
+    assert _resolve_preview_type("text/csv", "csv", office=True) == PreviewType.DOCUMENT
+    assert _resolve_preview_type("text/csv", "csv", office=False) == PreviewType.TEXT
+
+
+async def test_markdown_info_and_content() -> None:
+    user = uuid4()
+    storage = MemStorage()
+    storage._data["k/md"] = b"# Title\nhello"
+    f = _doc(user, name="readme.md", mime="text/markdown", ext="md", storage_key="k/md")
+    svc = _make_svc(items=[f], storage=storage)
+
+    info = await svc.get_info(user, f.id)
+    assert info.preview_type == PreviewType.MARKDOWN
+
+    ptype, mime, stream = await svc.get_content(user, f.id)
+    body = b"".join([c async for c in stream])
+    assert ptype == PreviewType.MARKDOWN
+    assert mime == "text/markdown"
+    assert body == b"# Title\nhello"
+
+
+async def test_document_converts_caches_and_reuses(monkeypatch: pytest.MonkeyPatch) -> None:
+    user = uuid4()
+    storage = MemStorage()
+    storage._data["k/doc"] = b"raw docx bytes"
+    f = _doc(user, name="report.docx", mime=_DOCX, ext="docx", checksum="abc123")
+    svc = _make_svc(items=[f], storage=storage)
+
+    import app.preview.service as svc_mod
+
+    monkeypatch.setattr(svc_mod, "office_available", lambda: True)
+    calls = {"n": 0}
+
+    async def fake_convert(data: bytes, *, suffix: str, timeout: float = 60.0) -> bytes:
+        calls["n"] += 1
+        assert suffix == ".docx"
+        return b"%PDF-1.4 converted"
+
+    monkeypatch.setattr(svc_mod, "convert_to_pdf", fake_convert)
+
+    info = await svc.get_info(user, f.id)
+    assert info.preview_type == PreviewType.DOCUMENT
+    assert info.mime_type == "application/pdf"
+
+    ptype, mime, stream = await svc.get_content(user, f.id)
+    body = b"".join([c async for c in stream])
+    assert (ptype, mime) == (PreviewType.DOCUMENT, "application/pdf")
+    assert body == b"%PDF-1.4 converted"
+    assert "preview-cache/abc123.pdf" in storage._data
+    assert calls["n"] == 1
+
+    # second request hits the cache, no re-conversion
+    _, _, stream2 = await svc.get_content(user, f.id)
+    b"".join([c async for c in stream2])
+    assert calls["n"] == 1
+
+
+async def test_office_content_unsupported_without_libreoffice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = uuid4()
+    storage = MemStorage()
+    storage._data["k/doc"] = b"x"
+    f = _doc(user, name="r.docx", mime=_DOCX, ext="docx")
+    svc = _make_svc(items=[f], storage=storage)
+
+    import app.preview.service as svc_mod
+
+    monkeypatch.setattr(svc_mod, "office_available", lambda: False)
+    with pytest.raises(AppError) as exc_info:
+        await svc.get_content(user, f.id)
     assert exc_info.value.code == ErrorCode.INVALID_OPERATION

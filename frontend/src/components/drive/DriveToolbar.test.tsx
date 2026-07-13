@@ -11,15 +11,17 @@ import { DriveToolbar } from './DriveToolbar'
 
 function setup(selectedCount = 0) {
   const onNewFolder = vi.fn()
+  const onDownloadSelected = vi.fn()
   const onTrashSelected = vi.fn()
   render(
     <DriveToolbar
       selectedCount={selectedCount}
       onNewFolder={onNewFolder}
+      onDownloadSelected={onDownloadSelected}
       onTrashSelected={onTrashSelected}
     />,
   )
-  return { onNewFolder, onTrashSelected }
+  return { onNewFolder, onDownloadSelected, onTrashSelected }
 }
 
 // ── New Folder 按鈕 ───────────────────────────────────────────────────────────
@@ -39,6 +41,32 @@ describe('New Folder button', () => {
     const { onNewFolder } = setup(0)
     await userEvent.click(screen.getByRole('button', { name: /new folder/i }))
     expect(onNewFolder).toHaveBeenCalledOnce()
+  })
+})
+
+// ── Download 按鈕 ─────────────────────────────────────────────────────────────
+
+describe('Download button', () => {
+  it('is NOT visible when no items are selected', () => {
+    setup(0)
+    expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
+  })
+
+  it('appears when items are selected and shows the count', () => {
+    setup(3)
+    expect(screen.getByRole('button', { name: /download.*3/i })).toBeInTheDocument()
+  })
+
+  it('calls onDownloadSelected when clicked', async () => {
+    const { onDownloadSelected } = setup(2)
+    await userEvent.click(screen.getByRole('button', { name: /download/i }))
+    expect(onDownloadSelected).toHaveBeenCalledOnce()
+  })
+
+  it('does not trigger trash when download is clicked', async () => {
+    const { onTrashSelected } = setup(2)
+    await userEvent.click(screen.getByRole('button', { name: /download/i }))
+    expect(onTrashSelected).not.toHaveBeenCalled()
   })
 })
 

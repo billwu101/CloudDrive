@@ -1,11 +1,12 @@
 import { Download, Loader2, X } from 'lucide-react'
 import { useEffect } from 'react'
 
-import { getContentUrl } from '@/api/previewApi'
-import { usePreviewInfo } from '@/hooks/usePreview'
+import { downloadItem } from '@/api/download'
+import { usePreviewBlobUrl, usePreviewInfo } from '@/hooks/usePreview'
 
 import { AudioPreview } from './AudioPreview'
 import { ImagePreview } from './ImagePreview'
+import { MarkdownPreview } from './MarkdownPreview'
 import { PdfPreview } from './PdfPreview'
 import { TextPreview } from './TextPreview'
 import { UnsupportedPreview } from './UnsupportedPreview'
@@ -18,7 +19,13 @@ interface PreviewDialogProps {
 
 function PreviewContent({ itemId }: { itemId: string }) {
   const { data, isLoading, isError } = usePreviewInfo(itemId)
-  const contentUrl = getContentUrl(itemId)
+  // Office documents need the PDF-converted endpoint; everything else the raw file.
+  const converted = data?.preview_type === 'document'
+  const needsContent = !!data && data.preview_type !== 'unsupported'
+  const { url: blobUrl, isError: blobError } = usePreviewBlobUrl(
+    needsContent ? itemId : null,
+    converted,
+  )
 
   if (isLoading) {
     return (
@@ -36,23 +43,52 @@ function PreviewContent({ itemId }: { itemId: string }) {
     )
   }
 
+  if (data.preview_type === 'unsupported') {
+    return (
+      <UnsupportedPreview
+        filename={data.filename}
+        mimeType={data.mime_type}
+        onDownload={() => downloadItem(itemId, data.filename)}
+      />
+    )
+  }
+
+  if (blobError) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-destructive">Failed to load preview content.</p>
+      </div>
+    )
+  }
+
+  if (blobUrl === null) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" aria-label="Loading preview" />
+      </div>
+    )
+  }
+
   switch (data.preview_type) {
     case 'image':
-      return <ImagePreview src={contentUrl} filename={data.filename} />
+      return <ImagePreview src={blobUrl} filename={data.filename} />
     case 'pdf':
-      return <PdfPreview src={contentUrl} filename={data.filename} />
+    case 'document':
+      return <PdfPreview src={blobUrl} filename={data.filename} />
     case 'text':
-      return <TextPreview src={contentUrl} />
+      return <TextPreview src={blobUrl} />
+    case 'markdown':
+      return <MarkdownPreview src={blobUrl} />
     case 'video':
-      return <VideoPreview src={contentUrl} mimeType={data.mime_type} />
+      return <VideoPreview src={blobUrl} mimeType={data.mime_type} />
     case 'audio':
-      return <AudioPreview src={contentUrl} filename={data.filename} mimeType={data.mime_type} />
+      return <AudioPreview src={blobUrl} filename={data.filename} mimeType={data.mime_type} />
     default:
       return (
         <UnsupportedPreview
           filename={data.filename}
           mimeType={data.mime_type}
-          downloadUrl={contentUrl}
+          onDownload={() => downloadItem(itemId, data.filename)}
         />
       )
   }
@@ -71,8 +107,6 @@ export function PreviewDialog({ itemId, onClose }: PreviewDialogProps) {
 
   if (!itemId) return null
 
-  const contentUrl = itemId ? getContentUrl(itemId) : null
-
   return (
     <div
       role="dialog"
@@ -90,15 +124,14 @@ export function PreviewDialog({ itemId, onClose }: PreviewDialogProps) {
           {data?.filename ?? ''}
         </span>
         <div className="flex items-center gap-2">
-          {contentUrl && (
-            <a
-              href={contentUrl}
-              download={data?.filename}
+          {data && (
+            <button
+              onClick={() => downloadItem(itemId, data.filename)}
               aria-label="Download file"
               className="flex size-8 items-center justify-center rounded text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             >
               <Download className="size-5" aria-hidden="true" />
-            </a>
+            </button>
           )}
           <button
             aria-label="Close preview"

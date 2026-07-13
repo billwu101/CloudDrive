@@ -2,6 +2,8 @@ import { ArrowLeft, FolderOpen } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { downloadItem, triggerBlobDownload } from '@/api/download'
+import { driveApi } from '@/api/driveApi'
 import type {
   AssistantSkillExecuteResponse,
   AssistantSkillResponse,
@@ -172,6 +174,18 @@ export function DrivePage() {
     setTrashTargets(targets)
   }, [items, selectedIds])
 
+  const handleDownloadSelected = useCallback(async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const res = await driveApi.downloadArchive(ids)
+    // The server names the zip after the selection (folder/file name); read it
+    // back from Content-Disposition since a blob URL carries no filename.
+    const cd = (res.headers['content-disposition'] as string | undefined) ?? ''
+    const match = /filename\*=UTF-8''([^;]+)/i.exec(cd)
+    const filename = match ? decodeURIComponent(match[1]) : 'download.zip'
+    triggerBlobDownload(res.data, filename)
+  }, [selectedIds])
+
   const handleRetryUpload = useCallback(
     (task: { file: File }) => {
       upload([task.file])
@@ -226,6 +240,7 @@ export function DrivePage() {
             <DriveToolbar
               selectedCount={selectedIds.size}
               onNewFolder={() => setShowCreateFolder(true)}
+              onDownloadSelected={handleDownloadSelected}
               onTrashSelected={handleTrashSelected}
             />
           </div>
@@ -271,6 +286,7 @@ export function DrivePage() {
             assistantActions={assistantMenuActions}
             onClose={() => setContextMenu(null)}
             onPreview={(item) => setPreviewItemId(item.id)}
+            onDownload={(item) => downloadItem(item.id, item.name)}
             onRename={(item) => setRenameTarget(item)}
             onMove={(item) => setMoveTarget(item)}
             onShare={() => {}}
