@@ -40,4 +40,9 @@ export const driveApi = {
 
   listVersions: (item_id: string, signal?: AbortSignal) =>
     api.get<FileVersionResponse[]>(`/drive/items/${item_id}/versions`, { signal }),
+
+  // Bundle the given files/folders into a single zip. Folders are walked
+  // recursively server-side; the response body is the zip blob.
+  downloadArchive: (item_ids: string[]) =>
+    api.post<Blob>('/download/archive', { item_ids }, { responseType: 'blob' }),
 }

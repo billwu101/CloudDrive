@@ -19,6 +19,16 @@ RUN if [ "$INSTALL_CODEX" = "1" ]; then \
         && apt-get clean && rm -rf /var/lib/apt/lists/*; \
     fi
 
+# Office/CSV document preview converts to PDF via headless LibreOffice (§6.9).
+# Large (~hundreds of MB); build with --build-arg INSTALL_LIBREOFFICE=0 to skip,
+# after which document preview degrades to "unsupported" (file still downloadable).
+ARG INSTALL_LIBREOFFICE=1
+RUN if [ "$INSTALL_LIBREOFFICE" = "1" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            libreoffice-writer libreoffice-calc libreoffice-impress \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 

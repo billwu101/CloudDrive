@@ -3,10 +3,10 @@ import { FileX } from 'lucide-react'
 interface UnsupportedPreviewProps {
   filename: string
   mimeType?: string | null
-  downloadUrl: string
+  onDownload: () => void
 }
 
-export function UnsupportedPreview({ filename, mimeType, downloadUrl }: UnsupportedPreviewProps) {
+export function UnsupportedPreview({ filename, mimeType, onDownload }: UnsupportedPreviewProps) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
       <FileX className="size-14 text-muted-foreground" aria-hidden="true" />
@@ -19,13 +19,12 @@ export function UnsupportedPreview({ filename, mimeType, downloadUrl }: Unsuppor
           Preview not available for this file type.
         </p>
       </div>
-      <a
-        href={downloadUrl}
-        download={filename}
+      <button
+        onClick={onDownload}
         className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80"
       >
         Download file
-      </a>
+      </button>
     </div>
   )
 }

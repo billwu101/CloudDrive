@@ -2,16 +2,15 @@
  * Tests for previewApi — proposal.md §5.1 功能 15
  *
  * 覆蓋功能：
- *   - 取得預覽資訊 (GET /preview/:id/info)
+ *   - 取得預覽資訊 (GET /preview/:id)
  *   - 請求取消 (AbortSignal)
- *   - 取得下載 URL (getContentUrl)
  */
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { useAuthStore } from '@/stores/authStore'
-import { getContentUrl, previewApi } from './previewApi'
+import { previewApi } from './previewApi'
 
 const BASE = 'http://localhost:8000/api/v1'
 
@@ -25,7 +24,7 @@ const MOCK_PREVIEW_INFO = {
 }
 
 const server = setupServer(
-  http.get(`${BASE}/preview/:id/info`, ({ params }) => {
+  http.get(`${BASE}/preview/:id`, ({ params }) => {
     if (params.id === 'no-access') {
       return HttpResponse.json(
         { code: 'FORBIDDEN', message: 'Access denied' },
@@ -55,7 +54,7 @@ afterAll(() => server.close())
 
 // ── 取得預覽資訊 ──────────────────────────────────────────────────────────────
 
-describe('getInfo (GET /preview/:id/info)', () => {
+describe('getInfo (GET /preview/:id)', () => {
   it('returns preview metadata for a file', async () => {
     const res = await previewApi.getInfo('file-1')
     expect(res.status).toBe(200)
@@ -69,16 +68,16 @@ describe('getInfo (GET /preview/:id/info)', () => {
     expect(res.data.size_bytes).toBeGreaterThan(0)
   })
 
-  it('calls the correct URL path /preview/:id/info', async () => {
+  it('calls the correct URL path /preview/:id', async () => {
     let capturedUrl = ''
     server.use(
-      http.get(`${BASE}/preview/:id/info`, ({ request }) => {
+      http.get(`${BASE}/preview/:id`, ({ request }) => {
         capturedUrl = request.url
         return HttpResponse.json(MOCK_PREVIEW_INFO)
       }),
     )
     await previewApi.getInfo('file-42')
-    expect(capturedUrl).toContain('/preview/file-42/info')
+    expect(capturedUrl).toContain('/preview/file-42')
   })
 
   it('rejects with 403 when user has no access', async () => {
@@ -100,7 +99,7 @@ describe('getInfo with AbortSignal', () => {
   it('cancels the request when signal is aborted', async () => {
     const controller = new AbortController()
     server.use(
-      http.get(`${BASE}/preview/:id/info`, async () => {
+      http.get(`${BASE}/preview/:id`, async () => {
         await new Promise((r) => setTimeout(r, 500))
         return HttpResponse.json(MOCK_PREVIEW_INFO)
       }),
@@ -111,26 +110,3 @@ describe('getInfo with AbortSignal', () => {
   })
 })
 
-// ── 取得下載 URL ──────────────────────────────────────────────────────────────
-
-describe('getContentUrl', () => {
-  it('returns URL ending in /download/:id', () => {
-    const url = getContentUrl('file-1')
-    expect(url).toContain('/download/file-1')
-  })
-
-  it('returns a string (not a promise)', () => {
-    const url = getContentUrl('file-1')
-    expect(typeof url).toBe('string')
-  })
-
-  it('embeds the correct item ID in the URL', () => {
-    const url = getContentUrl('abc-123-xyz')
-    expect(url).toContain('abc-123-xyz')
-  })
-
-  it('URL is based on the configured API base URL', () => {
-    const url = getContentUrl('file-1')
-    expect(url).toMatch(/^https?:\/\//)
-  })
-})

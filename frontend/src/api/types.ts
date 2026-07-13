@@ -82,7 +82,15 @@ export interface ShareLinkResponse {
 
 export interface PreviewInfoResponse {
   item_id: string
-  preview_type: 'image' | 'pdf' | 'text' | 'video' | 'audio' | 'unsupported'
+  preview_type:
+    | 'image'
+    | 'pdf'
+    | 'document'
+    | 'text'
+    | 'markdown'
+    | 'video'
+    | 'audio'
+    | 'unsupported'
   mime_type: string | null
   size_bytes: number
   filename: string
