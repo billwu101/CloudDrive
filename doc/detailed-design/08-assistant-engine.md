@@ -284,6 +284,8 @@ app/assistant/
 # 由 _build_local_client 建 ExternalLLMClient；用於指向 OpenAI 相容 gateway，後端可為 gemma4:26b）
 LLM_PROVIDER=ollama
 LLM_BASE_URL=http://192.168.10.75:11434
+# 可選：主要端點連不上時改試的 Ollama fallback（空字串＝不啟用）
+LLM_FALLBACK_BASE_URL=
 LLM_API_KEY=ollama-local
 ASSISTANT_MODEL=gemma4:26b
 LLM_NUM_CTX=65536
@@ -292,6 +294,23 @@ LLM_KEEP_ALIVE=15m
 ASSISTANT_ENABLED=true
 ASSISTANT_MAX_TOOL_ITERATIONS=8
 ASSISTANT_SANDBOX_TIMEOUT_SEC=30
+
+# 反迴圈與取樣（DEC-031）：生成 token 上限（0＝不限）、結構化請求的溫度；
+# codegen 需要完整取樣，另以較高溫度覆蓋（DEC-032）
+LLM_NUM_PREDICT=2048
+LLM_STRUCTURED_TEMPERATURE=0.2
+LLM_CODEGEN_TEMPERATURE=0.8
+
+# Thinking 開關（DEC-033 / E8）：
+# LLM_PLANNER_DISABLE_THINKING＝planner 每次呼叫預設關 thinking（cured 迴圈、latency ~10x，
+#   codegen 不連動）；LLM_DISABLE_THINKING＝client-wide 全域 E8 knob，對所有本地呼叫送
+#   think:false（預設 false），per-call 的 planner 值優先於它
+LLM_PLANNER_DISABLE_THINKING=true
+LLM_DISABLE_THINKING=false
+
+# 對話記憶：回讀進 planner 的最近訊息數（user+assistant），0＝關閉（單輪）；
+# ContextManager.trim 仍以 num_ctx 為硬上限（§8.14）
+ASSISTANT_HISTORY_MAX_MESSAGES=12
 
 # 失敗升級到外部大型模型（1.3）
 EXTERNAL_LLM_ENABLED=false        # 全域開關；false 則永不外送
