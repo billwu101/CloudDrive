@@ -198,6 +198,8 @@ def _build_local_client(settings: Settings) -> LLMClient:
             model=settings.assistant_model,
             api_key=settings.llm_api_key,
             timeout=settings.llm_timeout_seconds,
+            num_predict=settings.llm_num_predict,
+            structured_temperature=settings.llm_structured_temperature,
         )
     return OllamaLLMClient(
         base_url=settings.llm_base_url,
@@ -374,6 +376,7 @@ async def chat(
         )
     except ExternalAuthError as exc:
         # The provider rejected the credential itself (invalid key / quota).
+        logger.warning("assistant chat: credential rejected for %s — %s", label, exc)
         raise AppError(
             ErrorCode.ASSISTANT_UNAVAILABLE,
             f"The credential for {label} was rejected — it may be invalid or out of quota. "
@@ -382,6 +385,15 @@ async def chat(
         ) from exc
     except LLMUnavailableError as exc:
         # The selected model could not be reached (offline / not configured).
+        # Log the underlying transport error (cause) — the user-facing message is
+        # deliberately generic, so the real reason (timeout / 5xx / connect) only
+        # shows here.
+        logger.warning(
+            "assistant chat: model unavailable via %s — %s (cause: %r)",
+            label,
+            exc,
+            exc.__cause__,
+        )
         raise AppError(
             ErrorCode.ASSISTANT_UNAVAILABLE,
             f"Could not connect to {label}. It may be offline or not configured — "
@@ -389,6 +401,12 @@ async def chat(
             status_code=503,
         ) from exc
     except LLMClientError as exc:
+        logger.warning(
+            "assistant chat: unexpected LLM error via %s — %s (cause: %r)",
+            label,
+            exc,
+            exc.__cause__,
+        )
         raise AppError(
             ErrorCode.ASSISTANT_UNAVAILABLE,
             f"{label} returned an unexpected error. Pick another model or try again.",

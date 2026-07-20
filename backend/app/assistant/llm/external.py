@@ -25,12 +25,21 @@ class ExternalLLMClient:
         model: str,
         api_key: str,
         timeout: float = 45.0,
+        num_predict: int = 0,
+        structured_temperature: float = 0.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key = api_key
         self._timeout = timeout
+        # DEC-031 anti-loop guards, extended to the OpenAI-compatible path:
+        # num_predict → max_tokens bounds generation so a runaway structured
+        # decode fails bounded (rather than looping past a gateway/proxy timeout,
+        # e.g. Cloudflare's ~100s, which surfaces as LLMUnavailableError). A small
+        # non-zero temperature on structured requests breaks greedy-decode loops.
+        self._num_predict = num_predict
+        self._structured_temperature = structured_temperature
         self._transport = transport
 
     async def chat(
@@ -49,10 +58,16 @@ class ExternalLLMClient:
             "model": self._model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
+        if self._num_predict > 0:
+            payload["max_tokens"] = self._num_predict
         if response_format is not None:
             payload["response_format"] = response_format
+        # Structured requests default to the low non-zero temperature (anti-loop);
+        # an explicit caller-provided temperature still wins.
         if temperature is not None:
             payload["temperature"] = temperature
+        elif response_format is not None:
+            payload["temperature"] = self._structured_temperature
         if tools:
             payload["tools"] = [_to_openai_tool(t) for t in tools]
 
