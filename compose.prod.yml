@@ -36,7 +36,20 @@ services:
     depends_on:
       - backend
     ports:
-      - "8088:80"                        # 正式可改 80/443
+      - "8088:80"                        # 正式可改 80/443；接 Cloudflare Tunnel 後可移除對外映射
+
+  # 對外曝露：Cloudflare Tunnel（僅正式環境；dev 的 docker-compose.yml 無此服務）
+  # cloudflared 主動向外連 Cloudflare，不需對主機開任何 port、不受動態 IP 影響。
+  # 用 remote-managed tunnel（token 模式）：TUNNEL_TOKEN 由 Cloudflare Zero-Trust 建 tunnel 時產生，
+  # ingress 路由（<網域> → frontend:80）在 Cloudflare 儀表板設定。詳見 detailed-design §21.9。
+  cloudflared:
+    image: cloudflare/cloudflared:latest  # 正式上線可釘特定版本 tag
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - .env                              # 提供 TUNNEL_TOKEN
+    depends_on:
+      - frontend
 
 volumes:
   postgres_data:

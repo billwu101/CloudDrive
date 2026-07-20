@@ -81,7 +81,17 @@ CREDENTIAL_ENCRYPTION_KEY=<Fernet key> # 啟用外部模型憑證才需
 
 ### 21.5 部署腳本 `/usr/local/sbin/deploy-cloud-drive`
 
-固定流程（root 擁有、`750`）：(1) 驗證參數為完整 40 字元 commit SHA；(2) `docker compose -f compose.prod.yml pull` 先確認 image 可拉；(3) 寫入 `.deploy.env` 記錄 SHA；(4) `up -d --remove-orphans`；(5) 輪詢 **`http://127.0.0.1:8001/health`**（適配：對應 backend 容器 `8000`、compose 映射 `8001`）最多 30 次；(6) 成功則結束，**失敗則回滾**到 `.deploy.env` 的前一個 SHA 並重新 `up -d`。
+固定流程（root 擁有、`750`）：
+
+1. **驗證參數**為完整 40 字元 commit SHA。
+2. **驗證 SHA 在 `main` 歷史上**（GitHub API `compare/main...<SHA>` 的 `status ∈ {identical, behind}`）——與「image 只由 main-CI 建」對齊，防止部署未合併的惡意 commit（即使 runner 被攻陷也只能部署已審查的 main commit）。
+3. **依 SHA 自我同步部署腳本**：抓 `raw.githubusercontent.com/<repo>/<SHA>/deploy/deploy-cloud-drive` → 原子 `mv` 取代自身（新 inode，不影響執行中程序）→ `exec` 新腳本接手本次部署（帶 `--synced` 旗標避免無限自我同步）。腳本邏輯因此隨部署 commit 演進，不需手動更新（僅**首次 bootstrap** 需手動安裝一次）。
+4. **依 SHA 同步 `compose.prod.yml`**：抓 repo@SHA 的 `compose.prod.yml` → `install -m640 root:root` 覆蓋 `/opt/cloud-drive/compose.prod.yml`。部署拓撲（如新增 `cloudflared`）因此隨程式碼一起落地；回滾抓舊 SHA 的 compose，拓撲一併回滾。
+5. **`.env` 漂移檢查（不同步值）**：抓 repo@SHA 的 `deploy/.env.prod.example`，比對主機 `.env` 缺哪些鍵，缺就 log 警告（例如提醒補 `TUNNEL_TOKEN`）——**真密鑰只存主機、永不由 pipeline 寫入**（§26.4/26.5 原則不變）。
+6. `docker compose -f compose.prod.yml pull` 先確認 image 可拉；寫入 `.deploy.env` 記錄 SHA；`up -d --remove-orphans`。
+7. 輪詢 **`http://127.0.0.1:8001/health`** 最多 30 次；成功則結束，**失敗則回滾**到 `.deploy.env` 的前一個 SHA（重抓該 SHA 的 compose + image 並 `up -d`）。
+
+> **同步邊界**：compose.prod.yml 與部署腳本本身（非機密）依 SHA 自動同步；`.env` 真密鑰**不同步**、僅漂移警告。所有抓取來源為 public repo 的 raw URL（免認證），並先經第 2 步 SHA-on-main 驗證。
 
 ### 21.6 CI Workflow（`.github/workflows/ci.yml`，指令適配本專案）
 
@@ -99,3 +109,26 @@ CREDENTIAL_ENCRYPTION_KEY=<Fernet key> # 啟用外部模型憑證才需
 - **main 分支保護**：禁止直接 push、要求 PR + ≥1 review、要求 `backend-test`/`frontend-test` 通過才可 merge。
 - **CODEOWNERS**：`.github/workflows/`、`*/Dockerfile`、部署設定由 maintainer review。
 - **必要安全規則**：self-hosted 只用於 private repo、只跑 CD；PR 一律 `ubuntu-latest`、禁止 PR 用 self-hosted；Runner 非 root、不入 docker 群組、只能 sudo 固定腳本；正式 image 只由 CI 建、**用完整 SHA 不用 `latest`**；`.env` 只存主機；第三方 Action 正式上線釘完整 commit SHA。
+
+### 21.9 Cloudflare Tunnel（cloudflared，僅正式環境）
+
+對應 proposal §26.6。**只在 `compose.prod.yml` 新增 `cloudflared` 服務**，讓正式站台經 Cloudflare Tunnel 對外；**dev 的 `docker-compose.yml` 不動**。
+
+**服務定義（加入 `compose.prod.yml`）**
+
+```yaml
+  cloudflared:
+    image: cloudflare/cloudflared:latest   # 正式上線可釘特定版本 tag
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: [.env]                       # 提供 TUNNEL_TOKEN
+    depends_on:
+      - frontend
+```
+
+- **連線模型**：`cloudflared` 由主機**主動向外**連 Cloudflare，**不需 `ports:` 映射、主機不開任何對外埠**、不受動態 IP 影響。使用 **remote-managed tunnel（token 模式）**：`TUNNEL_TOKEN` 由 Cloudflare Zero-Trust 儀表板建立 tunnel 時產生，ingress 路由（`<CloudDrive 網域>` → 服務）在儀表板設定，容器只需 token。
+- **Ingress 路由**：`<CloudDrive 網域>` → **`frontend:80`**（compose 內部網路的 nginx 唯一入口；nginx 已代理 `/api` → backend，見 §3）。因走內部網路，前端**可移除 `8088:80` 對外映射**（proposal §26.6 待確認②）；保留與否不影響 Tunnel。
+- **憑證管理**：`TUNNEL_TOKEN` 為機密——**只存部署主機 `.env`、不進 Git**；`deploy/.env.prod.example` 加佔位鍵 `TUNNEL_TOKEN=`（示例值，§21.2 檔案結構）。deploy 腳本無需改動：`docker compose -f compose.prod.yml up -d` 會一併起 `cloudflared`（健康檢查仍針對 backend `/health`，§21.5）。
+- **dev 不受影響**：`docker-compose.yml` 無 `cloudflared`；開發者仍 `localhost:8088`／`localhost:8001` 直連。
+- **可選後續（本次不含）**：於 Cloudflare Access 對該網域套 Zero-Trust policy，做網路層前置登入閘（疊在應用自身 JWT 之上）。
+- **待網域確認後才能完成**：ingress 主機名需實際網域（proposal §26.6 待確認①）；在網域提供前，`compose.prod.yml` 的服務可先落地，實際路由於 Cloudflare 儀表板綁定網域時設定。

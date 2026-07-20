@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # 部署主機上安裝到 /usr/local/sbin/deploy-cloud-drive（root:root 750）。
 # 由 self-hosted runner 經 sudoers 規則以 root 執行：sudo deploy-cloud-drive <commit-sha>
-# 流程：驗證 SHA → pull → up -d → /health 檢查 → 失敗回滾上一版。
+# 流程：驗證 SHA → 驗證在 main 歷史 → 自我同步腳本 → 同步 compose → .env 漂移檢查
+#        → pull → up -d → /health 檢查 → 失敗回滾上一版。
+# 同步邊界：compose.prod.yml 與本腳本（非機密）依 SHA 從 public repo 同步；.env 真密鑰不同步。
 set -Eeuo pipefail
 
 IMAGE_TAG="${1:-}"
+SYNCED="${2:-}"
 APP_DIR="/opt/cloud-drive"
 COMPOSE_FILE="${APP_DIR}/compose.prod.yml"
 STATE_FILE="${APP_DIR}/.deploy.env"
+SELF="/usr/local/sbin/deploy-cloud-drive"
+REPO="billwu101/CloudDrive"
+RAW="https://raw.githubusercontent.com/${REPO}/${IMAGE_TAG}"
 # docker/login-action 把 GHCR 登入資訊放在 runner 使用者目錄
 DOCKER_CONFIG_DIR="/home/gha-runner/.docker"
 # 對應 compose 的 backend port 映射 127.0.0.1:8001:8000，以及 FastAPI 的 /health
@@ -17,9 +23,59 @@ if [[ ! "${IMAGE_TAG}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "錯誤：Image Tag 必須是完整的 40 字元 Git commit SHA。"
   exit 2
 fi
+
+# 只允許部署 main 歷史上的 commit：即使 runner 被攻陷，也只能部署已審查合併的 commit
+# （與「image 只由 main-CI 建」對齊）。compare/main...<SHA> 的 status 為 identical/behind 即在 main 歷史。
+verify_on_main() {
+  local status
+  status="$(curl -fsSL "https://api.github.com/repos/${REPO}/compare/main...${IMAGE_TAG}" \
+    | grep -m1 '"status"' | sed -E 's/.*"status": *"([a-z]+)".*/\1/' || true)"
+  case "${status}" in
+    identical | behind) echo "SHA 驗證通過（在 main 歷史，status=${status}）。" ;;
+    *)
+      echo "拒絕部署：${IMAGE_TAG} 不在 main 歷史（status=${status:-unknown}）。"
+      exit 4
+      ;;
+  esac
+}
+
+# 首次進入（未同步）：驗證 SHA 在 main → 自我同步腳本 → 以新腳本接手本次部署
+if [[ "${SYNCED}" != "--synced" ]]; then
+  verify_on_main
+  NEW_SELF="${APP_DIR}/.deploy-cloud-drive.new"
+  if curl -fsSL "${RAW}/deploy/deploy-cloud-drive" -o "${NEW_SELF}"; then
+    chmod 750 "${NEW_SELF}"
+    chown root:root "${NEW_SELF}"
+    mv -f "${NEW_SELF}" "${SELF}" # 原子替換：執行中程序保留舊 inode，不受影響
+    echo "部署腳本已同步至 ${IMAGE_TAG}，以新腳本接手。"
+    exec "${SELF}" "${IMAGE_TAG}" --synced
+  fi
+  echo "⚠️ 部署腳本自我同步失敗，改用現有腳本繼續。"
+fi
+
+# ── 以下：已用最新腳本（或自我同步失敗的後備）──
+
+# 依 SHA 同步 compose.prod.yml（非機密）：部署拓撲隨程式碼落地，不需手動上主機
+if curl -fsSL "${RAW}/compose.prod.yml" -o "${COMPOSE_FILE}.new"; then
+  install -m 640 -o root -g root "${COMPOSE_FILE}.new" "${COMPOSE_FILE}"
+  rm -f "${COMPOSE_FILE}.new"
+  echo "compose.prod.yml 已同步至 ${IMAGE_TAG}。"
+else
+  echo "⚠️ compose.prod.yml 同步失敗，沿用主機現有版本。"
+fi
+
 if [[ ! -f "${COMPOSE_FILE}" ]]; then
   echo "錯誤：找不到 ${COMPOSE_FILE}"
   exit 3
+fi
+
+# .env 漂移檢查：只警告缺鍵、不同步值（真密鑰只存主機）
+if curl -fsSL "${RAW}/deploy/.env.prod.example" -o "${APP_DIR}/.env.example.tmp"; then
+  missing="$(comm -23 \
+    <(grep -oE '^[A-Z_]+=' "${APP_DIR}/.env.example.tmp" | tr -d '=' | sort -u) \
+    <(grep -oE '^[A-Z_]+=' "${APP_DIR}/.env" 2> /dev/null | tr -d '=' | sort -u) || true)"
+  [[ -n "${missing}" ]] && echo "⚠️ 主機 .env 缺少範本新增的鍵（請手動補值）：${missing//$'\n'/ }"
+  rm -f "${APP_DIR}/.env.example.tmp"
 fi
 
 OLD_TAG=""
@@ -45,7 +101,7 @@ docker --config "${DOCKER_CONFIG_DIR}" compose \
 
 echo "執行健康檢查……"
 for _ in $(seq 1 30); do
-  if curl --fail --silent "${HEALTH_URL}" >/dev/null; then
+  if curl --fail --silent "${HEALTH_URL}" > /dev/null; then
     echo "部署成功：${IMAGE_TAG}"
     docker compose -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${STATE_FILE}" ps
     exit 0
@@ -58,6 +114,11 @@ docker compose -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${S
 
 if [[ "${OLD_TAG}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "開始回滾至：${OLD_TAG}"
+  # 回滾也同步舊 SHA 的 compose，拓撲一併回滾
+  if curl -fsSL "https://raw.githubusercontent.com/${REPO}/${OLD_TAG}/compose.prod.yml" -o "${COMPOSE_FILE}.old"; then
+    install -m 640 -o root -g root "${COMPOSE_FILE}.old" "${COMPOSE_FILE}"
+    rm -f "${COMPOSE_FILE}.old"
+  fi
   printf 'IMAGE_TAG=%s\n' "${OLD_TAG}" > "${STATE_FILE}"
   docker --config "${DOCKER_CONFIG_DIR}" compose \
     -f "${COMPOSE_FILE}" --env-file "${APP_DIR}/.env" --env-file "${STATE_FILE}" pull || true

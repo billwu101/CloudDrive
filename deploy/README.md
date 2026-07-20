@@ -45,6 +45,36 @@ sudo chmod 440 /etc/sudoers.d/cloud-drive-deploy
 - GHCR 由 CI 的 `GITHUB_TOKEN`（`packages: write`）推送，無需額外 secret。
 - self-hosted runner **只用於 private repo、只跑 deploy.yml**；PR 一律 `ubuntu-latest`。
 
+## 一次性：Cloudflare Tunnel（對外曝露正式站台；僅 CD）
+
+正式環境以 Cloudflare Tunnel 對外，主機**不需開任何對外 port、不受動態 IP 影響**（規格見 [detailed-design §21.9](../doc/detailed-design.md)、需求見 [proposal §26.6](../doc/proposal.md)）。`cloudflared` 服務已在 `compose.prod.yml`，隨 `up -d` 一併啟動——只差 token 與 Cloudflare 端綁定：
+
+1. **Cloudflare 端（Zero-Trust 儀表板，需你操作）**
+   - `Cloudflare Dashboard → Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared`。
+   - 建好後複製 **tunnel token**（`eyJ...` 那串）。
+   - 在該 tunnel 的 **Public Hostname** 加一筆：`<CloudDrive 網域>`（例 `drive.example.com`）→ Service `HTTP` → `frontend:80`。
+     （因 `cloudflared` 與 `frontend` 在同一 compose 網路，用服務名 `frontend:80` 即可。）
+   - 網域需已加入你的 Cloudflare 帳號（DNS 由 Cloudflare 託管）；建 hostname 時會自動加 CNAME。
+2. **主機端**
+   - 把 token 寫進 `/opt/cloud-drive/.env` 的 `TUNNEL_TOKEN=`（檔案 `chmod 600`、不進 Git）。
+   - `cd /opt/cloud-drive && docker compose -f compose.prod.yml --env-file .env up -d cloudflared`（或整包 `up -d`）。
+3. **驗證**：`docker compose logs cloudflared` 應顯示 `Registered tunnel connection`；瀏覽器開 `https://<網域>` 可達前端、`/api` 正常。
+4. **（可選）收斂暴露面**：確認 Tunnel 可用後，可移除 `compose.prod.yml` 中 frontend 的 `8088:80` 對外映射，改為只走 Tunnel。
+5. **（可選後續）Cloudflare Access**：對該網域套 Zero-Trust policy（Google/Email OTP），加一道網路層前置登入閘。
+
+> ⚠️ `TUNNEL_TOKEN` 等同 tunnel 的完整存取權，只存主機 `.env`、不進 Git、不外流。
+
+## 設定同步（部署時自動；.env 除外）
+
+部署腳本（見 [detailed-design §21.5](../doc/detailed-design.md)）在每次部署時，會**依要部署的 commit SHA 從 public repo 自動同步非機密設定到主機**：
+
+- ✅ **`compose.prod.yml`**：自動抓 repo@SHA 覆蓋主機版 → 部署拓撲改動（如新增 `cloudflared`）**隨程式碼落地，不需手動 cp**。回滾時抓舊 SHA 的 compose，拓撲一併回滾。
+- ✅ **部署腳本本身**：自動抓 repo@SHA、原子替換後以新版接手 → 腳本邏輯隨部署演進。
+- ❌ **`.env` 真密鑰不同步**：只做**漂移檢查**——若範本（`.env.prod.example`）新增了主機 `.env` 沒有的鍵（如 `TUNNEL_TOKEN`），部署 log 會警告提醒你手動補值。
+- 🔒 前置安全：只允許部署 **`main` 歷史上的 commit**（`compare/main...<SHA>`），即使 runner 被攻陷也無法部署未合併的惡意 commit。
+
+> 上面「一次性：部署主機」的第 3、4 步（`cp compose.prod.yml`、`cp deploy-cloud-drive`）為 **bootstrap 首次安裝**；裝好含本機制的腳本後，之後 compose 與腳本都自動同步，不再需要手動 cp。**唯 `.env` 永遠手動維護在主機。**
+
 ## 日常流程
 
 1. feature branch → PR → CI 通過 + review → merge `main`
