@@ -45,6 +45,25 @@ sudo chmod 440 /etc/sudoers.d/cloud-drive-deploy
 - GHCR 由 CI 的 `GITHUB_TOKEN`（`packages: write`）推送，無需額外 secret。
 - self-hosted runner **只用於 private repo、只跑 deploy.yml**；PR 一律 `ubuntu-latest`。
 
+## 一次性：Cloudflare Tunnel（對外曝露正式站台；僅 CD）
+
+正式環境以 Cloudflare Tunnel 對外，主機**不需開任何對外 port、不受動態 IP 影響**（規格見 [detailed-design §21.9](../doc/detailed-design.md)、需求見 [proposal §26.6](../doc/proposal.md)）。`cloudflared` 服務已在 `compose.prod.yml`，隨 `up -d` 一併啟動——只差 token 與 Cloudflare 端綁定：
+
+1. **Cloudflare 端（Zero-Trust 儀表板，需你操作）**
+   - `Cloudflare Dashboard → Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared`。
+   - 建好後複製 **tunnel token**（`eyJ...` 那串）。
+   - 在該 tunnel 的 **Public Hostname** 加一筆：`<CloudDrive 網域>`（例 `drive.example.com`）→ Service `HTTP` → `frontend:80`。
+     （因 `cloudflared` 與 `frontend` 在同一 compose 網路，用服務名 `frontend:80` 即可。）
+   - 網域需已加入你的 Cloudflare 帳號（DNS 由 Cloudflare 託管）；建 hostname 時會自動加 CNAME。
+2. **主機端**
+   - 把 token 寫進 `/opt/cloud-drive/.env` 的 `TUNNEL_TOKEN=`（檔案 `chmod 600`、不進 Git）。
+   - `cd /opt/cloud-drive && docker compose -f compose.prod.yml --env-file .env up -d cloudflared`（或整包 `up -d`）。
+3. **驗證**：`docker compose logs cloudflared` 應顯示 `Registered tunnel connection`；瀏覽器開 `https://<網域>` 可達前端、`/api` 正常。
+4. **（可選）收斂暴露面**：確認 Tunnel 可用後，可移除 `compose.prod.yml` 中 frontend 的 `8088:80` 對外映射，改為只走 Tunnel。
+5. **（可選後續）Cloudflare Access**：對該網域套 Zero-Trust policy（Google/Email OTP），加一道網路層前置登入閘。
+
+> ⚠️ `TUNNEL_TOKEN` 等同 tunnel 的完整存取權，只存主機 `.env`、不進 Git、不外流。
+
 ## 日常流程
 
 1. feature branch → PR → CI 通過 + review → merge `main`
