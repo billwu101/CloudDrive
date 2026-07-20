@@ -1048,6 +1048,18 @@ secret 管理原則：
 
 > CI/CD workflow（`.github/workflows/ci.yml`·`deploy.yml`）、正式 compose 與部署腳本的實作見專案實際檔案與 [detailed-design/](./detailed-design/01-overview.md)。
 
+### 26.6 正式環境對外曝露：Cloudflare Tunnel（僅 CD 端）
+
+正式環境（CD）以 **Cloudflare Tunnel（cloudflared）** 作為對外曝露方式，讓網際網路使用者能經由固定網域安全連到 CloudDrive；**本機開發（dev）不使用**，維持既有的直接 port 存取。
+
+- **需求**：使用者以 `https://<CloudDrive 網域>` 存取正式站台；連線由 Cloudflare 邊緣終止 TLS，經 Tunnel 轉到部署主機的前端（nginx）唯一入口。
+- **動機（對應本專案環境）**：部署主機為家用／校內網路、**中華電信動態 IP**。Tunnel 由主機**主動向外**建立連線，因此**不需對主機開任何對外 port、不需固定 IP、不受動態 IP 變動影響**，並天然隱藏源站 IP。此與既有的 self-hosted Runner「主機不對外開埠、主動連 GitHub」原則一致（§26.1）。
+- **範圍界定**：僅正式環境 compose 新增 `cloudflared` 服務；**dev 的 `docker-compose.yml` 不變**（開發者仍以 `localhost:8088` 等直接存取）。
+- **安全**：Tunnel 憑證／token 屬機密，**只存部署主機 `.env`、不進 Git**（與 `JWT_SECRET_KEY` 等一致，§26.4）；`.env.prod.example` 只提供佔位示例。可選再疊 Cloudflare Access（Zero-Trust 登入閘）作為網路層前置驗證——**本次不含，列為後續**。
+- **待確認事項**：① CloudDrive 正式站台的**網域名稱**（使用者稍後提供，暫以 `<CloudDrive 網域>` 佔位）；② 前端對外 port 是否仍保留 `8088` 映射，或改由 Tunnel 內部網路直達 `frontend:80`（實作面決定，見 detailed-design §21.9）。
+
+實作（`cloudflared` 服務定義、ingress 路由、token 注入、部署整合）見 [detailed-design/ §21.9](./detailed-design/01-overview.md)。
+
 ## 27. 結論
 
 本專案的核心不是只做「檔案上傳」，而是要建立完整的檔案管理系統。因此設計上需同時考慮檔案本體儲存、資料庫中繼資料、權限、分享、搜尋、垃圾桶、容量限制與使用者體驗。

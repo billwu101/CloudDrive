@@ -3969,6 +3969,29 @@ CREDENTIAL_ENCRYPTION_KEY=<Fernet key> # 啟用外部模型憑證才需
 - **CODEOWNERS**：`.github/workflows/`、`*/Dockerfile`、部署設定由 maintainer review。
 - **必要安全規則**：self-hosted 只用於 private repo、只跑 CD；PR 一律 `ubuntu-latest`、禁止 PR 用 self-hosted；Runner 非 root、不入 docker 群組、只能 sudo 固定腳本；正式 image 只由 CI 建、**用完整 SHA 不用 `latest`**；`.env` 只存主機；第三方 Action 正式上線釘完整 commit SHA。
 
+### 21.9 Cloudflare Tunnel（cloudflared，僅正式環境）
+
+對應 proposal §26.6。**只在 `compose.prod.yml` 新增 `cloudflared` 服務**，讓正式站台經 Cloudflare Tunnel 對外；**dev 的 `docker-compose.yml` 不動**。
+
+**服務定義（加入 `compose.prod.yml`）**
+
+```yaml
+  cloudflared:
+    image: cloudflare/cloudflared:latest   # 正式上線可釘特定版本 tag
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: [.env]                       # 提供 TUNNEL_TOKEN
+    depends_on:
+      - frontend
+```
+
+- **連線模型**：`cloudflared` 由主機**主動向外**連 Cloudflare，**不需 `ports:` 映射、主機不開任何對外埠**、不受動態 IP 影響。使用 **remote-managed tunnel（token 模式）**：`TUNNEL_TOKEN` 由 Cloudflare Zero-Trust 儀表板建立 tunnel 時產生，ingress 路由（`<CloudDrive 網域>` → 服務）在儀表板設定，容器只需 token。
+- **Ingress 路由**：`<CloudDrive 網域>` → **`frontend:80`**（compose 內部網路的 nginx 唯一入口；nginx 已代理 `/api` → backend，見 §3）。因走內部網路，前端**可移除 `8088:80` 對外映射**（proposal §26.6 待確認②）；保留與否不影響 Tunnel。
+- **憑證管理**：`TUNNEL_TOKEN` 為機密——**只存部署主機 `.env`、不進 Git**；`deploy/.env.prod.example` 加佔位鍵 `TUNNEL_TOKEN=`（示例值，§21.2 檔案結構）。deploy 腳本無需改動：`docker compose -f compose.prod.yml up -d` 會一併起 `cloudflared`（健康檢查仍針對 backend `/health`，§21.5）。
+- **dev 不受影響**：`docker-compose.yml` 無 `cloudflared`；開發者仍 `localhost:8088`／`localhost:8001` 直連。
+- **可選後續（本次不含）**：於 Cloudflare Access 對該網域套 Zero-Trust policy，做網路層前置登入閘（疊在應用自身 JWT 之上）。
+- **待網域確認後才能完成**：ingress 主機名需實際網域（proposal §26.6 待確認①）；在網域提供前，`compose.prod.yml` 的服務可先落地，實際路由於 Cloudflare 儀表板綁定網域時設定。
+
 ---
 
 ## 附錄 A. 架構決策紀錄（ADR）

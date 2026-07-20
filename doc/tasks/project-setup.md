@@ -40,3 +40,16 @@
 - [x] 驗證 frontend 可啟動。
 - [x] 驗證 backend `/health` 可存取。
 - [x] 驗證 backend 可連接 PostgreSQL。
+
+## Cloudflare Tunnel（僅 CD 端；proposal §26.6 / detailed-design §21.9）
+
+> 對外曝露正式站台，dev 不動。網域待使用者提供（proposal §26.6 待確認①）。
+
+- [ ] `compose.prod.yml` 新增 `cloudflared` 服務（`cloudflare/cloudflared`、`command: tunnel --no-autoupdate run`、`env_file: [.env]`、`depends_on: [frontend]`、`restart: unless-stopped`、無 `ports`）。
+- [ ] `deploy/.env.prod.example` 加入佔位鍵 `TUNNEL_TOKEN=`（示例值，不放真 token）。
+- [ ] 確認 `docker-compose.yml`（dev）**未**新增 cloudflared（範圍限定驗收）。
+- [ ] `deploy/README.md` 補說明：於 Cloudflare Zero-Trust 建立 remote-managed tunnel、取得 `TUNNEL_TOKEN` 寫入主機 `.env`、儀表板設 ingress（`<CloudDrive 網域>` → `frontend:80`）。
+- [ ]（待網域）在 Cloudflare 儀表板綁定實際網域並設 ingress 路由。
+- [ ]（待網域，決策②）決定前端是否移除 `8088:80` 對外映射、改由 Tunnel 內部直達。
+- [ ] 驗收：正式主機 `docker compose -f compose.prod.yml up -d` 後 `cloudflared` 起、`https://<網域>` 可達前端、`/api` 正常；主機未開任何對外埠；`TUNNEL_TOKEN` 不在 Git。
+- [ ]（可選後續）Cloudflare Access Zero-Trust 前置登入閘。
