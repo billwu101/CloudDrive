@@ -114,6 +114,31 @@ async def test_target_local_does_not_fall_back_to_external() -> None:
     assert external.calls == 0  # never escalates when local is explicitly chosen
 
 
+async def test_target_local_returns_unvalidated_reply_instead_of_503() -> None:
+    # The model answers in prose but fails the caller's validator (e.g. a greeting
+    # that isn't a plan). For an explicit local target we return that reply so the
+    # planner can use it conversationally, rather than raising LLMUnavailableError.
+    local = SuccessfulLLM(content="你好很高興見到你")
+    router = ModelRouter(
+        local_client=local,
+        external_client=None,
+        external_enabled=False,
+        max_local_attempts=3,
+        privacy_default="non_sensitive",
+    )
+
+    result = await router.chat(
+        [LLMMessage(role="user", content="你好啊")],
+        [],
+        num_ctx=128,
+        target="local",
+        validator=lambda _resp: False,  # never a valid plan (prose)
+    )
+
+    assert result.content == "你好很高興見到你"
+    assert local.calls == 3  # exhausted attempts, then returned the reply
+
+
 async def test_target_external_skips_local_and_picks_provider() -> None:
     local = SuccessfulLLM(content="local")
     openai = SuccessfulLLM(content="openai")
