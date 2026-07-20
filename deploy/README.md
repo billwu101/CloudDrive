@@ -64,6 +64,17 @@ sudo chmod 440 /etc/sudoers.d/cloud-drive-deploy
 
 > ⚠️ `TUNNEL_TOKEN` 等同 tunnel 的完整存取權，只存主機 `.env`、不進 Git、不外流。
 
+## 設定同步（部署時自動；.env 除外）
+
+部署腳本（見 [detailed-design §21.5](../doc/detailed-design.md)）在每次部署時，會**依要部署的 commit SHA 從 public repo 自動同步非機密設定到主機**：
+
+- ✅ **`compose.prod.yml`**：自動抓 repo@SHA 覆蓋主機版 → 部署拓撲改動（如新增 `cloudflared`）**隨程式碼落地，不需手動 cp**。回滾時抓舊 SHA 的 compose，拓撲一併回滾。
+- ✅ **部署腳本本身**：自動抓 repo@SHA、原子替換後以新版接手 → 腳本邏輯隨部署演進。
+- ❌ **`.env` 真密鑰不同步**：只做**漂移檢查**——若範本（`.env.prod.example`）新增了主機 `.env` 沒有的鍵（如 `TUNNEL_TOKEN`），部署 log 會警告提醒你手動補值。
+- 🔒 前置安全：只允許部署 **`main` 歷史上的 commit**（`compare/main...<SHA>`），即使 runner 被攻陷也無法部署未合併的惡意 commit。
+
+> 上面「一次性：部署主機」的第 3、4 步（`cp compose.prod.yml`、`cp deploy-cloud-drive`）為 **bootstrap 首次安裝**；裝好含本機制的腳本後，之後 compose 與腳本都自動同步，不再需要手動 cp。**唯 `.env` 永遠手動維護在主機。**
+
 ## 日常流程
 
 1. feature branch → PR → CI 通過 + review → merge `main`
