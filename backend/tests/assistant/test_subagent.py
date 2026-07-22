@@ -85,6 +85,7 @@ async def test_author_requests_structured_output() -> None:
         num_ctx=4096,
         max_repair=0,
         temperature=0.8,
+        disable_thinking=True,
     )
 
     await agent.author(request="make a zip extractor")
@@ -98,10 +99,34 @@ async def test_author_requests_structured_output() -> None:
     # Codegen must override the structured-temperature pin: 0.2 breaks code
     # generation (baseline at full sampling authored valid skills — proposal §7).
     assert llm.temperatures == [0.8]
-    # DEC-033 excludes codegen from think:false — its structured protection was
-    # validated with thinking on, so it must not send the flag (defers to the
-    # client default), unlike the planner.
-    assert llm.disable_thinkings == [None]
+    # DEC-034: codegen disables thinking (think:false) like the planner —
+    # thinking-on codegen falls into repetition loops on gemma4:26b (real A/B
+    # 0/6 → 6/6), overturning DEC-033's "codegen validated with thinking on".
+    assert llm.disable_thinkings == [True]
+
+
+async def test_author_disables_thinking_on_every_call() -> None:
+    # DEC-034: every codegen call, including repair retries, must send think:false.
+    llm = _ScriptedLLM(["not a json object", json.dumps(_proposal())])
+    router = ModelRouter(
+        local_client=llm,
+        external_client=None,
+        external_enabled=False,
+        max_local_attempts=1,
+        privacy_default="non_sensitive",
+    )
+    agent = CodegenSubAgent(
+        llm=router,
+        context=ContextManager(num_ctx=4096),
+        num_ctx=4096,
+        max_repair=1,
+        disable_thinking=True,
+    )
+
+    result = await agent.author(request="make a zip extractor")
+
+    assert result.ok
+    assert llm.disable_thinkings == [True, True]
 
 
 async def test_author_returns_validated_proposal() -> None:
