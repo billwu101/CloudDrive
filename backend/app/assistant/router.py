@@ -290,6 +290,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         context=context,
         num_ctx=settings.llm_num_ctx,
         temperature=settings.llm_codegen_temperature,
+        disable_thinking=settings.llm_codegen_disable_thinking,
     )
     return WorkflowService(
         planner=planner,

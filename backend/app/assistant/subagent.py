@@ -173,6 +173,7 @@ class CodegenSubAgent:
         num_ctx: int,
         max_repair: int = 3,
         temperature: float | None = None,
+        disable_thinking: bool = False,
     ) -> None:
         self._llm = llm
         self._context = context
@@ -182,6 +183,9 @@ class CodegenSubAgent:
         # generation; authoring wants full sampling — see proposal §7). None
         # falls back to the client's structured default.
         self._temperature = temperature
+        # think:false for codegen — thinking-on falls into repetition loops on
+        # gemma4:26b (2026-07-22 A/B). Mirrors the planner (DEC-033).
+        self._disable_thinking = disable_thinking
 
     async def author(self, *, request: str) -> CodegenResult:
         messages = [
@@ -199,6 +203,7 @@ class CodegenSubAgent:
                 num_ctx=self._num_ctx,
                 response_format=_CODEGEN_RESPONSE_FORMAT,
                 temperature=self._temperature,
+                disable_thinking=self._disable_thinking,
             )
             parsed = _split_manifest_and_code(response.content)
             if parsed is None:

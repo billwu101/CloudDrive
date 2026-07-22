@@ -392,3 +392,15 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 已知取捨：換更強 thinking 模型時應重跑 E8 A/B 再定；外部路徑無法控制此參數（忽略，與現狀一致）。
 - 影響範圍：`llm/client.py` 協定 + 7 個 chat() 實作 + 測試 fake、`planner.py`、`core/config.py`、`assistant/router.py`、E8 文件。
 - 實作註記（2026-07-07）：`LLMClient.chat` 新增 `disable_thinking: bool | None`（None＝沿用 client 建構子預設），7 個實作全數同步——`OllamaLLMClient` per-call 值優先於建構子（True 時 payload 帶 `think:false`），external/anthropic/codex/tracking-wrapper 依協定接受並轉傳或忽略，`ModelRouter` 三個方法透傳。`WorkflowPlanner` 建構子加 `disable_thinking`，`plan()` 每次（含 repair 重試）帶入；`assistant/router.py` 以 `settings.llm_planner_disable_thinking`（預設 True）接線；codegen 不傳（維持 None）。新增測試：ollama per-call 雙向覆寫 + None 遞延、planner 每呼叫傳 True、codegen 傳 None。全閘門通過（618 unit / mypy / ruff）。真模型驗證見 proposal §「驗證結果」。
+
+## DEC-034：codegen 也預設關閉 thinking（think:false）——翻案 DEC-033「codegen 不連動」
+
+- 日期：2026-07-22
+- 狀態：Accepted，**已實作**（2026-07-22；本地分支，待 review 後 push）
+- 背景：DEC-033 為 planner 關 thinking，但**刻意排除 codegen**，理由記為「其結構化保護於 thinking 開時取得（validated with thinking on）」。2026-07-22 對**真實遠端 gemma4:26b** 做技能生成 A/B（真 prompt + 約束 schema + codeguard 驗證）：**thinking 開 per-call 0/6**（失敗模式：重複生成迴圈 `_pattern_pattern…`、生成 Python 語法錯、JSON 亂碼截斷）vs **think:false 6/6**；規模上 M4 技能生成 100 案 **0% → 100%**。→ 「codegen 於 thinking 開已驗證」的舊假設被真模型推翻。
+- 決策：codegen 子代理（`CodegenSubAgent`）比照 planner，預設 `think:false`；新增設定 `llm_codegen_disable_thinking`（預設 True，`LLM_CODEGEN_DISABLE_THINKING` 可關回）。
+- 理由：資料驅動——收益（重複生成迴圈根治、生成可用率 0→100%）實測明確；與 DEC-033 同一原則（thinking 依任務類型決定，本模型規劃與產碼都不需要）。
+- 已知取捨：換更強 thinking 模型時應重跑此 A/B 再定；外部路徑無法控制此參數（與 DEC-033 一致）。
+- 影響範圍：`core/config.py`（新設定 + 更新誤導註解）、`assistant/subagent.py`（`CodegenSubAgent` 加 `disable_thinking` 參數並於 `author()` 每次 chat 帶入）、`assistant/router.py`（以 `settings.llm_codegen_disable_thinking` 接線）。
+- 真模型驗證（2026-07-22）：獨立後端（**未設 `LLM_DISABLE_THINKING` env**，think:false 純靠本 DEC 新設定）跑 M4 生成 **3/3 passed** → 程式路徑確認生效。過夜大跑（`eval/out/acceptance-*`）以此配置 M4 100/100。
+- 待補：單元測試（codegen 傳 `disable_thinking=True`，比照 DEC-033 planner 測試）＋跑全閘門，push 前補上。
