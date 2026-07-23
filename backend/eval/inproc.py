@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -80,6 +81,9 @@ class _FakeDrive:
 
     async def get_item(self, user_id: UUID, item_id: UUID) -> Any:
         return {"id": str(item_id), "name": "item", "item_type": "FILE"}
+
+    async def get_item_any_state(self, user_id: UUID, item_id: UUID) -> Any:
+        return SimpleNamespace(id=item_id, name="item", item_type="FILE")
 
     async def get_recent(self, user_id: UUID, **kwargs: Any) -> Any:
         return []
@@ -181,7 +185,9 @@ class _FakeTrash:
     async def restore(self, user_id: UUID, item_id: UUID) -> Any:
         return {"id": str(item_id), "is_deleted": False}
 
-    async def list_trash(self, user_id: UUID, *, page: int = 1, page_size: int = 50) -> Any:
+    async def list_trash(
+        self, user_id: UUID, *, page: int = 1, page_size: int = 50, name: str | None = None
+    ) -> Any:
         return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
 
 

@@ -181,7 +181,7 @@ class _FakeDriveService:
     """Minimal stand-in: resolves a selected id to an item with a name. Only
     called when a test supplies selected_item_ids; otherwise unused."""
 
-    async def get_item(self, user_id: UUID, item_id: UUID) -> SimpleNamespace:
+    async def get_item_any_state(self, user_id: UUID, item_id: UUID) -> SimpleNamespace:
         return SimpleNamespace(id=item_id, name=f"item-{item_id}", item_type="FILE")
 
 

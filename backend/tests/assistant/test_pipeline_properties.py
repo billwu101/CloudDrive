@@ -423,7 +423,7 @@ def _build_service(
     repo = _FakeWorkflowRepo()
 
     class _FakeDriveService:
-        async def get_item(self, user_id: UUID, item_id: UUID) -> SimpleNamespace:
+        async def get_item_any_state(self, user_id: UUID, item_id: UUID) -> SimpleNamespace:
             return SimpleNamespace(id=item_id, name=f"item-{item_id}", item_type="FILE")
 
     service = WorkflowService(

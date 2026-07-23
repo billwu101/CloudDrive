@@ -34,5 +34,20 @@ async def test_list_trash_skill_is_registered_and_calls_service() -> None:
         arguments={},
     )
 
-    trash.list_trash.assert_awaited_once_with(user_id, page=1, page_size=50)
+    trash.list_trash.assert_awaited_once_with(user_id, page=1, page_size=50, name=None)
     assert output == {"items": [{"id": "a"}], "total": 1}
+
+
+async def test_list_trash_skill_passes_name_filter() -> None:
+    trash = AsyncMock(spec=TrashService)
+    trash.list_trash.return_value = {"items": [], "total": 0}
+    registry = _read_registry(trash)
+
+    await registry.execute(
+        name="list_trash",
+        context=SkillContext(user_id=uuid4()),
+        arguments={"q": "test3"},
+    )
+
+    _, kwargs = trash.list_trash.call_args
+    assert kwargs["name"] == "test3"  # q → name filter

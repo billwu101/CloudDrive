@@ -69,6 +69,7 @@ def build_read_only_registry(
             context.user_id,
             page=_int_arg(args, "page", default=1, min_value=1),
             page_size=_int_arg(args, "page_size", default=50, min_value=1, max_value=200),
+            name=_optional_str(args.get("q")),
         )
         return _dump(page)
 
@@ -145,11 +146,14 @@ def build_read_only_registry(
             name="list_trash",
             description=(
                 "List the items currently in the trash (deleted files and folders). "
-                "Use this to find a trashed item's UUID before restoring it, or to "
-                "restore everything in the trash. Returns {items:[{id, name, ...}], total}."
+                "Trashed items do NOT appear in search or list_items — use this to find "
+                "something in the trash before restoring it, or to restore everything. "
+                "Pass 'q' to filter by name (e.g. to restore one specific item). "
+                "Returns {items:[{id, name, ...}], total}."
             ),
             parameters=_object_schema(
                 {
+                    "q": {"type": "string", "description": "Filter trashed items by name."},
                     "page": {"type": "integer", "minimum": 1},
                     "page_size": {"type": "integer", "minimum": 1, "maximum": 200},
                 }

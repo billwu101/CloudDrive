@@ -98,6 +98,11 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         "- Never guess or write a UUID. To act on something you only know by name (e.g. a "
         "folder), search for it first, then reference the result. To act on the user's selected "
         "file(s), use a selection reference — do NOT ask which file.\n"
+        "- Trashed items are NOT returned by search or list_items. To restore something from the "
+        'trash, use list_trash (pass "q" to filter by name) and reference ITS result — never '
+        "search for a trashed item. Example — restore the folder named test3 from trash: "
+        '[{"skill": "list_trash", "arguments": {"q": "test3"}}, {"skill": "restore_item", '
+        '"arguments": {"item_id": {"from": 0, "path": "items.0.id"}}}].\n'
         '  Example — "what is in the test folder": '
         '[{"skill": "search", "arguments": {"q": "test"}}, {"skill": "list_items", "arguments": '
         '{"parent_id": {"from": 0, "path": "items.0.id"}}}].\n'

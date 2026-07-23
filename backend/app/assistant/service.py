@@ -36,10 +36,11 @@ _PENDING_NOTE = " 這個操作需要你確認後才會執行。"
 
 class ItemLookup(Protocol):
     """The slice of DriveService the assistant needs: resolve a selected item id
-    to its metadata (id/name/item_type). ``DriveService`` satisfies this
-    structurally; tests can supply a lightweight fake."""
+    to its metadata (id/name/item_type), including items in the trash (so a
+    selection made in the trash view still resolves). ``DriveService`` satisfies
+    this structurally; tests can supply a lightweight fake."""
 
-    async def get_item(self, user_id: UUID, item_id: UUID) -> Any: ...
+    async def get_item_any_state(self, user_id: UUID, item_id: UUID) -> Any: ...
 
 
 def _run_status(results: list[StepResult]) -> str:
@@ -133,7 +134,7 @@ class WorkflowService:
         items: list[dict[str, object]] = []
         for item_id in selected_item_ids:
             try:
-                item = await self._drive.get_item(user_id, item_id)
+                item = await self._drive.get_item_any_state(user_id, item_id)
             except NotFoundError:
                 continue
             items.append({"id": str(item.id), "name": item.name, "item_type": str(item.item_type)})
