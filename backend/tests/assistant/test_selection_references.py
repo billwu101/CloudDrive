@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 from uuid import uuid4
 
@@ -13,10 +14,12 @@ from app.assistant.workflow import (
     StepResolutionError,
     StepResult,
     apply_selection,
+    has_fanout,
     has_selection_reference,
     is_selection_ref,
     is_step_ref,
     resolve_arguments,
+    resolve_fanout_arguments,
 )
 
 
@@ -247,6 +250,107 @@ def test_validate_plan_selection_ref_satisfies_required_arg() -> None:
         PlannedStep(skill="move_item", arguments={"item_id": {"from": "selection", "item": 0}}),
     ]
     assert validate_plan(steps, registry) == []
+
+
+def test_validate_plan_accepts_wildcard_step_reference() -> None:
+    registry = _registry()
+    # "trash everything in a folder": list then trash each returned item
+    steps = [
+        PlannedStep(skill="list_items", arguments={"parent_id": "x"}),
+        PlannedStep(
+            skill="move_item",
+            arguments={"item_id": {"from": 0, "path": "items.*.id"}, "parent_id": "y"},
+            depends_on=[0],
+        ),
+    ]
+    assert validate_plan(steps, registry) == []
+
+
+# --- wildcard fan-out over a step's list output ---------------------------
+
+
+def test_has_fanout_detects_wildcard_only() -> None:
+    assert has_fanout({"item_id": {"from": 1, "path": "items.*.id"}}) is True
+    assert has_fanout({"item_id": {"from": 1, "path": "items.0.id"}}) is False
+    assert has_fanout({"item_id": "literal"}) is False
+
+
+def test_resolve_fanout_expands_once_per_item_and_shares_other_args() -> None:
+    src = {
+        1: StepResult(
+            index=1,
+            skill="list_items",
+            ok=True,
+            output={"items": [{"id": "a"}, {"id": "b"}, {"id": "c"}]},
+        ),
+        0: StepResult(index=0, skill="search", ok=True, output={"items": [{"id": "DEST"}]}),
+    }
+    arg_sets = resolve_fanout_arguments(
+        {
+            "item_id": {"from": 1, "path": "items.*.id"},
+            "parent_id": {"from": 0, "path": "items.0.id"},
+        },
+        src,
+    )
+    assert [a["item_id"] for a in arg_sets] == ["a", "b", "c"]  # one per listed item
+    assert all(a["parent_id"] == "DEST" for a in arg_sets)  # shared destination
+
+
+def test_resolve_fanout_empty_list_yields_no_calls() -> None:
+    src = {1: StepResult(index=1, skill="list_items", ok=True, output={"items": []})}
+    assert resolve_fanout_arguments({"item_id": {"from": 1, "path": "items.*.id"}}, src) == []
+
+
+def test_resolve_fanout_non_list_raises() -> None:
+    src = {1: StepResult(index=1, skill="x", ok=True, output={"items": {"id": "a"}})}
+    with pytest.raises(StepResolutionError):
+        resolve_fanout_arguments({"item_id": {"from": 1, "path": "items.*.id"}}, src)
+
+
+async def test_executor_runs_fanout_skill_once_per_item() -> None:
+    from app.assistant.workflow import WorkflowExecutor
+
+    trashed: list[str] = []
+    registry = SkillRegistry()
+
+    async def _list(ctx: object, args: Mapping[str, Any]) -> dict[str, Any]:
+        return {"items": [{"id": "a"}, {"id": "b"}], "total": 2}
+
+    async def _trash(ctx: object, args: Mapping[str, Any]) -> dict[str, Any]:
+        trashed.append(str(args["item_id"]))
+        return {"trashed": args["item_id"]}
+
+    registry.register(
+        RegisteredSkill(
+            name="list_items", description="", parameters={}, permission_tier="read", handler=_list
+        )
+    )
+    registry.register(
+        RegisteredSkill(
+            name="trash_item",
+            description="",
+            parameters={"type": "object", "required": ["item_id"]},
+            permission_tier="destructive",
+            handler=_trash,
+        )
+    )
+    steps = classify_steps(
+        [
+            PlannedStep(skill="list_items", arguments={"parent_id": "f"}),
+            PlannedStep(
+                skill="trash_item",
+                arguments={"item_id": {"from": 0, "path": "items.*.id"}},
+                depends_on=[0],
+            ),
+        ],
+        registry,
+    )
+
+    results = await WorkflowExecutor(registry=registry).execute(user_id=uuid4(), steps=steps)
+
+    assert trashed == ["a", "b"]  # ran once per listed file
+    assert results[1].ok is True
+    assert results[1].output == {"items": [{"trashed": "a"}, {"trashed": "b"}], "count": 2}
 
 
 def test_validate_plan_still_rejects_forward_step_reference() -> None:

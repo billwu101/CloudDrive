@@ -265,6 +265,90 @@ def resolve_arguments(
     return resolved
 
 
+def _wildcard_split(path: str) -> tuple[str, str] | None:
+    """Split a reference path on a ``*`` list-broadcast segment into (before,
+    after). ``"items.*.id"`` → ``("items", "id")``. ``None`` if there is no
+    wildcard."""
+
+    parts = [p for p in path.split(".") if p]
+    if "*" not in parts:
+        return None
+    i = parts.index("*")
+    return ".".join(parts[:i]), ".".join(parts[i + 1 :])
+
+
+def has_fanout(arguments: dict[str, Any]) -> bool:
+    """True if any step reference uses a ``*`` wildcard — the step must run once
+    per element of the referenced list (dynamic fan-out at execution time)."""
+
+    return any(
+        is_step_ref(value) and _wildcard_split(str(value.get("path", ""))) is not None
+        for value in arguments.values()
+    )
+
+
+def resolve_fanout_arguments(
+    arguments: dict[str, Any],
+    results_by_index: dict[int, StepResult],
+) -> list[dict[str, Any]]:
+    """Expand a step whose arguments contain one or more ``*`` wildcard step
+    references into one fully-resolved argument dict per element of the referenced
+    list. Non-wildcard arguments (literals, single step refs, e.g. a shared
+    destination) are resolved once and copied to every element. Wildcard sources
+    must share a length; the resulting list is empty when the source list is."""
+
+    wildcard: dict[str, tuple[str, str, Any]] = {}
+    for key, value in arguments.items():
+        if is_step_ref(value):
+            split = _wildcard_split(str(value.get("path", "")))
+            if split is not None:
+                wildcard[key] = (split[0], split[1], ref_source(value))
+
+    shared = {k: v for k, v in arguments.items() if k not in wildcard}
+    base = resolve_arguments(shared, results_by_index)
+
+    lists: dict[str, tuple[list[Any], str]] = {}
+    length: int | None = None
+    for key, (pre, post, idx) in wildcard.items():
+        source = results_by_index.get(idx) if isinstance(idx, int) else None
+        if source is None or not source.ok:
+            raise StepResolutionError(
+                f"argument '{key}' references step {idx}, which did not produce a result"
+            )
+        try:
+            collection = _resolve_path(source.output, pre)
+        except (KeyError, IndexError, ValueError, TypeError) as exc:
+            raise StepResolutionError(
+                f"argument '{key}': cannot resolve list path '{pre}' from step {idx}"
+            ) from exc
+        if not isinstance(collection, list):
+            raise StepResolutionError(
+                f"argument '{key}': wildcard path '{pre}.*' did not resolve to a list"
+            )
+        lists[key] = (collection, post)
+        if length is None:
+            length = len(collection)
+        elif length != len(collection):
+            raise StepResolutionError("wildcard references span lists of differing lengths")
+
+    expanded: list[dict[str, Any]] = []
+    for i in range(length or 0):
+        row = dict(base)
+        for key, (collection, post) in lists.items():
+            element = collection[i]
+            if not post:
+                row[key] = element
+                continue
+            try:
+                row[key] = _resolve_path(element, post)
+            except (KeyError, IndexError, ValueError, TypeError) as exc:
+                raise StepResolutionError(
+                    f"argument '{key}': cannot resolve '{post}' on element {i}"
+                ) from exc
+        expanded.append(row)
+    return expanded
+
+
 def _blocked_dependencies(step: WorkflowStep, unavailable: set[int]) -> set[int]:
     """Dependencies of ``step`` that failed or were skipped. Covers both the
     explicit ``depends_on`` edges and implicit ``from_step`` argument
@@ -315,12 +399,24 @@ class WorkflowExecutor:
             try:
                 # Composable skills: resolve references to earlier steps' outputs first.
                 ok_results = {r.index: r for r in results if r.ok}
-                arguments = resolve_arguments(step.arguments, ok_results)
-                output = await self._registry.execute(
-                    name=step.skill,
-                    context=context,
-                    arguments=arguments,
-                )
+                if has_fanout(step.arguments):
+                    # A "*" wildcard reference runs the skill once per element of the
+                    # referenced list (e.g. trash every file a folder listing returned).
+                    arg_sets = resolve_fanout_arguments(step.arguments, ok_results)
+                    outputs = [
+                        await self._registry.execute(
+                            name=step.skill, context=context, arguments=arg_set
+                        )
+                        for arg_set in arg_sets
+                    ]
+                    output: Any = {"items": outputs, "count": len(outputs)}
+                else:
+                    arguments = resolve_arguments(step.arguments, ok_results)
+                    output = await self._registry.execute(
+                        name=step.skill,
+                        context=context,
+                        arguments=arguments,
+                    )
             except Exception as exc:
                 result = StepResult(index=step.index, skill=step.skill, ok=False, error=str(exc))
                 results.append(result)

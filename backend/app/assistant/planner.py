@@ -89,7 +89,9 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         "- Skills are composable. Any argument value may be a literal OR a reference. "
         "Two kinds of reference:\n"
         '  (a) an earlier step\'s output: {"from": <earlier index>, "path": "items.0.id"}. '
-        'search and list_items return {"items": [{"id", "name", "item_type", ...}], "total": N}.\n'
+        'search and list_items return {"items": [{"id", "name", "item_type", ...}], "total": N}. '
+        'To act on EVERY item a step returned, put "*" where the list index goes: '
+        '{"from": <index>, "path": "items.*.id"} — the step then runs once per item.\n'
         '  (b) the user\'s current file selection: {"from": "selection", "item": <i>} for one '
         'selected file, or {"from": "selection", "each": true} to act on EVERY selected file '
         "(the step runs once per file; the other arguments are copied to each).\n"
@@ -103,6 +105,10 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         '[{"skill": "search", "arguments": {"q": "test2"}}, {"skill": "move_item", "arguments": '
         '{"item_id": {"from": "selection", "each": true}, '
         '"parent_id": {"from": 0, "path": "items.0.id"}}}].\n'
+        '  Example — "delete everything in the test folder": '
+        '[{"skill": "search", "arguments": {"q": "test"}}, {"skill": "list_items", "arguments": '
+        '{"parent_id": {"from": 0, "path": "items.0.id"}}}, {"skill": "trash_item", "arguments": '
+        '{"item_id": {"from": 1, "path": "items.*.id"}}}].\n'
         "- Output JSON only, no prose, no code fences.\n\n"
         "Available skills:\n"
         f"{skills}"
