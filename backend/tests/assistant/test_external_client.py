@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 import httpx
@@ -69,3 +70,56 @@ async def test_500_is_unavailable() -> None:
 
     with pytest.raises(LLMUnavailableError):
         await _chat(_client(handler))
+
+
+async def test_structured_request_bounds_generation_and_temperature() -> None:
+    # DEC-031 anti-loop guards on the gateway path: max_tokens caps generation and
+    # structured requests get a small non-zero temperature to break greedy loops.
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    client = ExternalLLMClient(
+        base_url="http://x/v1",
+        model="gemma4",
+        api_key="sk-test",
+        num_predict=2048,
+        structured_temperature=0.2,
+        transport=httpx.MockTransport(handler),
+    )
+    await client.chat(
+        [LLMMessage(role="user", content="plan")],
+        [],
+        num_ctx=1000,
+        response_format={"type": "json_schema", "json_schema": {"name": "p", "schema": {}}},
+    )
+    assert captured["max_tokens"] == 2048
+    assert captured["temperature"] == 0.2
+
+
+async def test_explicit_temperature_wins_and_no_cap_when_zero() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "x"}}]})
+
+    client = ExternalLLMClient(
+        base_url="http://x/v1",
+        model="m",
+        api_key="k",
+        num_predict=0,
+        structured_temperature=0.2,
+        transport=httpx.MockTransport(handler),
+    )
+    await client.chat(
+        [LLMMessage(role="user", content="hi")],
+        [],
+        num_ctx=1000,
+        response_format={"type": "json_object"},
+        temperature=0.9,
+    )
+    assert captured["temperature"] == 0.9  # explicit wins over structured default
+    assert "max_tokens" not in captured  # num_predict=0 → uncapped

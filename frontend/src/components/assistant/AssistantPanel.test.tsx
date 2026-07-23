@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -112,6 +112,45 @@ describe('AssistantPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Done: hello')).toBeInTheDocument()
     })
+  })
+
+  it('sends the message when Enter is pressed (no IME composing)', async () => {
+    renderAssistantPanel()
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+    const input = screen.getByLabelText(/assistant message/i)
+    await userEvent.type(input, 'hi there')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(screen.getByText('Done: hi there')).toBeInTheDocument()
+    })
+  })
+
+  it('does not send on Shift+Enter (inserts a newline instead)', async () => {
+    renderAssistantPanel()
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+    const input = screen.getByLabelText(/assistant message/i)
+    await userEvent.type(input, 'line one')
+
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
+
+    // No chat response, and the draft is preserved (default newline behaviour).
+    expect(screen.queryByText(/^Done:/)).not.toBeInTheDocument()
+    expect((input as HTMLTextAreaElement).value).toBe('line one')
+  })
+
+  it('does not send while an IME is composing (e.g. Chinese Enter selects a candidate)', async () => {
+    renderAssistantPanel()
+    await userEvent.click(screen.getByRole('button', { name: /open assistant/i }))
+    const input = screen.getByLabelText(/assistant message/i)
+    await userEvent.type(input, 'ni')
+
+    // Enter while composing: isComposing is true, so it must NOT submit.
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+
+    expect(screen.queryByText(/^Done:/)).not.toBeInTheDocument()
+    expect((input as HTMLTextAreaElement).value).toBe('ni')
   })
 
   it('sends the selected file ids and shows a selection chip', async () => {

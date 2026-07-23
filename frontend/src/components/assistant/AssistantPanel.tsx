@@ -335,8 +335,19 @@ export function AssistantPanel() {
               <textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  // Enter sends; Shift+Enter inserts a newline. While an IME is
+                  // composing (e.g. Chinese/Japanese input), Enter confirms the
+                  // candidate — isComposing is true then, so we must not send.
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault()
+                    if (input.trim() && selectedModel && !chatMutation.isPending) {
+                      event.currentTarget.form?.requestSubmit()
+                    }
+                  }
+                }}
                 className="max-h-28 min-h-10 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
-                placeholder="Message assistant (press the send button)"
+                placeholder="Message assistant (Enter to send, Shift+Enter for newline)"
                 aria-label="Assistant message"
                 rows={1}
               />

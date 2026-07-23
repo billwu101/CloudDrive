@@ -71,6 +71,7 @@ class ModelRouter:
             )
 
         last_error: Exception | None = None
+        last_unvalidated: LLMResponse | None = None
         for _ in range(self._max_local_attempts):
             try:
                 response = await self._local.chat(
@@ -86,10 +87,18 @@ class ModelRouter:
                 continue
             if validator is None or validator(response):
                 return response
+            # Got a reply, but it failed the caller's validator — common when the
+            # model answers in prose instead of the plan schema (gateways that
+            # don't grammar-enforce json_schema do this). Keep it: the planner can
+            # still use prose as a conversational reply instead of hard-failing.
+            last_unvalidated = response
             last_error = LLMUnavailableError("Local model response did not pass validation")
 
-        # Explicit local target: no fallback — surface the local failure plainly.
+        # Explicit local target: no fallback. Prefer returning an unvalidated reply
+        # (prose) over a 503 — only truly fail if we never got a response at all.
         if target == self.LOCAL_TARGET:
+            if last_unvalidated is not None:
+                return last_unvalidated
             raise LLMUnavailableError("Local model is unavailable") from last_error
 
         return await self._try_external(
