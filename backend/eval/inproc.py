@@ -181,6 +181,9 @@ class _FakeTrash:
     async def restore(self, user_id: UUID, item_id: UUID) -> Any:
         return {"id": str(item_id), "is_deleted": False}
 
+    async def list_trash(self, user_id: UUID, *, page: int = 1, page_size: int = 50) -> Any:
+        return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
+
 
 class _MemoryWorkflowRepo(AbstractAssistantWorkflowRepository):
     def __init__(self) -> None:
@@ -292,6 +295,7 @@ def _build_service(mock: MockLLM) -> WorkflowService:
         drive_service=cast(DriveService, _FakeDrive()),
         search_service=cast(SearchService, _FakeSearch()),
         quota_service=cast(QuotaService, _FakeQuota()),
+        trash_service=cast(TrashService, _FakeTrash()),
     )
     register_write_skills(
         registry,
