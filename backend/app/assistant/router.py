@@ -221,15 +221,17 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
     drive_service = _drive_service(session)
     search_service = SearchService(SQLSearchRepository(session))
     quota_service = QuotaService(SQLUserRepository(session))
+    trash_service = _trash_service(session)
     registry = build_read_only_registry(
         drive_service=drive_service,
         search_service=search_service,
         quota_service=quota_service,
+        trash_service=trash_service,
     )
     register_write_skills(
         registry,
         drive_service=drive_service,
-        trash_service=_trash_service(session),
+        trash_service=trash_service,
         share_link_service=ShareLinkService(
             item_repo=SQLDriveItemRepository(session),
             link_repo=SQLShareLinkRepository(session),
@@ -294,6 +296,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         executor=executor,
         registry=registry,
         workflow_repo=SQLAssistantWorkflowRepository(session),
+        drive_service=drive_service,
         skill_authoring=AssistantSkillService(
             repo=SQLAssistantSkillRepository(session),
             drive_service=drive_service,

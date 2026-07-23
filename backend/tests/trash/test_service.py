@@ -40,9 +40,15 @@ class MemTrashRepo(AbstractTrashRepository):
         return item
 
     async def list_deleted(
-        self, owner_id: UUID, *, offset: int, limit: int
+        self, owner_id: UUID, *, offset: int, limit: int, name: str | None = None
     ) -> tuple[list[DriveItem], int]:
-        matched = [i for i in self._items.values() if i.owner_id == owner_id and i.is_deleted]
+        matched = [
+            i
+            for i in self._items.values()
+            if i.owner_id == owner_id
+            and i.is_deleted
+            and (name is None or name.lower() in i.name.lower())
+        ]
         return matched[offset : offset + limit], len(matched)
 
     async def get_all_deleted(self, owner_id: UUID) -> list[DriveItem]:

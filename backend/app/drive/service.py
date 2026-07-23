@@ -121,6 +121,22 @@ class DriveService:
         starred = await self._starred(user_id, [item])
         return _to_response(item, is_starred=item.id in starred)
 
+    async def get_item_any_state(self, user_id: UUID, item_id: UUID) -> DriveItemResponse:
+        """Like :meth:`get_item` but also returns items currently in the trash.
+
+        The assistant's selection may include trashed items (e.g. the user picks
+        files in the trash view and asks to restore them); ``get_item`` rejects
+        deleted items, so selection resolution needs this ownership-checked
+        lookup that does not filter on ``is_deleted``."""
+
+        item = await self._items.get_by_id(item_id)
+        if item is None:
+            raise NotFoundError("Item not found")
+        if item.owner_id != user_id:
+            raise ForbiddenError()
+        starred = await self._starred(user_id, [item])
+        return _to_response(item, is_starred=item.id in starred)
+
     async def list_items(
         self,
         user_id: UUID,

@@ -13,6 +13,7 @@ from app.drive.schemas import DriveItemSortField
 from app.drive.service import DriveService
 from app.schemas.common import SortOrder
 from app.search.service import SearchService
+from app.trash.service import TrashService
 from app.users.service import QuotaService
 
 
@@ -21,6 +22,7 @@ def build_read_only_registry(
     drive_service: DriveService,
     search_service: SearchService,
     quota_service: QuotaService,
+    trash_service: TrashService,
 ) -> SkillRegistry:
     registry = SkillRegistry()
 
@@ -61,6 +63,15 @@ def build_read_only_registry(
     async def storage_quota(context: SkillContext, args: Mapping[str, Any]) -> Any:
         quota = await quota_service.get_quota_info(context.user_id)
         return _dump(quota)
+
+    async def list_trash(context: SkillContext, args: Mapping[str, Any]) -> Any:
+        page = await trash_service.list_trash(
+            context.user_id,
+            page=_int_arg(args, "page", default=1, min_value=1),
+            page_size=_int_arg(args, "page_size", default=50, min_value=1, max_value=200),
+            name=_optional_str(args.get("q")),
+        )
+        return _dump(page)
 
     registry.register(
         RegisteredSkill(
@@ -128,6 +139,27 @@ def build_read_only_registry(
             parameters=_object_schema({}),
             permission_tier="read",
             handler=storage_quota,
+        )
+    )
+    registry.register(
+        RegisteredSkill(
+            name="list_trash",
+            description=(
+                "List the items currently in the trash (deleted files and folders). "
+                "Trashed items do NOT appear in search or list_items — use this to find "
+                "something in the trash before restoring it, or to restore everything. "
+                "Pass 'q' to filter by name (e.g. to restore one specific item). "
+                "Returns {items:[{id, name, ...}], total}."
+            ),
+            parameters=_object_schema(
+                {
+                    "q": {"type": "string", "description": "Filter trashed items by name."},
+                    "page": {"type": "integer", "minimum": 1},
+                    "page_size": {"type": "integer", "minimum": 1, "maximum": 200},
+                }
+            ),
+            permission_tier="read",
+            handler=list_trash,
         )
     )
     return registry
