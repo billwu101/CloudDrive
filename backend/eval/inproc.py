@@ -312,6 +312,7 @@ def _build_service(mock: MockLLM) -> WorkflowService:
         executor=WorkflowExecutor(registry=registry),
         registry=registry,
         workflow_repo=_MemoryWorkflowRepo(),
+        drive_service=cast(DriveService, _FakeDrive()),
         skill_authoring=skill_authoring,
     )
 

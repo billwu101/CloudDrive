@@ -13,6 +13,7 @@ import asyncio
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -420,11 +421,17 @@ def _build_service(
         max_repair=2,
     )
     repo = _FakeWorkflowRepo()
+
+    class _FakeDriveService:
+        async def get_item(self, user_id: UUID, item_id: UUID) -> SimpleNamespace:
+            return SimpleNamespace(id=item_id, name=f"item-{item_id}", item_type="FILE")
+
     service = WorkflowService(
         planner=planner,
         executor=WorkflowExecutor(registry=registry),
         registry=registry,
         workflow_repo=repo,
+        drive_service=_FakeDriveService(),
     )
     return service, repo
 

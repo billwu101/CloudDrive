@@ -294,6 +294,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         executor=executor,
         registry=registry,
         workflow_repo=SQLAssistantWorkflowRepository(session),
+        drive_service=drive_service,
         skill_authoring=AssistantSkillService(
             repo=SQLAssistantSkillRepository(session),
             drive_service=drive_service,

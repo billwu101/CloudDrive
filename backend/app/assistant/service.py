@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from app.assistant.llm.client import LLMMessage
@@ -23,14 +24,22 @@ from app.assistant.workflow import (
     StepResult,
     WorkflowExecutor,
     WorkflowStep,
-    expand_selection_steps,
+    apply_selection,
+    has_selection_reference,
     is_auto_confirmable,
-    requires_file_selection,
 )
 from app.core.exceptions import NotFoundError
 from app.models.assistant_workflow import AssistantWorkflow
 
 _PENDING_NOTE = " 這個操作需要你確認後才會執行。"
+
+
+class ItemLookup(Protocol):
+    """The slice of DriveService the assistant needs: resolve a selected item id
+    to its metadata (id/name/item_type). ``DriveService`` satisfies this
+    structurally; tests can supply a lightweight fake."""
+
+    async def get_item(self, user_id: UUID, item_id: UUID) -> Any: ...
 
 
 def _run_status(results: list[StepResult]) -> str:
@@ -103,13 +112,32 @@ class WorkflowService:
         executor: WorkflowExecutor,
         registry: SkillRegistry,
         workflow_repo: AbstractAssistantWorkflowRepository,
+        drive_service: ItemLookup,
         skill_authoring: AssistantSkillService | None = None,
     ) -> None:
         self._planner = planner
         self._executor = executor
         self._registry = registry
         self._workflows = workflow_repo
+        self._drive = drive_service
         self._skill_authoring = skill_authoring
+
+    async def _resolve_selection(
+        self, user_id: UUID, selected_item_ids: list[UUID]
+    ) -> list[dict[str, object]]:
+        """Turn the user's checked item ids into ``{id, name, item_type}`` records
+        (the shape search/list_items return), for both planner context and static
+        selection resolution. Ownership is enforced by ``get_item``; an id that no
+        longer resolves (stale selection) is dropped rather than failing the turn."""
+
+        items: list[dict[str, object]] = []
+        for item_id in selected_item_ids:
+            try:
+                item = await self._drive.get_item(user_id, item_id)
+            except NotFoundError:
+                continue
+            items.append({"id": str(item.id), "name": item.name, "item_type": str(item.item_type)})
+        return items
 
     async def chat(
         self,
@@ -136,23 +164,26 @@ class WorkflowService:
                     skill_proposal=authoring.skill_proposal,
                 )
 
+        selected_items = await self._resolve_selection(user_id, selected)
+
         plan = await self._planner.plan(
-            message=message, target=target, selected_count=len(selected), history=history
+            message=message, target=target, selected_items=selected_items, history=history
         )
         if not plan.steps:
             return AssistantChatResponse(session_id=active_session_id, message=plan.reply)
 
         steps = classify_steps(plan.steps, self._registry)
 
-        # Self-built skills run on the user's selected files (item_id is injected,
-        # never guessed). No selection → ask; otherwise run once per file.
-        if requires_file_selection(steps, self._registry):
-            if not selected:
+        # Any step that references the user's selection (a self-built skill, or an
+        # explicit {"from": "selection", ...} argument) has its selection references
+        # resolved to real ids here — never guessed by the LLM. No selection → ask.
+        if has_selection_reference(steps, self._registry):
+            if not selected_items:
                 return AssistantChatResponse(
                     session_id=active_session_id,
                     message="請先在硬碟勾選要操作的檔案。勾好後我就能用這個技能。",
                 )
-            steps = expand_selection_steps(steps, selected, self._registry)
+            steps = apply_selection(steps, selected_items, self._registry)
 
         if is_auto_confirmable(steps):
             results = await self._executor.execute(user_id=user_id, steps=steps)
@@ -171,7 +202,7 @@ class WorkflowService:
                     user_id=user_id,
                     message=message,
                     target=target,
-                    selected_count=len(selected),
+                    selected_items=selected_items,
                     session_id=active_session_id,
                     results=results,
                     history=history,
@@ -207,7 +238,7 @@ class WorkflowService:
         user_id: UUID,
         message: str,
         target: str | None,
-        selected_count: int,
+        selected_items: list[dict[str, object]],
         session_id: UUID,
         results: list[StepResult],
         history: list[LLMMessage] | None = None,
@@ -226,13 +257,13 @@ class WorkflowService:
         replan = await self._planner.plan(
             message=_execution_feedback(message, results),
             target=target,
-            selected_count=selected_count,
+            selected_items=selected_items,
             history=history,
         )
         if not replan.steps:
             return None
         new_steps = classify_steps(replan.steps, self._registry)
-        if requires_file_selection(new_steps, self._registry) or not is_auto_confirmable(new_steps):
+        if has_selection_reference(new_steps, self._registry) or not is_auto_confirmable(new_steps):
             return None
 
         new_results = await self._executor.execute(user_id=user_id, steps=new_steps)

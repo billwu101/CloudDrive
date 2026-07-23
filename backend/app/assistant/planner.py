@@ -8,7 +8,12 @@ from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse
 from app.assistant.llm.router import ModelRouter
 from app.assistant.skills.registry import SkillRegistry
-from app.assistant.workflow import PlannedStep, is_step_ref
+from app.assistant.workflow import (
+    PlannedStep,
+    is_reference,
+    is_step_ref,
+    ref_source,
+)
 
 
 # Structured-output schema for the plan, sent as ``response_format`` on external
@@ -81,13 +86,23 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         "- steps: ordered skill calls. depends_on lists indices of earlier steps.\n"
         "- If the request needs no drive action, return an empty steps array and answer in reply.\n"
         "- Never invent a skill that is not listed, and always include every required argument.\n"
-        "- Skills are composable. An argument value may be a literal, OR a reference to an earlier "
-        'step\'s output: {"from_step": <earlier index>, "path": "items.0.id"}. search and '
-        'list_items return {"items": [{"id", "name", "item_type", ...}], "total": N}.\n'
-        "- Never guess a UUID. To act on something you only know by name (e.g. a folder), search "
-        'for it first, then reference the result. Example — "what is in the test folder": '
+        "- Skills are composable. Any argument value may be a literal OR a reference. "
+        "Two kinds of reference:\n"
+        '  (a) an earlier step\'s output: {"from": <earlier index>, "path": "items.0.id"}. '
+        'search and list_items return {"items": [{"id", "name", "item_type", ...}], "total": N}.\n'
+        '  (b) the user\'s current file selection: {"from": "selection", "item": <i>} for one '
+        'selected file, or {"from": "selection", "each": true} to act on EVERY selected file '
+        "(the step runs once per file; the other arguments are copied to each).\n"
+        "- Never guess or write a UUID. To act on something you only know by name (e.g. a "
+        "folder), search for it first, then reference the result. To act on the user's selected "
+        "file(s), use a selection reference — do NOT ask which file.\n"
+        '  Example — "what is in the test folder": '
         '[{"skill": "search", "arguments": {"q": "test"}}, {"skill": "list_items", "arguments": '
-        '{"parent_id": {"from_step": 0, "path": "items.0.id"}}}].\n'
+        '{"parent_id": {"from": 0, "path": "items.0.id"}}}].\n'
+        '  Example — "move the selected files into test2": '
+        '[{"skill": "search", "arguments": {"q": "test2"}}, {"skill": "move_item", "arguments": '
+        '{"item_id": {"from": "selection", "each": true}, '
+        '"parent_id": {"from": 0, "path": "items.0.id"}}}].\n'
         "- Output JSON only, no prose, no code fences.\n\n"
         "Available skills:\n"
         f"{skills}"
@@ -140,8 +155,11 @@ def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str
                     f"step {index}: depends_on must point to an earlier step, got {dependency}"
                 )
         for arg_value in step.arguments.values():
+            # Step-output references must point at an earlier step. Selection
+            # references are always resolvable (the selection exists independently
+            # of step order), so they are exempt from the earlier-step rule.
             if is_step_ref(arg_value):
-                from_step = arg_value.get("from_step")
+                from_step = ref_source(arg_value)
                 if not isinstance(from_step, int) or from_step < 0 or from_step >= index:
                     problems.append(
                         f"step {index}: reference must point to an earlier step, got {from_step}"
@@ -151,7 +169,8 @@ def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str
             for arg in required:
                 value = step.arguments.get(arg)
                 missing = value is None or (isinstance(value, str) and not value.strip())
-                if missing and not is_step_ref(value):
+                # A reference (step-output or selection) counts as supplied.
+                if missing and not is_reference(value):
                     problems.append(
                         f"step {index}: skill '{step.skill}' is missing required argument '{arg}'"
                     )
@@ -184,23 +203,26 @@ class WorkflowPlanner:
         *,
         message: str,
         target: str | None = None,
-        selected_count: int = 0,
+        selected_items: list[dict[str, object]] | None = None,
         history: list[LLMMessage] | None = None,
     ) -> PlanResult:
+        selected = selected_items or []
         messages = [
             LLMMessage(role="system", content=build_planner_prompt(self._registry)),
         ]
-        # Tell the planner about the user's current file selection so skills that
-        # operate on selected files can be used directly, without asking which file.
-        if selected_count > 0:
+        # Tell the planner about the user's current file selection so it can
+        # reference selected files directly (never guessing a UUID). Files are
+        # listed by short handle + name; the model references them by index.
+        if selected:
+            listing = "  ".join(f"[{i}] {item.get('name', '?')}" for i, item in enumerate(selected))
             messages.append(
                 LLMMessage(
                     role="system",
                     content=(
-                        f"The user currently has {selected_count} file(s) selected. "
-                        "Skills that operate on the user's selected file(s) can be used "
-                        "directly on the selection — do NOT ask which file; just call the "
-                        "skill (its item_id is supplied automatically per selected file)."
+                        f"The user currently has {len(selected)} file(s) selected: {listing}. "
+                        'Reference a specific one as {"from": "selection", "item": i} or all of '
+                        'them as {"from": "selection", "each": true}. Do NOT ask which file, and '
+                        "never write their UUIDs."
                     ),
                 )
             )

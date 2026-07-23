@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -176,6 +177,14 @@ def _registry(user_id: UUID, executed: list[str]) -> SkillRegistry:
     return registry
 
 
+class _FakeDriveService:
+    """Minimal stand-in: resolves a selected id to an item with a name. Only
+    called when a test supplies selected_item_ids; otherwise unused."""
+
+    async def get_item(self, user_id: UUID, item_id: UUID) -> SimpleNamespace:
+        return SimpleNamespace(id=item_id, name=f"item-{item_id}", item_type="FILE")
+
+
 def _service(
     user_id: UUID,
     plan_json: dict[str, Any],
@@ -198,6 +207,7 @@ def _service(
         executor=executor,
         registry=registry,
         workflow_repo=repo,
+        drive_service=_FakeDriveService(),
     )
 
 
@@ -534,6 +544,7 @@ def _scripted_service(
         executor=WorkflowExecutor(registry=registry),
         registry=registry,
         workflow_repo=repo,
+        drive_service=_FakeDriveService(),
     )
     return service, llm
 
