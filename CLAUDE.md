@@ -103,14 +103,16 @@ npm ci                    # install deps
 npm run dev               # dev server (localhost:5173)
 npm run lint
 npm run typecheck
-npm run test -- --run     # all unit tests (one-shot)
+npx vitest run --maxWorkers=2            # all unit tests (see note below)
 npm run test              # watch mode
-npx vitest run src/api/authApi.test.ts   # single file
-npx vitest run -t "stores access token"  # filter by test name
+npx vitest run src/api/authApi.test.ts --maxWorkers=2   # single file
+npx vitest run -t "stores access token" --maxWorkers=2  # filter by test name
 npm run build
 npm run playwright:install  # first-time only
 npm run test:e2e
 ```
+
+> **Always pass `--maxWorkers=2` when running vitest on this machine.** The repo lives in a OneDrive-synced folder; vitest's default parallelism spawns 30+ workers that saturate OneDrive's file provider, so runs either fail to start workers (`Timeout waiting for worker to respond`) or produce false failures — e.g. `router.test.tsx` timing out after 97s on a test that normally takes 330ms. With `--maxWorkers=2` the full suite is stable (255 tests in ~15s vs 434s and 2 spurious failures without it). `--no-file-parallelism` also works and is the safest for a single file. Real fix: move the repo out of OneDrive.
 
 ### Docker
 
