@@ -43,6 +43,10 @@ export function UploadTaskItem({ task, onCancel, onRetry, onRemove }: UploadTask
           <p className="mt-0.5 text-xs text-green-600">Uploaded</p>
         )}
 
+        {status === 'queued' && (
+          <p className="mt-0.5 text-xs text-muted-foreground">Waiting…</p>
+        )}
+
         {status === 'canceled' && (
           <p className="mt-0.5 text-xs text-muted-foreground">Canceled</p>
         )}
@@ -95,7 +99,7 @@ export function UploadTaskItem({ task, onCancel, onRetry, onRemove }: UploadTask
           </>
         )}
 
-        {(status === 'pending' || status === 'canceled') && (
+        {(status === 'pending' || status === 'queued' || status === 'canceled') && (
           <button
             aria-label="Dismiss"
             onClick={() => onRemove(id)}

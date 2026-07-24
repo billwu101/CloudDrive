@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 
-export type UploadStatus = 'pending' | 'uploading' | 'completed' | 'failed' | 'canceled'
+/** `queued` = accepted and waiting for a free upload slot (see
+ *  UPLOAD_CONCURRENCY); `pending` = created but not yet handed to the queue. */
+export type UploadStatus =
+  | 'pending'
+  | 'queued'
+  | 'uploading'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
 
 export interface UploadTask {
   id: string
@@ -16,6 +24,7 @@ interface UploadState {
   tasks: UploadTask[]
   addTasks: (files: File[], parentId?: string) => UploadTask[]
   updateProgress: (id: string, progress: number) => void
+  markQueued: (id: string) => void
   markUploading: (id: string) => void
   markCompleted: (id: string) => void
   markFailed: (id: string, error: string) => void
@@ -43,6 +52,11 @@ export const useUploadStore = create<UploadState>()((set, get) => ({
   updateProgress: (id, progress) =>
     set((s) => ({
       tasks: s.tasks.map((t) => (t.id === id ? { ...t, progress } : t)),
+    })),
+
+  markQueued: (id) =>
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: 'queued' } : t)),
     })),
 
   markUploading: (id) =>

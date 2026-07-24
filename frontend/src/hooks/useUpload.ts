@@ -1,10 +1,18 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
-import { isApiError } from '@/api/client'
+import type { QuotaResponse } from '@/api/types'
 import { driveApi } from '@/api/driveApi'
 import { uploadApi } from '@/api/uploadApi'
+import { authKeys } from '@/hooks/useAuth'
 import { driveKeys } from '@/hooks/useDrive'
+import {
+  precheckBatch,
+  runWithConcurrency,
+  uploadErrorMessage,
+  UPLOAD_CONCURRENCY,
+} from '@/lib/uploadLimits'
+import type { UploadTask } from '@/stores/uploadStore'
 import { useUploadStore } from '@/stores/uploadStore'
 
 /** A file's path relative to the upload root — webkitRelativePath for the
@@ -28,34 +36,75 @@ async function ensureFolder(name: string, parentId?: string): Promise<string> {
   }
 }
 
+/**
+ * Fail everything that provably cannot succeed before a single request is
+ * sent, and mark the survivors as waiting for a slot. A doomed 2 GB file used
+ * to hold a connection open until it failed, dragging the rest of the batch
+ * down with it; now it never leaves the browser.
+ */
+function admitTasks(
+  tasks: UploadTask[],
+  availableBytes: number | undefined,
+  markFailed: (id: string, error: string) => void,
+  markQueued: (id: string) => void,
+): UploadTask[] {
+  const verdicts = precheckBatch(
+    tasks.map((t) => t.file.size),
+    availableBytes,
+  )
+  const admitted: UploadTask[] = []
+  tasks.forEach((task, index) => {
+    const rejection = verdicts[index]
+    if (rejection) {
+      markFailed(task.id, rejection.message)
+      return
+    }
+    markQueued(task.id)
+    admitted.push(task)
+  })
+  return admitted
+}
+
 export function useUploadFiles(parentId?: string) {
   const qc = useQueryClient()
-  const { addTasks, markUploading, updateProgress, markCompleted, markFailed } = useUploadStore()
+  const { addTasks, markQueued, markUploading, updateProgress, markCompleted, markFailed } =
+    useUploadStore()
 
   const upload = useCallback(
     async (files: File[]) => {
       const tasks = addTasks(files, parentId)
+      const available = qc.getQueryData<QuotaResponse>(authKeys.quota())?.available_bytes
+      const admitted = admitTasks(tasks, available, markFailed, markQueued)
 
-      await Promise.allSettled(
-        tasks.map(async (task) => {
-          markUploading(task.id)
-          try {
-            await uploadApi.uploadSimple(task.file, {
-              parentId,
-              signal: task.controller.signal,
-              onProgress: (pct) => updateProgress(task.id, pct),
-            })
-            markCompleted(task.id)
-            qc.invalidateQueries({ queryKey: driveKeys.items(parentId) })
-          } catch (err) {
-            if (task.controller.signal.aborted) return
-            const msg = isApiError(err) ? err.message : 'Upload failed'
-            markFailed(task.id, msg)
-          }
-        }),
-      )
+      await runWithConcurrency(admitted, UPLOAD_CONCURRENCY, async (task) => {
+        markUploading(task.id)
+        try {
+          await uploadApi.uploadSimple(task.file, {
+            parentId,
+            signal: task.controller.signal,
+            onProgress: (pct) => updateProgress(task.id, pct),
+          })
+          markCompleted(task.id)
+          qc.invalidateQueries({ queryKey: driveKeys.items(parentId) })
+        } catch (err) {
+          if (task.controller.signal.aborted) return
+          markFailed(task.id, uploadErrorMessage(err))
+        }
+      })
+
+      // Refresh the quota so the next batch pre-checks against real numbers.
+      qc.invalidateQueries({ queryKey: authKeys.quota() })
     },
-    [parentId, addTasks, markUploading, updateProgress, markCompleted, markFailed, qc],
+    [
+      parentId,
+      addTasks,
+      markQueued,
+      markUploading,
+      updateProgress,
+      markCompleted,
+      markFailed,
+      qc,
+    ],
   )
 
   return { upload }
@@ -66,7 +115,8 @@ export function useUploadFiles(parentId?: string) {
  *  recreated under `parentId` and each file uploaded into its folder. */
 export function useUploadFolders(parentId?: string) {
   const qc = useQueryClient()
-  const { addTasks, markUploading, updateProgress, markCompleted, markFailed } = useUploadStore()
+  const { addTasks, markQueued, markUploading, updateProgress, markCompleted, markFailed } =
+    useUploadStore()
 
   const uploadFolders = useCallback(
     async (files: File[]) => {
@@ -98,27 +148,39 @@ export function useUploadFolders(parentId?: string) {
 
       // 3. Upload each file into its folder.
       const tasks = addTasks(files, parentId)
-      await Promise.allSettled(
-        tasks.map(async (task) => {
-          markUploading(task.id)
-          const dir = relativePathOf(task.file).split('/').slice(0, -1).join('/')
-          const target = dir ? idByPath.get(dir) : parentId
-          try {
-            await uploadApi.uploadSimple(task.file, {
-              parentId: target,
-              signal: task.controller.signal,
-              onProgress: (pct) => updateProgress(task.id, pct),
-            })
-            markCompleted(task.id)
-          } catch (err) {
-            if (task.controller.signal.aborted) return
-            markFailed(task.id, isApiError(err) ? err.message : 'Upload failed')
-          }
-        }),
-      )
+      const available = qc.getQueryData<QuotaResponse>(authKeys.quota())?.available_bytes
+      const admitted = admitTasks(tasks, available, markFailed, markQueued)
+
+      await runWithConcurrency(admitted, UPLOAD_CONCURRENCY, async (task) => {
+        markUploading(task.id)
+        const dir = relativePathOf(task.file).split('/').slice(0, -1).join('/')
+        const target = dir ? idByPath.get(dir) : parentId
+        try {
+          await uploadApi.uploadSimple(task.file, {
+            parentId: target,
+            signal: task.controller.signal,
+            onProgress: (pct) => updateProgress(task.id, pct),
+          })
+          markCompleted(task.id)
+        } catch (err) {
+          if (task.controller.signal.aborted) return
+          markFailed(task.id, uploadErrorMessage(err))
+        }
+      })
+
       qc.invalidateQueries({ queryKey: driveKeys.items(parentId) })
+      qc.invalidateQueries({ queryKey: authKeys.quota() })
     },
-    [parentId, addTasks, markUploading, updateProgress, markCompleted, markFailed, qc],
+    [
+      parentId,
+      addTasks,
+      markQueued,
+      markUploading,
+      updateProgress,
+      markCompleted,
+      markFailed,
+      qc,
+    ],
   )
 
   return { uploadFolders }

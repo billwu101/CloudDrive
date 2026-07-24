@@ -356,6 +356,13 @@ UploadTaskItem
 
 超過 `simpleUploadMaxBytes` 的檔案改走分片流程；其餘仍用 `/upload/simple`。後端端點見 §13.5、服務見 §6.7.7。
 
+> **實作進度（前置三項已落地）**：預檢、並行上限、錯誤分類三項與分片端點無關，已先行實作於 `src/lib/uploadLimits.ts`（`MAX_UPLOAD_SIZE_BYTES`／`UPLOAD_CONCURRENCY`／`precheckBatch`／`uploadErrorMessage`／`runWithConcurrency`），由 `useUploadFiles` 與 `useUploadFolders` 兩條路徑共用。分片流程本身尚未實作，因此有兩點為過渡狀態：
+>
+> 1. **預檢上限暫為 100 MB**（`/upload/simple` 的 `max_upload_size_bytes`）而非 5 GB。分片流程上線後，此常數改為「切換到分片流程的門檻」，上限才放寬到 5 GB。
+> 2. **錯誤分類不經 `UploadTask.errorCode`**：`uploadErrorMessage()` 直接把 `ApiError.code` 映射成訊息後存入既有的 `error` 欄位，`UploadTask` 尚未擴充 `errorCode`／`sessionId` 等欄位（屬下方分片流程的工作）。分類需求本身已滿足。
+>
+> 分類依 `code` 優先於 HTTP 狀態碼：後端 `QUOTA_EXCEEDED` 與檔案過大**同為 413**，僅在無可辨識 `code` 時（例如被 nginx 直接擋下的請求）才以 413 判為檔案過大。
+
 **送出前預檢**（proposal §27.2 第 7 點）：以 `file.size` 比對單檔上限（5 GB）與剩餘配額，超過者**立即標為失敗且不建立連線**——避免注定失敗的大檔佔住連線、拖垮同批其他檔案。
 
 **上傳佇列與並行**：`uploadStore` 以佇列調度，**同時進行的檔案數上限 3**，其餘排 `queued`；單一檔案的分片**依序**送出（§27.7）。取代原本一次 `Promise.allSettled` 全送的作法。
