@@ -24,15 +24,21 @@ from app.core.exceptions import AppError
 
 _CODEGEN_SYSTEM = (
     "You are CloudDrive's skill author. Generate a NEW skill that performs a single "
-    "file operation the user asked for but which is not built in.\n"
+    "file-or-folder operation the user asked for but which is not built in.\n"
     "Respond with ONE JSON object only (no prose, no code fences):\n"
     '{"name": str, "description": str, "version": "1.0.0", '
     '"code": str, "ui": {"context_menu": [{"label": str, "handler": str, '
     '"item_types": ["FILE"|"FOLDER"]}]}}.\n'
     "Rules for `code` (a Python source string):\n"
     "- Define exactly: def run(input_path, output_dir, params): ...\n"
-    "- input_path is a read-only source file. Write outputs ONLY under output_dir.\n"
-    "- Return a small JSON-serializable dict summarizing what happened.\n"
+    '- input_path is a read-only source FILE when item_types is ["FILE"]. When '
+    'item_types is ["FOLDER"], input_path is a read-only DIRECTORY holding the '
+    "folder's files (mirroring its subtree) — walk it with os.walk / pathlib. "
+    "params['item_type'] is 'FILE' or 'FOLDER' so code can branch.\n"
+    "- ALWAYS write the result as a file (or files) under output_dir — that written "
+    "file is what the user receives. Write ONLY under output_dir; never write "
+    "elsewhere. Do not return the result only in the dict.\n"
+    "- Also return a small JSON-serializable dict summarizing what happened.\n"
     "- Allowed libraries (use the RIGHT one for the format):\n"
     "    standard library — zipfile, tarfile, gzip, bz2, lzma, pathlib, os.path, json, csv, "
     "io, shutil, hashlib (md5/sha1/sha256/...), base64, zlib, re, struct;\n"
@@ -45,6 +51,9 @@ _CODEGEN_SYSTEM = (
     "ctypes, threads. No writing outside output_dir.\n"
     "Rules for `name`: lowercase identifier ([a-z][a-z0-9_]+). Every context_menu "
     "handler MUST equal `name`.\n"
+    'Choose `item_types` by the target: ["FILE"] for a single-file operation; '
+    '["FOLDER"] when the request is about a folder (e.g. compress/zip a folder, or '
+    "process the files inside a folder).\n"
 )
 
 
