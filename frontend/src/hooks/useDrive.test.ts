@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { useAuthStore } from '@/stores/authStore'
 
-import { useCreateFolder, useDriveItems, useMoveToTrash, useRenameItem, useSetStarred } from './useDrive'
+import { useCreateFolder, useDriveItems, useMoveToTrash, useRenameItem, useSetStarred, useStarredItems } from './useDrive'
 
 const BASE = 'http://localhost:8000/api/v1'
 
@@ -37,6 +37,19 @@ const server = setupServer(
   http.post(`${BASE}/trash/items/:id`, () => HttpResponse.json({})),
   http.put(`${BASE}/drive/items/:id/star`, () =>
     HttpResponse.json({ ...ITEMS[1], is_starred: false }),
+  ),
+  // Global starred endpoint returns a flat array — including items that live
+  // inside folders (parent_id set), which the old root-listing approach missed.
+  http.get(`${BASE}/drive/starred`, () =>
+    HttpResponse.json([
+      {
+        ...ITEMS[1],
+        id: 'nested1',
+        parent_id: 'f1',
+        name: 'deep.txt',
+        is_starred: true,
+      },
+    ]),
   ),
   http.post(`${BASE}/auth/refresh`, () =>
     HttpResponse.json({ code: 'UNAUTHORIZED' }, { status: 401 }),
@@ -99,5 +112,18 @@ describe('useSetStarred', () => {
     const { result } = renderHook(() => useSetStarred(), { wrapper: makeWrapper() })
     result.current.mutate({ id: 'fi1', starred: false })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
+})
+
+describe('useStarredItems', () => {
+  it('uses the global /drive/starred endpoint and shows items inside folders', async () => {
+    // Regression: starring a file inside a folder used to be invisible because
+    // the hook listed the root and filtered client-side.
+    useAuthStore.setState({ accessToken: 'tok' })
+    const { result } = renderHook(() => useStarredItems(), { wrapper: makeWrapper() })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.items).toHaveLength(1)
+    expect(result.current.data?.items[0].name).toBe('deep.txt')
+    expect(result.current.data?.items[0].parent_id).toBe('f1') // lives in a folder
   })
 })

@@ -98,6 +98,7 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | PUT | `/drive/items/{id}/star` | 設定/取消星號 | 🔐 |
 | GET | `/drive/items/{id}/ancestors` | 祖先路徑（麵包屑） | 🔐 |
 | GET | `/drive/recent` | 最近項目 | 🔐 |
+| GET | `/drive/starred` | 星號項目（**跨資料夾全域查詢**，非只有根目錄） | 🔐 |
 
 **Upload／Download／Preview／Version**
 

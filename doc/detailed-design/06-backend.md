@@ -341,6 +341,7 @@ class UserItemPreferenceRepository:
     async def get_preference(self, user_id: UUID, item_id: UUID) -> UserItemPreference | None
     async def upsert_preference(self, user_id: UUID, item_id: UUID, *, is_starred: bool) -> UserItemPreference
     async def get_starred_ids(self, user_id: UUID, item_ids: list[UUID]) -> set[UUID]
+    async def get_all_starred_item_ids(self, user_id: UUID, *, limit: int) -> list[UUID]
 ```
 
 ### 6.4.4 驗證規則
@@ -365,6 +366,8 @@ class UserItemPreferenceRepository:
 | delete to trash | owner 或 editor |
 
 正式星號狀態以 `user_item_preferences.is_starred` 為準；`drive_items.is_starred` 僅為初始 schema 遺留/相容欄位，不作為回應與查詢的權威來源。這樣共享檔案時，每位使用者可有自己的星號狀態，不會互相污染。
+
+**星號清單為全域查詢（`GET /drive/starred`）**：以 `user_item_preferences`（`user_id` + `is_starred=true`）為來源取得 item id，再逐一取回項目並濾掉已刪除／非本人擁有者——**與資料夾階層無關**，因此位於任何子資料夾的檔案加星後都會出現。實作模式與 §6.4「最近項目」一致（先取 id 清單再補齊項目）。前端**不得**以「列根目錄再過濾 `is_starred`」代替，那會漏掉子資料夾內與分頁外的項目。
 
 ### 6.4.6 可獨立測試項
 
@@ -1119,6 +1122,7 @@ DriveItemRepository:
     get_preference(user_id, item_id) -> UserItemPreference | None
     upsert_preference(user_id, item_id, *, is_starred) -> UserItemPreference
     get_starred_ids(user_id, item_ids) -> set[UUID]
+    get_all_starred_item_ids(user_id, *, limit) -> list[UUID]
 
 # file_version（app/file_version）
 FileVersionRepository:

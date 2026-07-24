@@ -57,10 +57,16 @@ export function useRecentItems() {
 export function useStarredItems() {
   return useQuery({
     queryKey: driveKeys.starred(),
+    // Global endpoint: starred items live on the preference table, not the folder
+    // tree, so files starred inside any subfolder are included. (Listing the root
+    // and filtering client-side used to drop those, and anything past page 1.)
     queryFn: ({ signal }) =>
-      driveApi.listItems({ signal }).then((r) => ({
-        ...r.data,
-        items: r.data.items.filter((i) => i.is_starred),
+      driveApi.listStarred(signal).then((r) => ({
+        items: r.data,
+        total: r.data.length,
+        page: 1,
+        page_size: r.data.length,
+        pages: 1,
       })),
   })
 }

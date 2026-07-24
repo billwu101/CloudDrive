@@ -257,6 +257,26 @@ class DriveService:
         starred = await self._starred(user_id, chain) if chain else set()
         return [_to_response(a, is_starred=a.id in starred) for a in chain]
 
+    async def get_starred(
+        self,
+        user_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[DriveItemResponse]:
+        """Starred items across the whole drive.
+
+        Sourced from `user_item_preferences` (not the folder tree), so an item
+        starred inside any subfolder is returned — listing the root and filtering
+        client-side would miss those (and anything past the first page).
+        """
+        item_ids = await self._prefs.get_all_starred_item_ids(user_id, limit=limit)
+        responses: list[DriveItemResponse] = []
+        for iid in item_ids:
+            item = await self._items.get_by_id(iid)
+            if item is not None and not item.is_deleted and item.owner_id == user_id:
+                responses.append(_to_response(item, is_starred=True))
+        return responses
+
     async def get_recent(
         self,
         user_id: UUID,

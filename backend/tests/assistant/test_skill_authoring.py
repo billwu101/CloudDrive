@@ -214,6 +214,9 @@ class MemPrefRepo(AbstractUserItemPreferenceRepository):
     async def get_starred_ids(self, user_id: UUID, item_ids: list[UUID]) -> set[UUID]:
         return set()
 
+    async def get_all_starred_item_ids(self, user_id: UUID, *, limit: int) -> list[UUID]:
+        return []
+
 
 def _svc(
     repo: MemAssistantSkillRepo,
