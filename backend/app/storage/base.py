@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import IO, Protocol, runtime_checkable
 
@@ -21,6 +21,15 @@ class StorageProvider(Protocol):
 
     async def save(self, key: str, data: IO[bytes], *, size: int | None = None) -> None:
         """Persist data under the given key atomically."""
+        ...
+
+    async def save_stream(self, key: str, chunks: AsyncIterator[bytes]) -> int:
+        """Persist an async byte stream under the given key atomically.
+
+        Writes chunk by chunk so peak memory stays constant regardless of file
+        size — callers must prefer this over buffering the whole upload and
+        calling `save`. Returns the number of bytes written.
+        """
         ...
 
     def open_read(self, key: str) -> AsyncGenerator[bytes, None]:

@@ -468,6 +468,9 @@ class _FakeStorage:
     async def save(self, key: str, data: Any, *, size: int | None = None) -> None:
         raise NotImplementedError
 
+    async def save_stream(self, key: str, chunks: Any) -> int:
+        raise NotImplementedError
+
     def open_read(self, key: str) -> Any:
         raise NotImplementedError
 

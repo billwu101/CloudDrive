@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,11 @@ from app.storage.local import LocalStorageProvider, PathTraversalError, StorageK
 @pytest.fixture()
 def storage(tmp_path: Path) -> LocalStorageProvider:
     return LocalStorageProvider(root=tmp_path)
+
+
+async def _agen(parts: list[bytes]) -> AsyncGenerator[bytes, None]:
+    for part in parts:
+        yield part
 
 
 async def _collect(provider: LocalStorageProvider, key: str) -> bytes:
@@ -124,3 +130,46 @@ class TestAtomicWrite:
             await storage.save("partial.txt", io.BufferedReader(_BadStream()))
 
         assert not dest.exists()
+
+
+class TestSaveStream:
+    async def test_writes_chunks_in_order(
+        self, storage: LocalStorageProvider, tmp_path: Path
+    ) -> None:
+        parts = [b"one ", b"two ", b"three"]
+        written = await storage.save_stream("streamed.txt", _agen(parts))
+        assert written == len(b"".join(parts))
+        assert (tmp_path / "streamed.txt").read_bytes() == b"".join(parts)
+
+    async def test_creates_parent_directories(self, storage: LocalStorageProvider) -> None:
+        await storage.save_stream("users/abc/files/xyz/v1", _agen([b"data"]))
+        assert await storage.exists("users/abc/files/xyz/v1")
+        assert await _collect(storage, "users/abc/files/xyz/v1") == b"data"
+
+    async def test_skips_empty_chunks(self, storage: LocalStorageProvider) -> None:
+        written = await storage.save_stream("sparse.bin", _agen([b"a", b"", b"b"]))
+        assert written == 2
+        assert await _collect(storage, "sparse.bin") == b"ab"
+
+    async def test_overwrites_existing_key(self, storage: LocalStorageProvider) -> None:
+        await storage.save_stream("k", _agen([b"old content"]))
+        await storage.save_stream("k", _agen([b"new"]))
+        assert await _collect(storage, "k") == b"new"
+
+    async def test_failure_leaves_no_temp_file_and_no_target(
+        self, storage: LocalStorageProvider, tmp_path: Path
+    ) -> None:
+        async def _boom() -> AsyncGenerator[bytes, None]:
+            yield b"partial"
+            raise OSError("connection dropped")
+
+        with pytest.raises(OSError, match="connection dropped"):
+            await storage.save_stream("aborted.bin", _boom())
+
+        # Neither a half-written target nor a leftover temp file may survive.
+        assert not (tmp_path / "aborted.bin").exists()
+        assert list(tmp_path.glob(".tmp-*")) == []
+
+    async def test_rejects_path_traversal(self, storage: LocalStorageProvider) -> None:
+        with pytest.raises(PathTraversalError):
+            await storage.save_stream("../escape.txt", _agen([b"x"]))

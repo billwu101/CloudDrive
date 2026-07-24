@@ -465,6 +465,11 @@ class StorageProvider(Protocol):
     async def save(self, file_stream: BinaryIO, storage_key: str) -> int:
         ...
 
+    # 非同步串流寫入：來源是 async 位元組串流（FastAPI 上傳串流、分片串流），
+    # 逐塊寫入暫存檔後原子改名，回傳實際寫入位元組數。
+    async def save_stream(self, storage_key: str, chunks: AsyncIterator[bytes]) -> int:
+        ...
+
     async def open_read(self, storage_key: str) -> BinaryIO:
         ...
 
@@ -483,7 +488,9 @@ class StorageProvider(Protocol):
         ...
 ```
 
-**`save` 的串流要求**：`save` 必須逐塊寫入而非先在記憶體組出完整內容。既有 `upload_simple` 曾以 `chunks: list[bytes]` 累積整檔再 `b"".join(...)`，導致記憶體用量 ≈ 檔案大小 ×2（大檔會 OOM）——**此寫法須改為串流寫入並同步計算 checksum**（proposal §27.3）。
+**串流寫入要求**：寫入端一律不得先在記憶體組出完整內容。`save` 收同步 `BinaryIO`，以固定緩衝區複製；`save_stream` 收 async 位元組串流，逐塊寫入。既有 `upload_simple` 曾以 `chunks: list[bytes]` 累積整檔再 `b"".join(...)`，記憶體用量 ≈ 檔案大小 ×2（大檔會 OOM）；因上傳來源是 async 串流、無法交給同步 `save`，故新增 `save_stream`，由 `upload_simple` 邊收邊寫並同步累積 sha256（proposal §27.3）。
+
+**全文索引與串流的取捨**：`upload_simple` 串流化後不再持有整檔位元組，但全文索引需要檔案內容。因 `extract_text` 本就對超過 `DEFAULT_MAX_BYTES`（5 MB）的檔案回傳 `None`（不索引），服務只保留**上限 5 MB + 1 byte 的檔頭**供索引使用：小檔內容完整、超限檔的檔頭必然觸發原有的「過大不索引」分支，索引行為與串流化前完全一致，而記憶體用量與檔案大小脫鉤。
 
 `concat` 供分片合併使用；`LocalStorageProvider` 以固定大小緩衝區依序讀取各分片、附加寫入目標檔，回傳總位元組數。未來替換為物件儲存時，可改以原生 multipart complete 實作同一介面。
 

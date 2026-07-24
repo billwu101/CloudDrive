@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import io
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from uuid import UUID, uuid4
 
 from app.core.error_codes import ErrorCode
@@ -13,6 +12,7 @@ from app.file_version.repository import AbstractFileVersionRepository
 from app.models.drive_item import DriveItem
 from app.permission.service import PermissionService
 from app.schemas.common import DriveItemResponse
+from app.search.extract import DEFAULT_MAX_BYTES as INDEX_MAX_BYTES
 from app.search.indexer import SearchIndexService
 from app.storage.base import StorageProvider
 from app.users.service import QuotaService
@@ -110,18 +110,25 @@ class UploadService:
             final_name = f"{stem} ({counter}){ext}"
             counter += 1
 
-        # Buffer stream and compute checksum
-        chunks: list[bytes] = []
-        sha = hashlib.sha256()
-        async for chunk in stream:
-            chunks.append(chunk)
-            sha.update(chunk)
-        data = b"".join(chunks)
-        actual_size = len(data)
-        checksum = sha.hexdigest()
-
         storage_key = _make_storage_key(user_id, uuid4())
-        await self._storage.save(storage_key, io.BytesIO(data), size=actual_size)
+
+        # Stream straight to storage, hashing as we go: peak memory stays flat
+        # no matter how large the upload is. The indexer refuses anything over
+        # its own byte cap, so we retain only a bounded head of the file —
+        # enough to index small files, never enough to hold a multi-GB one.
+        sha = hashlib.sha256()
+        head_cap = INDEX_MAX_BYTES + 1
+        head = bytearray()
+
+        async def _hashing_stream() -> AsyncIterator[bytes]:
+            async for chunk in stream:
+                sha.update(chunk)
+                if len(head) < head_cap:
+                    head.extend(chunk[: head_cap - len(head)])
+                yield chunk
+
+        actual_size = await self._storage.save_stream(storage_key, _hashing_stream())
+        checksum = sha.hexdigest()
 
         try:
             item = await self._items.create(
@@ -152,7 +159,7 @@ class UploadService:
 
         if self._indexer is not None:
             await self._indexer.index_file(
-                item_id=item.id, data=data, mime_type=mime_type, extension=item.extension
+                item_id=item.id, data=bytes(head), mime_type=mime_type, extension=item.extension
             )
 
         return _to_response(item)

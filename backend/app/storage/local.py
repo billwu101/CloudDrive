@@ -5,7 +5,7 @@ import contextlib
 import os
 import shutil
 import tempfile
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
 from typing import IO
 
@@ -56,6 +56,31 @@ class LocalStorageProvider:
                 raise
 
         await asyncio.to_thread(_write)
+
+    async def save_stream(self, key: str, chunks: AsyncIterator[bytes]) -> int:
+        """Write an async byte stream straight to disk, chunk by chunk.
+
+        Peak memory is one chunk, not the whole file — this is what large
+        uploads must use instead of buffering into bytes and calling `save`.
+        """
+        path = self._resolve_path(key)
+        await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
+        fd, tmp_str = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
+        tmp = Path(tmp_str)
+        written = 0
+        try:
+            with os.fdopen(fd, "wb") as f:
+                async for chunk in chunks:
+                    if not chunk:
+                        continue
+                    await asyncio.to_thread(f.write, chunk)
+                    written += len(chunk)
+            await asyncio.to_thread(tmp.replace, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                tmp.unlink()
+            raise
+        return written
 
     async def open_read(self, key: str) -> AsyncGenerator[bytes, None]:
         path = self._resolve_path(key)
