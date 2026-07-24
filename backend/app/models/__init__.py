@@ -12,6 +12,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.share import Share
 from app.models.share_link import ShareLink
 from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
+from app.models.upload_session import UploadChunk, UploadSession
 from app.models.user import User
 from app.models.user_item_preference import UserItemPreference
 
@@ -34,6 +35,8 @@ __all__ = [
     "Snapshot",
     "SnapshotEntry",
     "SnapshotSettings",
+    "UploadChunk",
+    "UploadSession",
     "User",
     "UserItemPreference",
 ]

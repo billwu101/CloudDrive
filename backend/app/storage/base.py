@@ -32,6 +32,15 @@ class StorageProvider(Protocol):
         """
         ...
 
+    async def concat(self, source_keys: list[str], target_key: str) -> int:
+        """Join the given objects, in order, into a single object at target_key.
+
+        Used to assemble a chunked upload. Copies through a fixed-size buffer
+        so memory stays constant regardless of total size. Returns the number
+        of bytes written.
+        """
+        ...
+
     def open_read(self, key: str) -> AsyncGenerator[bytes, None]:
         """Return an async generator that yields file chunks."""
         ...

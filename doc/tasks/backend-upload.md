@@ -46,15 +46,15 @@
 
 ### 儲存層
 
-- [ ] `StorageProvider` 新增 `concat(source_keys, target_key) -> int`（依序串接為單一物件）。
-- [ ] `LocalStorageProvider.concat` 以固定緩衝區**邊讀邊寫**實作，回傳總位元組數。
-- [ ] 測試：多分片合併後內容與大小正確；記憶體用量不隨來源大小成長。
+- [x] `StorageProvider` 新增 `concat(source_keys, target_key) -> int`（依序串接為單一物件）。
+- [x] `LocalStorageProvider.concat` 以固定緩衝區**邊讀邊寫**實作，回傳總位元組數。
+- [x] 測試：多分片合併後內容與大小正確；記憶體用量不隨來源大小成長。
 
 ### 資料層
 
-- [ ] 新增 `UploadSession`／`UploadChunk` ORM model（欄位見 §7.7）。
-- [ ] Alembic migration：建表 + 3 個索引（`user_id,status,created_at`、`expires_at` 部分索引、`(session_id, chunk_index)` unique）。
-- [ ] `UploadSessionRepository`：建立、依 id+user 取得、列已完成 chunk_index、upsert chunk、更新狀態、列出過期工作階段、刪除。
+- [x] 新增 `UploadSession`／`UploadChunk` ORM model（欄位見 §7.7）。
+- [x] Alembic migration：建表 + 3 個索引（`user_id,status,created_at`、`expires_at` 部分索引、`(session_id, chunk_index)` unique）。
+- [x] `UploadSessionRepository`：建立、依 id+user 取得、列已完成 chunk_index、upsert chunk、更新狀態、列出過期工作階段、刪除。
 - [ ] 測試：repository 各方法；同 `chunk_index` 重送為冪等覆寫。
 
 ### 服務

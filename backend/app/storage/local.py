@@ -82,6 +82,42 @@ class LocalStorageProvider:
             raise
         return written
 
+    async def concat(self, source_keys: list[str], target_key: str) -> int:
+        """Join source objects, in order, into one object at target_key.
+
+        Copies through a fixed-size buffer, so assembling a 5 GB upload out of
+        its chunks costs one buffer of memory rather than the whole file.
+        """
+        target = self._resolve_path(target_key)
+        sources = [self._resolve_path(key) for key in source_keys]
+
+        def _join() -> int:
+            for source, key in zip(sources, source_keys, strict=True):
+                if not source.exists():
+                    raise StorageKeyNotFoundError(key)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp_str = tempfile.mkstemp(dir=target.parent, prefix=".tmp-")
+            tmp = Path(tmp_str)
+            written = 0
+            try:
+                with os.fdopen(fd, "wb") as out:
+                    for source in sources:
+                        with open(source, "rb") as src:
+                            while True:
+                                buf = src.read(self._CHUNK_SIZE)
+                                if not buf:
+                                    break
+                                out.write(buf)
+                                written += len(buf)
+                tmp.replace(target)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    tmp.unlink()
+                raise
+            return written
+
+        return await asyncio.to_thread(_join)
+
     async def open_read(self, key: str) -> AsyncGenerator[bytes, None]:
         path = self._resolve_path(key)
 

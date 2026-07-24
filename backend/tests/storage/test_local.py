@@ -173,3 +173,66 @@ class TestSaveStream:
     async def test_rejects_path_traversal(self, storage: LocalStorageProvider) -> None:
         with pytest.raises(PathTraversalError):
             await storage.save_stream("../escape.txt", _agen([b"x"]))
+
+
+class TestConcat:
+    async def test_joins_sources_in_order(self, storage: LocalStorageProvider) -> None:
+        await storage.save_stream("p/0", _agen([b"alpha"]))
+        await storage.save_stream("p/1", _agen([b"beta"]))
+        await storage.save_stream("p/2", _agen([b"gamma"]))
+
+        total = await storage.concat(["p/0", "p/1", "p/2"], "merged.bin")
+
+        assert total == len(b"alphabetagamma")
+        assert await _collect(storage, "merged.bin") == b"alphabetagamma"
+
+    async def test_result_matches_original_across_buffer_boundaries(
+        self, storage: LocalStorageProvider
+    ) -> None:
+        # Parts deliberately larger than the copy buffer, and not a multiple of
+        # it, so a boundary lands mid-chunk.
+        part_a = bytes(range(256)) * 700  # ~175 KB
+        part_b = bytes(range(255, -1, -1)) * 300
+        await storage.save_stream("c/0", _agen([part_a]))
+        await storage.save_stream("c/1", _agen([part_b]))
+
+        total = await storage.concat(["c/0", "c/1"], "big.bin")
+
+        assert total == len(part_a) + len(part_b)
+        assert await _collect(storage, "big.bin") == part_a + part_b
+
+    async def test_single_source(self, storage: LocalStorageProvider) -> None:
+        await storage.save_stream("only", _agen([b"solo"]))
+        assert await storage.concat(["only"], "out") == 4
+        assert await _collect(storage, "out") == b"solo"
+
+    async def test_empty_source_list_writes_empty_object(
+        self, storage: LocalStorageProvider
+    ) -> None:
+        assert await storage.concat([], "empty.bin") == 0
+        assert await storage.exists("empty.bin")
+        assert await _collect(storage, "empty.bin") == b""
+
+    async def test_creates_parent_directories(self, storage: LocalStorageProvider) -> None:
+        await storage.save_stream("s", _agen([b"x"]))
+        await storage.concat(["s"], "users/u/files/f/v1")
+        assert await storage.exists("users/u/files/f/v1")
+
+    async def test_missing_source_raises_and_leaves_no_output(
+        self, storage: LocalStorageProvider, tmp_path: Path
+    ) -> None:
+        await storage.save_stream("present", _agen([b"data"]))
+
+        with pytest.raises(StorageKeyNotFoundError):
+            await storage.concat(["present", "absent"], "out.bin")
+
+        # A partial merge must not be left behind for the caller to publish.
+        assert not (tmp_path / "out.bin").exists()
+        assert list(tmp_path.glob(".tmp-*")) == []
+
+    async def test_rejects_path_traversal(self, storage: LocalStorageProvider) -> None:
+        await storage.save_stream("s", _agen([b"x"]))
+        with pytest.raises(PathTraversalError):
+            await storage.concat(["s"], "../escape.bin")
+        with pytest.raises(PathTraversalError):
+            await storage.concat(["../secret"], "out.bin")
