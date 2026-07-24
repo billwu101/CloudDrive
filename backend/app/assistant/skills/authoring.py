@@ -15,6 +15,7 @@ from app.assistant.skills.codeguard import validate_skill_code
 from app.assistant.skills.manifest import validate_manifest
 from app.assistant.skills.sandbox import SkillSandbox
 from app.assistant.subagent import CodegenSubAgent
+from app.core.config import get_settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, NameConflictError, NotFoundError
 from app.drive.schemas import ItemType
@@ -150,6 +151,35 @@ def _split_name(name: str) -> tuple[str, str]:
 def _safe_input_name(name: str) -> str:
     base = Path(name).name or "input"
     return base.replace("\x00", "")
+
+
+def _skill_item_types(skill: AssistantSkill) -> set[str]:
+    """Item types this skill declares across its context-menu actions (DEC-035).
+
+    Empty or malformed manifests default to ``{FILE}`` — preserving the
+    pre-DEC-035 file-only behavior for anything that never declared a type.
+    """
+    manifest = skill.manifest if isinstance(skill.manifest, dict) else {}
+    ui = manifest.get("ui")
+    actions = ui.get("context_menu", []) if isinstance(ui, dict) else []
+    types: set[str] = set()
+    for action in actions:
+        if isinstance(action, dict):
+            for item_type in action.get("item_types") or []:
+                if isinstance(item_type, str):
+                    types.add(item_type)
+    return types or {ItemType.FILE.value}
+
+
+def _wrong_type_message(allowed: set[str]) -> str:
+    if allowed == {ItemType.FILE.value}:
+        return "This skill runs on a file"
+    if allowed == {ItemType.FOLDER.value}:
+        return "This skill runs on a folder"
+    label = " or ".join(
+        "a file" if t == ItemType.FILE.value else "a folder" for t in sorted(allowed)
+    )
+    return f"This skill runs on {label}"
 
 
 async def _bytes_stream(data: bytes) -> AsyncGenerator[bytes, None]:
@@ -394,8 +424,9 @@ class AssistantSkillService:
         if self._sandbox is None or self._uploads is None or self._storage is None:
             raise AppError(ErrorCode.INVALID_OPERATION, "Sandbox execution is not available")
         item = await self._drive.get_raw_item(user_id=user_id, item_id=item_id)
-        if item.item_type != ItemType.FILE or not item.storage_key:
-            raise AppError(ErrorCode.INVALID_OPERATION, "This skill runs on a file")
+        allowed = _skill_item_types(skill)
+        if item.item_type not in allowed:
+            raise AppError(ErrorCode.INVALID_OPERATION, _wrong_type_message(allowed))
 
         # Safety net: snapshot the drive before this skill ingests new files.
         if self._snapshot is not None:
@@ -406,17 +437,14 @@ class AssistantSkillService:
             )
 
         run_root = Path(tempfile.mkdtemp(prefix="skill_input_"))
-        input_path = run_root / _safe_input_name(item.name)
         try:
-            with input_path.open("wb") as handle:
-                async for chunk in self._storage.open_read(item.storage_key):
-                    handle.write(chunk)
+            input_path = await self._materialize_input(user_id, item, run_root)
             # The sandbox uses a blocking subprocess; keep the event loop free.
             result = await asyncio.to_thread(
                 self._sandbox.run,
                 code=skill.code,
                 input_path=input_path,
-                params={"filename": item.name},
+                params={"filename": item.name, "item_type": item.item_type},
             )
             if not result.ok:
                 detail = result.error or "unknown error"
@@ -433,6 +461,57 @@ class AssistantSkillService:
             message=f"{skill.name} produced {len(ingested)} file(s) from {item.name}.",
             output={"produced_files": ingested, "summary": result.output},
         )
+
+    async def _materialize_input(self, user_id: UUID, item: DriveItem, run_root: Path) -> Path:
+        """Write the skill's input under ``run_root`` and return the path handed to
+        the sandbox as ``input_path`` (DEC-035): a single file for a FILE target, or
+        a directory mirroring the folder subtree for a FOLDER target."""
+        assert self._storage is not None
+        if item.item_type == ItemType.FILE:
+            if not item.storage_key:
+                raise AppError(ErrorCode.INVALID_OPERATION, "This skill runs on a file")
+            input_path = run_root / _safe_input_name(item.name)
+            with input_path.open("wb") as handle:
+                async for chunk in self._storage.open_read(item.storage_key):
+                    handle.write(chunk)
+            return input_path
+
+        # FOLDER: mirror the whole subtree — files AND empty subfolders — into a
+        # directory, capped by file count/total bytes. An empty folder (or a folder
+        # of only subfolders) is allowed: it materializes to an empty/structure-only
+        # directory the skill can still archive.
+        descendants = await self._drive.collect_folder_descendants(user_id, item.id)
+        files = [
+            (rel, it) for rel, it in descendants if it.item_type == ItemType.FILE and it.storage_key
+        ]
+        settings = get_settings()
+        if len(files) > settings.assistant_folder_max_files:
+            raise AppError(
+                ErrorCode.INVALID_OPERATION,
+                f"Folder has too many files to process (max {settings.assistant_folder_max_files})",
+            )
+        total_bytes = sum(it.size_bytes or 0 for _, it in files)
+        if total_bytes > settings.assistant_folder_max_bytes:
+            raise AppError(
+                ErrorCode.INVALID_OPERATION,
+                f"Folder is too large to process (max {settings.assistant_folder_max_bytes} bytes)",
+            )
+        root_dir = run_root / _safe_input_name(item.name)
+        root_dir.mkdir(parents=True, exist_ok=True)
+        # Recreate every subfolder first so empty directories are preserved.
+        for rel, sub in descendants:
+            if sub.item_type == ItemType.FOLDER:
+                parts = [_safe_input_name(part) for part in rel.split("/") if part]
+                root_dir.joinpath(*parts).mkdir(parents=True, exist_ok=True)
+        for rel, file_item in files:
+            parts = [_safe_input_name(part) for part in rel.split("/") if part]
+            dest = root_dir.joinpath(*parts)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            assert file_item.storage_key is not None
+            with dest.open("wb") as handle:
+                async for chunk in self._storage.open_read(file_item.storage_key):
+                    handle.write(chunk)
+        return root_dir
 
     async def _ingest(
         self,

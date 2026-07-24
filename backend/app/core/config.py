@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     llm_codegen_disable_thinking: bool = True
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
+    # DEC-035: caps on materializing a folder subtree into the sandbox input when a
+    # generated skill runs on a FOLDER. Guards against a huge folder blowing up the
+    # temp dir / sandbox. Exceeding either raises before any download happens.
+    assistant_folder_max_files: int = 1000
+    assistant_folder_max_bytes: int = 500 * 1024 * 1024
     # Conversation memory: how many of the most recent stored messages (user +
     # assistant) are replayed into the planner as context so follow-ups can
     # resolve references ("rename the first one"). 0 disables memory (single-turn).

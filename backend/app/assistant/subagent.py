@@ -24,15 +24,22 @@ from app.core.exceptions import AppError
 
 _CODEGEN_SYSTEM = (
     "You are CloudDrive's skill author. Generate a NEW skill that performs a single "
-    "file operation the user asked for but which is not built in.\n"
+    "file-or-folder operation the user asked for but which is not built in.\n"
     "Respond with ONE JSON object only (no prose, no code fences):\n"
     '{"name": str, "description": str, "version": "1.0.0", '
     '"code": str, "ui": {"context_menu": [{"label": str, "handler": str, '
     '"item_types": ["FILE"|"FOLDER"]}]}}.\n'
     "Rules for `code` (a Python source string):\n"
     "- Define exactly: def run(input_path, output_dir, params): ...\n"
-    "- input_path is a read-only source file. Write outputs ONLY under output_dir.\n"
-    "- Return a small JSON-serializable dict summarizing what happened.\n"
+    "- input_path is the selected item: a read-only source FILE if the user picked a "
+    "file, or a read-only DIRECTORY (mirroring the folder's subtree) if they picked a "
+    "folder. Branch on os.path.isdir(input_path) — the real path type is the ground "
+    "truth. params['item_type'] ('FILE'/'FOLDER') is only a hint / consistency check, "
+    "never the primary decision. For a directory, walk it with os.walk / pathlib.\n"
+    "- ALWAYS write the result as a file (or files) under output_dir — that written "
+    "file is what the user receives. Write ONLY under output_dir; never write "
+    "elsewhere. Do not return the result only in the dict.\n"
+    "- Also return a small JSON-serializable dict summarizing what happened.\n"
     "- Allowed libraries (use the RIGHT one for the format):\n"
     "    standard library — zipfile, tarfile, gzip, bz2, lzma, pathlib, os.path, json, csv, "
     "io, shutil, hashlib (md5/sha1/sha256/...), base64, zlib, re, struct;\n"
@@ -45,6 +52,11 @@ _CODEGEN_SYSTEM = (
     "ctypes, threads. No writing outside output_dir.\n"
     "Rules for `name`: lowercase identifier ([a-z][a-z0-9_]+). Every context_menu "
     "handler MUST equal `name`.\n"
+    "Choose `item_types` for EVERY target the operation sensibly applies to — ONE "
+    "skill, not two. If it works on both a file and a folder (e.g. compress/zip/"
+    'archive, or package), declare ["FILE", "FOLDER"] and make the code handle both. '
+    "Use a single type only when the operation truly fits just one (e.g. extract a .7z "
+    'archive → ["FILE"]).\n'
 )
 
 
