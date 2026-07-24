@@ -23,7 +23,7 @@
 - [x] [Backend Permission](./backend-permission.md)
 - [x] [Backend DriveItem](./backend-drive-item.md)
 - [x] [Backend Storage](./backend-storage.md)
-- [x] [Backend Upload](./backend-upload.md)
+- [-] [Backend Upload](./backend-upload.md) — simple upload 已完成；**分片續傳上傳待實作**（proposal §27 / DEC-035）
 - [x] [Backend Download](./backend-download.md)
 - [x] [Backend Preview](./backend-preview.md)
 - [x] [Backend Trash](./backend-trash.md)
@@ -39,7 +39,7 @@
 - [x] [Frontend Auth](./frontend-auth.md)
 - [x] [Frontend Layout](./frontend-layout.md)
 - [x] [Frontend Drive](./frontend-drive.md)
-- [x] [Frontend Upload](./frontend-upload.md)
+- [-] [Frontend Upload](./frontend-upload.md) — simple upload 已完成；**分片續傳、並行上限、錯誤分類待實作**（proposal §27 / DEC-035）
 - [x] [Frontend Preview](./frontend-preview.md)
 - [x] [Frontend Share](./frontend-share.md)
 - [x] [Frontend Trash](./frontend-trash.md)
