@@ -392,3 +392,18 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 已知取捨：換更強 thinking 模型時應重跑 E8 A/B 再定；外部路徑無法控制此參數（忽略，與現狀一致）。
 - 影響範圍：`llm/client.py` 協定 + 7 個 chat() 實作 + 測試 fake、`planner.py`、`core/config.py`、`assistant/router.py`、E8 文件。
 - 實作註記（2026-07-07）：`LLMClient.chat` 新增 `disable_thinking: bool | None`（None＝沿用 client 建構子預設），7 個實作全數同步——`OllamaLLMClient` per-call 值優先於建構子（True 時 payload 帶 `think:false`），external/anthropic/codex/tracking-wrapper 依協定接受並轉傳或忽略，`ModelRouter` 三個方法透傳。`WorkflowPlanner` 建構子加 `disable_thinking`，`plan()` 每次（含 repair 重試）帶入；`assistant/router.py` 以 `settings.llm_planner_disable_thinking`（預設 True）接線；codegen 不傳（維持 None）。新增測試：ollama per-call 雙向覆寫 + None 遞延、planner 每呼叫傳 True、codegen 傳 None。全閘門通過（618 unit / mypy / ruff）。真模型驗證見 proposal §「驗證結果」。
+
+## DEC-035：生成/自建技能支援資料夾目標（item_types 權威化）
+
+- 日期：2026-07-24
+- 狀態：Accepted，待實作（分支 `feat/assistant-folder-skills`，base = main `98df5bb`）
+- 背景：`_execute_generated`（`skills/authoring.py`）自 2026-06-17（M4）起寫死 `item.item_type != FILE → raise "This skill runs on a file"`，與 manifest 宣稱的 `ui.context_menu[].item_types` 脫節——技能即使宣稱 `FOLDER` 也無法執行；且前端 `DrivePage` 依 `item_type` 過濾，`[FILE]` 技能不會出現在資料夾右鍵。使用者「壓縮 test1 folder」即撞此限制。2026-07-24 以 regression-debug 協議查證：此為**既有設計限制、非 DEC-034 codegen think:false 回歸**（`authoring.py` 於 `d317aa1`→`main` 完全未變；真模型端到端測 FILE 路徑生成/執行/安裝全過）。
+- 決策：讓 manifest `item_types` 成為執行層權威來源，支援兩種資料夾模式——
+  - **A 逐檔批次**：對資料夾內每個 FILE 各跑一次 FILE 技能，重用既有「勾多檔 fan-out」機制，不改 `run()` 契約。
+  - **B 整體資料夾**：把資料夾子樹落地成暫存目錄，以**目錄**當 `input_path` 餵給技能，產出單一結果（如 zip）。
+  - 執行層依 `目標.item_type ∈ skill.item_types` 驗證與分流；`params["item_type"]` 告知生成 code；**FILE 路徑不變（向後相容、無 migration）**。
+  - codegen `_CODEGEN_SYSTEM` 更新：告知 `input_path` 可能是目錄、資料夾導向請求應產 `item_types:["FOLDER"]` + 走訪目錄的 code。
+- 理由：型別本由使用者選取決定（trivial），真正問題在執行層無視 manifest + 生成 code 假設單檔；權威化 `item_types` 一次同時解決顯示（前端已依 `item_type` 過濾）與執行。
+- 已知取捨（待確認預設）：資料夾攝取上限——建議檔數 `1000` / 總量 `500MB`，做成設定、超過報明確錯（防大資料夾打爆暫存/沙箱）；`item_types` 允許 `[FILE,FOLDER]` 並存（code 依 `params["item_type"]` 分流）；B 模式生成品質須真模型驗證（think:OFF 下走訪目錄 code 正確率、多次看 pass-rate）。
+- 影響範圍：`skills/authoring.py`（`_execute_generated` 分流 + 資料夾子樹遞迴攝取）、`assistant/subagent.py`（`_CODEGEN_SYSTEM`）、`core/config.py`（上限設定）、`drive` service/repository（子樹遍歷）、`tests/assistant/`（FOLDER 執行/攝取/上限單元測試 + codegen 真模型）、前端**無需改**（`DrivePage` 已依 `item_type` 過濾，FOLDER 技能自動上資料夾右鍵）。
+- 註：DEC-034（codegen think:false）文件先留本機待整併，本則沿用 DEC-035。

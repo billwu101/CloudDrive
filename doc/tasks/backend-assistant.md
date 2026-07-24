@@ -171,3 +171,17 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [ ] replan 互動釐清：部分失敗時 replan 的輸入應只含失敗分支；已成功分支不得重跑（副作用）。
 - [ ] 沙箱技能並行時的資源上限確認（`asyncio.to_thread` × N 個 `python -I` 子行程的 CPU/記憶體）。
 - [ ] 測試：獨立步驟確實並行（時序或呼叫順序斷言）、相依鏈仍守順序、並行上限生效。
+
+## 資料夾技能支援（item_types 權威化，2026-07-24，DEC-035）
+
+**目標**：讓生成/自建技能能對資料夾執行（現行 `_execute_generated` 寫死只收 FILE，`item.item_type != FILE → "This skill runs on a file"`）。分支 `feat/assistant-folder-skills`（base=main `98df5bb`）。設計見 detailed-design §8.95.5 / appendix-a DEC-035。
+
+- [ ] `skills/authoring.py` `_execute_generated`：以 `目標.item_type ∈ skill.item_types` 驗證分流取代硬擋 FILE；FOLDER → 遞迴子樹攝取到暫存目錄當 `input_path`；`params["item_type"]` 下傳。**FILE 路徑不變**。
+- [ ] `drive` service/repository：補「資料夾子樹遞迴列舉」（重用 `list_children`），供攝取所有子孫 FILE。
+- [ ] 資料夾攝取上限（`core/config.py` 新設定）：超過在攝取前 raise 明確錯。**待確認數字（建議 1000 檔 / 500MB）。**
+- [ ] `subagent.py` `_CODEGEN_SYSTEM`：教模型 `input_path` 可能是目錄、資料夾請求產 `item_types:["FOLDER"]` + 走訪目錄 code、說明 `params["item_type"]`。
+- [ ] A 逐檔批次：確認/重用既有 fan-out 對資料夾內每檔各跑一次 FILE 技能（可能已由勾多檔路徑覆蓋，需驗證資料夾展開）。
+- [ ] 測試（單元）：FOLDER 執行+攝取+回寫、`item_types` 不符報錯、上限觸發、A 批次 fan-out。
+- [ ] 測試（真模型，真模型驗證鐵律）：codegen「資料夾請求 → `item_types:["FOLDER"]` + 可跑目錄版 code」多次看 pass-rate（think:OFF 下）。
+- [ ] 待確認：`item_types` 是否允許 `[FILE,FOLDER]` 並存（建議允許，code 依 `params["item_type"]` 分流）。
+- [ ] 文件回填：proposal §12「技能可對資料夾執行」、detailed-design §8.95.5、appendix DEC-035（已先寫本機，待整併）。
