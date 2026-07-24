@@ -9,7 +9,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
 from typing import IO
 
-from app.storage.base import StoredObject
+from app.storage.base import UPLOAD_TEMP_PREFIX, StoredObject
 
 
 class PathTraversalError(ValueError):
@@ -119,23 +119,24 @@ class LocalStorageProvider:
         return await asyncio.to_thread(_join)
 
     async def open_read(self, key: str) -> AsyncGenerator[bytes, None]:
+        """Yield the object's bytes one buffer at a time.
+
+        Reads lazily: the file is never held in memory in full, so streaming a
+        multi-GB download or checksumming a merged upload costs one buffer.
+        """
         path = self._resolve_path(key)
+        if not await asyncio.to_thread(path.exists):
+            raise StorageKeyNotFoundError(key)
 
-        def _read_chunks() -> list[bytes]:
-            if not path.exists():
-                raise StorageKeyNotFoundError(key)
-            chunks: list[bytes] = []
-            with open(path, "rb") as f:
-                while True:
-                    chunk = f.read(self._CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-            return chunks
-
-        chunks = await asyncio.to_thread(_read_chunks)
-        for chunk in chunks:
-            yield chunk
+        handle = await asyncio.to_thread(open, path, "rb")
+        try:
+            while True:
+                chunk = await asyncio.to_thread(handle.read, self._CHUNK_SIZE)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(handle.close)
 
     async def delete(self, key: str) -> None:
         path = self._resolve_path(key)
@@ -169,6 +170,12 @@ class LocalStorageProvider:
                     continue
                 # Skip in-flight atomic-write temp files (".tmp-*").
                 if path.name.startswith(".tmp-"):
+                    continue
+                # Skip chunks of in-flight uploads. They are deliberately not
+                # referenced by any drive_item yet, so content GC would read
+                # them as orphans and delete a paused upload out from under
+                # the user. The upload cleanup job owns this prefix instead.
+                if path.relative_to(self._root).as_posix().startswith(f"{UPLOAD_TEMP_PREFIX}/"):
                     continue
                 stat = path.stat()
                 key = path.relative_to(self._root).as_posix()

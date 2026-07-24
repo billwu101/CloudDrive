@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -15,6 +15,16 @@ class UploadSession(Base):
     """
 
     __tablename__ = "upload_sessions"
+    # Declared here as well as in the migration so metadata-built schemas (the
+    # integration test DB) match production.
+    __table_args__ = (
+        Index("idx_upload_sessions_user_status", "user_id", "status", text("created_at DESC")),
+        Index(
+            "idx_upload_sessions_expires",
+            "expires_at",
+            postgresql_where=text("status IN ('pending', 'uploading')"),
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -43,6 +53,12 @@ class UploadChunk(Base):
     """One stored chunk of an upload session. Re-sending an index overwrites."""
 
     __tablename__ = "upload_chunks"
+    # The upsert in SQLUploadSessionRepository.upsert_chunk targets this index
+    # via ON CONFLICT, so it must exist wherever the schema is built — not
+    # only in the migration.
+    __table_args__ = (
+        Index("uq_upload_chunks_session_index", "session_id", "chunk_index", unique=True),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     session_id: Mapped[UUID] = mapped_column(

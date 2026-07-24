@@ -492,7 +492,11 @@ class StorageProvider(Protocol):
 
 **全文索引與串流的取捨**：`upload_simple` 串流化後不再持有整檔位元組，但全文索引需要檔案內容。因 `extract_text` 本就對超過 `DEFAULT_MAX_BYTES`（5 MB）的檔案回傳 `None`（不索引），服務只保留**上限 5 MB + 1 byte 的檔頭**供索引使用：小檔內容完整、超限檔的檔頭必然觸發原有的「過大不索引」分支，索引行為與串流化前完全一致，而記憶體用量與檔案大小脫鉤。
 
-`concat` 供分片合併使用；`LocalStorageProvider` 以固定大小緩衝區依序讀取各分片、附加寫入目標檔，回傳總位元組數。未來替換為物件儲存時，可改以原生 multipart complete 實作同一介面。
+`concat` 供分片合併使用；`LocalStorageProvider` 以固定大小緩衝區依序讀取各分片、附加寫入目標檔，回傳總位元組數；任一來源缺漏即拋 `StorageKeyNotFoundError` 且不留下半成品或暫存檔。未來替換為物件儲存時，可改以原生 multipart complete 實作同一介面。
+
+`open_read` 亦為**惰性串流**：逐塊讀取後 yield，不先把整檔讀進記憶體。分片合併後計算 checksum 與大檔下載都依賴這點，否則 5 GB 檔可以上傳卻會在讀取時吃爆記憶體。
+
+`list_objects` 除排除 `.tmp-*` 外，另**排除 `uploads/` 前綴**（`UPLOAD_TEMP_PREFIX`）——見 §6.7.7 第 6 點。
 
 `generate_download_url` 暫不作為 MVP 必要接口，因為已確認 MVP 使用 StreamingResponse。未來物件儲存可加回 signed URL。
 
@@ -651,7 +655,9 @@ class UploadSessionService:
 2. **記憶體**：`upload_chunk` 串流寫入、`complete_session` 以 `storage.concat` 邊讀邊寫，**記憶體用量與檔案大小無關**。checksum 於合併時逐塊累積計算。
 3. **配額**：建立時預檢、完成時實扣；取消／過期不扣。預檢須計入該使用者其他未完成工作階段的 `total_size`，避免多個大檔同時開啟而超賣。
 4. **一致性**（同 §7.9 補償式）：合併出的正式 blob 若在 DB 階段失敗，立即刪除該 blob；暫存分片一律在 `completed`／`cancelled`／到期時刪除。
-5. **清理排程**：`cleanup_expired` 由既有背景排程呼叫（與快照排程同機制），預設每日一次。單一 worker 部署可直接開啟；多 worker 須改外部 cron，避免重複執行。
+5. **清理排程**：`cleanup_expired` 由 `app/upload/scheduler.py` 的 `UploadCleanupScheduler` 呼叫（與快照排程同機制但**獨立排程器**，避免 snapshot 模組承載 upload 邏輯），預設每 24 小時一次，由 `UPLOAD_CLEANUP_SCHEDULER_ENABLED` 開關（預設關）。單一 worker 部署可直接開啟；多 worker 須改外部 cron，避免重複執行。
+6. **暫存分片與內容 GC 的分工**：分片暫存於 `uploads/{user_id}/{session_id}/{index}`。這些 blob 刻意尚未被任何 `drive_item` 引用，若讓內容 GC 掃到會被判為孤兒而刪除，等於把使用者暫停中的上傳清掉。因此 `list_objects` **排除 `uploads/` 前綴**（與既有排除 `.tmp-*` 同理），該命名空間改由 `cleanup_expired` 負責回收。
+7. **缺片時不進終態**：`complete_session` 驗出缺片時回 `INVALID_OPERATION` 但**不改狀態**，工作階段維持 `uploading`，client 補送缺片後可再次 `complete`——否則「續傳」在最後一步失去意義。`failed` 保留給無法補救的情況。
 
 ### 6.7.8 錯誤碼對應
 
@@ -665,7 +671,7 @@ class UploadSessionService:
 | 對終態工作階段送分片 | `INVALID_OPERATION` | 422 |
 | 完成時分片缺漏 | `INVALID_OPERATION` | 422 |
 
-### 6.7.8 可獨立測試項
+### 6.7.9 可獨立測試項
 
 1. 上傳成功會建立 drive_item。
 2. 上傳成功會建立 file_version v1。

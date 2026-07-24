@@ -17,6 +17,7 @@ class ErrorCode(StrEnum):
 
     # Storage / quota
     QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
+    FILE_TOO_LARGE = "FILE_TOO_LARGE"
 
     # Validation
     VALIDATION_ERROR = "VALIDATION_ERROR"

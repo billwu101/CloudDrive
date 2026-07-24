@@ -19,6 +19,18 @@ class Settings(BaseSettings):
     max_upload_size_bytes: int = 100 * 1024 * 1024  # 100 MB
     default_user_quota_bytes: int = 15 * 1024 * 1024 * 1024  # 15 GB
 
+    # Chunked resumable upload (proposal §27.7)
+    upload_chunk_size_bytes: int = 8 * 1024 * 1024  # 8 MB per chunk
+    max_chunked_upload_size_bytes: int = 5 * 1024 * 1024 * 1024  # 5 GB per file
+    upload_session_retention_days: int = 7  # unfinished sessions are reclaimed
+    # Files at or below this go through /upload/simple; larger ones use a
+    # chunked session. Kept at the simple-upload cap so the two paths meet.
+    chunked_upload_threshold_bytes: int = 100 * 1024 * 1024
+    # Periodic reclaim of expired sessions. Single-process only: with several
+    # workers, disable this and drive cleanup_expired from an external cron.
+    upload_cleanup_scheduler_enabled: bool = False
+    upload_cleanup_interval_hours: int = 24
+
     # Email / password-reset delivery
     email_provider: str = "console"  # "console" (log only) | "smtp"
     smtp_host: str = ""

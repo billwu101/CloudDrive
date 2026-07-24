@@ -4,6 +4,11 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import IO, Protocol, runtime_checkable
 
+# Storage prefix owned by in-flight chunked uploads. Blobs under it belong to
+# an upload session, not to a drive item, and are reclaimed by the upload
+# cleanup job rather than by content GC.
+UPLOAD_TEMP_PREFIX = "uploads"
+
 
 @dataclass(frozen=True)
 class StoredObject:

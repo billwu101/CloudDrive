@@ -53,6 +53,15 @@ class MemStorage:
         self._data[key] = bytes(written)
         return len(written)
 
+    async def concat(self, source_keys: list[str], target_key: str) -> int:
+        merged = bytearray()
+        for key in source_keys:
+            if key not in self._data:
+                raise FileNotFoundError(key)
+            merged.extend(self._data[key])
+        self._data[target_key] = bytes(merged)
+        return len(merged)
+
     def open_read(self, key: str) -> AsyncGenerator[bytes, None]:
         async def _gen() -> AsyncGenerator[bytes, None]:
             yield self._data.get(key, b"")
