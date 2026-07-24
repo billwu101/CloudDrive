@@ -39,6 +39,8 @@ export function FileTable({
     <table className="w-full table-fixed border-collapse text-left">
       <colgroup>
         <col className="w-8" />
+        {/* Icon gets its own column so the checkbox never covers it. */}
+        <col className="w-8" />
         <col />
         <col className="w-24" />
         <col className="w-32" />
@@ -56,6 +58,7 @@ export function FileTable({
               className="size-4 cursor-pointer accent-primary"
             />
           </th>
+          <th className="py-2" />
           <th className="py-2 pr-3">Name</th>
           <th className="py-2 pr-3">Size</th>
           <th className="py-2 pr-3">Modified</th>

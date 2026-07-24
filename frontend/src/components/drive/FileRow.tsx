@@ -40,22 +40,24 @@ export function FileRow({ item, selected, onClick, onDoubleClick, onContextMenu,
       onContextMenu={onContextMenu}
       className={`group cursor-pointer select-none border-b transition-colors last:border-b-0 hover:bg-accent/50 ${selected ? 'bg-accent' : ''}`}
     >
-      {/* Icon / checkbox column */}
-      <td className="py-2 pl-3 pr-2 w-8">
-        <div className="relative flex size-5 items-center justify-center">
-          {/* Checkbox: visible on hover or when selected */}
+      {/* Checkbox column — its own space, so it never covers the file icon.
+          Fades in on hover but the slot is always reserved (no layout shift). */}
+      <td className="py-2 pl-3 pr-1 w-8">
+        <div className="flex size-5 items-center justify-center">
           <input
             type="checkbox"
             checked={selected}
             onChange={() => {}}
             onClick={(e) => { e.stopPropagation(); onCheckboxClick(e) }}
             aria-label={`Select ${item.name}`}
-            className={`absolute size-4 cursor-pointer accent-primary transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+            className={`size-4 cursor-pointer accent-primary transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`}
           />
-          {/* File icon: hidden on hover or when selected */}
-          <div className={`pointer-events-none ${selected ? 'invisible' : 'group-hover:invisible'}`} aria-hidden="true">
-            <FileIcon mimeType={item.mime_type} isFolder={item.item_type === 'FOLDER'} />
-          </div>
+        </div>
+      </td>
+      {/* Icon column — always visible now that the checkbox has its own slot. */}
+      <td className="py-2 pr-2 w-8">
+        <div className="flex size-5 items-center justify-center" aria-hidden="true">
+          <FileIcon mimeType={item.mime_type} isFolder={item.item_type === 'FOLDER'} />
         </div>
       </td>
       <td className="py-2 pr-3 text-sm font-medium truncate max-w-xs">{item.name}</td>
