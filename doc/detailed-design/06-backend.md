@@ -476,7 +476,16 @@ class StorageProvider(Protocol):
 
     async def get_size(self, storage_key: str) -> int:
         ...
+
+    # 分片上傳（proposal §27）：把多個已落地的分片依序串接成一個正式物件。
+    # 實作須「邊讀邊寫」，記憶體用量與檔案大小無關（不得先組成 bytes 再寫入）。
+    async def concat(self, source_keys: list[str], target_key: str) -> int:
+        ...
 ```
+
+**`save` 的串流要求**：`save` 必須逐塊寫入而非先在記憶體組出完整內容。既有 `upload_simple` 曾以 `chunks: list[bytes]` 累積整檔再 `b"".join(...)`，導致記憶體用量 ≈ 檔案大小 ×2（大檔會 OOM）——**此寫法須改為串流寫入並同步計算 checksum**（proposal §27.3）。
+
+`concat` 供分片合併使用；`LocalStorageProvider` 以固定大小緩衝區依序讀取各分片、附加寫入目標檔，回傳總位元組數。未來替換為物件儲存時，可改以原生 multipart complete 實作同一介面。
 
 `generate_download_url` 暫不作為 MVP 必要接口，因為已確認 MVP 使用 StreamingResponse。未來物件儲存可加回 signed URL。
 
@@ -523,7 +532,7 @@ Upload 模組負責一般檔案上傳流程：
 8. 更新容量。
 9. 寫入 activity log。
 
-大檔案分片上傳不納入核心 detailed design，只保留 `UploadSession` 擴充點。
+大檔案分片續傳上傳見 §6.7.7（proposal §27 已將其由「擴充點」提升為正式功能）。
 
 ### 6.7.2 API
 
@@ -593,19 +602,61 @@ UploadService 需呼叫 DriveService 或 DriveItemRepository 取得可用名稱�
 async def resolve_available_name(owner_id: UUID, parent_id: UUID | None, original_name: str) -> str
 ```
 
-### 6.7.7 UploadSession 擴充點
+### 6.7.7 分片續傳上傳（UploadSessionService）
 
-保留資料表與 service interface，但不實作核心流程。
+實作 proposal §27。資料表與狀態機見 §7.7、端點見 §13.5、前端流程見 §5。參數：分片 **8 MB**、單檔上限 **5 GB**、未完成保留 **7 天**、單檔分片**序列**送出。
 
 ```python
 class UploadSessionService:
-    async def create_session(...)
-    async def upload_chunk(...)
-    async def complete_session(...)
-    async def cancel_session(...)
+    async def create_session(
+        self, user_id: UUID, *, filename: str, total_size: int,
+        parent_id: UUID | None, mime_type: str | None,
+    ) -> UploadSession:
+        """建立工作階段。預檢：total_size <= 5 GB、目標資料夾存在且屬本人、
+        配額足夠（已用 + 本次 + 其他未完成工作階段的佔用）。回傳含 chunk_size /
+        total_chunks，前端據此切片。"""
+
+    async def get_session(self, user_id: UUID, session_id: UUID) -> UploadSessionStatus:
+        """續傳用：回傳狀態與**已完成的 chunk_index 清單**，前端只補送缺的分片。"""
+
+    async def upload_chunk(
+        self, user_id: UUID, session_id: UUID, chunk_index: int, stream: AsyncIterator[bytes]
+    ) -> None:
+        """把單一分片**串流寫入** storage 暫存 key，寫入/覆寫 upload_chunks（冪等）。
+        終態工作階段拒絕；index 超出 total_chunks 拒絕。首個分片時 pending → uploading。"""
+
+    async def complete_session(self, user_id: UUID, session_id: UUID) -> DriveItemResponse:
+        """驗證分片齊全 → storage.concat 合併為正式 blob → 計算 checksum 與實際大小 →
+        解析同層可用檔名 → 建立 drive_items + file_versions v1 → 實扣配額 →
+        寫 activity log → 刪除暫存分片 → 標記 completed。"""
+
+    async def cancel_session(self, user_id: UUID, session_id: UUID) -> None:
+        """標記 cancelled 並刪除所有暫存分片（不佔配額）。"""
+
+    async def cleanup_expired(self) -> int:
+        """清理 expires_at 已過的 pending/uploading 工作階段：刪暫存分片與紀錄。
+        回傳清理筆數。"""
 ```
 
-MVP 中 router 可以不暴露這些 endpoint。
+**流程與規則**
+
+1. **授權**：所有方法都以 `user_id` 過濾；他人的工作階段一律 `NOT_FOUND`（不洩漏存在性）。
+2. **記憶體**：`upload_chunk` 串流寫入、`complete_session` 以 `storage.concat` 邊讀邊寫，**記憶體用量與檔案大小無關**。checksum 於合併時逐塊累積計算。
+3. **配額**：建立時預檢、完成時實扣；取消／過期不扣。預檢須計入該使用者其他未完成工作階段的 `total_size`，避免多個大檔同時開啟而超賣。
+4. **一致性**（同 §7.9 補償式）：合併出的正式 blob 若在 DB 階段失敗，立即刪除該 blob；暫存分片一律在 `completed`／`cancelled`／到期時刪除。
+5. **清理排程**：`cleanup_expired` 由既有背景排程呼叫（與快照排程同機制），預設每日一次。單一 worker 部署可直接開啟；多 worker 須改外部 cron，避免重複執行。
+
+### 6.7.8 錯誤碼對應
+
+前端據此分類顯示（proposal §27.2 第 6 點），不再一律顯示 `Network error`：
+
+| 情境 | 錯誤碼 | HTTP |
+| --- | --- | --- |
+| 檔案超過單檔上限（5 GB） | `FILE_TOO_LARGE` | 413 |
+| 配額不足 | `QUOTA_EXCEEDED` | 413 |
+| 工作階段不存在／非本人 | `NOT_FOUND` | 404 |
+| 對終態工作階段送分片 | `INVALID_OPERATION` | 422 |
+| 完成時分片缺漏 | `INVALID_OPERATION` | 422 |
 
 ### 6.7.8 可獨立測試項
 

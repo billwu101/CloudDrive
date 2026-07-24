@@ -797,13 +797,42 @@ UploadQueue
 UploadTaskItem
 ```
 
-### 5.7.4 可獨立測試項
+### 5.7.4 分片續傳上傳（proposal §27）
+
+超過 `simpleUploadMaxBytes` 的檔案改走分片流程；其餘仍用 `/upload/simple`。後端端點見 §13.5、服務見 §6.7.7。
+
+**送出前預檢**（proposal §27.2 第 7 點）：以 `file.size` 比對單檔上限（5 GB）與剩餘配額，超過者**立即標為失敗且不建立連線**——避免注定失敗的大檔佔住連線、拖垮同批其他檔案。
+
+**上傳佇列與並行**：`uploadStore` 以佇列調度，**同時進行的檔案數上限 3**，其餘排 `queued`；單一檔案的分片**依序**送出（§27.7）。取代原本一次 `Promise.allSettled` 全送的作法。
+
+**單檔分片流程**
+
+```text
+create session (回 chunk_size / total_chunks)
+  → 依 chunk_index 逐片 file.slice() 後 PUT（序列；失敗自動重試該片）
+  → 每片完成即更新進度 = 已完成片數 / 總片數
+  → 全部完成 → POST complete → 後端合併、建立檔案
+```
+
+**續傳**：工作階段 id 需在瀏覽器關閉後仍存在，故 `uploadStore` 對**未完成任務**持久化 `{ sessionId, fileName, size, parentId }`（此為唯一需要持久化的上傳狀態；`File` 物件無法持久化，恢復時須由使用者重新選取同一檔案）。續傳時先 `GET /upload/sessions/{id}` 取回**已完成分片索引**，只補送缺的分片。
+
+**暫停／繼續／取消**：暫停＝停止送出後續分片（伺服器端仍為 `uploading`，不需通知後端）；繼續＝從缺漏的 index 接續；取消＝呼叫 `DELETE /upload/sessions/{id}` 並移除任務。
+
+**狀態擴充**：`UploadTask` 增加 `sessionId`、`uploadedChunks`、`totalChunks`，`status` 增加 `queued` 與 `paused`；`errorCode` 用於錯誤分類顯示（`FILE_TOO_LARGE`／`QUOTA_EXCEEDED`／連線中斷），取代單一 `Network error` 文案。
+
+### 5.7.5 可獨立測試項
 
 1. 選擇檔案後建立 UploadTask。
 2. 拖曳檔案到螢幕任意位置（包含 Sidebar、TopBar）均會建立 UploadTask；`UploadDropzone` 使用 `window` 全域 drag 事件並以 `position:fixed` overlay 覆蓋整個視窗。
 3. 上傳中顯示進度。
 4. 上傳成功後檔案列表刷新。
 5. 上傳失敗後顯示錯誤訊息。
+6. 超過單檔上限或配額的檔案，**送出前**即標為失敗且未發出請求。
+7. 同時選取超過並行上限的檔案時，超出者狀態為 `queued`，完成一個才遞補。
+8. 分片流程：建立工作階段 → 依序送分片 → complete；進度隨已完成片數更新。
+9. 續傳：以已完成分片索引只補送缺的分片，不重送已完成者。
+10. 暫停後停止送出後續分片；繼續後從缺漏 index 接續；取消會呼叫 DELETE 並移除任務。
+11. 錯誤碼分類顯示（`FILE_TOO_LARGE`／`QUOTA_EXCEEDED`／連線中斷），不再一律 `Network error`。
 
 ### 5.8 Preview 前端模組
 
@@ -1307,6 +1336,7 @@ class UserItemPreferenceRepository:
     async def get_preference(self, user_id: UUID, item_id: UUID) -> UserItemPreference | None
     async def upsert_preference(self, user_id: UUID, item_id: UUID, *, is_starred: bool) -> UserItemPreference
     async def get_starred_ids(self, user_id: UUID, item_ids: list[UUID]) -> set[UUID]
+    async def get_all_starred_item_ids(self, user_id: UUID, *, limit: int) -> list[UUID]
 ```
 
 ### 6.4.4 驗證規則
@@ -1331,6 +1361,8 @@ class UserItemPreferenceRepository:
 | delete to trash | owner 或 editor |
 
 正式星號狀態以 `user_item_preferences.is_starred` 為準；`drive_items.is_starred` 僅為初始 schema 遺留/相容欄位，不作為回應與查詢的權威來源。這樣共享檔案時，每位使用者可有自己的星號狀態，不會互相污染。
+
+**星號清單為全域查詢（`GET /drive/starred`）**：以 `user_item_preferences`（`user_id` + `is_starred=true`）為來源取得 item id，再逐一取回項目並濾掉已刪除／非本人擁有者——**與資料夾階層無關**，因此位於任何子資料夾的檔案加星後都會出現。實作模式與 §6.4「最近項目」一致（先取 id 清單再補齊項目）。前端**不得**以「列根目錄再過濾 `is_starred`」代替，那會漏掉子資料夾內與分頁外的項目。
 
 ### 6.4.6 可獨立測試項
 
@@ -1439,7 +1471,16 @@ class StorageProvider(Protocol):
 
     async def get_size(self, storage_key: str) -> int:
         ...
+
+    # 分片上傳（proposal §27）：把多個已落地的分片依序串接成一個正式物件。
+    # 實作須「邊讀邊寫」，記憶體用量與檔案大小無關（不得先組成 bytes 再寫入）。
+    async def concat(self, source_keys: list[str], target_key: str) -> int:
+        ...
 ```
+
+**`save` 的串流要求**：`save` 必須逐塊寫入而非先在記憶體組出完整內容。既有 `upload_simple` 曾以 `chunks: list[bytes]` 累積整檔再 `b"".join(...)`，導致記憶體用量 ≈ 檔案大小 ×2（大檔會 OOM）——**此寫法須改為串流寫入並同步計算 checksum**（proposal §27.3）。
+
+`concat` 供分片合併使用；`LocalStorageProvider` 以固定大小緩衝區依序讀取各分片、附加寫入目標檔，回傳總位元組數。未來替換為物件儲存時，可改以原生 multipart complete 實作同一介面。
 
 `generate_download_url` 暫不作為 MVP 必要接口，因為已確認 MVP 使用 StreamingResponse。未來物件儲存可加回 signed URL。
 
@@ -1486,7 +1527,7 @@ Upload 模組負責一般檔案上傳流程：
 8. 更新容量。
 9. 寫入 activity log。
 
-大檔案分片上傳不納入核心 detailed design，只保留 `UploadSession` 擴充點。
+大檔案分片續傳上傳見 §6.7.7（proposal §27 已將其由「擴充點」提升為正式功能）。
 
 ### 6.7.2 API
 
@@ -1556,19 +1597,61 @@ UploadService 需呼叫 DriveService 或 DriveItemRepository 取得可用名稱�
 async def resolve_available_name(owner_id: UUID, parent_id: UUID | None, original_name: str) -> str
 ```
 
-### 6.7.7 UploadSession 擴充點
+### 6.7.7 分片續傳上傳（UploadSessionService）
 
-保留資料表與 service interface，但不實作核心流程。
+實作 proposal §27。資料表與狀態機見 §7.7、端點見 §13.5、前端流程見 §5。參數：分片 **8 MB**、單檔上限 **5 GB**、未完成保留 **7 天**、單檔分片**序列**送出。
 
 ```python
 class UploadSessionService:
-    async def create_session(...)
-    async def upload_chunk(...)
-    async def complete_session(...)
-    async def cancel_session(...)
+    async def create_session(
+        self, user_id: UUID, *, filename: str, total_size: int,
+        parent_id: UUID | None, mime_type: str | None,
+    ) -> UploadSession:
+        """建立工作階段。預檢：total_size <= 5 GB、目標資料夾存在且屬本人、
+        配額足夠（已用 + 本次 + 其他未完成工作階段的佔用）。回傳含 chunk_size /
+        total_chunks，前端據此切片。"""
+
+    async def get_session(self, user_id: UUID, session_id: UUID) -> UploadSessionStatus:
+        """續傳用：回傳狀態與**已完成的 chunk_index 清單**，前端只補送缺的分片。"""
+
+    async def upload_chunk(
+        self, user_id: UUID, session_id: UUID, chunk_index: int, stream: AsyncIterator[bytes]
+    ) -> None:
+        """把單一分片**串流寫入** storage 暫存 key，寫入/覆寫 upload_chunks（冪等）。
+        終態工作階段拒絕；index 超出 total_chunks 拒絕。首個分片時 pending → uploading。"""
+
+    async def complete_session(self, user_id: UUID, session_id: UUID) -> DriveItemResponse:
+        """驗證分片齊全 → storage.concat 合併為正式 blob → 計算 checksum 與實際大小 →
+        解析同層可用檔名 → 建立 drive_items + file_versions v1 → 實扣配額 →
+        寫 activity log → 刪除暫存分片 → 標記 completed。"""
+
+    async def cancel_session(self, user_id: UUID, session_id: UUID) -> None:
+        """標記 cancelled 並刪除所有暫存分片（不佔配額）。"""
+
+    async def cleanup_expired(self) -> int:
+        """清理 expires_at 已過的 pending/uploading 工作階段：刪暫存分片與紀錄。
+        回傳清理筆數。"""
 ```
 
-MVP 中 router 可以不暴露這些 endpoint。
+**流程與規則**
+
+1. **授權**：所有方法都以 `user_id` 過濾；他人的工作階段一律 `NOT_FOUND`（不洩漏存在性）。
+2. **記憶體**：`upload_chunk` 串流寫入、`complete_session` 以 `storage.concat` 邊讀邊寫，**記憶體用量與檔案大小無關**。checksum 於合併時逐塊累積計算。
+3. **配額**：建立時預檢、完成時實扣；取消／過期不扣。預檢須計入該使用者其他未完成工作階段的 `total_size`，避免多個大檔同時開啟而超賣。
+4. **一致性**（同 §7.9 補償式）：合併出的正式 blob 若在 DB 階段失敗，立即刪除該 blob；暫存分片一律在 `completed`／`cancelled`／到期時刪除。
+5. **清理排程**：`cleanup_expired` 由既有背景排程呼叫（與快照排程同機制），預設每日一次。單一 worker 部署可直接開啟；多 worker 須改外部 cron，避免重複執行。
+
+### 6.7.8 錯誤碼對應
+
+前端據此分類顯示（proposal §27.2 第 6 點），不再一律顯示 `Network error`：
+
+| 情境 | 錯誤碼 | HTTP |
+| --- | --- | --- |
+| 檔案超過單檔上限（5 GB） | `FILE_TOO_LARGE` | 413 |
+| 配額不足 | `QUOTA_EXCEEDED` | 413 |
+| 工作階段不存在／非本人 | `NOT_FOUND` | 404 |
+| 對終態工作階段送分片 | `INVALID_OPERATION` | 422 |
+| 完成時分片缺漏 | `INVALID_OPERATION` | 422 |
 
 ### 6.7.8 可獨立測試項
 
@@ -2085,6 +2168,7 @@ DriveItemRepository:
     get_preference(user_id, item_id) -> UserItemPreference | None
     upsert_preference(user_id, item_id, *, is_starred) -> UserItemPreference
     get_starred_ids(user_id, item_ids) -> set[UUID]
+    get_all_starred_item_ids(user_id, *, limit) -> list[UUID]
 
 # file_version（app/file_version）
 FileVersionRepository:
@@ -2370,9 +2454,75 @@ CHECK (permission IN ('viewer', 'downloader'));
 
 ### 7.7 upload_sessions 與 upload_chunks
 
-保留作為未來分片上傳擴充點。MVP 不需要暴露 endpoint，也不要求前端實作分片流程。
+大檔案分片續傳上傳（proposal §27）。工作階段存於 DB、分片本體存於 storage，因此**關閉瀏覽器後仍可續傳**（proposal §27.2）。參數依 §27.7：分片 **8 MB**、單檔上限 **5 GB**、未完成保留 **7 天**。
 
-資料表可先不 migration，等分片上傳進入開發時再加入；若希望先穩定 API contract，可先建立表但不啟用功能。
+```text
+upload_sessions
+id uuid primary key
+user_id uuid not null references users(id)
+parent_id uuid null references drive_items(id)      -- 目標資料夾；null = 根目錄
+filename varchar not null                            -- 使用者原始檔名（完成時才做同層去重）
+mime_type varchar null
+total_size bigint not null                           -- 客戶端宣告大小，建立時據此預檢配額與上限
+chunk_size integer not null                          -- 本工作階段固定的分片大小
+total_chunks integer not null
+status varchar not null                              -- pending | uploading | completed | failed | cancelled
+checksum_sha256 varchar null                         -- 合併完成後計算，寫入 drive_items/file_versions
+drive_item_id uuid null references drive_items(id)   -- 完成後對應的檔案
+error_code varchar null                              -- 失敗原因（對應 §15 錯誤碼）
+created_at timestamptz not null
+updated_at timestamptz not null
+expires_at timestamptz not null                      -- created_at + 7 天；到期由清理任務回收
+```
+
+```text
+upload_chunks
+id uuid primary key
+session_id uuid not null references upload_sessions(id) on delete cascade
+chunk_index integer not null                         -- 0-based
+size integer not null
+checksum_sha256 varchar null
+storage_key varchar not null                         -- 暫存分片在 storage 的 key
+created_at timestamptz not null
+```
+
+索引與約束：
+
+```sql
+-- 續傳查詢與清單
+CREATE INDEX idx_upload_sessions_user_status
+ON upload_sessions(user_id, status, created_at DESC);
+
+-- 到期清理掃描
+CREATE INDEX idx_upload_sessions_expires
+ON upload_sessions(expires_at)
+WHERE status IN ('pending', 'uploading');
+
+-- 同一分片只能有一筆，重送同 index 視為冪等覆寫
+CREATE UNIQUE INDEX uq_upload_chunks_session_index
+ON upload_chunks(session_id, chunk_index);
+```
+
+**狀態機**
+
+```text
+pending ──(收到第一個分片)──> uploading ──(complete 成功)──> completed
+   │                              │
+   └──────────────┬───────────────┘
+                  ├──(使用者取消)──> cancelled
+                  ├──(complete 驗證失敗 / 逾時)──> failed
+                  └──(超過 expires_at)──> 由清理任務刪除（連同暫存分片）
+```
+
+`completed`／`cancelled`／`failed` 為終態；終態的工作階段不接受再上傳分片。**暫停**不是狀態——前端停止送分片即可，伺服器端仍是 `uploading`，續傳時直接接著送未完成的 index。
+
+**設計要點**
+
+- **續傳依據**：查詢工作階段時回傳「已存在的 `chunk_index` 清單」，前端據此**只送缺的分片**（§13 端點）。
+- **冪等**：重送同一 `chunk_index` 覆寫該分片（`ON CONFLICT` 更新），使重試安全。
+- **配額**：建立工作階段時以 `total_size` **預檢**（含既有未完成工作階段的佔用量），避免傳完才發現超額；`completed` 時才實扣 `used_bytes`。
+- **一致性**：合併成正式 blob 後才建立 `drive_items`／`file_versions`；DB 階段失敗則刪除已合併 blob（補償回滾，同 §7.9）。取消與到期清理都必須刪除暫存分片，避免孤兒檔。
+- **同層檔名衝突**：於 `complete` 階段才做自動改名（`name (1)` 等），與 simple upload 一致——建立工作階段時的檔名僅供顯示。
 
 ### 7.8 activity_logs
 
@@ -3547,6 +3697,7 @@ tests/snapshot/
 | `/auth/*` | AuthRouter | AuthService |
 | `/drive/items` | DriveRouter | DriveService |
 | `/upload/simple` | UploadRouter | UploadService |
+| `/upload/sessions/**` | UploadRouter | UploadSessionService |
 | `/drive/items/{id}/download` | DriveRouter | DownloadService |
 | `/drive/items/{id}/preview` | DriveRouter | PreviewService |
 | `/trash/*` | TrashRouter | TrashService |
@@ -3590,12 +3741,18 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | PUT | `/drive/items/{id}/star` | 設定/取消星號 | 🔐 |
 | GET | `/drive/items/{id}/ancestors` | 祖先路徑（麵包屑） | 🔐 |
 | GET | `/drive/recent` | 最近項目 | 🔐 |
+| GET | `/drive/starred` | 星號項目（**跨資料夾全域查詢**，非只有根目錄） | 🔐 |
 
 **Upload／Download／Preview／Version**
 
 | Method | Path | 用途 | 認證 |
 | --- | --- | --- | --- |
 | POST | `/upload/simple` | 小檔直接上傳 | 🔐 |
+| POST | `/upload/sessions` | 建立分片上傳工作階段（回傳 `chunk_size`/`total_chunks`） | 🔐 |
+| GET | `/upload/sessions/{id}` | 查詢狀態與**已完成分片索引**（續傳依據） | 🔐 |
+| PUT | `/upload/sessions/{id}/chunks/{index}` | 上傳單一分片（冪等，可重送） | 🔐 |
+| POST | `/upload/sessions/{id}/complete` | 合併分片、建立檔案並實扣配額 | 🔐 |
+| DELETE | `/upload/sessions/{id}` | 取消並刪除暫存分片 | 🔐 |
 | GET | `/download/{item_id}` | 下載單一檔案（串流） | 🔐 |
 | POST | `/download/archive` | 多選打包為 zip（`{item_ids}`，資料夾遞迴） | 🔐 |
 | GET | `/preview/{item_id}` | 預覽資訊 | 🔐 |
@@ -4398,3 +4555,20 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 已知取捨：換更強 thinking 模型時應重跑 E8 A/B 再定；外部路徑無法控制此參數（忽略，與現狀一致）。
 - 影響範圍：`llm/client.py` 協定 + 7 個 chat() 實作 + 測試 fake、`planner.py`、`core/config.py`、`assistant/router.py`、E8 文件。
 - 實作註記（2026-07-07）：`LLMClient.chat` 新增 `disable_thinking: bool | None`（None＝沿用 client 建構子預設），7 個實作全數同步——`OllamaLLMClient` per-call 值優先於建構子（True 時 payload 帶 `think:false`），external/anthropic/codex/tracking-wrapper 依協定接受並轉傳或忽略，`ModelRouter` 三個方法透傳。`WorkflowPlanner` 建構子加 `disable_thinking`，`plan()` 每次（含 repair 重試）帶入；`assistant/router.py` 以 `settings.llm_planner_disable_thinking`（預設 True）接線；codegen 不傳（維持 None）。新增測試：ollama per-call 雙向覆寫 + None 遞延、planner 每呼叫傳 True、codegen 傳 None。全閘門通過（618 unit / mypy / ruff）。真模型驗證見 proposal §「驗證結果」。
+
+> **編號說明**：DEC-034 已保留給「codegen 預設 think:false」（翻案 DEC-033 的 codegen 不連動；程式已在 main，決策文件待整併），故本條由 DEC-035 起算。
+
+## DEC-035：大檔案分片續傳上傳的參數與序列化策略
+
+- 日期：2026-07-24
+- 狀態：Accepted，**待實作**（需求見 proposal §27、設計見 §6.7.7／§7.7／§13.5／§5.7.4）
+- 背景：實際使用時一次拖曳 10 餘個檔案且含 1.93 GB 影片，整批失敗。三個原因疊加：①單一請求上傳且上限 100 MB，大檔注定失敗；②前端 `Promise.allSettled` 全並行，10+ 檔搶爆瀏覽器對單一來源的連線，排隊者逾時；③後端 `upload_simple` 以 `chunks: list[bytes]` 累積整檔再 `b"".join`，記憶體 ≈ 檔案大小 ×2，大檔有 OOM 風險。前端一律顯示 `Network error`，無從判斷真因。
+- 決策：
+  1. 啟用早已規劃但延後的分片續傳（原 §7.7／§6.7.7 僅為「擴充點」佔位）。
+  2. 參數：單檔上限 **5 GB**、分片 **8 MB**、未完成工作階段保留 **7 天**。
+  3. 續傳做到**跨瀏覽器工作階段**：工作階段存 DB、分片存 storage，續傳時以「已完成分片索引」只補缺片。
+  4. **單一檔案的分片序列送出**；並行度只用在「檔案之間」（上限 3）。
+  5. 一併修既有缺陷：送出前大小/配額預檢、錯誤碼分類、`upload_simple` 改串流寫入。
+- 理由：分片大小 8 MB 使對外入口（nginx）只需容納單一分片（約 `10m`），**不必**把 `client_max_body_size` 放寬到 5 GB——避免為了大檔而打開超大請求的風險面。序列送分片讓進度計算、重試與續傳最單純，且真正的瓶頸是「檔案之間搶連線」而非單檔頻寬。
+- 已知取捨：單一大檔無法靠多連線加速（GB 級檔案上傳時間較長）；若日後成為痛點，改分片並行時**必須**改用全域請求並行預算（不分檔案內外統一計數），否則「檔案並行 × 分片並行」會重演連線耗盡。前端 `File` 物件無法持久化，故關閉瀏覽器後續傳需使用者重新選取同一檔案（工作階段與已傳分片仍在伺服器）。
+- 影響範圍：新增 `upload_sessions`／`upload_chunks` 表與 migration、`StorageProvider.concat` 與 `save` 串流化、`app/upload/`（service/router/schemas/repository）、背景清理任務、前端 `uploadStore`／`useUpload`／`UploadQueue` 與相關測試。

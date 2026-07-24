@@ -352,13 +352,42 @@ UploadQueue
 UploadTaskItem
 ```
 
-### 5.7.4 可獨立測試項
+### 5.7.4 分片續傳上傳（proposal §27）
+
+超過 `simpleUploadMaxBytes` 的檔案改走分片流程；其餘仍用 `/upload/simple`。後端端點見 §13.5、服務見 §6.7.7。
+
+**送出前預檢**（proposal §27.2 第 7 點）：以 `file.size` 比對單檔上限（5 GB）與剩餘配額，超過者**立即標為失敗且不建立連線**——避免注定失敗的大檔佔住連線、拖垮同批其他檔案。
+
+**上傳佇列與並行**：`uploadStore` 以佇列調度，**同時進行的檔案數上限 3**，其餘排 `queued`；單一檔案的分片**依序**送出（§27.7）。取代原本一次 `Promise.allSettled` 全送的作法。
+
+**單檔分片流程**
+
+```text
+create session (回 chunk_size / total_chunks)
+  → 依 chunk_index 逐片 file.slice() 後 PUT（序列；失敗自動重試該片）
+  → 每片完成即更新進度 = 已完成片數 / 總片數
+  → 全部完成 → POST complete → 後端合併、建立檔案
+```
+
+**續傳**：工作階段 id 需在瀏覽器關閉後仍存在，故 `uploadStore` 對**未完成任務**持久化 `{ sessionId, fileName, size, parentId }`（此為唯一需要持久化的上傳狀態；`File` 物件無法持久化，恢復時須由使用者重新選取同一檔案）。續傳時先 `GET /upload/sessions/{id}` 取回**已完成分片索引**，只補送缺的分片。
+
+**暫停／繼續／取消**：暫停＝停止送出後續分片（伺服器端仍為 `uploading`，不需通知後端）；繼續＝從缺漏的 index 接續；取消＝呼叫 `DELETE /upload/sessions/{id}` 並移除任務。
+
+**狀態擴充**：`UploadTask` 增加 `sessionId`、`uploadedChunks`、`totalChunks`，`status` 增加 `queued` 與 `paused`；`errorCode` 用於錯誤分類顯示（`FILE_TOO_LARGE`／`QUOTA_EXCEEDED`／連線中斷），取代單一 `Network error` 文案。
+
+### 5.7.5 可獨立測試項
 
 1. 選擇檔案後建立 UploadTask。
 2. 拖曳檔案到螢幕任意位置（包含 Sidebar、TopBar）均會建立 UploadTask；`UploadDropzone` 使用 `window` 全域 drag 事件並以 `position:fixed` overlay 覆蓋整個視窗。
 3. 上傳中顯示進度。
 4. 上傳成功後檔案列表刷新。
 5. 上傳失敗後顯示錯誤訊息。
+6. 超過單檔上限或配額的檔案，**送出前**即標為失敗且未發出請求。
+7. 同時選取超過並行上限的檔案時，超出者狀態為 `queued`，完成一個才遞補。
+8. 分片流程：建立工作階段 → 依序送分片 → complete；進度隨已完成片數更新。
+9. 續傳：以已完成分片索引只補送缺的分片，不重送已完成者。
+10. 暫停後停止送出後續分片；繼續後從缺漏 index 接續；取消會呼叫 DELETE 並移除任務。
+11. 錯誤碼分類顯示（`FILE_TOO_LARGE`／`QUOTA_EXCEEDED`／連線中斷），不再一律 `Network error`。
 
 ### 5.8 Preview 前端模組
 
