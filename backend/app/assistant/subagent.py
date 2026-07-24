@@ -31,10 +31,10 @@ _CODEGEN_SYSTEM = (
     '"item_types": ["FILE"|"FOLDER"]}]}}.\n'
     "Rules for `code` (a Python source string):\n"
     "- Define exactly: def run(input_path, output_dir, params): ...\n"
-    '- input_path is a read-only source FILE when item_types is ["FILE"]. When '
-    'item_types is ["FOLDER"], input_path is a read-only DIRECTORY holding the '
-    "folder's files (mirroring its subtree) — walk it with os.walk / pathlib. "
-    "params['item_type'] is 'FILE' or 'FOLDER' so code can branch.\n"
+    "- input_path is the selected item: a read-only source FILE if the user picked a "
+    "file, or a read-only DIRECTORY (mirroring the folder's subtree) if they picked a "
+    "folder. Check os.path.isdir(input_path) or params['item_type'] ('FILE'/'FOLDER') "
+    "to branch; for a directory, walk it with os.walk / pathlib.\n"
     "- ALWAYS write the result as a file (or files) under output_dir — that written "
     "file is what the user receives. Write ONLY under output_dir; never write "
     "elsewhere. Do not return the result only in the dict.\n"
@@ -51,9 +51,11 @@ _CODEGEN_SYSTEM = (
     "ctypes, threads. No writing outside output_dir.\n"
     "Rules for `name`: lowercase identifier ([a-z][a-z0-9_]+). Every context_menu "
     "handler MUST equal `name`.\n"
-    'Choose `item_types` by the target: ["FILE"] for a single-file operation; '
-    '["FOLDER"] when the request is about a folder (e.g. compress/zip a folder, or '
-    "process the files inside a folder).\n"
+    "Choose `item_types` for EVERY target the operation sensibly applies to — ONE "
+    "skill, not two. If it works on both a file and a folder (e.g. compress/zip/"
+    'archive, or package), declare ["FILE", "FOLDER"] and make the code handle both. '
+    "Use a single type only when the operation truly fits just one (e.g. extract a .7z "
+    'archive → ["FILE"]).\n'
 )
 
 

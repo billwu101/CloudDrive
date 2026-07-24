@@ -206,7 +206,8 @@ WorkflowRun {
 - **兩種資料夾模式（DEC-035）**：
   - **A 逐檔批次**（「對資料夾內每個檔做 X」）：重用「勾多檔 fan-out」——對子樹每個 FILE 各跑一次 FILE 技能，不改 `run()` 契約。
   - **B 整體資料夾**（「把資料夾壓成一個 zip」）：走上面 FOLDER 分流，把整個目錄交給技能。
-- **codegen `_CODEGEN_SYSTEM`**：新增「`input_path` 可能是檔案或目錄（依 `item_types`）；資料夾導向請求產 `item_types:["FOLDER"]` + `os.walk`/`shutil.make_archive` 類走訪目錄的 code；`params["item_type"]` 指明型別」。json_schema 的 `item_types` enum 已含 `FOLDER`，不動。
+- **codegen `_CODEGEN_SYSTEM`**：教模型「`input_path` 是選取的項目——選檔為檔案、選資料夾為目錄；用 `os.path.isdir(input_path)` 或 `params["item_type"]` 分流，目錄用 `os.walk`/`pathlib` 走訪」。**單一技能涵蓋所有合理型別**：一個操作若對檔案與資料夾都合理（如壓縮/打包），就宣告 `item_types:["FILE","FOLDER"]` 並讓 code 同時處理兩者——**不分成兩個技能**；只有真正僅適用一種（如解 `.7z` → `["FILE"]`）才用單型別。json_schema 的 `item_types` enum 已含 `FOLDER`，不動。
+- **已知取捨（codegen 品質變異）**：`author()` 只做靜態驗證（codeguard/manifest），**不執行 code**，故執行期 typo（真模型觀察到偶發 `os.pathlext`/`osorm` 類 token 走樣，think:OFF+temp 0.8）會溜過；使用者核可前可 review code、失敗可重生。若要根治可在 repair loop 加「沙盒 smoke 試跑 → 執行期錯誤回饋重生」（另立決策，見 tasks 待評估項）。
 - **安全上限**：資料夾攝取設檔數/總量上限（`core/config.py`，建議 1000 檔 / 500MB），超過在攝取前回明確錯，防大資料夾打爆暫存/沙箱。
 - **前端**：`DrivePage` 已依 `item_type` 過濾 `ui.context_menu`——宣稱 `FOLDER` 的技能**自動**出現在資料夾右鍵，無需改前端。
 - **向後相容**：既有 FILE 技能與其 code 不動、無 migration；資料夾能力為加法。
