@@ -60,11 +60,14 @@ class Settings(BaseSettings):
     llm_disable_thinking: bool = False
     # DEC-033: the planner runs with thinking disabled by default. E8 (60 samples,
     # real model) showed think:false cured all repetition loops and cut planner
-    # latency ~10x with no measurable loss in plan quality on gemma4:26b. Codegen
-    # is deliberately excluded — its structured protection was validated with
-    # thinking on. Set False to restore planner thinking (e.g. after swapping in a
-    # stronger thinking model; re-run the E8 A/B before flipping).
+    # latency ~10x with no measurable loss in plan quality on gemma4:26b. Set False
+    # to restore planner thinking (e.g. after swapping in a stronger thinking model;
+    # re-run the E8 A/B before flipping).
     llm_planner_disable_thinking: bool = True
+    # Codegen: 2026-07-22 A/B on real gemma4:26b — thinking-on codegen falls into
+    # repetition loops (per-call 0/6; M4 skill-generation 0% → 100% with think:false).
+    # Supersedes the earlier "codegen validated with thinking on" assumption.
+    llm_codegen_disable_thinking: bool = True
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
     # Conversation memory: how many of the most recent stored messages (user +

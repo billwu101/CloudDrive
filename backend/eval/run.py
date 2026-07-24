@@ -100,6 +100,13 @@ def main() -> int:
         default=1800.0,
         help="Playwright suite timeout in seconds for --mode browser (large batches need more)",
     )
+    parser.add_argument(
+        "--no-strict-steps",
+        action="store_true",
+        help="Score steps_include loosely (non-empty plan + confirmation tier) instead of "
+        "exact-step match. Right for a non-deterministic real model — the exact match is "
+        "for mock/scripted plans (see verifier.verify docstring). browser is always loose.",
+    )
     args = parser.parse_args()
 
     cases = [
@@ -150,7 +157,9 @@ def main() -> int:
             else:
                 response = _run_case(case, args, browser_responses)
                 # Browser/real plans are non-deterministic — don't gate on exact steps.
-                checks = verify(case, response, strict_steps=args.mode != "browser")
+                # (--no-strict-steps extends the loose check to api+real too.)
+                strict = args.mode != "browser" and not args.no_strict_steps
+                checks = verify(case, response, strict_steps=strict)
                 if judge is not None:
                     checks = checks + judge_case(case, response, judge, fallback_rubric=True)
                 checks = checks + _state_checks(case, args)

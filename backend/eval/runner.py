@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -62,20 +63,35 @@ def _seed_folders(root: str, token: str, names: list[str], *, timeout: float) ->
                 raise
 
 
-def _post(url: str, body: dict[str, Any], token: str, *, timeout: float) -> dict[str, Any]:
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode(),
-        method="POST",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.load(response)
-    except urllib.error.HTTPError as exc:
-        raise EvalRunnerError(f"POST {url} failed: {exc.code} {exc.reason}") from exc
-    except Exception as exc:
-        raise EvalRunnerError(f"POST {url} failed: {exc}") from exc
-    if not isinstance(data, dict):
-        raise EvalRunnerError(f"POST {url}: unexpected response type {type(data)!r}")
-    return data
+def _post(
+    url: str, body: dict[str, Any], token: str, *, timeout: float, retries: int = 4
+) -> dict[str, Any]:
+    # Retry transient failures (5xx / connection) with backoff — a single-concurrency
+    # local model under a sustained eval batch returns 503 intermittently.
+    last: Exception | None = None
+    for attempt in range(retries):
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                data = json.load(response)
+            if not isinstance(data, dict):
+                raise EvalRunnerError(f"POST {url}: unexpected response type {type(data)!r}")
+            return data
+        except urllib.error.HTTPError as exc:
+            last = EvalRunnerError(f"POST {url} failed: {exc.code} {exc.reason}")
+            transient = exc.code >= 500 or exc.code == 429
+            if not transient or attempt == retries - 1:
+                raise last from exc
+        except EvalRunnerError:
+            raise
+        except Exception as exc:
+            last = EvalRunnerError(f"POST {url} failed: {exc}")
+            if attempt == retries - 1:
+                raise last from exc
+        time.sleep(2**attempt)  # 1, 2, 4s
+    raise last if last else EvalRunnerError(f"POST {url} failed")
