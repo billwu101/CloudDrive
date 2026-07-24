@@ -174,14 +174,26 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 
 ## 資料夾技能支援（item_types 權威化，2026-07-24，DEC-035）
 
-**目標**：讓生成/自建技能能對資料夾執行（現行 `_execute_generated` 寫死只收 FILE，`item.item_type != FILE → "This skill runs on a file"`）。分支 `feat/assistant-folder-skills`（base=main `98df5bb`）。設計見 detailed-design §8.95.5 / appendix-a DEC-035。
+**目標**：讓生成/自建技能能對資料夾執行（原 `_execute_generated` 寫死只收 FILE，`item.item_type != FILE → "This skill runs on a file"`）。分支 `feat/assistant-folder-skills`（base=main `98df5bb`）。設計見 detailed-design §8.95.5 / appendix-a DEC-035。**狀態：實作完成，待 push→PR→merge。**
 
-- [ ] `skills/authoring.py` `_execute_generated`：以 `目標.item_type ∈ skill.item_types` 驗證分流取代硬擋 FILE；FOLDER → 遞迴子樹攝取到暫存目錄當 `input_path`；`params["item_type"]` 下傳。**FILE 路徑不變**。
-- [ ] `drive` service/repository：補「資料夾子樹遞迴列舉」（重用 `list_children`），供攝取所有子孫 FILE。
-- [ ] 資料夾攝取上限（`core/config.py` 新設定）：超過在攝取前 raise 明確錯。**待確認數字（建議 1000 檔 / 500MB）。**
-- [ ] `subagent.py` `_CODEGEN_SYSTEM`：教模型 `input_path` 可能是目錄、資料夾請求產 `item_types:["FOLDER"]` + 走訪目錄 code、說明 `params["item_type"]`。
-- [ ] A 逐檔批次：確認/重用既有 fan-out 對資料夾內每檔各跑一次 FILE 技能（可能已由勾多檔路徑覆蓋，需驗證資料夾展開）。
-- [ ] 測試（單元）：FOLDER 執行+攝取+回寫、`item_types` 不符報錯、上限觸發、A 批次 fan-out。
-- [ ] 測試（真模型，真模型驗證鐵律）：codegen「資料夾請求 → `item_types:["FOLDER"]` + 可跑目錄版 code」多次看 pass-rate（think:OFF 下）。
-- [ ] 待確認：`item_types` 是否允許 `[FILE,FOLDER]` 並存（建議允許，code 依 `params["item_type"]` 分流）。
-- [ ] 文件回填：proposal §12「技能可對資料夾執行」、detailed-design §8.95.5、appendix DEC-035（已先寫本機，待整併）。
+已完成（真模型 + 真後端 E2E 驗證；unit 692 全過、mypy 淨、ruff 淨）：
+
+- [x] `skills/authoring.py` `_execute_generated`：以 `目標.item_type ∈ skill.item_types` 驗證分流取代硬擋 FILE（錯誤訊息依宣告型別，`_wrong_type_message`）；`params["item_type"]` 下傳；FILE 路徑不變。
+- [x] `drive/service.py` `collect_folder_descendants`：遞迴列舉子樹（**檔案 + 資料夾，含空目錄**），重用 `list_children`。
+- [x] `_materialize_input`：FILE 維持單檔；FOLDER 先重建所有子目錄（含空目錄）再寫檔 → `input_path`=目錄；**空資料夾/只含子資料夾也可**（不因無檔報錯）；上限只計 FILE。
+- [x] 攝取上限（`core/config.py`）：`assistant_folder_max_files=1000` / `assistant_folder_max_bytes=500MB`，超過報明確錯（數字已定案）。
+- [x] `subagent.py` `_CODEGEN_SYSTEM`：input_path 為選取項目、**以 `os.path.isdir` 為主判斷**（`params["item_type"]` 僅一致性檢查）；**單一技能涵蓋所有合理型別**（壓縮類宣告 `["FILE","FOLDER"]`，不分兩個技能）；務必把結果寫成檔到 output_dir。
+- [x] `item_types` 允許 `[FILE,FOLDER]` 並存 → code 依 isdir 分流（原待確認項已定案：允許）。
+- [x] 測試（單元，`tests/assistant/test_folder_skills.py`，13 例）：型別 helper、collect 含空子資料夾、materialize 結構/空資料夾/空子資料夾保留/只含子資料夾、上限、item_types 不符報錯、sandbox 吃目錄。
+- [x] 測試（真模型，think:OFF gateway）：資料夾請求 6/6 產 FOLDER 技能且執行成功；通用「壓縮成 zip」→ 單一 `zip_compressor` `[FILE,FOLDER]`、檔案與資料夾皆通過；FILE 路徑無回歸。
+- [x] 真後端 E2E（真 DB 5434）：生成 `folder_to_zip`→核可→對資料夾執行→產 zip；空資料夾→`EmptyFolder.zip`；含空子資料夾→`MixedFolder.zip`。
+- [x] 前端：無需改（`DrivePage` 已依 `item_type` 過濾右鍵）。
+- [x] 文件回填：proposal §12、detailed-design §8.95.5、appendix DEC-035（本機草稿，待整併）。
+
+### 後續 / 待辦（不在本 PR，逐項獨立）
+
+- [ ] **CI 整合測試**：加 `tests/integration` 一支在真 Postgres 上守資料夾邊界（空資料夾、含空子資料夾、多層子樹、上限）——目前 `collect_folder_descendants` 的真 SQL 只由本機 live E2E 覆蓋，CI（需 Postgres）尚未涵蓋。
+- [ ] **codegen smoke-test（另立 DEC + 獨立分支）**：`author()` 只靜態驗證、不跑 code，執行期 typo（`os.pathlext`/`osorm`）會溜過。規格見 memory `clouddrive-codegen-smoke-test-dec`。
+- [ ] **（可選）zip 內保留空目錄**：執行層已落地空目錄，但生成的 `os.walk` code 通常跳過空目錄；若要 zip 內也含空資料夾，需在 `_CODEGEN_SYSTEM` 再加一條。
+- [ ] **（既有限制）生成觸發措辭**：`_looks_like_skill_generation_request` 需動詞（做一個/生成…）；「幫我把…壓縮」不觸發生成。可放寬觸發詞或改意圖判斷。
+- [ ] **（若需要）A 逐檔批次對資料夾**：對資料夾內每檔各跑一次 FILE 技能（fan-out）——本次以整體資料夾（B）為主，未做；需要時再驗證勾多檔/資料夾展開路徑。

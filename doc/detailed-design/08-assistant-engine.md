@@ -195,7 +195,7 @@ WorkflowRun {
 
 ### 8.95.5 資料夾技能（item_types 權威化，DEC-035）
 
-> **落地狀態**：設計待實作（分支 `feat/assistant-folder-skills`）。需求面見 proposal §12「技能可對資料夾執行」。
+> **落地狀態**：整體資料夾（B）**已實作，待 merge**（分支 `feat/assistant-folder-skills`）；逐檔批次（A）設計保留、**未實作**（見 tasks 後續）。需求面見 proposal §12「技能可對資料夾執行」。
 
 原 §8.95.2 生成技能「安裝後可掛右鍵選單對**單檔**執行」——`_execute_generated` 寫死只收 `FILE`（`item.item_type != FILE → "This skill runs on a file"`）。本設計讓技能能對**資料夾**執行，型別以 manifest `item_types` 為權威：
 
