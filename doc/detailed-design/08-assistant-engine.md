@@ -201,7 +201,7 @@ WorkflowRun {
 
 - **執行層分流（`_execute_generated`）**：先驗證 `目標.item_type ∈ skill.item_types`（不符回明確錯、訊息帶支援型別，取代原本硬擋 FILE）。
   - `FILE`：維持現況——下載單一 `storage_key` → `input_path` = 檔案。
-  - `FOLDER`：**遞迴 `list_children` 撈整棵子樹** → 每個 FILE 下載到暫存目錄、保留相對結構 → `input_path` = **該目錄**。
+  - `FOLDER`：`DriveService.collect_folder_descendants` **遞迴撈整棵子樹（檔案 + 資料夾）** → 先重建所有子目錄（**含空目錄**）、再把每個 FILE 下載到暫存目錄保留相對結構 → `input_path` = **該目錄**。**空資料夾或只含子資料夾的資料夾也可**（落地成空/僅結構目錄，不因「無檔」報錯）；上限只計 FILE。
   - `params` 加 `"item_type": "FILE"|"FOLDER"`（保留現有 `"filename"`），生成 code 據以分流；輸出沿用既有 `_ingest`（已支援多檔/巢狀回寫）。
 - **兩種資料夾模式（DEC-035）**：
   - **A 逐檔批次**（「對資料夾內每個檔做 X」）：重用「勾多檔 fan-out」——對子樹每個 FILE 各跑一次 FILE 技能，不改 `run()` 契約。

@@ -273,25 +273,31 @@ def test_wrong_type_message() -> None:
 # ── folder subtree collection ───────────────────────────────────────────────
 
 
-async def test_collect_folder_files_walks_nested_subtree() -> None:
+async def test_collect_folder_descendants_walks_nested_subtree() -> None:
     owner = uuid4()
     root = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="root")
     sub = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="sub", parent_id=root.id)
+    empty = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="empty", parent_id=root.id)
     f1 = _mk(
         owner_id=owner, item_type=ItemType.FILE, name="a.txt", parent_id=root.id, storage_key="k1"
     )
     f2 = _mk(
         owner_id=owner, item_type=ItemType.FILE, name="b.txt", parent_id=sub.id, storage_key="k2"
     )
-    no_key = _mk(owner_id=owner, item_type=ItemType.FILE, name="c.txt", parent_id=root.id)
     drive = DriveService(
-        item_repo=TreeDriveItemRepo([root, sub, f1, f2, no_key]), pref_repo=_PrefRepo()
+        item_repo=TreeDriveItemRepo([root, sub, empty, f1, f2]), pref_repo=_PrefRepo()
     )
 
-    files = await drive.collect_folder_files(owner, root.id)
-    rels = {rel for rel, _ in files}
+    items = await drive.collect_folder_descendants(owner, root.id)
+    by_rel = {rel: it.item_type for rel, it in items}
 
-    assert rels == {"a.txt", "sub/b.txt"}  # folder + storage_key-less file excluded
+    # folders (including the empty one) and files are all returned
+    assert by_rel == {
+        "sub": ItemType.FOLDER,
+        "empty": ItemType.FOLDER,
+        "a.txt": ItemType.FILE,
+        "sub/b.txt": ItemType.FILE,
+    }
 
 
 # ── materialization + caps ──────────────────────────────────────────────────
@@ -375,13 +381,47 @@ async def test_materialize_input_folder_rejects_too_large(
         await svc._materialize_input(owner, root, tmp_path)
 
 
-async def test_materialize_input_empty_folder_raises(tmp_path: Path) -> None:
+async def test_materialize_input_empty_folder_ok(tmp_path: Path) -> None:
     owner = uuid4()
     root = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="empty")
     svc = _service(items=[root])
 
-    with pytest.raises(AppError, match="no files"):
-        await svc._materialize_input(owner, root, tmp_path)
+    input_path = await svc._materialize_input(owner, root, tmp_path)
+
+    assert input_path.is_dir()
+    assert list(input_path.iterdir()) == []  # empty folder is allowed, not an error
+
+
+async def test_materialize_input_preserves_empty_subfolders(tmp_path: Path) -> None:
+    owner = uuid4()
+    root = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="root")
+    empty_sub = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="emptysub", parent_id=root.id)
+    with_file = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="withfile", parent_id=root.id)
+    f = _mk(
+        owner_id=owner,
+        item_type=ItemType.FILE,
+        name="x.txt",
+        parent_id=with_file.id,
+        storage_key="k",
+        size_bytes=1,
+    )
+    svc = _service(items=[root, empty_sub, with_file, f], blobs={"k": b"z"})
+
+    input_path = await svc._materialize_input(owner, root, tmp_path)
+
+    assert (input_path / "emptysub").is_dir()  # empty subfolder preserved
+    assert (input_path / "withfile" / "x.txt").read_bytes() == b"z"
+
+
+async def test_materialize_input_folder_of_only_subfolders_ok(tmp_path: Path) -> None:
+    owner = uuid4()
+    root = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="root")
+    sub = _mk(owner_id=owner, item_type=ItemType.FOLDER, name="sub", parent_id=root.id)
+    svc = _service(items=[root, sub])
+
+    input_path = await svc._materialize_input(owner, root, tmp_path)
+
+    assert (input_path / "sub").is_dir()  # no files anywhere, still materializes
 
 
 # ── item_types authority via execute_skill ──────────────────────────────────

@@ -116,14 +116,16 @@ class DriveService:
             raise NotFoundError("Item not found")
         return item
 
-    async def collect_folder_files(
+    async def collect_folder_descendants(
         self, user_id: UUID, folder_id: UUID
     ) -> list[tuple[str, DriveItem]]:
-        """All descendant FILE items under a folder, as (relative POSIX path, item).
+        """All descendants (files AND folders) under a folder, as
+        (relative POSIX path, item), in depth-first tree order.
 
-        Depth-first over the drive tree (``parent_id`` links); only owned,
-        non-deleted FILEs with a ``storage_key`` are returned. Used by the
-        assistant to materialize a folder subtree into the sandbox input (DEC-035).
+        Includes empty subfolders so the assistant can mirror the full structure
+        into the sandbox input — an empty folder or a folder of only subfolders is
+        still materializable (DEC-035). Walks owned, non-deleted items via
+        ``parent_id`` links.
         """
         results: list[tuple[str, DriveItem]] = []
 
@@ -142,10 +144,9 @@ class DriveService:
                     break
                 for it in items:
                     rel = f"{prefix}/{it.name}" if prefix else it.name
+                    results.append((rel, it))
                     if it.item_type == ItemType.FOLDER:
                         await _walk(it.id, rel)
-                    elif it.item_type == ItemType.FILE and it.storage_key:
-                        results.append((rel, it))
                 offset += len(items)
                 if offset >= total:
                     break

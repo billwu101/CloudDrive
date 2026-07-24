@@ -476,17 +476,21 @@ class AssistantSkillService:
                     handle.write(chunk)
             return input_path
 
-        # FOLDER: materialize the subtree into a directory, capped for safety.
-        files = await self._drive.collect_folder_files(user_id, item.id)
-        if not files:
-            raise AppError(ErrorCode.INVALID_OPERATION, "This folder has no files to process")
+        # FOLDER: mirror the whole subtree — files AND empty subfolders — into a
+        # directory, capped by file count/total bytes. An empty folder (or a folder
+        # of only subfolders) is allowed: it materializes to an empty/structure-only
+        # directory the skill can still archive.
+        descendants = await self._drive.collect_folder_descendants(user_id, item.id)
+        files = [
+            (rel, it) for rel, it in descendants if it.item_type == ItemType.FILE and it.storage_key
+        ]
         settings = get_settings()
         if len(files) > settings.assistant_folder_max_files:
             raise AppError(
                 ErrorCode.INVALID_OPERATION,
                 f"Folder has too many files to process (max {settings.assistant_folder_max_files})",
             )
-        total_bytes = sum(f.size_bytes or 0 for _, f in files)
+        total_bytes = sum(it.size_bytes or 0 for _, it in files)
         if total_bytes > settings.assistant_folder_max_bytes:
             raise AppError(
                 ErrorCode.INVALID_OPERATION,
@@ -494,12 +498,16 @@ class AssistantSkillService:
             )
         root_dir = run_root / _safe_input_name(item.name)
         root_dir.mkdir(parents=True, exist_ok=True)
+        # Recreate every subfolder first so empty directories are preserved.
+        for rel, sub in descendants:
+            if sub.item_type == ItemType.FOLDER:
+                parts = [_safe_input_name(part) for part in rel.split("/") if part]
+                root_dir.joinpath(*parts).mkdir(parents=True, exist_ok=True)
         for rel, file_item in files:
-            if not file_item.storage_key:
-                continue
             parts = [_safe_input_name(part) for part in rel.split("/") if part]
             dest = root_dir.joinpath(*parts)
             dest.parent.mkdir(parents=True, exist_ok=True)
+            assert file_item.storage_key is not None
             with dest.open("wb") as handle:
                 async for chunk in self._storage.open_read(file_item.storage_key):
                     handle.write(chunk)
