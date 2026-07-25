@@ -1,10 +1,17 @@
-import type { DriveItemResponse } from './types'
+import type { DriveItemResponse, UploadSessionResponse } from './types'
 import { api } from './client'
 
 export interface UploadOptions {
   parentId?: string
   onProgress?: (percent: number) => void
   signal?: AbortSignal
+}
+
+export interface CreateSessionArgs {
+  filename: string
+  totalSize: number
+  parentId?: string
+  mimeType?: string | null
 }
 
 export const uploadApi = {
@@ -20,4 +27,30 @@ export const uploadApi = {
       },
     })
   },
+
+  // ── Chunked resumable upload (proposal §27) ────────────────────────────────
+
+  createSession: ({ filename, totalSize, parentId, mimeType }: CreateSessionArgs) =>
+    api.post<UploadSessionResponse>('/upload/sessions', {
+      filename,
+      total_size: totalSize,
+      parent_id: parentId ?? null,
+      mime_type: mimeType ?? null,
+    }),
+
+  getSession: (sessionId: string, signal?: AbortSignal) =>
+    api.get<UploadSessionResponse>(`/upload/sessions/${sessionId}`, { signal }),
+
+  // The chunk is sent as the raw request body (not multipart), so a chunk
+  // never lands in the server's memory whole.
+  putChunk: (sessionId: string, index: number, chunk: Blob, signal?: AbortSignal) =>
+    api.put<void>(`/upload/sessions/${sessionId}/chunks/${index}`, chunk, {
+      signal,
+      headers: { 'Content-Type': 'application/octet-stream' },
+    }),
+
+  completeSession: (sessionId: string, signal?: AbortSignal) =>
+    api.post<DriveItemResponse>(`/upload/sessions/${sessionId}/complete`, undefined, { signal }),
+
+  cancelSession: (sessionId: string) => api.delete<void>(`/upload/sessions/${sessionId}`),
 }

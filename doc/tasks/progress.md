@@ -39,7 +39,7 @@
 - [x] [Frontend Auth](./frontend-auth.md)
 - [x] [Frontend Layout](./frontend-layout.md)
 - [x] [Frontend Drive](./frontend-drive.md)
-- [-] [Frontend Upload](./frontend-upload.md) — 預檢／並行上限 3／錯誤分類已完成；**分片流程與續傳待實作**（proposal §27 / DEC-035）
+- [x] [Frontend Upload](./frontend-upload.md) — 預檢／並行上限 3／錯誤分類 + **分片流程／續傳／暫停繼續取消**皆完成（proposal §27 / DEC-035）
 - [x] [Frontend Preview](./frontend-preview.md)
 - [x] [Frontend Share](./frontend-share.md)
 - [x] [Frontend Trash](./frontend-trash.md)

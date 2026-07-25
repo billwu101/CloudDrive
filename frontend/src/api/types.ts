@@ -23,6 +23,19 @@ export interface QuotaResponse {
   used_percent: number
 }
 
+/** A chunked upload session (proposal §27). `uploaded_chunks` drives resume:
+ *  the client sends only the indexes not already present. */
+export interface UploadSessionResponse {
+  id: string
+  filename: string
+  total_size: number
+  chunk_size: number
+  total_chunks: number
+  status: 'pending' | 'uploading' | 'completed' | 'failed' | 'cancelled'
+  uploaded_chunks: number[]
+  expires_at: string
+}
+
 export interface DriveItemResponse {
   id: string
   owner_id: string

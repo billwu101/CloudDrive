@@ -57,23 +57,23 @@
 
 ### API 與型別
 
-- [ ] `uploadApi` 新增 `createSession`／`getSession`／`putChunk`／`completeSession`／`cancelSession`。
-- [ ] `UploadTask` 擴充 `sessionId`／`uploadedChunks`／`totalChunks`／`errorCode`；`status` 增加 `queued`／`paused`。
-- [ ] 測試：各 API 呼叫正確路徑與參數。
+- [x] `uploadApi` 新增 `createSession`／`getSession`／`putChunk`／`completeSession`／`cancelSession`。
+- [x] `UploadTask` 擴充 `sessionId`／`uploadedChunks`／`totalChunks`／`errorCode`；`status` 增加 `queued`／`paused`。
+- [x] 測試：各 API 呼叫正確路徑與參數。
 
 ### 分片流程
 
-- [ ] 依門檻決定走 `/upload/simple` 或分片流程。
-- [ ] 建立工作階段 → 依 `chunk_index` 以 `file.slice()` **序列**送片 → 全數完成後 `complete`。
-- [ ] 進度 = 已完成片數 ÷ 總片數。
-- [ ] 單片失敗自動重試（有限次數），仍失敗則整體標失敗但**保留工作階段**供續傳。
-- [ ] 測試：切片數與 `chunk_index` 正確、進度隨片數更新、單片失敗重試後可完成。
+- [x] 依門檻決定走 `/upload/simple` 或分片流程。
+- [x] 建立工作階段 → 依 `chunk_index` 以 `file.slice()` **序列**送片 → 全數完成後 `complete`。
+- [x] 進度 = 已完成片數 ÷ 總片數。
+- [x] 單片失敗自動重試（有限次數），仍失敗則整體標失敗但**保留工作階段**供續傳。
+- [x] 測試：切片數與 `chunk_index` 正確、進度隨片數更新、單片失敗重試後可完成。
 
 ### 續傳與控制
 
-- [ ] 持久化未完成任務的 `{ sessionId, fileName, size, parentId }`（`File` 無法持久化，恢復時需使用者重新選同一檔案——UI 要明確說明）。
-- [ ] 續傳：先 `getSession` 取已完成 index，**只補送缺片**。
-- [ ] 暫停（停止送後續分片，不呼叫後端）／繼續（從缺片接續）／取消（`DELETE` 並移除任務）。
-- [ ] `UploadTaskItem` 增加暫停／繼續／取消控制與 `queued`／`paused` 狀態顯示。
-- [ ] 測試：續傳只送缺片、暫停後停止送出、繼續可接續、取消會呼叫 DELETE。
+- [x] 持久化未完成任務的 `{ sessionId, fileName, size, parentId }`（`File` 無法持久化，恢復時需使用者重新選同一檔案——UI 要明確說明）。
+- [x] 續傳：先 `getSession` 取已完成 index，**只補送缺片**。
+- [x] 暫停（停止送後續分片，不呼叫後端）／繼續（從缺片接續）／取消（`DELETE` 並移除任務）。
+- [x] `UploadTaskItem` 增加暫停／繼續／取消控制與 `queued`／`paused` 狀態顯示。
+- [x] 測試：續傳只送缺片、暫停後停止送出、繼續可接續、取消會呼叫 DELETE。
 

@@ -187,8 +187,8 @@ export function DrivePage() {
   }, [selectedIds])
 
   const handleRetryUpload = useCallback(
-    (task: { file: File }) => {
-      upload([task.file])
+    (task: { file: File | null }) => {
+      if (task.file) upload([task.file])
     },
     [upload],
   )

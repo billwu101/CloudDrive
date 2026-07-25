@@ -356,12 +356,11 @@ UploadTaskItem
 
 超過 `simpleUploadMaxBytes` 的檔案改走分片流程；其餘仍用 `/upload/simple`。後端端點見 §13.5、服務見 §6.7.7。
 
-> **實作進度（前置三項已落地）**：預檢、並行上限、錯誤分類三項與分片端點無關，已先行實作於 `src/lib/uploadLimits.ts`（`MAX_UPLOAD_SIZE_BYTES`／`UPLOAD_CONCURRENCY`／`precheckBatch`／`uploadErrorMessage`／`runWithConcurrency`），由 `useUploadFiles` 與 `useUploadFolders` 兩條路徑共用。分片流程本身尚未實作，因此有兩點為過渡狀態：
+> **實作對應（全部完成）**：
 >
-> 1. **預檢上限暫為 100 MB**（`/upload/simple` 的 `max_upload_size_bytes`）而非 5 GB。分片流程上線後，此常數改為「切換到分片流程的門檻」，上限才放寬到 5 GB。
-> 2. **錯誤分類不經 `UploadTask.errorCode`**：`uploadErrorMessage()` 直接把 `ApiError.code` 映射成訊息後存入既有的 `error` 欄位，`UploadTask` 尚未擴充 `errorCode`／`sessionId` 等欄位（屬下方分片流程的工作）。分類需求本身已滿足。
->
-> 分類依 `code` 優先於 HTTP 狀態碼：後端 `QUOTA_EXCEEDED` 與檔案過大**同為 413**，僅在無可辨識 `code` 時（例如被 nginx 直接擋下的請求）才以 413 判為檔案過大。
+> - **門檻與上限**：`CHUNKED_UPLOAD_THRESHOLD`（100 MB，對齊後端 `chunked_upload_threshold_bytes`）決定走 `/upload/simple` 或分片；預檢上限為 `MAX_CHUNKED_UPLOAD_SIZE_BYTES`（5 GB），介於兩者之間的檔案走分片而非被拒，只有 >5 GB 才提前失敗。
+> - **檔案分工**：`src/lib/uploadLimits.ts`（預檢／並行佇列／錯誤分類，純函式）、`src/lib/chunkedUpload.ts`（建立/續傳工作階段、序列送片、重試、完成、暫停/取消訊號）、`src/lib/uploadPersistence.ts`（localStorage 記未完成工作階段）；`useUploadFiles`／`useUploadFolders` 依大小分派，`useUploadControls` 提供暫停/繼續/取消/重選檔。
+> - **錯誤分類**依 `code` 優先於 HTTP 狀態碼：後端 `QUOTA_EXCEEDED` 與檔案過大**同為 413**，僅在無可辨識 `code` 時（例如被 nginx 直接擋下的請求）才以 413 判為檔案過大；分類後的 `errorCode` 存入 `UploadTask.errorCode`。
 
 **送出前預檢**（proposal §27.2 第 7 點）：以 `file.size` 比對單檔上限（5 GB）與剩餘配額，超過者**立即標為失敗且不建立連線**——避免注定失敗的大檔佔住連線、拖垮同批其他檔案。
 

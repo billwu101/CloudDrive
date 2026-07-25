@@ -4,7 +4,7 @@ import { createElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { authKeys } from '@/hooks/useAuth'
-import { MAX_UPLOAD_SIZE_BYTES, UPLOAD_CONCURRENCY } from '@/lib/uploadLimits'
+import { MAX_CHUNKED_UPLOAD_SIZE_BYTES, UPLOAD_CONCURRENCY } from '@/lib/uploadLimits'
 import { useUploadStore } from '@/stores/uploadStore'
 
 import { relativePathOf, useUploadFiles, useUploadFolders } from './useUpload'
@@ -104,9 +104,11 @@ describe('useUploadFolders', () => {
 })
 
 describe('useUploadFiles pre-check', () => {
-  it('fails an over-sized file without ever sending a request', async () => {
+  it('fails a file past the 5 GB ceiling without ever sending a request', async () => {
     uploadSimple.mockResolvedValue({ data: {} })
-    const huge = fileOfSize('movie.mp4', MAX_UPLOAD_SIZE_BYTES + 1)
+    // Over the chunked ceiling: not even a session can rescue it, so it is
+    // rejected up front rather than started.
+    const huge = fileOfSize('movie.mp4', MAX_CHUNKED_UPLOAD_SIZE_BYTES + 1)
     const small = fileOfSize('note.txt', 10)
 
     const { result } = renderHook(() => useUploadFiles(undefined), { wrapper })
@@ -119,7 +121,7 @@ describe('useUploadFiles pre-check', () => {
     expect((uploadSimple.mock.calls[0][0] as File).name).toBe('note.txt')
 
     const tasks = useUploadStore.getState().tasks
-    const failed = tasks.find((t) => t.file.name === 'movie.mp4')
+    const failed = tasks.find((t) => t.fileName === 'movie.mp4')
     expect(failed?.status).toBe('failed')
     expect(failed?.error).toContain('too large')
   })

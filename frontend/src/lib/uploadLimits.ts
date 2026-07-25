@@ -14,6 +14,14 @@ import { isApiError } from '@/api/client'
 export const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
 
 /**
+ * Largest file the chunked path accepts, matching the backend
+ * `max_chunked_upload_size_bytes` (5 GB). Files between MAX_UPLOAD_SIZE_BYTES
+ * and this go through a resumable session instead of being rejected; only
+ * files past this are refused up front.
+ */
+export const MAX_CHUNKED_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024 * 1024
+
+/**
  * How many files upload at once. Browsers allow only ~6 connections per
  * origin, so firing a whole drop in parallel left every request crawling and
  * timing out together; the rest of the batch waits its turn instead.
@@ -27,8 +35,11 @@ export interface UploadRejection {
   message: string
 }
 
-const TOO_LARGE_MESSAGE = `File is too large (max ${formatBytes(MAX_UPLOAD_SIZE_BYTES)})`
 const QUOTA_MESSAGE = 'Not enough storage space left'
+
+function tooLargeMessage(maxBytes: number): string {
+  return `File is too large (max ${formatBytes(maxBytes)})`
+}
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -54,11 +65,12 @@ export function formatBytes(bytes: number): string {
 export function precheckBatch(
   sizes: number[],
   availableBytes?: number,
+  maxFileSize: number = MAX_UPLOAD_SIZE_BYTES,
 ): (UploadRejection | null)[] {
   let budget = availableBytes
   return sizes.map((size) => {
-    if (size > MAX_UPLOAD_SIZE_BYTES) {
-      return { code: 'FILE_TOO_LARGE', message: TOO_LARGE_MESSAGE }
+    if (size > maxFileSize) {
+      return { code: 'FILE_TOO_LARGE', message: tooLargeMessage(maxFileSize) }
     }
     if (budget !== undefined) {
       if (size > budget) return { code: 'QUOTA_EXCEEDED', message: QUOTA_MESSAGE }
@@ -76,7 +88,7 @@ export function uploadErrorMessage(err: unknown): string {
   if (!isApiError(err)) return 'Upload failed'
   switch (err.code) {
     case 'FILE_TOO_LARGE':
-      return TOO_LARGE_MESSAGE
+      return tooLargeMessage(MAX_CHUNKED_UPLOAD_SIZE_BYTES)
     case 'QUOTA_EXCEEDED':
       // The API answers 413 for quota too, so the code has to win over status.
       return QUOTA_MESSAGE
@@ -84,7 +96,7 @@ export function uploadErrorMessage(err: unknown): string {
       return 'Connection lost — check your network and retry'
     default:
       // A body the proxy rejects never reaches the app, so it carries no code.
-      if (err.status === 413) return TOO_LARGE_MESSAGE
+      if (err.status === 413) return tooLargeMessage(MAX_CHUNKED_UPLOAD_SIZE_BYTES)
       return err.message || 'Upload failed'
   }
 }

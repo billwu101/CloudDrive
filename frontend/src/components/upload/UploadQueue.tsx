@@ -1,3 +1,7 @@
+import { useEffect } from 'react'
+
+import { useUploadControls } from '@/hooks/useUpload'
+import { restoredTasksFromStorage } from '@/lib/uploadPersistence'
 import type { UploadTask } from '@/stores/uploadStore'
 import { useUploadStore } from '@/stores/uploadStore'
 
@@ -9,9 +13,17 @@ interface UploadQueueProps {
 
 export function UploadQueue({ onRetry }: UploadQueueProps) {
   const tasks = useUploadStore((s) => s.tasks)
-  const cancelTask = useUploadStore((s) => s.cancelTask)
   const removeTask = useUploadStore((s) => s.removeTask)
   const clearCompleted = useUploadStore((s) => s.clearCompleted)
+  const addRestoredTasks = useUploadStore((s) => s.addRestoredTasks)
+  const { pause, continueUpload, cancel, resumeWithFile } = useUploadControls()
+
+  // Surface sessions left unfinished on a previous visit so the user can
+  // reselect the file and resume (the File itself can't be persisted).
+  useEffect(() => {
+    const restored = restoredTasksFromStorage()
+    if (restored.length > 0) addRestoredTasks(restored)
+  }, [addRestoredTasks])
 
   if (tasks.length === 0) return null
 
@@ -35,9 +47,12 @@ export function UploadQueue({ onRetry }: UploadQueueProps) {
           <UploadTaskItem
             key={task.id}
             task={task}
-            onCancel={cancelTask}
+            onCancel={cancel}
             onRetry={onRetry}
             onRemove={removeTask}
+            onPause={pause}
+            onContinue={continueUpload}
+            onResumeFile={resumeWithFile}
           />
         ))}
       </ul>
