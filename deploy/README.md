@@ -6,6 +6,22 @@ CI 由 GitHub 託管 runner 執行（`.github/workflows/ci.yml`）；CD 由部�
 
 ## 一次性：部署主機（Ubuntu）設置
 
+### 一鍵設定（推薦）
+
+clone 此 repo 到部署主機後，於 repo 根目錄以 root 執行：
+
+```bash
+sudo bash deploy/setup-runner.sh <RUNNER_REGISTRATION_TOKEN>
+```
+
+一支腳本完成下列全部：安裝 Docker + compose、建立 `gha-runner` 帳號、下載並註冊 self-hosted runner（labels `production,docker`）、裝成 systemd 常駐（開機自動啟動）、bootstrap 佈署檔到 `/opt/cloud-drive`、設定 sudoers。`.env` 若不存在會由 `.env.prod.example` 建立並自動產生隨機 `JWT_SECRET_KEY`/`POSTGRES_PASSWORD`；其餘須手動填的密鑰（如 `TUNNEL_TOKEN`、`LLM_API_KEY`）腳本結束時會列出提醒。可用環境變數 `REPO_URL`/`RUNNER_NAME`/`RUNNER_LABELS`/`RUNNER_VERSION` 等覆寫預設（見腳本開頭註解）。
+
+> token 來源：GitHub → 該 repo → Settings → Actions → Runners → New self-hosted runner（短效，約 1 小時內有效）。
+
+裝好後：確認 runner 於 repo 的 Settings → Actions → Runners 顯示 online → 補齊 `/opt/cloud-drive/.env` 待填密鑰 → 首次部署（Actions → Deploy production，或 merge 到 `main` 自動部署）。
+
+### 手動（等價步驟，供理解／客製）
+
 ```bash
 # 1) 專用帳號（不要用 root / 日常帳號）
 sudo adduser --disabled-password --gecos "" gha-runner
