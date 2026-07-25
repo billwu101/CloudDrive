@@ -17,6 +17,11 @@ export const driveApi = {
   listItems: ({ signal, ...params }: ListItemsParams = {}) =>
     api.get<Page<DriveItemResponse>>('/drive/items', { params, signal }),
 
+  // Starred is a global preference query, so items inside any folder show up —
+  // listing the root and filtering client-side would miss them.
+  listStarred: (signal?: AbortSignal) =>
+    api.get<DriveItemResponse[]>('/drive/starred', { signal }),
+
   getItem: (item_id: string, signal?: AbortSignal) =>
     api.get<DriveItemResponse>(`/drive/items/${item_id}`, { signal }),
 

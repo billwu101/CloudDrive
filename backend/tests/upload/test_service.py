@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+import hashlib
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import UTC, datetime
 from typing import IO
 from uuid import uuid4
@@ -15,6 +16,7 @@ from app.models.file_version import FileVersion
 from app.models.share import Share
 from app.models.user import User
 from app.permission.service import PermissionService
+from app.search.extract import DEFAULT_MAX_BYTES as INDEX_MAX_BYTES
 from app.storage.base import StoredObject
 from app.upload.service import UploadService
 from app.users.service import QuotaService
@@ -31,11 +33,34 @@ class MemStorage:
         self._data: dict[str, bytes] = {}
         self.fail_save = fail_save
         self.deleted: list[str] = []
+        self.save_stream_chunk_count = 0
 
     async def save(self, key: str, data: IO[bytes], *, size: int | None = None) -> None:
         if self.fail_save:
             raise OSError("Storage failure")
         self._data[key] = data.read()
+
+    async def save_stream(self, key: str, chunks: AsyncIterator[bytes]) -> int:
+        if self.fail_save:
+            raise OSError("Storage failure")
+        # Record how many chunks arrived so tests can assert the service never
+        # collapses the stream into one buffer before writing.
+        written = bytearray()
+        self.save_stream_chunk_count = 0
+        async for chunk in chunks:
+            self.save_stream_chunk_count += 1
+            written.extend(chunk)
+        self._data[key] = bytes(written)
+        return len(written)
+
+    async def concat(self, source_keys: list[str], target_key: str) -> int:
+        merged = bytearray()
+        for key in source_keys:
+            if key not in self._data:
+                raise FileNotFoundError(key)
+            merged.extend(self._data[key])
+        self._data[target_key] = bytes(merged)
+        return len(merged)
 
     def open_read(self, key: str) -> AsyncGenerator[bytes, None]:
         async def _gen() -> AsyncGenerator[bytes, None]:
@@ -292,3 +317,141 @@ async def test_db_failure_cleans_up_storage() -> None:
     # Storage file must have been cleaned up
     assert len(storage._data) == 0
     assert len(storage.deleted) == 1
+
+
+# ── Streaming write (no whole-file buffering) ────────────────────────────────
+
+
+async def _chunked_stream(chunks: list[bytes]) -> AsyncGenerator[bytes, None]:
+    for chunk in chunks:
+        yield chunk
+
+
+async def test_upload_streams_chunks_without_buffering_whole_file() -> None:
+    """The service must hand each inbound chunk straight to storage.
+
+    Collapsing the stream into one buffer first is what made peak memory scale
+    with file size (~2x), so a multi-chunk upload has to reach storage as
+    multiple chunks.
+    """
+    user = _make_user()
+    svc, _, _, storage = _make_svc(user=user)
+    parts = [b"a" * 1024, b"b" * 1024, b"c" * 512]
+    total = sum(len(p) for p in parts)
+
+    resp = await svc.upload_simple(
+        user_id=user.id,
+        parent_id=None,
+        filename="big.bin",
+        stream=_chunked_stream(parts),
+        size_bytes=total,
+    )
+
+    assert storage.save_stream_chunk_count == len(parts)
+    assert resp.size_bytes == total
+
+
+async def test_upload_checksum_and_size_match_streamed_content() -> None:
+    """Checksum and size stay byte-exact across the chunk boundaries."""
+    user = _make_user()
+    svc, item_repo, version_repo, storage = _make_svc(user=user)
+    parts = [b"hello ", b"streamed ", b"world"]
+    content = b"".join(parts)
+
+    resp = await svc.upload_simple(
+        user_id=user.id,
+        parent_id=None,
+        filename="stream.txt",
+        stream=_chunked_stream(parts),
+        size_bytes=len(content),
+        mime_type="text/plain",
+    )
+
+    item = await item_repo.get_by_id(resp.id)
+    assert item is not None
+    assert item.size_bytes == len(content)
+    assert item.checksum_sha256 == hashlib.sha256(content).hexdigest()
+    # Bytes actually persisted must be the concatenation, in order.
+    assert item.storage_key is not None
+    assert storage._data[item.storage_key] == content
+
+    versions = await version_repo.list_by_file(resp.id)
+    assert versions[0].size_bytes == len(content)
+    assert versions[0].checksum_sha256 == hashlib.sha256(content).hexdigest()
+
+
+async def test_upload_indexes_small_file_from_streamed_head() -> None:
+    """Small files are still fully indexable even though we no longer buffer."""
+    user = _make_user()
+    indexed: dict[str, object] = {}
+
+    class RecordingIndexer:
+        async def index_file(
+            self, *, item_id: object, data: bytes, mime_type: str | None, extension: str | None
+        ) -> bool:
+            indexed["data"] = data
+            return True
+
+    item_repo = MemDriveItemRepo(None)
+    perm_svc = PermissionService(share_repo=MemShareRepo(None), item_repo=MemItemRepo(None))
+    svc = UploadService(
+        item_repo=item_repo,
+        version_repo=MemFileVersionRepo(),
+        storage=MemStorage(),
+        permission_svc=perm_svc,
+        quota_svc=QuotaService(repo=MockUserRepo(user)),
+        search_indexer=RecordingIndexer(),  # type: ignore[arg-type]
+    )
+
+    parts = [b"first half ", b"second half"]
+    await svc.upload_simple(
+        user_id=user.id,
+        parent_id=None,
+        filename="notes.txt",
+        stream=_chunked_stream(parts),
+        size_bytes=len(b"".join(parts)),
+        mime_type="text/plain",
+    )
+
+    assert indexed["data"] == b"".join(parts)
+
+
+async def test_upload_caps_retained_bytes_for_oversized_file() -> None:
+    """A file past the indexer's cap must not be retained in full in memory."""
+    user = _make_user()
+    seen: dict[str, int] = {}
+
+    class RecordingIndexer:
+        async def index_file(
+            self, *, item_id: object, data: bytes, mime_type: str | None, extension: str | None
+        ) -> bool:
+            seen["len"] = len(data)
+            return False
+
+    item_repo = MemDriveItemRepo(None)
+    perm_svc = PermissionService(share_repo=MemShareRepo(None), item_repo=MemItemRepo(None))
+    svc = UploadService(
+        item_repo=item_repo,
+        version_repo=MemFileVersionRepo(),
+        storage=MemStorage(),
+        permission_svc=perm_svc,
+        quota_svc=QuotaService(repo=MockUserRepo(user)),
+        search_indexer=RecordingIndexer(),  # type: ignore[arg-type]
+    )
+
+    # 6 MB in 1 MB chunks — comfortably past the 5 MB index cap.
+    chunk = b"z" * (1024 * 1024)
+    parts = [chunk] * 6
+    total = len(chunk) * 6
+
+    resp = await svc.upload_simple(
+        user_id=user.id,
+        parent_id=None,
+        filename="huge.bin",
+        stream=_chunked_stream(parts),
+        size_bytes=total,
+    )
+
+    # Full size is persisted, but only a bounded head was ever held in memory.
+    assert resp.size_bytes == total
+    assert seen["len"] == INDEX_MAX_BYTES + 1

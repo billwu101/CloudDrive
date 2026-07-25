@@ -161,3 +161,16 @@ async def get_recent(
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[DriveItemResponse]:
     return await service.get_recent(current_user_id, limit=limit)
+
+
+@router.get(
+    "/starred",
+    response_model=list[DriveItemResponse],
+    summary="Get starred drive items (across all folders)",
+)
+async def get_starred(
+    current_user_id: CurrentUserId,
+    service: DriveServiceDep,
+    limit: int = Query(default=100, ge=1, le=200),
+) -> list[DriveItemResponse]:
+    return await service.get_starred(current_user_id, limit=limit)

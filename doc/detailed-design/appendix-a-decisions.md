@@ -393,6 +393,8 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 影響範圍：`llm/client.py` 協定 + 7 個 chat() 實作 + 測試 fake、`planner.py`、`core/config.py`、`assistant/router.py`、E8 文件。
 - 實作註記（2026-07-07）：`LLMClient.chat` 新增 `disable_thinking: bool | None`（None＝沿用 client 建構子預設），7 個實作全數同步——`OllamaLLMClient` per-call 值優先於建構子（True 時 payload 帶 `think:false`），external/anthropic/codex/tracking-wrapper 依協定接受並轉傳或忽略，`ModelRouter` 三個方法透傳。`WorkflowPlanner` 建構子加 `disable_thinking`，`plan()` 每次（含 repair 重試）帶入；`assistant/router.py` 以 `settings.llm_planner_disable_thinking`（預設 True）接線；codegen 不傳（維持 None）。新增測試：ollama per-call 雙向覆寫 + None 遞延、planner 每呼叫傳 True、codegen 傳 None。全閘門通過（618 unit / mypy / ruff）。真模型驗證見 proposal §「驗證結果」。
 
+> **編號說明**：DEC-034 已保留給「codegen 預設 think:false」（翻案 DEC-033 的 codegen 不連動；程式已在 main，決策文件待整併），故編號由 DEC-035 起算。DEC-035（資料夾技能）與 DEC-036（分片續傳上傳）分屬 main 與 fix/core-stability 兩分支同期產生，合併時各自保留。
+
 ## DEC-035：生成/自建技能支援資料夾目標（item_types 權威化）
 
 - 日期：2026-07-24
@@ -407,3 +409,18 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 已知取捨（待確認預設）：資料夾攝取上限——建議檔數 `1000` / 總量 `500MB`，做成設定、超過報明確錯（防大資料夾打爆暫存/沙箱）；`item_types` 允許 `[FILE,FOLDER]` 並存（code 依 `params["item_type"]` 分流）；B 模式生成品質須真模型驗證（think:OFF 下走訪目錄 code 正確率、多次看 pass-rate）。
 - 影響範圍：`skills/authoring.py`（`_execute_generated` 分流 + 資料夾子樹遞迴攝取）、`assistant/subagent.py`（`_CODEGEN_SYSTEM`）、`core/config.py`（上限設定）、`drive` service/repository（子樹遍歷）、`tests/assistant/`（FOLDER 執行/攝取/上限單元測試 + codegen 真模型）、前端**無需改**（`DrivePage` 已依 `item_type` 過濾，FOLDER 技能自動上資料夾右鍵）。
 - 註：DEC-034（codegen think:false）文件先留本機待整併，本則沿用 DEC-035。
+
+## DEC-036：大檔案分片續傳上傳的參數與序列化策略
+
+- 日期：2026-07-24
+- 狀態：Accepted，**已實作**（需求見 proposal §27、設計見 §6.7.7／§7.7／§13.5／§5.7.4）
+- 背景：實際使用時一次拖曳 10 餘個檔案且含 1.93 GB 影片，整批失敗。三個原因疊加：①單一請求上傳且上限 100 MB，大檔注定失敗；②前端 `Promise.allSettled` 全並行，10+ 檔搶爆瀏覽器對單一來源的連線，排隊者逾時；③後端 `upload_simple` 以 `chunks: list[bytes]` 累積整檔再 `b"".join`，記憶體 ≈ 檔案大小 ×2，大檔有 OOM 風險。前端一律顯示 `Network error`，無從判斷真因。
+- 決策：
+  1. 啟用早已規劃但延後的分片續傳（原 §7.7／§6.7.7 僅為「擴充點」佔位）。
+  2. 參數：單檔上限 **5 GB**、分片 **8 MB**、未完成工作階段保留 **7 天**。
+  3. 續傳做到**跨瀏覽器工作階段**：工作階段存 DB、分片存 storage，續傳時以「已完成分片索引」只補缺片。
+  4. **單一檔案的分片序列送出**；並行度只用在「檔案之間」（上限 3）。
+  5. 一併修既有缺陷：送出前大小/配額預檢、錯誤碼分類、`upload_simple` 改串流寫入。
+- 理由：分片大小 8 MB 使對外入口（nginx）只需容納單一分片（約 `10m`），**不必**把 `client_max_body_size` 放寬到 5 GB——避免為了大檔而打開超大請求的風險面。序列送分片讓進度計算、重試與續傳最單純，且真正的瓶頸是「檔案之間搶連線」而非單檔頻寬。
+- 已知取捨：單一大檔無法靠多連線加速（GB 級檔案上傳時間較長）；若日後成為痛點，改分片並行時**必須**改用全域請求並行預算（不分檔案內外統一計數），否則「檔案並行 × 分片並行」會重演連線耗盡。前端 `File` 物件無法持久化，故關閉瀏覽器後續傳需使用者重新選取同一檔案（工作階段與已傳分片仍在伺服器）。
+- 影響範圍：新增 `upload_sessions`／`upload_chunks` 表與 migration（0017–0019）、`StorageProvider.concat` 與 `save_stream`／`open_read` 串流化、`app/upload/`（service/router/schemas/repository/scheduler）、背景清理任務、前端 `uploadStore`／`useUpload`／`UploadQueue`／`chunkedUpload`／`uploadPersistence` 與相關測試。

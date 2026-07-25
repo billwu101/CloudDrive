@@ -23,7 +23,7 @@
 - [x] [Backend Permission](./backend-permission.md)
 - [x] [Backend DriveItem](./backend-drive-item.md)
 - [x] [Backend Storage](./backend-storage.md)
-- [x] [Backend Upload](./backend-upload.md)
+- [x] [Backend Upload](./backend-upload.md) — simple upload 已串流化；**分片續傳上傳已完成**（儲存層／資料層／服務／5 端點／清理排程，含 integration 測試）
 - [x] [Backend Download](./backend-download.md)
 - [x] [Backend Preview](./backend-preview.md)
 - [x] [Backend Trash](./backend-trash.md)
@@ -39,7 +39,7 @@
 - [x] [Frontend Auth](./frontend-auth.md)
 - [x] [Frontend Layout](./frontend-layout.md)
 - [x] [Frontend Drive](./frontend-drive.md)
-- [x] [Frontend Upload](./frontend-upload.md)
+- [x] [Frontend Upload](./frontend-upload.md) — 預檢／並行上限 3／錯誤分類 + **分片流程／續傳／暫停繼續取消**皆完成（proposal §27 / DEC-036）
 - [x] [Frontend Preview](./frontend-preview.md)
 - [x] [Frontend Share](./frontend-share.md)
 - [x] [Frontend Trash](./frontend-trash.md)

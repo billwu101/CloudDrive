@@ -13,7 +13,11 @@ class UserItemPreference(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    item_id: Mapped[UUID] = mapped_column(ForeignKey("drive_items.id"), nullable=False)
+    # CASCADE: a per-item preference (e.g. starred) is meaningless once the item
+    # is permanently deleted, and must not block that delete.
+    item_id: Mapped[UUID] = mapped_column(
+        ForeignKey("drive_items.id", ondelete="CASCADE"), nullable=False
+    )
     is_starred: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

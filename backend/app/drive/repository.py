@@ -199,6 +199,9 @@ class AbstractUserItemPreferenceRepository(ABC):
     @abstractmethod
     async def get_starred_ids(self, user_id: UUID, item_ids: list[UUID]) -> set[UUID]: ...
 
+    @abstractmethod
+    async def get_all_starred_item_ids(self, user_id: UUID, *, limit: int) -> list[UUID]: ...
+
 
 class SQLUserItemPreferenceRepository(AbstractUserItemPreferenceRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
@@ -245,3 +248,18 @@ class SQLUserItemPreferenceRepository(AbstractUserItemPreferenceRepository):  # 
             )
         )
         return {row[0] for row in result.all()}
+
+    async def get_all_starred_item_ids(self, user_id: UUID, *, limit: int) -> list[UUID]:
+        # Global across the whole drive — starred lives on the preference row, not
+        # on the folder hierarchy, so an item starred inside any subfolder is
+        # returned. Newest star first.
+        result = await self._session.execute(
+            select(UserItemPreference.item_id)
+            .where(
+                UserItemPreference.user_id == user_id,
+                UserItemPreference.is_starred.is_(True),
+            )
+            .order_by(UserItemPreference.updated_at.desc())
+            .limit(limit)
+        )
+        return [row[0] for row in result.all()]

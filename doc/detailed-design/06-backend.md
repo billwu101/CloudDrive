@@ -341,6 +341,7 @@ class UserItemPreferenceRepository:
     async def get_preference(self, user_id: UUID, item_id: UUID) -> UserItemPreference | None
     async def upsert_preference(self, user_id: UUID, item_id: UUID, *, is_starred: bool) -> UserItemPreference
     async def get_starred_ids(self, user_id: UUID, item_ids: list[UUID]) -> set[UUID]
+    async def get_all_starred_item_ids(self, user_id: UUID, *, limit: int) -> list[UUID]
 ```
 
 ### 6.4.4 驗證規則
@@ -365,6 +366,8 @@ class UserItemPreferenceRepository:
 | delete to trash | owner 或 editor |
 
 正式星號狀態以 `user_item_preferences.is_starred` 為準；`drive_items.is_starred` 僅為初始 schema 遺留/相容欄位，不作為回應與查詢的權威來源。這樣共享檔案時，每位使用者可有自己的星號狀態，不會互相污染。
+
+**星號清單為全域查詢（`GET /drive/starred`）**：以 `user_item_preferences`（`user_id` + `is_starred=true`）為來源取得 item id，再逐一取回項目並濾掉已刪除／非本人擁有者——**與資料夾階層無關**，因此位於任何子資料夾的檔案加星後都會出現。實作模式與 §6.4「最近項目」一致（先取 id 清單再補齊項目）。前端**不得**以「列根目錄再過濾 `is_starred`」代替，那會漏掉子資料夾內與分頁外的項目。
 
 ### 6.4.6 可獨立測試項
 
@@ -462,6 +465,11 @@ class StorageProvider(Protocol):
     async def save(self, file_stream: BinaryIO, storage_key: str) -> int:
         ...
 
+    # 非同步串流寫入：來源是 async 位元組串流（FastAPI 上傳串流、分片串流），
+    # 逐塊寫入暫存檔後原子改名，回傳實際寫入位元組數。
+    async def save_stream(self, storage_key: str, chunks: AsyncIterator[bytes]) -> int:
+        ...
+
     async def open_read(self, storage_key: str) -> BinaryIO:
         ...
 
@@ -473,7 +481,22 @@ class StorageProvider(Protocol):
 
     async def get_size(self, storage_key: str) -> int:
         ...
+
+    # 分片上傳（proposal §27）：把多個已落地的分片依序串接成一個正式物件。
+    # 實作須「邊讀邊寫」，記憶體用量與檔案大小無關（不得先組成 bytes 再寫入）。
+    async def concat(self, source_keys: list[str], target_key: str) -> int:
+        ...
 ```
+
+**串流寫入要求**：寫入端一律不得先在記憶體組出完整內容。`save` 收同步 `BinaryIO`，以固定緩衝區複製；`save_stream` 收 async 位元組串流，逐塊寫入。既有 `upload_simple` 曾以 `chunks: list[bytes]` 累積整檔再 `b"".join(...)`，記憶體用量 ≈ 檔案大小 ×2（大檔會 OOM）；因上傳來源是 async 串流、無法交給同步 `save`，故新增 `save_stream`，由 `upload_simple` 邊收邊寫並同步累積 sha256（proposal §27.3）。
+
+**全文索引與串流的取捨**：`upload_simple` 串流化後不再持有整檔位元組，但全文索引需要檔案內容。因 `extract_text` 本就對超過 `DEFAULT_MAX_BYTES`（5 MB）的檔案回傳 `None`（不索引），服務只保留**上限 5 MB + 1 byte 的檔頭**供索引使用：小檔內容完整、超限檔的檔頭必然觸發原有的「過大不索引」分支，索引行為與串流化前完全一致，而記憶體用量與檔案大小脫鉤。
+
+`concat` 供分片合併使用；`LocalStorageProvider` 以固定大小緩衝區依序讀取各分片、附加寫入目標檔，回傳總位元組數；任一來源缺漏即拋 `StorageKeyNotFoundError` 且不留下半成品或暫存檔。未來替換為物件儲存時，可改以原生 multipart complete 實作同一介面。
+
+`open_read` 亦為**惰性串流**：逐塊讀取後 yield，不先把整檔讀進記憶體。分片合併後計算 checksum 與大檔下載都依賴這點，否則 5 GB 檔可以上傳卻會在讀取時吃爆記憶體。
+
+`list_objects` 除排除 `.tmp-*` 外，另**排除 `uploads/` 前綴**（`UPLOAD_TEMP_PREFIX`）——見 §6.7.7 第 6 點。
 
 `generate_download_url` 暫不作為 MVP 必要接口，因為已確認 MVP 使用 StreamingResponse。未來物件儲存可加回 signed URL。
 
@@ -520,7 +543,7 @@ Upload 模組負責一般檔案上傳流程：
 8. 更新容量。
 9. 寫入 activity log。
 
-大檔案分片上傳不納入核心 detailed design，只保留 `UploadSession` 擴充點。
+大檔案分片續傳上傳見 §6.7.7（proposal §27 已將其由「擴充點」提升為正式功能）。
 
 ### 6.7.2 API
 
@@ -590,21 +613,65 @@ UploadService 需呼叫 DriveService 或 DriveItemRepository 取得可用名稱�
 async def resolve_available_name(owner_id: UUID, parent_id: UUID | None, original_name: str) -> str
 ```
 
-### 6.7.7 UploadSession 擴充點
+### 6.7.7 分片續傳上傳（UploadSessionService）
 
-保留資料表與 service interface，但不實作核心流程。
+實作 proposal §27。資料表與狀態機見 §7.7、端點見 §13.5、前端流程見 §5。參數：分片 **8 MB**、單檔上限 **5 GB**、未完成保留 **7 天**、單檔分片**序列**送出。
 
 ```python
 class UploadSessionService:
-    async def create_session(...)
-    async def upload_chunk(...)
-    async def complete_session(...)
-    async def cancel_session(...)
+    async def create_session(
+        self, user_id: UUID, *, filename: str, total_size: int,
+        parent_id: UUID | None, mime_type: str | None,
+    ) -> UploadSession:
+        """建立工作階段。預檢：total_size <= 5 GB、目標資料夾存在且屬本人、
+        配額足夠（已用 + 本次 + 其他未完成工作階段的佔用）。回傳含 chunk_size /
+        total_chunks，前端據此切片。"""
+
+    async def get_session(self, user_id: UUID, session_id: UUID) -> UploadSessionStatus:
+        """續傳用：回傳狀態與**已完成的 chunk_index 清單**，前端只補送缺的分片。"""
+
+    async def upload_chunk(
+        self, user_id: UUID, session_id: UUID, chunk_index: int, stream: AsyncIterator[bytes]
+    ) -> None:
+        """把單一分片**串流寫入** storage 暫存 key，寫入/覆寫 upload_chunks（冪等）。
+        終態工作階段拒絕；index 超出 total_chunks 拒絕。首個分片時 pending → uploading。"""
+
+    async def complete_session(self, user_id: UUID, session_id: UUID) -> DriveItemResponse:
+        """驗證分片齊全 → storage.concat 合併為正式 blob → 計算 checksum 與實際大小 →
+        解析同層可用檔名 → 建立 drive_items + file_versions v1 → 實扣配額 →
+        寫 activity log → 刪除暫存分片 → 標記 completed。"""
+
+    async def cancel_session(self, user_id: UUID, session_id: UUID) -> None:
+        """標記 cancelled 並刪除所有暫存分片（不佔配額）。"""
+
+    async def cleanup_expired(self) -> int:
+        """清理 expires_at 已過的 pending/uploading 工作階段：刪暫存分片與紀錄。
+        回傳清理筆數。"""
 ```
 
-MVP 中 router 可以不暴露這些 endpoint。
+**流程與規則**
 
-### 6.7.8 可獨立測試項
+1. **授權**：所有方法都以 `user_id` 過濾；他人的工作階段一律 `NOT_FOUND`（不洩漏存在性）。
+2. **記憶體**：`upload_chunk` 串流寫入、`complete_session` 以 `storage.concat` 邊讀邊寫，**記憶體用量與檔案大小無關**。checksum 於合併時逐塊累積計算。
+3. **配額**：建立時預檢、完成時實扣；取消／過期不扣。預檢須計入該使用者其他未完成工作階段的 `total_size`，避免多個大檔同時開啟而超賣。
+4. **一致性**（同 §7.9 補償式）：合併出的正式 blob 若在 DB 階段失敗，立即刪除該 blob；暫存分片一律在 `completed`／`cancelled`／到期時刪除。
+5. **清理排程**：`cleanup_expired` 由 `app/upload/scheduler.py` 的 `UploadCleanupScheduler` 呼叫（與快照排程同機制但**獨立排程器**，避免 snapshot 模組承載 upload 邏輯），預設每 24 小時一次，由 `UPLOAD_CLEANUP_SCHEDULER_ENABLED` 開關（預設關）。單一 worker 部署可直接開啟；多 worker 須改外部 cron，避免重複執行。
+6. **暫存分片與內容 GC 的分工**：分片暫存於 `uploads/{user_id}/{session_id}/{index}`。這些 blob 刻意尚未被任何 `drive_item` 引用，若讓內容 GC 掃到會被判為孤兒而刪除，等於把使用者暫停中的上傳清掉。因此 `list_objects` **排除 `uploads/` 前綴**（與既有排除 `.tmp-*` 同理），該命名空間改由 `cleanup_expired` 負責回收。
+7. **缺片時不進終態**：`complete_session` 驗出缺片時回 `INVALID_OPERATION` 但**不改狀態**，工作階段維持 `uploading`，client 補送缺片後可再次 `complete`——否則「續傳」在最後一步失去意義。`failed` 保留給無法補救的情況。
+
+### 6.7.8 錯誤碼對應
+
+前端據此分類顯示（proposal §27.2 第 6 點），不再一律顯示 `Network error`：
+
+| 情境 | 錯誤碼 | HTTP |
+| --- | --- | --- |
+| 檔案超過單檔上限（5 GB） | `FILE_TOO_LARGE` | 413 |
+| 配額不足 | `QUOTA_EXCEEDED` | 413 |
+| 工作階段不存在／非本人 | `NOT_FOUND` | 404 |
+| 對終態工作階段送分片 | `INVALID_OPERATION` | 422 |
+| 完成時分片缺漏 | `INVALID_OPERATION` | 422 |
+
+### 6.7.9 可獨立測試項
 
 1. 上傳成功會建立 drive_item。
 2. 上傳成功會建立 file_version v1。
@@ -1119,6 +1186,7 @@ DriveItemRepository:
     get_preference(user_id, item_id) -> UserItemPreference | None
     upsert_preference(user_id, item_id, *, is_starred) -> UserItemPreference
     get_starred_ids(user_id, item_ids) -> set[UUID]
+    get_all_starred_item_ids(user_id, *, limit) -> list[UUID]
 
 # file_version（app/file_version）
 FileVersionRepository:

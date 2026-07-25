@@ -110,6 +110,46 @@ describe('401 refresh flow', () => {
   })
 })
 
+describe('401 refresh retries a body request without dropping the body', () => {
+  beforeEach(() => {
+    useAuthStore.setState({ accessToken: 'expired-token' })
+  })
+
+  it('re-sends the multipart body on the retried upload', async () => {
+    // Regression: with the fetch adapter the FormData body was consumed by the
+    // first (401) attempt, so the retry sent an empty body and the upload
+    // failed as a spurious "Connection lost". The XHR adapter must re-serialize
+    // the body on retry.
+    let retriedBody: string | null = null
+    server.use(
+      http.post(`${BASE}/upload/simple`, async ({ request }) => {
+        const auth = request.headers.get('Authorization')
+        if (auth === 'Bearer expired-token') {
+          return HttpResponse.json({ code: 'UNAUTHORIZED' }, { status: 401 })
+        }
+        // Read the raw multipart body (jsdom's formData() is unreliable here).
+        retriedBody = await request.text()
+        return HttpResponse.json({ id: 'item-1', name: 'note.txt' }, { status: 201 })
+      }),
+    )
+
+    const form = new FormData()
+    form.append('file', new File(['hello chunk world'], 'note.txt', { type: 'text/plain' }))
+    // Uploads run on the XHR adapter (see uploadApi) — that's what makes the
+    // retried request re-send the body rather than an empty one.
+    const res = await api.post('/upload/simple', form, { adapter: 'xhr' })
+
+    expect(res.status).toBe(201)
+    // The retry must carry a non-empty multipart body. (jsdom+undici don't
+    // round-trip a File's bytes or part headers, so we can only assert the
+    // multipart envelope survived — but the bug dropped the body to empty,
+    // which this still catches: an empty retry body has no boundary.)
+    expect(retriedBody).toBeTruthy()
+    expect((retriedBody as unknown as string).length).toBeGreaterThan(10)
+    expect(retriedBody).toContain('formdata')
+  })
+})
+
 describe('error conversion', () => {
   it('converts backend error response to ApiError shape', async () => {
     server.use(

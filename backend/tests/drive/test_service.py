@@ -158,6 +158,11 @@ class MemPrefRepo(AbstractUserItemPreferenceRepository):
             iid for iid in item_ids if (pref := self._prefs.get((user_id, iid))) and pref.is_starred
         }
 
+    async def get_all_starred_item_ids(self, user_id: UUID, *, limit: int) -> list[UUID]:
+        return [
+            iid for (uid, iid), pref in self._prefs.items() if uid == user_id and pref.is_starred
+        ][:limit]
+
 
 def _svc(items: list[DriveItem] | None = None) -> DriveService:
     return DriveService(
@@ -323,6 +328,37 @@ class TestSetStarred:
         await svc.set_starred(user, item.id, is_starred=True)
         resp = await svc.set_starred(user, item.id, is_starred=False)
         assert resp.is_starred is False
+
+    async def test_get_starred_includes_items_inside_folders(self) -> None:
+        # Regression: the starred list is a global preference query, so a file
+        # starred inside a subfolder must show up (listing the root and filtering
+        # client-side used to miss it entirely).
+        user = uuid4()
+        folder = _item(owner_id=user, name="gpt", item_type=ItemType.FOLDER)
+        nested = _item(owner_id=user, parent_id=folder.id, name="deep.txt", item_type=ItemType.FILE)
+        root_file = _item(owner_id=user, name="root.txt", item_type=ItemType.FILE)
+        svc = _svc([folder, nested, root_file])
+
+        await svc.set_starred(user, nested.id, is_starred=True)
+
+        starred = await svc.get_starred(user)
+        assert [i.id for i in starred] == [nested.id]
+        assert starred[0].is_starred is True
+
+    async def test_get_starred_excludes_trashed(self) -> None:
+        # Star both, then trash one — the trashed item must drop out of the list
+        # (the preference row still exists, so the service must filter it).
+        user = uuid4()
+        mine = _item(owner_id=user, name="mine.txt", item_type=ItemType.FILE)
+        trashed = _item(owner_id=user, name="gone.txt", item_type=ItemType.FILE)
+        svc = _svc([mine, trashed])
+
+        await svc.set_starred(user, mine.id, is_starred=True)
+        await svc.set_starred(user, trashed.id, is_starred=True)
+        trashed.is_deleted = True
+
+        starred = await svc.get_starred(user)
+        assert [i.id for i in starred] == [mine.id]
 
     async def test_is_starred_per_user(self) -> None:
         user1, user2 = uuid4(), uuid4()

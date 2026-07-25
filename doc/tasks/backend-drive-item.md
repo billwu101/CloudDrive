@@ -40,6 +40,14 @@
 - [x] 實作 move endpoint。
 - [x] 實作 star endpoint。
 
+### 星號清單（全域查詢，修 bug：子資料夾內的星號項目看不到）
+
+> 舊行為只有「列根目錄再前端過濾」，漏掉子資料夾與分頁外的項目。設計見 detailed-design §6.4 星號說明與 §13.5 `GET /drive/starred`。
+
+- [ ] `UserItemPreferenceRepository` 加 `get_all_starred_item_ids(user_id, *, limit)`（查該使用者所有 `is_starred=true`，與資料夾階層無關）。
+- [ ] `DriveService` 加 `get_starred(user_id, *, limit)`：取 id → 取回項目 → 濾掉已刪除／非本人擁有者 → 組回應（模式同 `get_recent`）。
+- [ ] drive router 實作 `GET /drive/starred`。
+
 ## 測試任務
 
 - [x] 測試建立根資料夾。
@@ -51,4 +59,6 @@
 - [x] 測試移動到自己的子資料夾失敗。
 - [x] 測試無權限修改失敗。
 - [x] 測試排序與分頁。
+- [ ] 測試 `GET /drive/starred` 回傳**子資料夾內**的星號項目（回歸本次 bug）。
+- [ ] 測試星號清單濾掉已刪除項目與非本人擁有者。
 

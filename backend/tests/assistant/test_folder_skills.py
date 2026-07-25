@@ -137,6 +137,9 @@ class _PrefRepo(AbstractUserItemPreferenceRepository):
     async def get_starred_ids(self, user_id: UUID, item_ids: list[UUID]) -> set[UUID]:
         return set()  # pragma: no cover
 
+    async def get_all_starred_item_ids(self, user_id: UUID, *, limit: int) -> list[UUID]:
+        return []  # pragma: no cover
+
 
 class FakeStorage:
     """In-memory StorageProvider: only open_read is exercised here."""

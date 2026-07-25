@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import IO, Protocol, runtime_checkable
+
+# Storage prefix owned by in-flight chunked uploads. Blobs under it belong to
+# an upload session, not to a drive item, and are reclaimed by the upload
+# cleanup job rather than by content GC.
+UPLOAD_TEMP_PREFIX = "uploads"
 
 
 @dataclass(frozen=True)
@@ -21,6 +26,24 @@ class StorageProvider(Protocol):
 
     async def save(self, key: str, data: IO[bytes], *, size: int | None = None) -> None:
         """Persist data under the given key atomically."""
+        ...
+
+    async def save_stream(self, key: str, chunks: AsyncIterator[bytes]) -> int:
+        """Persist an async byte stream under the given key atomically.
+
+        Writes chunk by chunk so peak memory stays constant regardless of file
+        size — callers must prefer this over buffering the whole upload and
+        calling `save`. Returns the number of bytes written.
+        """
+        ...
+
+    async def concat(self, source_keys: list[str], target_key: str) -> int:
+        """Join the given objects, in order, into a single object at target_key.
+
+        Used to assemble a chunked upload. Copies through a fixed-size buffer
+        so memory stays constant regardless of total size. Returns the number
+        of bytes written.
+        """
         ...
 
     def open_read(self, key: str) -> AsyncGenerator[bytes, None]:

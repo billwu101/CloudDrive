@@ -191,9 +191,75 @@ CHECK (permission IN ('viewer', 'downloader'));
 
 ### 7.7 upload_sessions 與 upload_chunks
 
-保留作為未來分片上傳擴充點。MVP 不需要暴露 endpoint，也不要求前端實作分片流程。
+大檔案分片續傳上傳（proposal §27）。工作階段存於 DB、分片本體存於 storage，因此**關閉瀏覽器後仍可續傳**（proposal §27.2）。參數依 §27.7：分片 **8 MB**、單檔上限 **5 GB**、未完成保留 **7 天**。
 
-資料表可先不 migration，等分片上傳進入開發時再加入；若希望先穩定 API contract，可先建立表但不啟用功能。
+```text
+upload_sessions
+id uuid primary key
+user_id uuid not null references users(id)
+parent_id uuid null references drive_items(id)      -- 目標資料夾；null = 根目錄
+filename varchar not null                            -- 使用者原始檔名（完成時才做同層去重）
+mime_type varchar null
+total_size bigint not null                           -- 客戶端宣告大小，建立時據此預檢配額與上限
+chunk_size integer not null                          -- 本工作階段固定的分片大小
+total_chunks integer not null
+status varchar not null                              -- pending | uploading | completed | failed | cancelled
+checksum_sha256 varchar null                         -- 合併完成後計算，寫入 drive_items/file_versions
+drive_item_id uuid null references drive_items(id)   -- 完成後對應的檔案
+error_code varchar null                              -- 失敗原因（對應 §15 錯誤碼）
+created_at timestamptz not null
+updated_at timestamptz not null
+expires_at timestamptz not null                      -- created_at + 7 天；到期由清理任務回收
+```
+
+```text
+upload_chunks
+id uuid primary key
+session_id uuid not null references upload_sessions(id) on delete cascade
+chunk_index integer not null                         -- 0-based
+size integer not null
+checksum_sha256 varchar null
+storage_key varchar not null                         -- 暫存分片在 storage 的 key
+created_at timestamptz not null
+```
+
+索引與約束：
+
+```sql
+-- 續傳查詢與清單
+CREATE INDEX idx_upload_sessions_user_status
+ON upload_sessions(user_id, status, created_at DESC);
+
+-- 到期清理掃描
+CREATE INDEX idx_upload_sessions_expires
+ON upload_sessions(expires_at)
+WHERE status IN ('pending', 'uploading');
+
+-- 同一分片只能有一筆，重送同 index 視為冪等覆寫
+CREATE UNIQUE INDEX uq_upload_chunks_session_index
+ON upload_chunks(session_id, chunk_index);
+```
+
+**狀態機**
+
+```text
+pending ──(收到第一個分片)──> uploading ──(complete 成功)──> completed
+   │                              │
+   └──────────────┬───────────────┘
+                  ├──(使用者取消)──> cancelled
+                  ├──(complete 驗證失敗 / 逾時)──> failed
+                  └──(超過 expires_at)──> 由清理任務刪除（連同暫存分片）
+```
+
+`completed`／`cancelled`／`failed` 為終態；終態的工作階段不接受再上傳分片。**暫停**不是狀態——前端停止送分片即可，伺服器端仍是 `uploading`，續傳時直接接著送未完成的 index。
+
+**設計要點**
+
+- **續傳依據**：查詢工作階段時回傳「已存在的 `chunk_index` 清單」，前端據此**只送缺的分片**（§13 端點）。
+- **冪等**：重送同一 `chunk_index` 覆寫該分片（`ON CONFLICT` 更新），使重試安全。
+- **配額**：建立工作階段時以 `total_size` **預檢**（含既有未完成工作階段的佔用量），避免傳完才發現超額；`completed` 時才實扣 `used_bytes`。
+- **一致性**：合併成正式 blob 後才建立 `drive_items`／`file_versions`；DB 階段失敗則刪除已合併 blob（補償回滾，同 §7.9）。取消與到期清理都必須刪除暫存分片，避免孤兒檔。
+- **同層檔名衝突**：於 `complete` 階段才做自動改名（`name (1)` 等），與 simple upload 一致——建立工作階段時的檔名僅供顯示。
 
 ### 7.8 activity_logs
 

@@ -15,6 +15,15 @@ const DEFAULT_API_BASE_URL =
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL
 
+// The fetch adapter is the app-wide default — it plays nicely with MSW's blob
+// responses in the test/CI environment (the XHR adapter drives MSW down a path
+// that calls `.stream()` on the mocked body, which throws on CI's older Node).
+// Its one sharp edge: it turns a FormData/Blob body into a one-shot stream, so
+// after a 401 the response interceptor's retry (`api(original)`) would re-send
+// an already-consumed body. Body-carrying upload requests therefore opt into the
+// XHR adapter per-request (see uploadApi): XHR re-serializes `config.data` fresh
+// on every send, so the retry works, and it reports `onUploadProgress` natively.
+
 /** Main API client — includes auth + refresh interceptors. */
 export const api = axios.create({
   baseURL: BASE_URL,

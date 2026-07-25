@@ -19,19 +19,24 @@ logger = logging.getLogger("app.main")
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     stop = asyncio.Event()
-    task: asyncio.Task[None] | None = None
+    tasks: list[asyncio.Task[None]] = []
     if settings.snapshot_scheduler_enabled:
         # Imported lazily so the scheduler (and its DB engine import) isn't pulled
         # in for apps/tests that never enable it.
         from app.snapshot.scheduler import build_default_scheduler
 
-        task = asyncio.create_task(build_default_scheduler().run_forever(stop))
+        tasks.append(asyncio.create_task(build_default_scheduler().run_forever(stop)))
         logger.info("Time Machine scheduler enabled")
+    if settings.upload_cleanup_scheduler_enabled:
+        from app.upload.scheduler import build_default_scheduler as build_upload_cleanup
+
+        tasks.append(asyncio.create_task(build_upload_cleanup().run_forever(stop)))
+        logger.info("Upload session cleanup scheduler enabled")
     try:
         yield
     finally:
         stop.set()
-        if task is not None:
+        for task in tasks:
             await task
 
 

@@ -37,6 +37,11 @@ class QuotaExceededError(AppError):
         super().__init__(ErrorCode.QUOTA_EXCEEDED, message, status_code=413)
 
 
+class FileTooLargeError(AppError):
+    def __init__(self, message: str = "File is too large") -> None:
+        super().__init__(ErrorCode.FILE_TOO_LARGE, message, status_code=413)
+
+
 class NameConflictError(AppError):
     def __init__(self, message: str = "Name already exists") -> None:
         super().__init__(ErrorCode.NAME_CONFLICT, message, status_code=409)

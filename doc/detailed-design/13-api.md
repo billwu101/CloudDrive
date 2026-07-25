@@ -55,6 +55,7 @@
 | `/auth/*` | AuthRouter | AuthService |
 | `/drive/items` | DriveRouter | DriveService |
 | `/upload/simple` | UploadRouter | UploadService |
+| `/upload/sessions/**` | UploadRouter | UploadSessionService |
 | `/drive/items/{id}/download` | DriveRouter | DownloadService |
 | `/drive/items/{id}/preview` | DriveRouter | PreviewService |
 | `/trash/*` | TrashRouter | TrashService |
@@ -98,12 +99,18 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | PUT | `/drive/items/{id}/star` | 設定/取消星號 | 🔐 |
 | GET | `/drive/items/{id}/ancestors` | 祖先路徑（麵包屑） | 🔐 |
 | GET | `/drive/recent` | 最近項目 | 🔐 |
+| GET | `/drive/starred` | 星號項目（**跨資料夾全域查詢**，非只有根目錄） | 🔐 |
 
 **Upload／Download／Preview／Version**
 
 | Method | Path | 用途 | 認證 |
 | --- | --- | --- | --- |
 | POST | `/upload/simple` | 小檔直接上傳 | 🔐 |
+| POST | `/upload/sessions` | 建立分片上傳工作階段（回傳 `chunk_size`/`total_chunks`） | 🔐 |
+| GET | `/upload/sessions/{id}` | 查詢狀態與**已完成分片索引**（續傳依據） | 🔐 |
+| PUT | `/upload/sessions/{id}/chunks/{index}` | 上傳單一分片（冪等，可重送） | 🔐 |
+| POST | `/upload/sessions/{id}/complete` | 合併分片、建立檔案並實扣配額 | 🔐 |
+| DELETE | `/upload/sessions/{id}` | 取消並刪除暫存分片 | 🔐 |
 | GET | `/download/{item_id}` | 下載單一檔案（串流） | 🔐 |
 | POST | `/download/archive` | 多選打包為 zip（`{item_ids}`，資料夾遞迴） | 🔐 |
 | GET | `/preview/{item_id}` | 預覽資訊 | 🔐 |

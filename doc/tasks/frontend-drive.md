@@ -36,6 +36,7 @@
 - [x] 建立 `useDriveItems` query。
 - [x] 建立 `useRecentItems` query。
 - [x] 建立 `useStarredItems` query。
+- [ ] **修 bug**：`useStarredItems` 改打新的 `GET /drive/starred`（`driveApi.listStarred`），移除「列根目錄再前端 `filter(is_starred)`」——舊寫法看不到子資料夾內與分頁外的星號項目。
 - [x] 建立 `useCreateFolder` mutation。
 - [x] 建立 `useRenameItem` mutation。
 - [x] 建立 `useMoveItem` mutation。
@@ -71,6 +72,7 @@
 - [x] 測試重新命名。
 - [x] 測試移動。
 - [x] 測試星號。
+- [ ] 測試 `useStarredItems` 打 `/drive/starred`，且**子資料夾內**的星號項目會出現（回歸本次 bug）。
 - [x] 測試移至垃圾桶。
 - [x] 測試列表與格狀切換。
 - [x] 測試 loading/empty/error 狀態。
