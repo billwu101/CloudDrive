@@ -135,7 +135,9 @@ describe('401 refresh retries a body request without dropping the body', () => {
 
     const form = new FormData()
     form.append('file', new File(['hello chunk world'], 'note.txt', { type: 'text/plain' }))
-    const res = await api.post('/upload/simple', form)
+    // Uploads run on the XHR adapter (see uploadApi) — that's what makes the
+    // retried request re-send the body rather than an empty one.
+    const res = await api.post('/upload/simple', form, { adapter: 'xhr' })
 
     expect(res.status).toBe(201)
     // The retry must carry a non-empty multipart body. (jsdom+undici don't

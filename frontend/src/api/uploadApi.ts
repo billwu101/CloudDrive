@@ -19,9 +19,12 @@ export const uploadApi = {
     const form = new FormData()
     form.append('file', file)
     const params = parentId ? { parent_id: parentId } : undefined
+    // XHR adapter (not the client-default fetch): a FormData body survives the
+    // 401→refresh→retry that the fetch adapter would break by consuming it once.
     return api.post<DriveItemResponse>('/upload/simple', form, {
       params,
       signal,
+      adapter: 'xhr',
       onUploadProgress: (e) => {
         if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
       },
@@ -46,6 +49,8 @@ export const uploadApi = {
   putChunk: (sessionId: string, index: number, chunk: Blob, signal?: AbortSignal) =>
     api.put<void>(`/upload/sessions/${sessionId}/chunks/${index}`, chunk, {
       signal,
+      // XHR adapter so a Blob body survives a 401→refresh→retry (see uploadSimple).
+      adapter: 'xhr',
       headers: { 'Content-Type': 'application/octet-stream' },
     }),
 
