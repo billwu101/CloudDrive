@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { UploadMenu } from './UploadMenu'
@@ -6,27 +7,27 @@ import { UploadMenu } from './UploadMenu'
 afterEach(() => cleanup())
 
 describe('UploadMenu', () => {
-  it('is a single Upload button (no dropdown menu)', () => {
-    render(<UploadMenu onFiles={vi.fn()} />)
-    expect(screen.getByRole('button', { name: /upload/i })).toBeInTheDocument()
-    // Simplified to one action — no menu, no separate folder option.
+  it('opens a menu with file and folder options', async () => {
+    render(<UploadMenu onFiles={vi.fn()} onFolders={vi.fn()} />)
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /upload/i }))
+    expect(screen.getByRole('menuitem', { name: /upload files/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /upload folder/i })).toBeInTheDocument()
   })
 
-  it('opens a plain multi-file picker (folders go through drag-and-drop)', () => {
-    const { container } = render(<UploadMenu onFiles={vi.fn()} />)
+  it('the folder input is a directory picker', () => {
+    const { container } = render(<UploadMenu onFiles={vi.fn()} onFolders={vi.fn()} />)
     const inputs = container.querySelectorAll('input[type="file"]')
-    expect(inputs).toHaveLength(1)
-    const input = inputs[0] as HTMLInputElement
-    expect(input.multiple).toBe(true)
-    expect(input.hasAttribute('webkitdirectory')).toBe(false)
+    expect(inputs).toHaveLength(2)
+    expect(Array.from(inputs).some((i) => i.hasAttribute('webkitdirectory'))).toBe(true)
   })
 
   it('forwards selected files to onFiles', () => {
     const onFiles = vi.fn()
-    const { container } = render(<UploadMenu onFiles={onFiles} />)
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const { container } = render(<UploadMenu onFiles={onFiles} onFolders={vi.fn()} />)
+    const fileInput = container.querySelector(
+      'input[type="file"]:not([webkitdirectory])',
+    ) as HTMLInputElement
     fireEvent.change(fileInput, {
       target: { files: [new File(['x'], 'a.txt', { type: 'text/plain' })] },
     })

@@ -236,7 +236,7 @@ export function DrivePage() {
             <Breadcrumbs ancestors={ancestors} current={currentFolderName} />
           </div>
           <div className="flex items-center gap-2">
-            <UploadMenu onFiles={upload} />
+            <UploadMenu onFiles={upload} onFolders={uploadFolders} />
             <DriveToolbar
               selectedCount={selectedIds.size}
               onNewFolder={() => setShowCreateFolder(true)}
