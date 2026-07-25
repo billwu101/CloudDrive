@@ -166,7 +166,11 @@ class TrashService:
             candidate_keys |= keys
         else:
             descendants = await self._trash.get_children_recursive(item_id)
-            for child in descendants:
+            # get_children_recursive returns items shallowest-first (BFS). Delete
+            # deepest-first so a folder is never removed while a child still
+            # points at it via parent_id — otherwise the self-referential
+            # drive_items_parent_id_fkey rejects the delete (empty-trash 500).
+            for child in reversed(descendants):
                 if child.item_type == ItemType.FILE:
                     freed, keys = await self._delete_file_versions(child)
                     total_freed += freed

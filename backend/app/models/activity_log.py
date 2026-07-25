@@ -13,7 +13,12 @@ class ActivityLog(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    item_id: Mapped[UUID | None] = mapped_column(ForeignKey("drive_items.id"), nullable=True)
+    # SET NULL, not RESTRICT: an audit log must survive its item being
+    # permanently deleted (empty trash) — otherwise the delete is blocked by
+    # this FK. The row stays as history with a null item_id.
+    item_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("drive_items.id", ondelete="SET NULL"), nullable=True
+    )
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     log_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSON, nullable=False, default=dict

@@ -121,3 +121,41 @@ async def test_empty_trash_removes_all_items(client: AsyncClient) -> None:
 
     trash_resp = await client.get("/api/v1/trash", headers=h)
     assert trash_resp.json()["items"] == []
+
+
+async def test_empty_trash_with_nested_folder(client: AsyncClient) -> None:
+    """Emptying a trashed folder that has children must not hit the
+    self-referential parent_id FK (regression: it 500'd because children were
+    deleted parent-first)."""
+    token = await register_and_login(client, email="t7@test.com")
+    h = auth_headers(token)
+
+    # top/ -> top/sub/ -> top/sub/deep.txt, plus a file directly in top/.
+    top = await client.post("/api/v1/drive/folders", json={"name": "top"}, headers=h)
+    top_id = top.json()["id"]
+    sub = await client.post(
+        "/api/v1/drive/folders", json={"name": "sub", "parent_id": top_id}, headers=h
+    )
+    sub_id = sub.json()["id"]
+    await client.post(
+        "/api/v1/upload/simple",
+        headers=h,
+        params={"parent_id": top_id},
+        files={"file": ("a.txt", io.BytesIO(b"data"), "text/plain")},
+    )
+    await client.post(
+        "/api/v1/upload/simple",
+        headers=h,
+        params={"parent_id": sub_id},
+        files={"file": ("deep.txt", io.BytesIO(b"data"), "text/plain")},
+    )
+
+    # Trash the top folder, then empty the trash.
+    await client.post(f"/api/v1/trash/items/{top_id}", headers=h)
+    empty = await client.delete("/api/v1/trash", headers=h)
+    assert empty.status_code == 204
+
+    assert (await client.get("/api/v1/trash", headers=h)).json()["items"] == []
+    # And the whole subtree is gone from the drive too.
+    root = await client.get("/api/v1/drive/items", headers=h)
+    assert "top" not in [i["name"] for i in root.json()["items"]]
