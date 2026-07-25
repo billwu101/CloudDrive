@@ -28,8 +28,11 @@ class UploadSession(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    # Target folder; NULL means the drive root.
-    parent_id: Mapped[UUID | None] = mapped_column(ForeignKey("drive_items.id"), nullable=True)
+    # Target folder; NULL means the drive root. SET NULL so permanently
+    # deleting the folder (empty trash) isn't blocked by this session record.
+    parent_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("drive_items.id", ondelete="SET NULL"), nullable=True
+    )
     # The name the client asked for. Same-folder deduplication happens at
     # completion, so this is display-only until then.
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -41,7 +44,11 @@ class UploadSession(Base):
     # pending | uploading | completed | failed | cancelled
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     checksum_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    drive_item_id: Mapped[UUID | None] = mapped_column(ForeignKey("drive_items.id"), nullable=True)
+    # The file produced on completion. SET NULL so permanently deleting that
+    # file (empty trash) isn't blocked by this completed-session record.
+    drive_item_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("drive_items.id", ondelete="SET NULL"), nullable=True
+    )
     error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
