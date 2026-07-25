@@ -15,18 +15,23 @@ const DEFAULT_API_BASE_URL =
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL
 
+// Use the default XHR adapter, not the fetch adapter. The fetch adapter turns a
+// FormData/Blob body into a one-shot stream, so after a 401 the response
+// interceptor's retry (`api(original)`) re-sends an already-consumed body and
+// the upload fails — surfacing as a spurious "Connection lost" even though the
+// token refresh succeeded. XHR re-serializes `config.data` fresh on every send,
+// so retries work, and it also reports `onUploadProgress` natively.
+
 /** Main API client — includes auth + refresh interceptors. */
 export const api = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
-  adapter: 'fetch',
 })
 
 /** Separate client for refresh calls — no interceptors, prevents infinite loops. */
 export const refreshClient = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
-  adapter: 'fetch',
 })
 
 export interface ApiError {
