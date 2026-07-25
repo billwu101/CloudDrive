@@ -67,10 +67,12 @@ class TrashService:
         return _to_response(item)
 
     async def list_trash(
-        self, user_id: UUID, *, page: int = 1, page_size: int = 50
+        self, user_id: UUID, *, page: int = 1, page_size: int = 50, name: str | None = None
     ) -> Page[DriveItemResponse]:
         offset = (page - 1) * page_size
-        items, total = await self._trash.list_deleted(user_id, offset=offset, limit=page_size)
+        items, total = await self._trash.list_deleted(
+            user_id, offset=offset, limit=page_size, name=name
+        )
         return Page.create(
             [_to_response(i) for i in items],
             total,

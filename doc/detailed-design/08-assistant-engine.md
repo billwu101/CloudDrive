@@ -193,6 +193,25 @@ WorkflowRun {
 
 **影響範圍（落地時）**：`assistant_skills.chat_enabled` migration、`assistant/{router,service,planner}.py`（registry 載入橋接 handler、`selected_item_ids` 下傳）、`assistant/schemas.py`、前端 `pages/SkillsPage.tsx`（toggle）+ `components/assistant/AssistantPanel.tsx`（已選檔 chips）。
 
+### 8.95.5 資料夾技能（item_types 權威化，DEC-035）
+
+> **落地狀態**：整體資料夾（B）**已實作，待 merge**（分支 `feat/assistant-folder-skills`）；逐檔批次（A）設計保留、**未實作**（見 tasks 後續）。需求面見 proposal §12「技能可對資料夾執行」。
+
+原 §8.95.2 生成技能「安裝後可掛右鍵選單對**單檔**執行」——`_execute_generated` 寫死只收 `FILE`（`item.item_type != FILE → "This skill runs on a file"`）。本設計讓技能能對**資料夾**執行，型別以 manifest `item_types` 為權威：
+
+- **執行層分流（`_execute_generated`）**：先驗證 `目標.item_type ∈ skill.item_types`（不符回明確錯、訊息帶支援型別，取代原本硬擋 FILE）。
+  - `FILE`：維持現況——下載單一 `storage_key` → `input_path` = 檔案。
+  - `FOLDER`：`DriveService.collect_folder_descendants` **遞迴撈整棵子樹（檔案 + 資料夾）** → 先重建所有子目錄（**含空目錄**）、再把每個 FILE 下載到暫存目錄保留相對結構 → `input_path` = **該目錄**。**空資料夾或只含子資料夾的資料夾也可**（落地成空/僅結構目錄，不因「無檔」報錯）；上限只計 FILE。
+  - `params` 加 `"item_type": "FILE"|"FOLDER"`（保留現有 `"filename"`），生成 code 據以分流；輸出沿用既有 `_ingest`（已支援多檔/巢狀回寫）。
+- **兩種資料夾模式（DEC-035）**：
+  - **A 逐檔批次**（「對資料夾內每個檔做 X」）：重用「勾多檔 fan-out」——對子樹每個 FILE 各跑一次 FILE 技能，不改 `run()` 契約。
+  - **B 整體資料夾**（「把資料夾壓成一個 zip」）：走上面 FOLDER 分流，把整個目錄交給技能。
+- **codegen `_CODEGEN_SYSTEM`**：教模型「`input_path` 是選取的項目——選檔為檔案、選資料夾為目錄；用 `os.path.isdir(input_path)` 或 `params["item_type"]` 分流，目錄用 `os.walk`/`pathlib` 走訪」。**單一技能涵蓋所有合理型別**：一個操作若對檔案與資料夾都合理（如壓縮/打包），就宣告 `item_types:["FILE","FOLDER"]` 並讓 code 同時處理兩者——**不分成兩個技能**；只有真正僅適用一種（如解 `.7z` → `["FILE"]`）才用單型別。json_schema 的 `item_types` enum 已含 `FOLDER`，不動。
+- **已知取捨（codegen 品質變異）**：`author()` 只做靜態驗證（codeguard/manifest），**不執行 code**，故執行期 typo（真模型觀察到偶發 `os.pathlext`/`osorm` 類 token 走樣，think:OFF+temp 0.8）會溜過；使用者核可前可 review code、失敗可重生。若要根治可在 repair loop 加「沙盒 smoke 試跑 → 執行期錯誤回饋重生」（另立決策，見 tasks 待評估項）。
+- **安全上限**：資料夾攝取設檔數/總量上限（`core/config.py`，建議 1000 檔 / 500MB），超過在攝取前回明確錯，防大資料夾打爆暫存/沙箱。
+- **前端**：`DrivePage` 已依 `item_type` 過濾 `ui.context_menu`——宣稱 `FOLDER` 的技能**自動**出現在資料夾右鍵，無需改前端。
+- **向後相容**：既有 FILE 技能與其 code 不動、無 migration；資料夾能力為加法。
+
 ### 8.6 端到端範例
 
 - **單一新功能（7zip）**：「做一個 7zip 解壓縮功能」→ 解析 → 候選 workflow（1 步：`decompress_7z`）→ 檢查發現缺 → 生成子流程（codegen→核可→沙箱→安裝，掛右鍵選單）→ 回主流程 → 權限/安全 → 顯示計畫 → 確認 → 執行（沙箱解壓，結果寫回成 drive items）→ 記錄。

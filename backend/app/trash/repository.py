@@ -19,7 +19,7 @@ class AbstractTrashRepository(ABC):
 
     @abstractmethod
     async def list_deleted(
-        self, owner_id: UUID, *, offset: int, limit: int
+        self, owner_id: UUID, *, offset: int, limit: int, name: str | None = None
     ) -> tuple[list[DriveItem], int]: ...
 
     @abstractmethod
@@ -57,9 +57,11 @@ class SQLTrashRepository(AbstractTrashRepository):  # pragma: no cover
         return item
 
     async def list_deleted(
-        self, owner_id: UUID, *, offset: int, limit: int
+        self, owner_id: UUID, *, offset: int, limit: int, name: str | None = None
     ) -> tuple[list[DriveItem], int]:
-        where = (DriveItem.owner_id == owner_id, DriveItem.is_deleted.is_(True))
+        where = [DriveItem.owner_id == owner_id, DriveItem.is_deleted.is_(True)]
+        if name:
+            where.append(DriveItem.name.ilike(f"%{name}%"))
         count_result = await self._session.execute(select(DriveItem.id).where(*where))
         total = len(count_result.all())
         rows = await self._session.execute(

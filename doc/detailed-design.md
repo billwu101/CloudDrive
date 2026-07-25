@@ -4556,12 +4556,12 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 影響範圍：`llm/client.py` 協定 + 7 個 chat() 實作 + 測試 fake、`planner.py`、`core/config.py`、`assistant/router.py`、E8 文件。
 - 實作註記（2026-07-07）：`LLMClient.chat` 新增 `disable_thinking: bool | None`（None＝沿用 client 建構子預設），7 個實作全數同步——`OllamaLLMClient` per-call 值優先於建構子（True 時 payload 帶 `think:false`），external/anthropic/codex/tracking-wrapper 依協定接受並轉傳或忽略，`ModelRouter` 三個方法透傳。`WorkflowPlanner` 建構子加 `disable_thinking`，`plan()` 每次（含 repair 重試）帶入；`assistant/router.py` 以 `settings.llm_planner_disable_thinking`（預設 True）接線；codegen 不傳（維持 None）。新增測試：ollama per-call 雙向覆寫 + None 遞延、planner 每呼叫傳 True、codegen 傳 None。全閘門通過（618 unit / mypy / ruff）。真模型驗證見 proposal §「驗證結果」。
 
-> **編號說明**：DEC-034 已保留給「codegen 預設 think:false」（翻案 DEC-033 的 codegen 不連動；程式已在 main，決策文件待整併），故本條由 DEC-035 起算。
+> **編號說明**：DEC-034 已保留給「codegen 預設 think:false」（翻案 DEC-033 的 codegen 不連動；程式已在 main，決策文件待整併），故編號由 DEC-035 起算。DEC-035（資料夾技能，見 appendix-a）與 DEC-036（分片續傳上傳）分屬 main 與 fix/core-stability 兩分支同期產生，合併時各自保留。
 
-## DEC-035：大檔案分片續傳上傳的參數與序列化策略
+## DEC-036：大檔案分片續傳上傳的參數與序列化策略
 
 - 日期：2026-07-24
-- 狀態：Accepted，**待實作**（需求見 proposal §27、設計見 §6.7.7／§7.7／§13.5／§5.7.4）
+- 狀態：Accepted，**已實作**（需求見 proposal §27、設計見 §6.7.7／§7.7／§13.5／§5.7.4）
 - 背景：實際使用時一次拖曳 10 餘個檔案且含 1.93 GB 影片，整批失敗。三個原因疊加：①單一請求上傳且上限 100 MB，大檔注定失敗；②前端 `Promise.allSettled` 全並行，10+ 檔搶爆瀏覽器對單一來源的連線，排隊者逾時；③後端 `upload_simple` 以 `chunks: list[bytes]` 累積整檔再 `b"".join`，記憶體 ≈ 檔案大小 ×2，大檔有 OOM 風險。前端一律顯示 `Network error`，無從判斷真因。
 - 決策：
   1. 啟用早已規劃但延後的分片續傳（原 §7.7／§6.7.7 僅為「擴充點」佔位）。

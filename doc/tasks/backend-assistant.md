@@ -171,3 +171,29 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [ ] replan 互動釐清：部分失敗時 replan 的輸入應只含失敗分支；已成功分支不得重跑（副作用）。
 - [ ] 沙箱技能並行時的資源上限確認（`asyncio.to_thread` × N 個 `python -I` 子行程的 CPU/記憶體）。
 - [ ] 測試：獨立步驟確實並行（時序或呼叫順序斷言）、相依鏈仍守順序、並行上限生效。
+
+## 資料夾技能支援（item_types 權威化，2026-07-24，DEC-035）
+
+**目標**：讓生成/自建技能能對資料夾執行（原 `_execute_generated` 寫死只收 FILE，`item.item_type != FILE → "This skill runs on a file"`）。分支 `feat/assistant-folder-skills`（base=main `98df5bb`）。設計見 detailed-design §8.95.5 / appendix-a DEC-035。**狀態：實作完成，待 push→PR→merge。**
+
+已完成（真模型 + 真後端 E2E 驗證；unit 692 全過、mypy 淨、ruff 淨）：
+
+- [x] `skills/authoring.py` `_execute_generated`：以 `目標.item_type ∈ skill.item_types` 驗證分流取代硬擋 FILE（錯誤訊息依宣告型別，`_wrong_type_message`）；`params["item_type"]` 下傳；FILE 路徑不變。
+- [x] `drive/service.py` `collect_folder_descendants`：遞迴列舉子樹（**檔案 + 資料夾，含空目錄**），重用 `list_children`。
+- [x] `_materialize_input`：FILE 維持單檔；FOLDER 先重建所有子目錄（含空目錄）再寫檔 → `input_path`=目錄；**空資料夾/只含子資料夾也可**（不因無檔報錯）；上限只計 FILE。
+- [x] 攝取上限（`core/config.py`）：`assistant_folder_max_files=1000` / `assistant_folder_max_bytes=500MB`，超過報明確錯（數字已定案）。
+- [x] `subagent.py` `_CODEGEN_SYSTEM`：input_path 為選取項目、**以 `os.path.isdir` 為主判斷**（`params["item_type"]` 僅一致性檢查）；**單一技能涵蓋所有合理型別**（壓縮類宣告 `["FILE","FOLDER"]`，不分兩個技能）；務必把結果寫成檔到 output_dir。
+- [x] `item_types` 允許 `[FILE,FOLDER]` 並存 → code 依 isdir 分流（原待確認項已定案：允許）。
+- [x] 測試（單元，`tests/assistant/test_folder_skills.py`，13 例）：型別 helper、collect 含空子資料夾、materialize 結構/空資料夾/空子資料夾保留/只含子資料夾、上限、item_types 不符報錯、sandbox 吃目錄。
+- [x] 測試（真模型，think:OFF gateway）：資料夾請求 6/6 產 FOLDER 技能且執行成功；通用「壓縮成 zip」→ 單一 `zip_compressor` `[FILE,FOLDER]`、檔案與資料夾皆通過；FILE 路徑無回歸。
+- [x] 真後端 E2E（真 DB 5434）：生成 `folder_to_zip`→核可→對資料夾執行→產 zip；空資料夾→`EmptyFolder.zip`；含空子資料夾→`MixedFolder.zip`。
+- [x] 前端：無需改（`DrivePage` 已依 `item_type` 過濾右鍵）。
+- [x] 文件回填：proposal §12、detailed-design §8.95.5、appendix DEC-035（本機草稿，待整併）。
+
+### 後續 / 待辦（不在本 PR，逐項獨立）
+
+- [ ] **CI 整合測試**：加 `tests/integration` 一支在真 Postgres 上守資料夾邊界（空資料夾、含空子資料夾、多層子樹、上限）——目前 `collect_folder_descendants` 的真 SQL 只由本機 live E2E 覆蓋，CI（需 Postgres）尚未涵蓋。
+- [ ] **codegen smoke-test（另立 DEC + 獨立分支）**：`author()` 只靜態驗證、不跑 code，執行期 typo（`os.pathlext`/`osorm`）會溜過。規格見 memory `clouddrive-codegen-smoke-test-dec`。
+- [ ] **（可選）zip 內保留空目錄**：執行層已落地空目錄，但生成的 `os.walk` code 通常跳過空目錄；若要 zip 內也含空資料夾，需在 `_CODEGEN_SYSTEM` 再加一條。
+- [ ] **（既有限制）生成觸發措辭**：`_looks_like_skill_generation_request` 需動詞（做一個/生成…）；「幫我把…壓縮」不觸發生成。可放寬觸發詞或改意圖判斷。
+- [ ] **（若需要）A 逐檔批次對資料夾**：對資料夾內每檔各跑一次 FILE 技能（fan-out）——本次以整體資料夾（B）為主，未做；需要時再驗證勾多檔/資料夾展開路徑。

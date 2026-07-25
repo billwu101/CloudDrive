@@ -116,8 +116,62 @@ class DriveService:
             raise NotFoundError("Item not found")
         return item
 
+    async def collect_folder_descendants(
+        self, user_id: UUID, folder_id: UUID
+    ) -> list[tuple[str, DriveItem]]:
+        """All descendants (files AND folders) under a folder, as
+        (relative POSIX path, item), in depth-first tree order.
+
+        Includes empty subfolders so the assistant can mirror the full structure
+        into the sandbox input — an empty folder or a folder of only subfolders is
+        still materializable (DEC-035). Walks owned, non-deleted items via
+        ``parent_id`` links.
+        """
+        results: list[tuple[str, DriveItem]] = []
+
+        async def _walk(parent_id: UUID, prefix: str) -> None:
+            offset = 0
+            while True:
+                items, total = await self._items.list_children(
+                    parent_id,
+                    user_id,
+                    sort_by=DriveItemSortField.NAME,
+                    order=SortOrder.ASC,
+                    offset=offset,
+                    limit=500,
+                )
+                if not items:
+                    break
+                for it in items:
+                    rel = f"{prefix}/{it.name}" if prefix else it.name
+                    results.append((rel, it))
+                    if it.item_type == ItemType.FOLDER:
+                        await _walk(it.id, rel)
+                offset += len(items)
+                if offset >= total:
+                    break
+
+        await _walk(folder_id, "")
+        return results
+
     async def get_item(self, user_id: UUID, item_id: UUID) -> DriveItemResponse:
         item = await self._get_owned(item_id, user_id)
+        starred = await self._starred(user_id, [item])
+        return _to_response(item, is_starred=item.id in starred)
+
+    async def get_item_any_state(self, user_id: UUID, item_id: UUID) -> DriveItemResponse:
+        """Like :meth:`get_item` but also returns items currently in the trash.
+
+        The assistant's selection may include trashed items (e.g. the user picks
+        files in the trash view and asks to restore them); ``get_item`` rejects
+        deleted items, so selection resolution needs this ownership-checked
+        lookup that does not filter on ``is_deleted``."""
+
+        item = await self._items.get_by_id(item_id)
+        if item is None:
+            raise NotFoundError("Item not found")
+        if item.owner_id != user_id:
+            raise ForbiddenError()
         starred = await self._starred(user_id, [item])
         return _to_response(item, is_starred=item.id in starred)
 
