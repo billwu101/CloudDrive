@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from app.drive.schemas import ItemType
+from app.models.drive_item import DriveItem
 from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
 from app.snapshot.repository import AbstractSnapshotRepository
 from app.storage.base import StorageProvider
@@ -23,6 +24,49 @@ _PRUNE_EXEMPT = frozenset({TRIGGER_PRE_RESTORE})
 # Settings defaults (used when a user has never customised them).
 DEFAULT_RETENTION_N = 50
 DEFAULT_SCHEDULE_INTERVAL_MINUTES = 60
+
+# One item's identity for change detection: (id, parent, name, type, checksum).
+# Captures add/delete (the id set), rename/move (parent+name), and content
+# change (checksum). Folders have no checksum.
+_ItemSig = tuple[str, str, str, str, str]
+
+
+def _period_start(now: datetime, interval_minutes: int) -> datetime:
+    """Start of the current schedule period, aligned to the clock from midnight.
+
+    With a 60-minute interval this is the top of the current hour, so scheduled
+    snapshots land on the hour rather than drifting off the first snapshot.
+    """
+    interval = max(1, interval_minutes)
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elapsed = int((now - midnight).total_seconds() // 60)
+    return midnight + timedelta(minutes=(elapsed // interval) * interval)
+
+
+def _items_signature(items: list[DriveItem]) -> frozenset[_ItemSig]:
+    return frozenset(
+        (
+            str(item.id),
+            str(item.parent_id) if item.parent_id else "",
+            item.name,
+            str(item.item_type),
+            item.checksum_sha256 or "",
+        )
+        for item in items
+    )
+
+
+def _entries_signature(entries: list[SnapshotEntry]) -> frozenset[_ItemSig]:
+    return frozenset(
+        (
+            str(entry.item_id),
+            str(entry.parent_item_id) if entry.parent_item_id else "",
+            entry.name,
+            str(entry.item_type),
+            entry.checksum_sha256 or "",
+        )
+        for entry in entries
+    )
 
 
 @dataclass(frozen=True)
@@ -206,9 +250,16 @@ class SnapshotService:
     ) -> Snapshot | None:
         """Create a `scheduled` snapshot if one is due.
 
-        Due means: schedule enabled, the interval has elapsed since the last
-        snapshot of any kind, and the drive currently has at least one item
-        (so empty/idle drives don't accumulate identical empty snapshots).
+        Due means all of:
+        1. the schedule is enabled;
+        2. we're in a new **clock-aligned** period with no snapshot yet — the
+           interval buckets the day from midnight, so the default 60-minute
+           interval fires on the hour (00:00, 01:00, …), not at a drifting
+           offset like 07:51, 08:51;
+        3. the drive currently has at least one item; and
+        4. the drive has **changed** since the last snapshot — an unchanged
+           drive produces no new snapshot, so identical hourly rows don't pile
+           up (content is deduped anyway, but the timeline stays meaningful).
         Returns the snapshot if created, else None.
         """
 
@@ -218,16 +269,26 @@ class SnapshotService:
 
         now = now or datetime.now(UTC)
         snaps = await self._repo.list_snapshots(user_id)  # newest first
+
+        # 2. On-the-hour gate: skip if a snapshot already exists in this period.
+        period_start = _period_start(now, settings.schedule_interval_minutes)
         if snaps:
             last = snaps[0].created_at
             if last.tzinfo is None:
                 last = last.replace(tzinfo=UTC)
-            if now - last < timedelta(minutes=settings.schedule_interval_minutes):
+            if last >= period_start:
                 return None
 
+        # 3. Nothing to snapshot on an empty drive.
         items = await self._repo.list_owner_items(user_id)
         if not items:
             return None
+
+        # 4. Change detection: skip if the drive is identical to the last snapshot.
+        if snaps:
+            last_entries = await self._repo.list_all_entries(snaps[0].id)
+            if _items_signature(items) == _entries_signature(last_entries):
+                return None
 
         return await self.create(user_id=user_id, trigger=TRIGGER_SCHEDULED, label="Scheduled")
 

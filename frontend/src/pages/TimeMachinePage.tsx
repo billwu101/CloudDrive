@@ -90,7 +90,12 @@ function SnapshotRow({
       <div className="min-w-0">
         <div className="flex items-center gap-1.5 text-sm font-medium">
           {snapshot.pinned && <Pin className="size-3 text-amber-600" aria-hidden="true" />}
-          {new Date(snapshot.created_at).toLocaleTimeString()}
+          {new Date(snapshot.created_at).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          })}{' '}
+          · {new Date(snapshot.created_at).toLocaleTimeString()}
         </div>
         <div
           className="mt-0.5 truncate text-xs text-muted-foreground"

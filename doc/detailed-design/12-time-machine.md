@@ -24,7 +24,7 @@
 
 - **Snapshot（快照）**：某使用者的整個 drive 在某時間點的狀態，等於一組 entries 的集合。增量儲存：未變更檔案共用既有 version/blob。
 - **Snapshot entry（快照項目）**：快照當下「一個檔案或資料夾存在且其狀態」的紀錄——名稱、父層、型別；檔案另指向內容（file version / storage_key / checksum）。
-- **Timeline（時間軸）**：依時間排列的快照清單，可點任一快照「進入時光機」唯讀瀏覽當時的 drive。每列副標顯示**這個備份是為什麼建的**（`snapshotReason`）：有具體 `label` 就顯示 label，否則退回 trigger 分類文案（Scheduled／Manual／Before assistant action／Before restore）。過長時截斷、`title` 顯示完整原因。
+- **Timeline（時間軸）**：依時間排列的快照清單，可點任一快照「進入時光機」唯讀瀏覽當時的 drive。每列主標顯示**備份日期＋時間**（`Jul 25, 2026 · 9:47:56 PM`）；副標顯示**這個備份是為什麼建的**（`snapshotReason`）：有具體 `label` 就顯示 label，否則退回 trigger 分類文案（Scheduled／Manual／Before assistant action／Before restore）。過長時截斷、`title` 顯示完整原因。清單另依日期分組（Today／Yesterday／日期）方便掃描。
 - **Restore（還原）**：把選定範圍（單檔 / 資料夾子樹 / 整碟）就地還原到所選快照——**覆蓋現況**。
 - **Pre-restore snapshot（還原前保命快照）**：每次還原前自動先建一個 `pre_restore` 快照，誤覆蓋也能再倒回來。
 - **Pinned（釘選）**：標記為保留的快照，不被自動縮減刪除。
@@ -32,7 +32,14 @@
 ### 12.4 快照觸發來源（三種）
 
 ### 12.134.1 自動排程
-使用者層設定預設開啟、每小時一次（間隔可在設定調整或關閉）建 `trigger=scheduled` 快照；服務內建排程器由 `SNAPSHOT_SCHEDULER_ENABLED` 控制，compose 單 worker 預設開。排程只有在距上次快照已達間隔且現有檔案數大於 0 時才建立快照，避免空碟與過密快照。（手動與 assistant 快照不受此排程間隔限制。）
+使用者層設定預設開啟、每小時一次（間隔可在設定調整或關閉）建 `trigger=scheduled` 快照；服務內建排程器由 `SNAPSHOT_SCHEDULER_ENABLED` 控制，compose 單 worker 預設開。建立條件（`run_scheduled_snapshot`，四個都要成立）：
+
+1. **排程有開**。
+2. **整點對齊**：間隔以午夜為基準切成時段（`_period_start`），60 分鐘間隔即對齊到**整點**（00:00、01:00…），本時段還沒有任何快照才建——不是「距上一張滿 60 分」那種會飄移的 07:51、08:51。排程器每 5 分鐘掃一次,所以實際建立時間是整點後的第一次掃描（xx:00–xx:05）。
+3. **硬碟至少 1 個檔案**（空碟不建）。
+4. **內容有變更**：以目前 drive 的簽名（每個項目的 `id/parent/name/type/checksum` 集合）比對上一張快照的簽名，**完全相同就跳過**——未變動的時段不再產生一模一樣的快照（內容本就去重、不佔空間，但時間軸保持有意義）。
+
+（手動與 assistant 快照為使用者/助理明確觸發，不受整點與變更偵測限制。）
 
 ### 12.134.2 手動
 使用者於時光機頁按「立即建立快照」，建 `trigger=manual`，可加標籤（label）。
