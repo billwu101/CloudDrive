@@ -24,7 +24,7 @@
 
 - **Snapshot（快照）**：某使用者的整個 drive 在某時間點的狀態，等於一組 entries 的集合。增量儲存：未變更檔案共用既有 version/blob。
 - **Snapshot entry（快照項目）**：快照當下「一個檔案或資料夾存在且其狀態」的紀錄——名稱、父層、型別；檔案另指向內容（file version / storage_key / checksum）。
-- **Timeline（時間軸）**：依時間排列的快照清單，可點任一快照「進入時光機」唯讀瀏覽當時的 drive。
+- **Timeline（時間軸）**：依時間排列的快照清單，可點任一快照「進入時光機」唯讀瀏覽當時的 drive。每列副標顯示**這個備份是為什麼建的**（`snapshotReason`）：有具體 `label` 就顯示 label，否則退回 trigger 分類文案（Scheduled／Manual／Before assistant action／Before restore）。過長時截斷、`title` 顯示完整原因。
 - **Restore（還原）**：把選定範圍（單檔 / 資料夾子樹 / 整碟）就地還原到所選快照——**覆蓋現況**。
 - **Pre-restore snapshot（還原前保命快照）**：每次還原前自動先建一個 `pre_restore` 快照，誤覆蓋也能再倒回來。
 - **Pinned（釘選）**：標記為保留的快照，不被自動縮減刪除。
@@ -38,7 +38,7 @@
 使用者於時光機頁按「立即建立快照」，建 `trigger=manual`，可加標籤（label）。
 
 ### 12.134.3 AI agent / skill 操作前自動快照（本專案特有）
-助理執行**寫入/破壞性 workflow** 或執行**生成式 skill（會寫回 drive）**前，自動建一個 `trigger=assistant` 快照，label 標註來源（例如「執行前：organize_by_type」）。讓使用者對助理的批次操作能一鍵回到操作前狀態。
+助理執行**寫入/破壞性 workflow** 或執行**生成式 skill（會寫回 drive）**前，自動建一個 `trigger=assistant` 快照，label **列出即將執行的寫入操作**（`Before assistant action: <skill1>, <skill2>`；去重、保序、最多 3 個後接「+N more」）。讓使用者對助理的批次操作能一鍵回到操作前狀態，並在時間軸上看清楚是哪個動作觸發的備份。`pre_restore` 快照的 label 則記還原目標的時間（`Before restoring the <MMM DD, HH:MM> snapshot`），不用生的 UUID。
 - **粒度：每個 workflow / 每次 skill 執行前建一個**（一個 workflow 不論內含幾步，只在第一個非唯讀步驟前建一個；單次 skill 執行前建一個）——不是每個寫入步驟各建。
 - 串接點：`workflow.py` 的 executor 在第一個非唯讀步驟前、`skills/authoring.py` 的 `_execute_generated` 寫回前，呼叫 `SnapshotService.create(trigger="assistant", label=...)`。
 - 唯讀操作不建（無副作用）。

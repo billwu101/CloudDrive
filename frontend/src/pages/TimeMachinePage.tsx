@@ -37,6 +37,15 @@ const TRIGGER_LABEL: Record<string, string> = {
   pre_restore: 'Before restore',
 }
 
+/** The reason this snapshot was taken. The server records a specific `label`
+ *  (the user's note, the operation about to run, the restore it protected);
+ *  fall back to the trigger category only when there's no specific reason. */
+function snapshotReason(snapshot: SnapshotResponse): string {
+  const label = snapshot.label.trim()
+  if (label) return label
+  return TRIGGER_LABEL[snapshot.trigger] ?? snapshot.trigger
+}
+
 function dayLabel(iso: string): string {
   const d = new Date(iso)
   const today = new Date()
@@ -83,8 +92,11 @@ function SnapshotRow({
           {snapshot.pinned && <Pin className="size-3 text-amber-600" aria-hidden="true" />}
           {new Date(snapshot.created_at).toLocaleTimeString()}
         </div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {TRIGGER_LABEL[snapshot.trigger] ?? snapshot.trigger} · {snapshot.item_count} items ·{' '}
+        <div
+          className="mt-0.5 truncate text-xs text-muted-foreground"
+          title={snapshotReason(snapshot)}
+        >
+          {snapshotReason(snapshot)} · {snapshot.item_count} items ·{' '}
           {formatBytes(snapshot.total_bytes)}
         </div>
       </div>

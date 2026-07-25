@@ -304,11 +304,13 @@ class SnapshotService:
         if snapshot is None:
             return None
 
-        # 1. Safety snapshot before any mutation.
+        # 1. Safety snapshot before any mutation. Label it with the target
+        #    snapshot's time (human-readable) rather than a raw id, so the
+        #    timeline explains what this backup was protecting against.
         pre = await self.create(
             user_id=user_id,
             trigger=TRIGGER_PRE_RESTORE,
-            label=f"Before restore of snapshot {snapshot_id}",
+            label=f"Before restoring the {snapshot.created_at:%b %d, %H:%M} snapshot",
         )
 
         # 2. Which entries to restore.
