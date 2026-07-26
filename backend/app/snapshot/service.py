@@ -116,14 +116,21 @@ class SnapshotService:
         """
 
         items = await self._repo.list_owner_items(user_id)
+        # Soft delete is shallow: trashing a folder marks only the folder, so a
+        # capture (which skips deleted items) keeps the children but drops the
+        # parent. Recording that dangling parent_id would make the snapshot
+        # unrestorable (self-FK violation), so such orphans are captured at the
+        # root — where restore would place them anyway.
+        captured_ids = {item.id for item in items}
         entries: list[dict[str, Any]] = []
         total_bytes = 0
         for item in items:
             is_file = item.item_type == ItemType.FILE
+            parent_id = item.parent_id if item.parent_id in captured_ids else None
             entries.append(
                 {
                     "item_id": item.id,
-                    "parent_item_id": item.parent_id,
+                    "parent_item_id": parent_id,
                     "name": item.name,
                     "item_type": item.item_type,
                     "storage_key": item.storage_key if is_file else None,
@@ -382,8 +389,17 @@ class SnapshotService:
             target = _expand_with_descendants(all_entries, set(item_ids or []))
 
         # 3. Upsert parents before children (drive_items.parent_id is a self-FK).
+        #    An entry whose parent exists neither in this restore set nor in the
+        #    drive would insert a dangling parent_id and fail the self-FK, taking
+        #    the whole restore down with it (older snapshots can contain such
+        #    orphans — see _capture_entries). Re-home those at the root instead.
+        restorable_ids = {e.item_id for e in target}
+        live_ids = {i.id for i in await self._repo.list_all_items(user_id)}
         restored = 0
         for entry in _parents_first(target):
+            parent = entry.parent_item_id
+            if parent is not None and parent not in restorable_ids and parent not in live_ids:
+                entry = _rehomed_to_root(entry)
             await self._repo.upsert_item(owner_id=user_id, entry=entry)
             restored += 1
 
@@ -432,6 +448,21 @@ def _expand_with_descendants(
         result[entry.item_id] = entry
         stack.extend(by_parent.get(entry.item_id, []))
     return list(result.values())
+
+
+def _rehomed_to_root(entry: SnapshotEntry) -> SnapshotEntry:
+    """A copy of the entry placed at the drive root (its parent is gone)."""
+    return SnapshotEntry(
+        id=entry.id,
+        snapshot_id=entry.snapshot_id,
+        item_id=entry.item_id,
+        parent_item_id=None,
+        name=entry.name,
+        item_type=entry.item_type,
+        storage_key=entry.storage_key,
+        checksum_sha256=entry.checksum_sha256,
+        size_bytes=entry.size_bytes,
+    )
 
 
 def _parents_first(entries: list[SnapshotEntry]) -> list[SnapshotEntry]:
