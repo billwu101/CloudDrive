@@ -75,33 +75,41 @@
 
 ### 子任務
 
-- [ ] `backend/app/core/security.py`：新增 `create_share_access_token()` / `decode_share_access_token()`（`type="share_access"`，claims 含 `sub`/`itm`/`prm`/`iss_at_chain`）。
-- [ ] `backend/app/core/config.py`：新增 `SHARE_ACCESS_TOKEN_EXPIRE_MINUTES`(15)、`SHARE_ACCESS_TOKEN_MAX_LIFETIME_MINUTES`(240)、`SHARE_LINK_ATTEMPT_LIMIT`(5)、`SHARE_LINK_LOCKOUT_MINUTES`(5)。
-- [ ] `backend/app/models/share_link.py`：新增 `attempt_window_start` / `attempt_count` / `locked_until`。
-- [ ] `backend/alembic/versions/0020_share_link_rate_limit.py`：對應 migration（接在 `0019` 之後）。
-- [ ] `backend/app/public_share/__init__.py`、`schemas.py`：`PublicSessionResult`、`PublicItemResponse` 等。
-- [ ] `backend/app/public_share/repository.py`：以 token hash 取連結、子樹歸屬判定（遞迴 CTE）、速率限制欄位讀寫。
-- [ ] `backend/app/public_share/service.py`：`open_session` / `refresh_session` / `get_item` / `list_children` / `open_content` / `build_archive`。
-- [ ] `backend/app/public_share/router.py`：7 個端點（§6.12.9），**不得依賴 `CurrentUserId`**。
-- [ ] `backend/app/api/v1/router.py`：掛載 `public_share` router。
-- [ ] 移除舊的 `POST /share/links/validate`（由 `POST /public/links/{token}/session` 取代），同步更新既有測試。
+- [x] `backend/app/core/security.py`：新增 `create_share_access_token()` / `decode_share_access_token()`（`type="share_access"`，claims 含 `sub`/`itm`/`prm`/`iss_at_chain`）。
+- [x] `backend/app/core/config.py`：新增 `SHARE_ACCESS_TOKEN_EXPIRE_MINUTES`(15)、`SHARE_ACCESS_TOKEN_MAX_LIFETIME_MINUTES`(240)、`SHARE_LINK_ATTEMPT_LIMIT`(5)、`SHARE_LINK_LOCKOUT_MINUTES`(5)。
+- [x] `backend/app/models/share_link.py`：新增 `attempt_window_start` / `attempt_count` / `locked_until`。
+- [x] `backend/alembic/versions/0020_share_link_rate_limit.py`：對應 migration（接在 `0019` 之後）。
+- [x] `backend/app/public_share/__init__.py`、`schemas.py`：`PublicSessionResult`、`PublicItemResponse` 等。
+- [x] ~~`backend/app/public_share/repository.py`~~：不需要獨立檔案——連結查詢與速率限制欄位加在既有 `app/share/repository.py`（`get_by_id` / `update_attempt_state`），子樹判定在 service 以 `parent_id` 上溯（深度上限 64）而非遞迴 CTE。
+- [x] `backend/app/public_share/service.py`：`open_session` / `refresh_session` / `get_item` / `list_children` / `open_content` / `build_archive`。
+- [x] `backend/app/public_share/router.py`：7 個端點（§6.12.9），**不得依賴 `CurrentUserId`**。
+- [x] `backend/app/api/v1/router.py`：掛載 `public_share` router。
+- [x] 移除舊的 `POST /share/links/validate`（由 `POST /public/links/{token}/session` 取代），同步更新既有測試。
 
 ### 測試任務
 
-- [ ] 未設密碼的連結可直接換到憑證，回應含根項目中繼資料。
-- [ ] 密碼錯誤與 token 不存在的回應狀態碼／錯誤碼／訊息完全相同。
-- [ ] share 憑證無法通過 `get_current_user_id`（不可冒充使用者）。
-- [ ] 使用者 access token 無法存取 `/public/*`。
-- [ ] `viewer` 憑證下載原檔回 403；`downloader` 成功。
-- [ ] 以憑證存取子樹以外的 item id 回 404（非 403）。
-- [ ] 分享者停用連結後，尚未過期的憑證立即失效。
-- [ ] 第 6 次驗證嘗試被鎖定；鎖定期滿後恢復。
-- [ ] 續發不能突破總時長上限。
-- [ ] integration：`downloader` 資料夾連結可取得 zip，且 zip 內不含子樹以外項目。
+- [x] 未設密碼的連結可直接換到憑證，回應含根項目中繼資料。
+- [x] 密碼錯誤與 token 不存在的回應狀態碼／錯誤碼／訊息完全相同。
+- [x] share 憑證無法通過 `get_current_user_id`（不可冒充使用者）。
+- [x] 使用者 access token 無法存取 `/public/*`。
+- [x] `viewer` 憑證下載原檔回 403；`downloader` 成功。
+- [x] 以憑證存取子樹以外的 item id 回 404（非 403）。
+- [x] 分享者停用連結後，尚未過期的憑證立即失效。
+- [x] 第 6 次驗證嘗試被鎖定；鎖定期滿後恢復。
+- [x] 續發不能突破總時長上限。
+- [x] integration：`downloader` 資料夾連結可取得 zip，且 zip 內不含子樹以外項目。
+
+### 追加（實作時發現，非原規劃）
+
+- [x] `app/preview/service.py`：抽出 `content_for_item()` 與 `resolve_preview_type()`，讓公開路徑重用 Office 轉 PDF／文字截斷，不重寫一份。
+- [x] `app/share/service.py`：公開連結密碼改用 `hash_password`（pwdlib），取代裸 SHA-256。
+- [x] `app/share/service.py`：**修既有漏洞**——`deactivate_link` 從未驗證擁有權（舊註解宣稱 router 會做，router 沒做），任何登入者知道 link id 就能停用他人連結。已加 owner 檢查與回歸測試。
 
 ### 驗收條件
 
 proposal §28.5 全部 9 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
+
+**驗證結果（2026-07-26）**：單元 25 項（`tests/public_share/`）+ integration 7 項（`tests/integration/test_public_share_flow.py`，對真 Postgres）全過；後端全套 781 passed；`ruff` / `mypy` 全綠；migration `0020` 於全新 DB 跑完整條鏈並測過 downgrade。
 
 ### 風險
 

@@ -79,6 +79,11 @@ def _resolve_preview_type(
     return PreviewType.UNSUPPORTED
 
 
+def resolve_preview_type(item: DriveItem) -> PreviewType:
+    """How this item should be previewed, given the server's Office support."""
+    return _resolve_preview_type(item.mime_type, item.extension, office=office_available())
+
+
 class PreviewService:
     def __init__(
         self,
@@ -101,7 +106,7 @@ class PreviewService:
 
     async def get_info(self, user_id: UUID, item_id: UUID) -> PreviewInfoResponse:
         item = await self._get_file(user_id, item_id)
-        ptype = _resolve_preview_type(item.mime_type, item.extension, office=office_available())
+        ptype = resolve_preview_type(item)
         # Document is delivered as PDF; report that so the client uses the PDF viewer.
         mime = "application/pdf" if ptype == PreviewType.DOCUMENT else item.mime_type
         return PreviewInfoResponse(
@@ -117,11 +122,22 @@ class PreviewService:
     ) -> tuple[PreviewType, str, AsyncGenerator[bytes, None]]:
         """Returns (preview_type, effective_mime_type, byte_stream)."""
         item = await self._get_file(user_id, item_id)
+        return await self.content_for_item(item)
+
+    async def content_for_item(
+        self, item: DriveItem
+    ) -> tuple[PreviewType, str, AsyncGenerator[bytes, None]]:
+        """Same as :meth:`get_content` for an item the caller already authorised.
+
+        Used by the public share path (§6.12.8), where authorisation comes from
+        a share credential rather than a user id — so that Office conversion,
+        text truncation and mime resolution are not duplicated there.
+        """
         if not item.storage_key or not await self._storage.exists(item.storage_key):
             raise AppError(
                 ErrorCode.ITEM_CONTENT_NOT_FOUND, "File content not found", status_code=404
             )
-        ptype = _resolve_preview_type(item.mime_type, item.extension, office=office_available())
+        ptype = resolve_preview_type(item)
         if ptype == PreviewType.UNSUPPORTED:
             raise AppError(ErrorCode.INVALID_OPERATION, "File type not supported for preview")
         if ptype == PreviewType.DOCUMENT:

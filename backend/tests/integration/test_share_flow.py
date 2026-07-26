@@ -125,9 +125,10 @@ async def test_deactivate_share_link(client: AsyncClient) -> None:
     deact = await client.delete(f"/api/v1/share/links/{link_id}", headers=h)
     assert deact.status_code == 204
 
-    # Validating the deactivated link should fail
-    validate = await client.post("/api/v1/share/links/validate", params={"token": link_token})
-    assert validate.status_code in (400, 401, 404, 410)
+    # Opening the deactivated link as a guest must fail (§28.5 criterion 4).
+    opened = await client.post(f"/api/v1/public/links/{link_token}/session", json={})
+    assert opened.status_code == 404
+    assert opened.json()["error"]["code"] == "SHARE_LINK_INVALID"
 
 
 async def test_editor_can_modify_shared_item(client: AsyncClient) -> None:

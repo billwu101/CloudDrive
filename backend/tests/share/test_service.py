@@ -88,12 +88,34 @@ class MemShareLinkRepo(AbstractShareLinkRepository):
             is_active=True,
             created_by=created_by,
             created_at=datetime.now(UTC),
+            # Column defaults are applied on flush, which never happens here —
+            # set them explicitly so the fake matches a persisted row.
+            attempt_window_start=None,
+            attempt_count=0,
+            locked_until=None,
         )
         self._links.append(link)
         return link
 
     async def get_by_token_hash(self, token_hash: str) -> ShareLink | None:
         return next((lnk for lnk in self._links if lnk.token_hash == token_hash), None)
+
+    async def get_by_id(self, link_id: UUID) -> ShareLink | None:
+        return next((lnk for lnk in self._links if lnk.id == link_id), None)
+
+    async def update_attempt_state(
+        self,
+        link_id: UUID,
+        *,
+        window_start: datetime | None,
+        count: int,
+        locked_until: datetime | None,
+    ) -> None:
+        for lnk in self._links:
+            if lnk.id == link_id:
+                lnk.attempt_window_start = window_start
+                lnk.attempt_count = count
+                lnk.locked_until = locked_until
 
     async def deactivate(self, link_id: UUID) -> None:
         for lnk in self._links:
@@ -319,3 +341,22 @@ async def test_validate_deactivated_link_raises() -> None:
     with pytest.raises(AppError) as exc_info:
         await svc.validate_access(token)
     assert exc_info.value.code == ErrorCode.INVALID_OPERATION
+
+
+async def test_deactivate_link_rejects_a_stranger() -> None:
+    """Regression: any signed-in user could disable any link they knew the id of."""
+    owner_id, other_id = uuid4(), uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+
+    with pytest.raises(ForbiddenError):
+        await svc.deactivate_link(other_id, created.id)
+
+    stored = await links.get_by_id(created.id)
+    assert stored is not None and stored.is_active is True
+
+    await svc.deactivate_link(owner_id, created.id)
+    stored = await links.get_by_id(created.id)
+    assert stored is not None and stored.is_active is False

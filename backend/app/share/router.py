@@ -113,22 +113,6 @@ async def create_link(
     return result
 
 
-@router.post(
-    "/links/validate",
-    response_model=ShareLinkResponse,
-    summary="Validate a share link (and password if set)",
-)
-async def validate_link(
-    token: str,
-    service: LinkServiceDep,
-    password: str | None = None,
-) -> ShareLinkResponse:
-    from app.share.service import _link_to_response
-
-    link = await service.validate_access(token, password=password)
-    return _link_to_response(link)
-
-
 @router.delete(
     "/links/{link_id}",
     status_code=204,

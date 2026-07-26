@@ -9,6 +9,7 @@ from app.activity_log.actions import ActivityAction
 from app.activity_log.service import ActivityLogService
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, ForbiddenError, NotFoundError
+from app.core.security import hash_password, verify_password
 from app.drive.repository import AbstractDriveItemRepository
 from app.models.share import Share
 from app.models.share_link import ShareLink
@@ -145,7 +146,10 @@ class ShareLinkService:
 
         token = secrets.token_urlsafe(32)
         token_hash = _hash_token(token)
-        password_hash = _hash_token(password) if password else None
+        # A share password is a user-chosen secret, so it gets a real password
+        # hash (salted, constant-time verify) rather than the bare SHA-256 used
+        # for the high-entropy token. Design §6.12.11 rule 3.
+        password_hash = hash_password(password) if password else None
 
         link = await self._links.create(
             item_id=item_id,
@@ -167,12 +171,18 @@ class ShareLinkService:
         if link.expires_at is not None and link.expires_at < datetime.now(UTC):
             raise AppError(ErrorCode.INVALID_OPERATION, "Share link has expired")
         if link.password_hash is not None and (
-            password is None or _hash_token(password) != link.password_hash
+            password is None or not verify_password(password, link.password_hash)
         ):
             raise ForbiddenError("Invalid password")
         return link
 
     async def deactivate_link(self, actor_id: UUID, link_id: UUID) -> None:
-        # We'd need a get_by_id on links — for simplicity, only the owner can deactivate
-        # Callers must verify ownership before calling (router handles this)
+        # The old comment here claimed the router checked ownership; it never
+        # did, so any signed-in user could kill any link they knew the id of.
+        link = await self._links.get_by_id(link_id)
+        if link is None:
+            raise NotFoundError("Share link not found")
+        item = await self._items.get_by_id(link.item_id)
+        if item is None or item.owner_id != actor_id:
+            raise ForbiddenError("Only the owner can deactivate share links")
         await self._links.deactivate(link_id)

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.share import Share
@@ -55,6 +55,20 @@ class AbstractShareLinkRepository(ABC):
 
     @abstractmethod
     async def get_by_token_hash(self, token_hash: str) -> ShareLink | None: ...
+
+    @abstractmethod
+    async def get_by_id(self, link_id: UUID) -> ShareLink | None: ...
+
+    @abstractmethod
+    async def update_attempt_state(
+        self,
+        link_id: UUID,
+        *,
+        window_start: datetime | None,
+        count: int,
+        locked_until: datetime | None,
+    ) -> None:
+        """Persist validation-attempt throttling state (design §6.12.11 rule 6)."""
 
     @abstractmethod
     async def deactivate(self, link_id: UUID) -> None: ...
@@ -159,6 +173,29 @@ class SQLShareLinkRepository(AbstractShareLinkRepository):  # pragma: no cover
             select(ShareLink).where(ShareLink.token_hash == token_hash)
         )
         return result.scalar_one_or_none()
+
+    async def get_by_id(self, link_id: UUID) -> ShareLink | None:
+        result = await self._session.execute(select(ShareLink).where(ShareLink.id == link_id))
+        return result.scalar_one_or_none()
+
+    async def update_attempt_state(
+        self,
+        link_id: UUID,
+        *,
+        window_start: datetime | None,
+        count: int,
+        locked_until: datetime | None,
+    ) -> None:
+        await self._session.execute(
+            update(ShareLink)
+            .where(ShareLink.id == link_id)
+            .values(
+                attempt_window_start=window_start,
+                attempt_count=count,
+                locked_until=locked_until,
+            )
+        )
+        await self._session.flush()
 
     async def deactivate(self, link_id: UUID) -> None:
         result = await self._session.execute(select(ShareLink).where(ShareLink.id == link_id))
