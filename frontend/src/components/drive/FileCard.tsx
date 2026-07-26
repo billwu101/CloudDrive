@@ -3,6 +3,7 @@ import { Star } from 'lucide-react'
 import type { DriveItemResponse } from '@/api/types'
 
 import { FileIcon } from './FileIcon'
+import { ShareBadges } from './ShareBadges'
 
 interface FileCardProps {
   item: DriveItemResponse
@@ -54,9 +55,15 @@ export function FileCard({ item, selected, onClick, onDoubleClick, onContextMenu
         />
       </div>
 
-      <p className="w-full truncate text-center text-xs font-medium" title={item.name}>
-        {item.name}
-      </p>
+      <div className="flex w-full min-w-0 items-center justify-center gap-1">
+        <p className="truncate text-center text-xs font-medium" title={item.name}>
+          {item.name}
+        </p>
+        <ShareBadges
+          isSharedWithUsers={item.is_shared_with_users}
+          hasActivePublicLink={item.has_active_public_link}
+        />
+      </div>
     </div>
   )
 }

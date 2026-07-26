@@ -7,7 +7,6 @@
  *   - 查看分享給我的項目 (GET /share/shared-with-me)
  *   - 建立公開分享連結 (POST /share/items/:id/links)
  *   - 建立含密碼與到期時間的連結
- *   - 驗證分享連結 (POST /share/links/validate)
  *   - 停用分享連結 (DELETE /share/links/:id)
  */
 import { http, HttpResponse } from 'msw'
@@ -83,17 +82,6 @@ const server = setupServer(
     )
   }),
 
-  http.post(`${BASE}/share/links/validate`, ({ request }) => {
-    const url = new URL(request.url)
-    const token = url.searchParams.get('token')
-    if (token !== 'public-tok-abc') {
-      return HttpResponse.json(
-        { error: { code: 'NOT_FOUND', message: 'Link not found or inactive', details: {} } },
-        { status: 404 },
-      )
-    }
-    return HttpResponse.json(MOCK_LINK)
-  }),
 
   http.delete(`${BASE}/share/links/:id`, () => new HttpResponse(null, { status: 204 })),
 
@@ -216,35 +204,6 @@ describe('createLink (POST /share/items/:id/links)', () => {
   it('link has null expires_at when not set', async () => {
     const res = await shareApi.createLink('file-1', 'viewer')
     expect(res.data.expires_at).toBeNull()
-  })
-})
-
-// ── 驗證分享連結 ──────────────────────────────────────────────────────────────
-
-describe('validateLink (POST /share/links/validate)', () => {
-  it('returns link info for valid token', async () => {
-    const res = await shareApi.validateLink('public-tok-abc')
-    expect(res.status).toBe(200)
-    expect(res.data.is_active).toBe(true)
-    expect(res.data.token).toBe('public-tok-abc')
-  })
-
-  it('rejects with 404 for invalid token', async () => {
-    await expect(
-      shareApi.validateLink('bad-token'),
-    ).rejects.toMatchObject({ status: 404 })
-  })
-
-  it('sends token as query param', async () => {
-    let capturedUrl = ''
-    server.use(
-      http.post(`${BASE}/share/links/validate`, ({ request }) => {
-        capturedUrl = request.url
-        return HttpResponse.json(MOCK_LINK)
-      }),
-    )
-    await shareApi.validateLink('public-tok-abc')
-    expect(capturedUrl).toContain('token=public-tok-abc')
   })
 })
 

@@ -14,6 +14,7 @@ from app.drive.schemas import DriveItemSortField, ItemType
 from app.models.drive_item import DriveItem
 from app.permission.service import PermissionService
 from app.schemas.common import DriveItemResponse, Page, SortOrder
+from app.share.repository import AbstractShareManagementRepository, ShareBadges
 
 _INVALID_NAME_CHARS = frozenset("/\\\x00")
 _MAX_NAME_LEN = 512
@@ -30,7 +31,9 @@ def _validate_name(name: str) -> str:
     return name
 
 
-def _to_response(item: DriveItem, *, is_starred: bool) -> DriveItemResponse:
+def _to_response(
+    item: DriveItem, *, is_starred: bool, badges: ShareBadges | None = None
+) -> DriveItemResponse:
     return DriveItemResponse(
         id=item.id,
         owner_id=item.owner_id,
@@ -47,6 +50,8 @@ def _to_response(item: DriveItem, *, is_starred: bool) -> DriveItemResponse:
         updated_by=item.updated_by,
         created_at=item.created_at,
         updated_at=item.updated_at,
+        is_shared_with_users=badges.shared_with_users if badges else False,
+        has_active_public_link=badges.has_active_public_link if badges else False,
     )
 
 
@@ -57,10 +62,15 @@ class DriveService:
         pref_repo: AbstractUserItemPreferenceRepository,
         activity_svc: ActivityLogService | None = None,
         permission_svc: PermissionService | None = None,
+        share_repo: AbstractShareManagementRepository | None = None,
     ) -> None:
         self._items = item_repo
         self._prefs = pref_repo
         self._activity = activity_svc
+        # Supplies the "shared / publicly linked" badges for a listing. Optional
+        # so existing callers (and tests) that never show badges keep working —
+        # without it both flags stay False.
+        self._shares = share_repo
         # Resolves shares so collaborators (editor/viewer) get the access the
         # permission table grants them. Without it these operations fall back to
         # owner-only, which is what the service did before shares were honoured.
@@ -117,6 +127,12 @@ class DriveService:
 
     async def _starred(self, user_id: UUID, items: list[DriveItem]) -> set[UUID]:
         return await self._prefs.get_starred_ids(user_id, [i.id for i in items])
+
+    async def _badges(self, user_id: UUID, items: list[DriveItem]) -> dict[UUID, ShareBadges]:
+        """Sharing badges for a whole page in one query, or none at all."""
+        if self._shares is None or not items:
+            return {}
+        return await self._shares.get_share_badges(user_id, [i.id for i in items])
 
     async def _log(
         self,
@@ -228,7 +244,10 @@ class DriveService:
             limit=page_size,
         )
         starred = await self._starred(user_id, items)
-        responses = [_to_response(i, is_starred=i.id in starred) for i in items]
+        badges = await self._badges(user_id, items)
+        responses = [
+            _to_response(i, is_starred=i.id in starred, badges=badges.get(i.id)) for i in items
+        ]
         return Page[DriveItemResponse].create(responses, total, page=page, page_size=page_size)
 
     async def create_folder(

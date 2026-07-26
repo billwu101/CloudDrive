@@ -11,17 +11,58 @@ from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, ForbiddenError, NotFoundError
 from app.core.security import hash_password, verify_password
 from app.drive.repository import AbstractDriveItemRepository
+from app.models.drive_item import DriveItem
 from app.models.share import Share
 from app.models.share_link import ShareLink
 from app.permission.permissions import Permission
-from app.schemas.common import Page
+from app.schemas.common import DriveItemResponse, Page
 from app.share.repository import AbstractShareLinkRepository, AbstractShareManagementRepository
-from app.share.schemas import ShareLinkResponse, ShareResponse
+from app.share.schemas import (
+    SharedByMeEntry,
+    SharedByMeLink,
+    SharedByMeUserShare,
+    ShareLinkResponse,
+    ShareResponse,
+)
 from app.users.service import UserService
 
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _item_to_response(
+    item: DriveItem, *, shared_with_users: bool, has_active_link: bool
+) -> DriveItemResponse:
+    """Item metadata for a "shared by me" row.
+
+    Starred state is not resolved here — it belongs to the drive listing, and
+    fetching it would add a query per page for something this view never shows.
+    """
+    return DriveItemResponse(
+        id=item.id,
+        owner_id=item.owner_id,
+        parent_id=item.parent_id,
+        item_type=item.item_type,
+        name=item.name,
+        mime_type=item.mime_type,
+        extension=item.extension,
+        size_bytes=item.size_bytes,
+        is_starred=False,
+        is_deleted=item.is_deleted,
+        deleted_at=item.deleted_at,
+        created_by=item.created_by,
+        updated_by=item.updated_by,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        is_shared_with_users=shared_with_users,
+        has_active_public_link=has_active_link,
+    )
+
+
+def _link_live(link: ShareLink, now: datetime) -> bool:
+    """A link is usable only while enabled and unexpired."""
+    return link.is_active and (link.expires_at is None or link.expires_at > now)
 
 
 def _share_to_response(share: Share) -> ShareResponse:
@@ -104,6 +145,52 @@ class ShareService:
             await self._activity.log(
                 actor_id=actor_id, action=ActivityAction.UNSHARE, item_id=item_id
             )
+
+    async def list_shared_by_me(
+        self, user_id: UUID, *, page: int = 1, page_size: int = 20
+    ) -> Page[SharedByMeEntry]:
+        """What this user has shared out, one entry per item (proposal §29).
+
+        The reverse of "shared with me": without it there is no single place to
+        see — or take back — what has been handed out, and a forgotten public
+        link can stay live indefinitely.
+        """
+        offset = (page - 1) * page_size
+        rows, total = await self._shares.list_shared_by_me(user_id, offset=offset, limit=page_size)
+        now = datetime.now(UTC)
+        entries = [
+            SharedByMeEntry(
+                item=_item_to_response(
+                    row.item,
+                    shared_with_users=bool(row.shares),
+                    has_active_link=any(_link_live(lnk, now) for lnk in row.links),
+                ),
+                user_shares=[
+                    SharedByMeUserShare(
+                        target_user_id=share.target_user_id,
+                        email=user.email,
+                        username=user.username,
+                        permission=share.permission,
+                        created_at=share.created_at,
+                    )
+                    for share, user in row.shares
+                ],
+                links=[
+                    SharedByMeLink(
+                        link_id=link.id,
+                        permission=link.permission,
+                        # Never the hash — only whether one exists.
+                        has_password=link.password_hash is not None,
+                        expires_at=link.expires_at,
+                        is_active=_link_live(link, now),
+                        created_at=link.created_at,
+                    )
+                    for link in row.links
+                ],
+            )
+            for row in rows
+        ]
+        return Page.create(entries, total, page=page, page_size=page_size)
 
     async def list_shared_with_me(
         self, user_id: UUID, *, page: int = 1, page_size: int = 20

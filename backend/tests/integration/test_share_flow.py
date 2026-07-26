@@ -204,3 +204,96 @@ async def test_viewer_cannot_modify_shared_item(client: AsyncClient) -> None:
     assert renamed.status_code == 403
     # Viewing is still allowed.
     assert (await client.get(f"/api/v1/drive/items/{item_id}", headers=viewer)).status_code == 200
+
+
+# ── Shared by me (proposal §29) ──────────────────────────────────────────────
+
+
+async def test_shared_by_me_aggregates_and_badges_the_drive_listing(
+    client: AsyncClient,
+) -> None:
+    """The reverse view plus the My Drive markers, against real SQL.
+
+    The grouping and the badge query are pure repository work, so the in-memory
+    fakes cannot vouch for them.
+    """
+    owner = await register_and_login(client, email="sbm-owner@test.com", username="sbmowner")
+    h = auth_headers(owner)
+    for i in range(2):
+        await register_and_login(client, email=f"sbm-friend{i}@test.com", username=f"sbmfriend{i}")
+
+    deck = (await client.post("/api/v1/drive/folders", json={"name": "Deck"}, headers=h)).json()
+    # Never shared — the control case for both the listing and the badges.
+    await client.post("/api/v1/drive/folders", json={"name": "Private"}, headers=h)
+    linked = (await client.post("/api/v1/drive/folders", json={"name": "Linked"}, headers=h)).json()
+
+    for i in range(2):
+        resp = await client.post(
+            f"/api/v1/share/items/{deck['id']}",
+            json={"target_email": f"sbm-friend{i}@test.com", "permission": "viewer"},
+            headers=h,
+        )
+        assert resp.status_code == 201, resp.text
+    await client.post(
+        f"/api/v1/share/items/{deck['id']}/links",
+        json={"permission": "viewer", "password": "pw"},
+        headers=h,
+    )
+    await client.post(
+        f"/api/v1/share/items/{linked['id']}/links",
+        json={"permission": "downloader"},
+        headers=h,
+    )
+
+    listed = await client.get("/api/v1/share/shared-by-me", headers=h)
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    by_name = {e["item"]["name"]: e for e in body["items"]}
+
+    assert body["total"] == 2  # Private is not listed at all
+    assert "Private" not in by_name
+    # Two people plus a link on one item is a single entry (§29.3 criterion 4).
+    assert len(by_name["Deck"]["user_shares"]) == 2
+    assert len(by_name["Deck"]["links"]) == 1
+    assert by_name["Deck"]["links"][0]["has_password"] is True
+    assert "pw" not in listed.text and "password_hash" not in listed.text
+    assert {u["email"] for u in by_name["Deck"]["user_shares"]} == {
+        "sbm-friend0@test.com",
+        "sbm-friend1@test.com",
+    }
+
+    # My Drive markers: the two kinds of sharing stay distinguishable.
+    drive = await client.get("/api/v1/drive/items", headers=h)
+    flags = {
+        i["name"]: (i["is_shared_with_users"], i["has_active_public_link"])
+        for i in drive.json()["items"]
+    }
+    assert flags["Deck"] == (True, True)
+    assert flags["Linked"] == (False, True)
+    assert flags["Private"] == (False, False)
+
+
+async def test_shared_by_me_drops_trashed_items_and_marks_dead_links(
+    client: AsyncClient,
+) -> None:
+    owner = await register_and_login(client, email="sbm-trash@test.com", username="sbmtrash")
+    h = auth_headers(owner)
+    gone = (await client.post("/api/v1/drive/folders", json={"name": "Gone"}, headers=h)).json()
+    kept = (await client.post("/api/v1/drive/folders", json={"name": "Kept"}, headers=h)).json()
+
+    await client.post(
+        f"/api/v1/share/items/{gone['id']}/links", json={"permission": "viewer"}, headers=h
+    )
+    created = await client.post(
+        f"/api/v1/share/items/{kept['id']}/links", json={"permission": "viewer"}, headers=h
+    )
+    await client.post(f"/api/v1/trash/items/{gone['id']}", headers=h)
+    await client.delete(f"/api/v1/share/links/{created.json()['id']}", headers=h)
+
+    body = (await client.get("/api/v1/share/shared-by-me", headers=h)).json()
+    names = [e["item"]["name"] for e in body["items"]]
+
+    assert names == ["Kept"]  # trashed item disappears from the view
+    # The disabled link stays visible so the owner knows it once existed.
+    assert body["items"][0]["links"][0]["is_active"] is False
+    assert body["items"][0]["item"]["has_active_public_link"] is False

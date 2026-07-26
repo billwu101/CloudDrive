@@ -452,10 +452,9 @@ UserShareForm
 PermissionSelect
 ShareMemberList
 ShareLinkPanel
-SharedByMeList          # §5.9.5
-SharedByMeRow           # 可展開，展開後列出對象與連結
-ShareBadges             # My Drive 列表上的兩種標記
-PublicSharePage         # §5.9.6，/s/:shareToken
+SharedByMeRow           # §5.9.5，可展開，展開後列出對象與連結
+ShareBadges             # My Drive 列表上的兩種標記（FileRow 與 FileCard 共用）
+ShareTokenPage          # §5.9.6，/s/:shareToken（沿用既有檔名，非另開 PublicSharePage）
 PublicPasswordForm
 PublicFolderBrowser
 ```
@@ -506,11 +505,13 @@ Sidebar 於「Shared with me」下方新增入口。
   └─ 404      → 顯示統一的「連結無效或已失效」
 ```
 
-1. **憑證只放記憶體**（React state / module 變數），比照 access token 不寫 localStorage／sessionStorage。頁面重整即重新驗證。
+1. **憑證只放記憶體**（`publicShareApi` 的 module 變數），比照 access token 不寫 localStorage／sessionStorage。頁面重整即重新驗證。
 2. **密碼不留存**：驗證成功後即丟棄，續期改呼叫 `session/refresh`（§6.12.8）。
 3. **錯誤訊息統一**：token 不存在、密碼錯誤、已停用、已過期共用同一則文案，前端不得依後端細節再細分（否則抵銷 §6.12.11 第 1 點的不可區分性）。
 4. `viewer` 連結不渲染下載與 zip 按鈕；資料夾連結在 `downloader` 以上顯示「下載整個資料夾」。
-5. 內容請求以獨立 axios 實例送出（帶 share access token，不掛使用者 token 的 401→refresh 攔截器）。
+5. 內容請求以獨立 axios 實例送出（帶 share access token，不掛使用者 token 的 401→refresh 攔截器）。此處的 401 意義是「這個連結需要密碼」，不是「你的登入過期了」——若沿用主 client 的攔截器會誤觸 refresh。實例共用 `client.ts` 匯出的 `BASE_URL` 與 `toApiError`。
+6. **session 狀態走 TanStack Query**（`['public-share','session',token]`）而非 `useState` + effect：初次探測是一個 query、輸入密碼是一個 mutation，成功後以 `setQueryData` 覆寫同一把 key。這樣不需要在 effect 內同步 state（專案的 `react-hooks/set-state-in-effect` 規則會擋）。
+7. **`ShareBadges` 同時用在 `FileRow`（清單）與 `FileCard`（格狀）**，兩種檢視都要標，否則切換檢視就看不到分享狀態。
 
 #### 可獨立測試項
 

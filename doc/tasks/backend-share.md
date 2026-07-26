@@ -127,22 +127,24 @@ proposal §28.5 全部 9 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 
 ### 子任務
 
-- [ ] `backend/app/share/schemas.py`：`SharedByMeUserShare` / `SharedByMeLink` / `SharedByMeEntry`。
-- [ ] `backend/app/share/repository.py`：以 owner 撈 `shares` + `share_links`，批次 join `drive_items`（排除 `is_deleted`）。
-- [ ] `backend/app/share/service.py`：`list_shared_by_me()`，以 `item_id` 聚合成一項目一列。
-- [ ] `backend/app/share/router.py`：`GET /share/shared-by-me`（分頁）。
-- [ ] `backend/app/schemas/`：`DriveItemResponse` 新增 `is_shared_with_users` / `has_active_public_link`。
-- [ ] `backend/app/drive/service.py`：`list_items` 以一次 `IN` 批次查詢填入兩欄位（不可 N+1）。
+- [x] `backend/app/share/schemas.py`：`SharedByMeUserShare` / `SharedByMeLink` / `SharedByMeEntry`。
+- [x] `backend/app/share/repository.py`：以 owner 撈 `shares` + `share_links`，批次 join `drive_items`（排除 `is_deleted`）。
+- [x] `backend/app/share/service.py`：`list_shared_by_me()`，以 `item_id` 聚合成一項目一列。
+- [x] `backend/app/share/router.py`：`GET /share/shared-by-me`（分頁）。
+- [x] `backend/app/schemas/`：`DriveItemResponse` 新增 `is_shared_with_users` / `has_active_public_link`。
+- [x] `backend/app/drive/service.py`：`list_items` 以一次 `IN` 批次查詢填入兩欄位（不可 N+1）。
 
 ### 測試任務
 
-- [ ] 分享給使用者後該項目出現在 `shared-by-me`，含對象與權限。
-- [ ] 建立公開連結後該項目出現，`has_password` 正確且不回傳 hash。
-- [ ] 同一項目分享給 3 人 + 1 條連結 → 只回 1 個 entry，`user_shares` 長度 3。
-- [ ] 項目丟垃圾桶後不再列出。
-- [ ] 連結停用後仍列出但 `is_active=false`。
-- [ ] `list_items` 兩個標記欄位正確；非 owner 檢視時皆為 `false`。
+- [x] 分享給使用者後該項目出現在 `shared-by-me`，含對象與權限。
+- [x] 建立公開連結後該項目出現，`has_password` 正確且不回傳 hash。
+- [x] 同一項目分享給 3 人 + 1 條連結 → 只回 1 個 entry，`user_shares` 長度 3。
+- [x] 項目丟垃圾桶後不再列出。
+- [x] 連結停用後仍列出但 `is_active=false`。
+- [x] `list_items` 兩個標記欄位正確；非 owner 檢視時皆為 `false`。
 
 ### 驗收條件
 
 proposal §29.3 全部 5 項通過（第 5 項需搭配前端）；三項品質檢查全綠。
+
+**驗證結果（2026-07-26）**：單元 6 項（`tests/share/test_service.py`）+ 標記欄位 3 項（`tests/drive/test_service.py::TestShareBadges`，含「每頁一次查詢、不隨列數增加」）+ integration 2 項（真 Postgres 聚合查詢）；後端全套 **790 passed**；`ruff` / `mypy` 全綠。

@@ -16,6 +16,7 @@ from app.drive.service import DriveService
 from app.models.drive_item import DriveItem
 from app.models.user_item_preference import UserItemPreference
 from app.schemas.common import SortOrder
+from app.share.repository import ShareBadges
 
 # ── Fake repositories ────────────────────────────────────────────────────────
 
@@ -561,3 +562,81 @@ class TestGetAncestors:
         svc = _svc()
         with pytest.raises(NotFoundError):
             await svc.get_ancestors(user, uuid4())
+
+
+# ── share badges in the listing (proposal §29.2 rule 5) ──────────────────────
+
+
+class _BadgeRepo:
+    """Just the one method DriveService uses, plus a call counter.
+
+    Defined here rather than reusing tests.share's fake: that module already
+    imports from this one, so pulling it back in would be a cycle.
+    """
+
+    def __init__(self, badges: dict[UUID, ShareBadges]) -> None:
+        self._badges = badges
+        self.calls = 0
+
+    async def get_share_badges(
+        self, owner_id: UUID, item_ids: list[UUID]
+    ) -> dict[UUID, ShareBadges]:
+        self.calls += 1
+        return {i: self._badges.get(i, ShareBadges(False, False)) for i in item_ids}
+
+
+class TestShareBadges:
+    """The two flags must stay distinguishable: a public link needs no account
+    at all, so it cannot be collapsed into one generic "shared" marker."""
+
+    @staticmethod
+    def _svc(
+        items: list[DriveItem], badges: dict[UUID, ShareBadges]
+    ) -> tuple[DriveService, _BadgeRepo]:
+        repo = _BadgeRepo(badges)
+        svc = DriveService(
+            item_repo=MemDriveItemRepo(items),
+            pref_repo=MemPrefRepo(),
+            share_repo=repo,  # type: ignore[arg-type]
+        )
+        return svc, repo
+
+    async def test_both_flags_are_reported_independently(self) -> None:
+        user = uuid4()
+        with_people = _item(owner_id=user, name="A")
+        with_link = _item(owner_id=user, name="B")
+        both = _item(owner_id=user, name="C")
+        private = _item(owner_id=user, name="D")
+        svc, _ = self._svc(
+            [with_people, with_link, both, private],
+            {
+                with_people.id: ShareBadges(True, False),
+                with_link.id: ShareBadges(False, True),
+                both.id: ShareBadges(True, True),
+            },
+        )
+
+        page = await svc.list_items(user, None)
+        flags = {i.name: (i.is_shared_with_users, i.has_active_public_link) for i in page.items}
+
+        assert flags["A"] == (True, False)
+        assert flags["B"] == (False, True)
+        assert flags["C"] == (True, True)
+        assert flags["D"] == (False, False)
+
+    async def test_badges_cost_one_query_per_page_not_per_row(self) -> None:
+        user = uuid4()
+        items = [_item(owner_id=user, name=str(i)) for i in range(10)]
+        svc, repo = self._svc(items, {})
+
+        await svc.list_items(user, None, page_size=10)
+
+        assert repo.calls == 1
+
+    async def test_listing_works_without_a_share_repo(self) -> None:
+        """Callers that never show badges keep working; both flags stay False."""
+        user = uuid4()
+        item = _item(owner_id=user, name="A")
+        page = await _svc([item]).list_items(user, None)
+        assert page.items[0].is_shared_with_users is False
+        assert page.items[0].has_active_public_link is False

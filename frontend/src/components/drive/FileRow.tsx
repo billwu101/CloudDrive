@@ -3,6 +3,7 @@ import { Star } from 'lucide-react'
 import type { DriveItemResponse } from '@/api/types'
 
 import { FileIcon } from './FileIcon'
+import { ShareBadges } from './ShareBadges'
 
 interface FileRowProps {
   item: DriveItemResponse
@@ -60,7 +61,15 @@ export function FileRow({ item, selected, onClick, onDoubleClick, onContextMenu,
           <FileIcon mimeType={item.mime_type} isFolder={item.item_type === 'FOLDER'} />
         </div>
       </td>
-      <td className="py-2 pr-3 text-sm font-medium truncate max-w-xs">{item.name}</td>
+      <td className="py-2 pr-3 text-sm font-medium max-w-xs">
+        <div className="flex items-center gap-2">
+          <span className="truncate">{item.name}</span>
+          <ShareBadges
+            isSharedWithUsers={item.is_shared_with_users}
+            hasActivePublicLink={item.has_active_public_link}
+          />
+        </div>
+      </td>
       <td className="py-2 pr-3 text-sm text-muted-foreground whitespace-nowrap">
         {item.item_type === 'FILE' && item.size_bytes != null ? formatBytes(item.size_bytes) : '—'}
       </td>

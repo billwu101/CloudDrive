@@ -10,6 +10,7 @@ from app.drive.repository import SQLDriveItemRepository
 from app.schemas.common import Page
 from app.share.repository import SQLShareLinkRepository, SQLShareManagementRepository
 from app.share.schemas import (
+    SharedByMeEntry,
     ShareLinkRequest,
     ShareLinkResponse,
     ShareRequest,
@@ -87,6 +88,20 @@ async def shared_with_me(
     page_size: int = 20,
 ) -> Page[ShareResponse]:
     return await service.list_shared_with_me(current_user_id, page=page, page_size=page_size)
+
+
+@router.get(
+    "/shared-by-me",
+    response_model=Page[SharedByMeEntry],
+    summary="List items I have shared out",
+)
+async def shared_by_me(
+    current_user_id: CurrentUserId,
+    service: ShareServiceDep,
+    page: int = 1,
+    page_size: int = 20,
+) -> Page[SharedByMeEntry]:
+    return await service.list_shared_by_me(current_user_id, page=page, page_size=page_size)
 
 
 @router.post(

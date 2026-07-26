@@ -18,6 +18,7 @@ from app.drive.service import DriveService
 from app.permission.repository import SQLShareRepository
 from app.permission.service import PermissionService
 from app.schemas.common import DriveItemResponse, Page, SortOrder
+from app.share.repository import SQLShareManagementRepository
 
 router = APIRouter(prefix="/drive", tags=["drive"])
 
@@ -31,6 +32,7 @@ def _drive_service(session: DbSession) -> DriveService:
             share_repo=SQLShareRepository(session),
             item_repo=SQLDriveItemRepository(session),
         ),
+        share_repo=SQLShareManagementRepository(session),
     )
 
 
