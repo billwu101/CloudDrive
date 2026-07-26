@@ -290,7 +290,7 @@ export function DrivePage() {
             onRename={(item) => setRenameTarget(item)}
             onMove={(item) => setMoveTarget(item)}
             onShare={() => {}}
-            onCopyLink={() => {}}
+            onCopyName={(item) => void navigator.clipboard?.writeText(item.name)}
             onToggleStar={(item) => star.mutate({ id: item.id, starred: !item.is_starred })}
             onTrash={(item) => setTrashTargets([item])}
             onAssistantAction={handleAssistantAction}
