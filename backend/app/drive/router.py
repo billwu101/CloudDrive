@@ -15,6 +15,8 @@ from app.drive.schemas import (
     StarRequest,
 )
 from app.drive.service import DriveService
+from app.permission.repository import SQLShareRepository
+from app.permission.service import PermissionService
 from app.schemas.common import DriveItemResponse, Page, SortOrder
 
 router = APIRouter(prefix="/drive", tags=["drive"])
@@ -25,6 +27,10 @@ def _drive_service(session: DbSession) -> DriveService:
         item_repo=SQLDriveItemRepository(session),
         pref_repo=SQLUserItemPreferenceRepository(session),
         activity_svc=ActivityLogService(SQLActivityLogRepository(session)),
+        permission_svc=PermissionService(
+            share_repo=SQLShareRepository(session),
+            item_repo=SQLDriveItemRepository(session),
+        ),
     )
 
 

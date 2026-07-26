@@ -12,6 +12,7 @@ from app.drive.repository import (
 )
 from app.drive.schemas import DriveItemSortField, ItemType
 from app.models.drive_item import DriveItem
+from app.permission.service import PermissionService
 from app.schemas.common import DriveItemResponse, Page, SortOrder
 
 _INVALID_NAME_CHARS = frozenset("/\\\x00")
@@ -55,19 +56,47 @@ class DriveService:
         item_repo: AbstractDriveItemRepository,
         pref_repo: AbstractUserItemPreferenceRepository,
         activity_svc: ActivityLogService | None = None,
+        permission_svc: PermissionService | None = None,
     ) -> None:
         self._items = item_repo
         self._prefs = pref_repo
         self._activity = activity_svc
+        # Resolves shares so collaborators (editor/viewer) get the access the
+        # permission table grants them. Without it these operations fall back to
+        # owner-only, which is what the service did before shares were honoured.
+        self._perm = permission_svc
 
     # ── Internal helpers ────────────────────────────────────────────────────
 
-    async def _get_owned(self, item_id: UUID, user_id: UUID) -> DriveItem:
+    async def _assert_can_view(self, item: DriveItem, user_id: UUID) -> None:
+        if self._perm is not None:
+            await self._perm.assert_can_view(user_id, item)
+        elif item.owner_id != user_id:
+            raise ForbiddenError()
+
+    async def _assert_can_edit(self, item: DriveItem, user_id: UUID) -> None:
+        """Owner or editor may modify (detailed-design §6.5 permission table).
+
+        Comparing ``owner_id`` alone silently ignored shares, so an item shared
+        as *editor* could be viewed but never modified.
+        """
+        if self._perm is not None:
+            await self._perm.assert_can_edit(user_id, item)
+        elif item.owner_id != user_id:
+            raise ForbiddenError()
+
+    async def _get_viewable(self, item_id: UUID, user_id: UUID) -> DriveItem:
         item = await self._items.get_by_id(item_id)
         if item is None or item.is_deleted:
             raise NotFoundError("Item not found")
-        if item.owner_id != user_id:
-            raise ForbiddenError()
+        await self._assert_can_view(item, user_id)
+        return item
+
+    async def _get_editable(self, item_id: UUID, user_id: UUID) -> DriveItem:
+        item = await self._items.get_by_id(item_id)
+        if item is None or item.is_deleted:
+            raise NotFoundError("Item not found")
+        await self._assert_can_edit(item, user_id)
         return item
 
     async def _is_descendant_or_self(self, candidate_id: UUID, target_id: UUID) -> bool:
@@ -103,7 +132,7 @@ class DriveService:
 
     async def get_raw_item(self, user_id: UUID, item_id: UUID) -> DriveItem:
         """Return the raw DriveItem model (ownership-checked). Used by downstream services."""
-        return await self._get_owned(item_id, user_id)
+        return await self._get_viewable(item_id, user_id)
 
     async def get_raw_item_unscoped(self, item_id: UUID) -> DriveItem:
         """Return the raw DriveItem without an ownership check.
@@ -155,7 +184,7 @@ class DriveService:
         return results
 
     async def get_item(self, user_id: UUID, item_id: UUID) -> DriveItemResponse:
-        item = await self._get_owned(item_id, user_id)
+        item = await self._get_viewable(item_id, user_id)
         starred = await self._starred(user_id, [item])
         return _to_response(item, is_starred=item.id in starred)
 
@@ -170,8 +199,7 @@ class DriveService:
         item = await self._items.get_by_id(item_id)
         if item is None:
             raise NotFoundError("Item not found")
-        if item.owner_id != user_id:
-            raise ForbiddenError()
+        await self._assert_can_view(item, user_id)
         starred = await self._starred(user_id, [item])
         return _to_response(item, is_starred=item.id in starred)
 
@@ -189,8 +217,7 @@ class DriveService:
             parent = await self._items.get_by_id(parent_id)
             if parent is None or parent.is_deleted:
                 raise NotFoundError("Folder not found")
-            if parent.owner_id != user_id:
-                raise ForbiddenError()
+            await self._assert_can_view(parent, user_id)
         offset = (page - 1) * page_size
         items, total = await self._items.list_children(
             parent_id,
@@ -215,8 +242,7 @@ class DriveService:
             parent = await self._items.get_by_id(parent_id)
             if parent is None or parent.is_deleted:
                 raise NotFoundError("Parent folder not found")
-            if parent.owner_id != user_id:
-                raise ForbiddenError()
+            await self._assert_can_edit(parent, user_id)
             if parent.item_type != ItemType.FOLDER:
                 raise AppError(ErrorCode.INVALID_OPERATION, "Parent must be a folder")
         if await self._items.name_exists_in_parent(name, parent_id, user_id):
@@ -238,7 +264,7 @@ class DriveService:
         new_name: str,
     ) -> DriveItemResponse:
         new_name = _validate_name(new_name)
-        item = await self._get_owned(item_id, user_id)
+        item = await self._get_editable(item_id, user_id)
         if item.name == new_name:
             return _to_response(item, is_starred=item.id in await self._starred(user_id, [item]))
         if await self._items.name_exists_in_parent(
@@ -256,13 +282,12 @@ class DriveService:
         item_id: UUID,
         new_parent_id: UUID | None,
     ) -> DriveItemResponse:
-        item = await self._get_owned(item_id, user_id)
+        item = await self._get_editable(item_id, user_id)
         if new_parent_id is not None:
             new_parent = await self._items.get_by_id(new_parent_id)
             if new_parent is None or new_parent.is_deleted:
                 raise NotFoundError("Destination folder not found")
-            if new_parent.owner_id != user_id:
-                raise ForbiddenError()
+            await self._assert_can_edit(new_parent, user_id)
             if new_parent.item_type != ItemType.FOLDER:
                 raise AppError(ErrorCode.INVALID_OPERATION, "Destination must be a folder")
             if item.item_type == ItemType.FOLDER and await self._is_descendant_or_self(
@@ -287,14 +312,14 @@ class DriveService:
         item_id: UUID,
         is_starred: bool,
     ) -> DriveItemResponse:
-        item = await self._get_owned(item_id, user_id)
+        item = await self._get_viewable(item_id, user_id)
         await self._prefs.upsert_preference(user_id, item_id, is_starred=is_starred)
         await self._log(actor_id=user_id, action=ActivityAction.STAR, item_id=item_id)
         return _to_response(item, is_starred=is_starred)
 
     async def get_ancestors(self, user_id: UUID, item_id: UUID) -> list[DriveItemResponse]:
         """Return [root_folder, ..., direct_parent] for item_id. Current item excluded."""
-        item = await self._get_owned(item_id, user_id)
+        item = await self._get_viewable(item_id, user_id)
         chain: list[DriveItem] = []
         current_parent_id = item.parent_id
         seen: set[UUID] = set()

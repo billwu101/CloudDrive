@@ -128,3 +128,78 @@ async def test_deactivate_share_link(client: AsyncClient) -> None:
     # Validating the deactivated link should fail
     validate = await client.post("/api/v1/share/links/validate", params={"token": link_token})
     assert validate.status_code in (400, 401, 404, 410)
+
+
+async def test_editor_can_modify_shared_item(client: AsyncClient) -> None:
+    """A share granting `editor` must actually allow editing.
+
+    Regression: drive operations compared `owner_id` directly and ignored
+    shares entirely, so an editor could view/download but never rename or
+    move — the tier was effectively dead (detailed-design §6.5 grants
+    rename/move/create-folder to "owner or editor").
+    """
+    owner = auth_headers(await register_and_login(client, email="ed-owner@test.com"))
+    editor_email = "ed-editor@test.com"
+    editor = auth_headers(await register_and_login(client, email=editor_email))
+
+    folder = await client.post("/api/v1/drive/folders", json={"name": "Team"}, headers=owner)
+    folder_id = folder.json()["id"]
+    upload = await client.post(
+        "/api/v1/upload/simple",
+        headers=owner,
+        params={"parent_id": folder_id},
+        files={"file": ("notes.txt", io.BytesIO(b"team notes"), "text/plain")},
+    )
+    item_id = upload.json()["id"]
+
+    shared = await client.post(
+        f"/api/v1/share/items/{folder_id}",
+        json={"target_email": editor_email, "permission": "editor"},
+        headers=owner,
+    )
+    assert shared.status_code == 201
+
+    # Editor may rename, create a folder inside, and move — all previously 403.
+    renamed = await client.patch(
+        f"/api/v1/drive/items/{item_id}/name", json={"name": "edited.txt"}, headers=editor
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "edited.txt"
+
+    sub = await client.post(
+        "/api/v1/drive/folders", json={"name": "Sub", "parent_id": folder_id}, headers=editor
+    )
+    assert sub.status_code == 201, sub.text
+
+    moved = await client.patch(
+        f"/api/v1/drive/items/{item_id}/parent",
+        json={"parent_id": sub.json()["id"]},
+        headers=editor,
+    )
+    assert moved.status_code == 200, moved.text
+
+
+async def test_viewer_cannot_modify_shared_item(client: AsyncClient) -> None:
+    """Honouring shares must not over-grant: viewer stays read-only."""
+    owner = auth_headers(await register_and_login(client, email="vw-owner@test.com"))
+    viewer_email = "vw-viewer@test.com"
+    viewer = auth_headers(await register_and_login(client, email=viewer_email))
+
+    upload = await client.post(
+        "/api/v1/upload/simple",
+        headers=owner,
+        files={"file": ("readonly.txt", io.BytesIO(b"look only"), "text/plain")},
+    )
+    item_id = upload.json()["id"]
+    await client.post(
+        f"/api/v1/share/items/{item_id}",
+        json={"target_email": viewer_email, "permission": "viewer"},
+        headers=owner,
+    )
+
+    renamed = await client.patch(
+        f"/api/v1/drive/items/{item_id}/name", json={"name": "nope.txt"}, headers=viewer
+    )
+    assert renamed.status_code == 403
+    # Viewing is still allowed.
+    assert (await client.get(f"/api/v1/drive/items/{item_id}", headers=viewer)).status_code == 200
