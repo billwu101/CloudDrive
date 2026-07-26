@@ -28,7 +28,7 @@
 - [x] [Backend Preview](./backend-preview.md)
 - [x] [Backend Trash](./backend-trash.md)
 - [x] [Backend Search](./backend-search.md) — 檔名搜尋 + 全文內容搜尋（`file_search_index` tsvector）+ 語意搜尋（`file_embeddings` pgvector，Ollama embedding，`GET /search/semantic`，預設關）、舊檔手動 backfill、chunking、snippet/score 回傳。待後續：backfill 背景自動化。
-- [x] [Backend Share](./backend-share.md)
+- [-] [Backend Share](./backend-share.md) — 既有分享已完成；公開連結免認證存取（§28）與 Shared by me（§29）待實作
 - [x] [Backend FileVersion](./backend-file-version.md)
 - [x] [Backend ActivityLog](./backend-activity-log.md)
 
@@ -41,7 +41,7 @@
 - [x] [Frontend Drive](./frontend-drive.md)
 - [x] [Frontend Upload](./frontend-upload.md) — 預檢／並行上限 3／錯誤分類 + **分片流程／續傳／暫停繼續取消**皆完成（proposal §27 / DEC-036）
 - [x] [Frontend Preview](./frontend-preview.md)
-- [x] [Frontend Share](./frontend-share.md)
+- [-] [Frontend Share](./frontend-share.md) — 既有分享已完成；`/s/:shareToken` 訪客頁（§28）與 Shared by me 頁（§29）待實作
 - [x] [Frontend Trash](./frontend-trash.md)
 - [x] [Frontend Search](./frontend-search.md)
 

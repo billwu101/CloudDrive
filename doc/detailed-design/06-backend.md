@@ -17,7 +17,8 @@
 | Preview | §6.9 | 圖片／PDF／文字／影音 + Office 轉 PDF + Markdown | `app/preview` |
 | Trash | §6.10 | 垃圾桶軟刪除、還原、永久刪除 | `app/trash` |
 | Search | §6.11 | 全文搜尋（檔名＋內容）+ 語意搜尋（選用） | `app/search` |
-| Share | §6.12 | 指定使用者分享 + 公開連結 | `app/share` |
+| Share | §6.12 | 指定使用者分享 + 公開連結管理 + Shared by me | `app/share` |
+| PublicShare | §6.12.8 | 公開連結的**免認證**存取端（訪客） | `app/public_share` |
 | FileVersion | §6.13 | 檔案版本資料模型與 service | `app/file_version` |
 | ActivityLog | §6.14 | 操作紀錄（稽核 + 「最近」來源） | `app/activity_log` |
 
@@ -939,21 +940,26 @@ class EmbeddingBackfillService:           # 舊檔補建 embedding（選用）
 
 ### 6.12.1 責任
 
-Share 模組負責分享檔案或資料夾。
+Share 模組負責分享檔案或資料夾，含三條互相獨立的路徑：
 
-第一優先實作：
+**A. 指定使用者分享（需登入）**
 
 1. 分享給指定使用者。
 2. 設定權限：viewer、downloader、editor。
 3. 移除指定使用者分享。
 4. 取得與我分享列表。
+5. 取得**我分享出去的**列表（§6.12.12，proposal §29）。
 
-第二階段可選：
+**B. 公開連結的管理端（需登入，由分享者操作）**
 
-1. 公開分享連結。
-2. 分享連結密碼。
-3. 分享連結到期時間。
+1. 建立公開分享連結。
+2. 分享連結密碼（選填）。
+3. 分享連結到期時間（選填）。
 4. 停用分享連結。
+
+**C. 公開連結的存取端（不需登入，由收到連結的訪客操作）**
+
+由 `app/public_share`（§6.12.8–§6.12.11，proposal §28）負責。這是系統中**唯一對外免認證**的路徑，與 A/B 分開成獨立套件，避免免認證邏輯與需登入的 router 混在同一檔而誤用 `CurrentUserId`。
 
 ### 6.12.2 API
 
@@ -963,8 +969,11 @@ Share 模組負責分享檔案或資料夾。
 | PATCH | `/api/v1/share/items/{item_id}/users/{target_user_id}` | 更新分享權限 |
 | DELETE | `/api/v1/share/items/{item_id}/users/{target_user_id}` | 移除指定分享 |
 | GET | `/api/v1/share/shared-with-me` | 與我分享 |
+| GET | `/api/v1/share/shared-by-me` | 我分享出去的項目（§6.12.12） |
 | POST | `/api/v1/share/items/{item_id}/links` | 建立公開連結 |
 | DELETE | `/api/v1/share/links/{link_id}` | 停用公開連結 |
+
+免認證的訪客存取端點另見 §6.12.9（`/api/v1/public/*`）。
 
 ### 6.12.3 Service 介面
 
@@ -1046,6 +1055,162 @@ class ShareLinkService:
 7. 建立公開連結時資料庫不保存明文 token。
 8. 到期連結不可使用。
 9. 密碼錯誤不可使用分享連結。
+
+### 6.12.8 PublicShare 模組（免認證存取端）
+
+對應 proposal §28。套件 `app/public_share/`，掛在 `/api/v1/public`，**整個 router 不依賴 `CurrentUserId`**。
+
+實作 proposal §28.7 決策 1：訪客先用 token（必要時加密碼）換一張**短效存取憑證**，之後的預覽／下載都帶憑證，不再重送密碼。
+
+#### 存取憑證（share access token）
+
+沿用 `app/core/security.py` 的 JWT 機制，但以 `type` claim 區隔：
+
+```text
+type = "share_access"      # 不是 "access"，故無法冒充使用者權杖
+sub  = str(share_link_id)  # 授權來源是連結，不是使用者
+itm  = str(root_item_id)   # 授權子樹的根
+prm  = "viewer" | "downloader"
+exp  = 簽發時間 + SHARE_ACCESS_TOKEN_EXPIRE_MINUTES（預設 15 分鐘）
+iss_at_chain = 首次簽發時間（續發時原樣沿用，用於封頂總時長）
+```
+
+`_decode_token` 已在 `type` 不符時丟 `UnauthorizedError`，因此 `decode_access_token` 不會接受 share access token，`get_current_user_id` 也不會（**這是本設計免於權限提升的關鍵，需有測試守住**）。反向亦然：使用者的 access token 不能當 share access token 用。
+
+**續發**：`POST /public/links/{token}/session/refresh` 以未過期的舊憑證換新，總時長上限 `SHARE_ACCESS_TOKEN_MAX_LIFETIME_MINUTES`（預設 240 分鐘）。設計理由：憑證若做長效，等同把密碼保護降級為一次性關卡；若做短效又不能續發，前端就得把密碼留在 `sessionStorage` 才能無縫續看，違反 proposal §28.3 第 3 點。續發只延長「已通過驗證」的狀態，不重新授權。
+
+**憑證不取代 DB 檢查**：proposal §28.3 第 5 點要求每次存取都驗證。因此每個內容請求除了驗簽，都必須重查 `share_links` 確認 `is_active` 且未過期——分享者按下停用後，尚未過期的憑證必須立刻失效。
+
+#### 6.12.9 API
+
+| Method | Path | 說明 | 認證 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/public/links/{token}/session` | 驗證 token（+密碼）→ 發存取憑證 | 🔓 |
+| POST | `/api/v1/public/links/{token}/session/refresh` | 以未過期憑證續發 | 🎫 |
+| GET | `/api/v1/public/items` | 連結根項目中繼資料 | 🎫 |
+| GET | `/api/v1/public/items/{item_id}/children` | 瀏覽資料夾子樹（唯讀、分頁） | 🎫 |
+| GET | `/api/v1/public/items/{item_id}/preview` | 線上預覽 | 🎫 |
+| GET | `/api/v1/public/items/{item_id}/download` | 下載原檔 | 🎫 + downloader |
+| GET | `/api/v1/public/archive` | 子樹整包 zip | 🎫 + downloader |
+
+🎫 = `Authorization: Bearer <share access token>`。
+
+`POST .../session` 的回應同時帶回根項目中繼資料，讓「未設密碼的連結」只需一次往返即可顯示內容（proposal §28.7 末段：未設密碼不出現密碼輸入步驟）。
+
+`/public/archive` 重用 §6.8.1 既有的 zip 打包能力（proposal §28.7 決策 3），差別只在項目來源是憑證授權的子樹而非使用者選取，且**不做 owner 權限檢查**（改由憑證的子樹邊界把關）。
+
+#### 6.12.10 Service 介面
+
+```python
+class PublicShareService:
+    async def open_session(
+        self, token: str, password: str | None
+    ) -> PublicSessionResult          # 憑證 + 根項目中繼資料
+
+    async def refresh_session(self, access_token: str) -> PublicSessionResult
+
+    async def get_item(self, access_token: str, item_id: UUID | None) -> DriveItem
+    async def list_children(
+        self, access_token: str, item_id: UUID, page: int, page_size: int
+    ) -> Page[DriveItem]
+    async def open_content(self, access_token: str, item_id: UUID) -> ContentStream
+    async def build_archive(self, access_token: str) -> ArchiveResult
+```
+
+#### 6.12.11 安全規則（proposal §28.3 的實作對應）
+
+1. **不可枚舉、不可區分**：token 不存在、連結已停用、已過期、密碼錯誤——**四者一律回同一個 `404 SHARE_LINK_INVALID`**，訊息相同。token 查無此筆時仍執行一次 dummy `verify_password`，讓「不存在」與「密碼錯」的回應時間落在同一量級（`pwdlib` 的雜湊成本是此處主要時間來源）。
+2. **不洩漏存在性**：驗證通過前不回傳任何項目欄位。故根項目中繼資料只出現在 `session` 的**成功**回應中，`GET /public/items` 也一律要求憑證。
+3. **密碼傳遞**：密碼只走 `POST` body，不得進 URL／query／log。例外處理不得把 body 寫入日誌。
+4. **最小授權（子樹邊界）**：每次帶 `item_id` 的請求都必須驗證該項目位於憑證 `itm` 的子樹內（含自身），以遞迴 CTE 上溯 `parent_id` 比對；不在子樹內回 `404`（非 403，避免確認該 id 存在）。已在垃圾桶的項目視同不存在。
+5. **權限不被提升**：權限一律取自連結的 `prm`，**絕不查詢 `created_by` 是否為 owner**。`viewer` 呼叫 download／archive 回 `403 FORBIDDEN`。
+6. **速率限制**：每個連結每分鐘最多 5 次 `session` 嘗試（proposal §28.7 決策 2），超過鎖定 5 分鐘，鎖定期間一律回同一則錯誤。計數狀態存在 `share_links` 資料列上（§7.6），**不放記憶體**——本專案為多 worker 部署，行程內計數會讓限制隨 worker 數放大。成功驗證不重置計數窗，只有窗過期才重置；`refresh` 不計入（它需要已簽發的憑證，不是猜測管道）。
+
+設定項：
+
+| 環境變數 | 預設 | 用途 |
+| --- | --- | --- |
+| `SHARE_ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | 存取憑證有效期 |
+| `SHARE_ACCESS_TOKEN_MAX_LIFETIME_MINUTES` | `240` | 續發總時長上限 |
+| `SHARE_LINK_ATTEMPT_LIMIT` | `5` | 每分鐘驗證嘗試上限 |
+| `SHARE_LINK_LOCKOUT_MINUTES` | `5` | 超限後鎖定時間 |
+
+#### 可獨立測試項
+
+1. 未設密碼的連結可直接換到憑證，回應含根項目中繼資料。
+2. 有密碼的連結，密碼錯誤與 token 不存在的回應狀態碼、錯誤碼、訊息完全相同。
+3. 憑證無法被 `get_current_user_id` 接受（不可冒充使用者）。
+4. 使用者 access token 無法存取 `/public/*`。
+5. `viewer` 憑證下載原檔回 403；`downloader` 成功。
+6. 以憑證存取子樹以外的 item id 回 404。
+7. 分享者停用連結後，尚未過期的憑證立即失效。
+8. 第 6 次驗證嘗試被鎖定；鎖定期滿後恢復。
+9. 續發不能突破總時長上限。
+10. `downloader` 的資料夾連結可取得 zip，且 zip 內不含子樹以外項目。
+
+### 6.12.12 Shared by me（我分享出去的項目）
+
+對應 proposal §29。屬需登入路徑，放在既有 ShareService。
+
+```python
+class ShareService:
+    async def list_shared_by_me(
+        self, user_id: UUID, page: int, page_size: int
+    ) -> Page[SharedByMeEntry]
+```
+
+```python
+@dataclass
+class SharedByMeUserShare:
+    target_user_id: UUID
+    email: str
+    display_name: str | None
+    permission: str
+    created_at: datetime
+
+@dataclass
+class SharedByMeLink:
+    link_id: UUID
+    permission: str
+    has_password: bool          # 只回布林，不回 hash
+    expires_at: datetime | None
+    is_active: bool             # 已停用或已過期皆為 False
+    created_at: datetime
+
+@dataclass
+class SharedByMeEntry:
+    item: DriveItem
+    user_shares: list[SharedByMeUserShare]
+    links: list[SharedByMeLink]
+```
+
+規則：
+
+1. **一項目一列**（proposal §29.5 決策 1）：以 `item_id` 聚合 `shares` 與 `share_links`，同一項目的多筆分享收在同一個 entry 的兩個清單裡。
+2. **排除垃圾桶**：`drive_items.is_deleted = true` 的項目不列出（proposal §29.2 第 6 點）。
+3. **已停用／過期的連結仍列出**，以 `is_active=false` 呈現，讓使用者知道那條連結曾經存在；`shares` 移除後即消失（無軟刪除）。
+4. **無批次收回**（proposal §29.5 決策 3）：本端點唯讀，移除／停用沿用既有 `DELETE /share/items/{id}/users/{uid}` 與 `DELETE /share/links/{link_id}`。
+5. 查詢以 `item_id IN (...)` 批次撈取，避免 N+1。
+
+#### My Drive 標記
+
+proposal §29.2 第 5 點要求在檔案列表標示已分享項目。`DriveItemResponse` 新增兩個布林欄位：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `is_shared_with_users` | 該項目有至少一筆 `shares` |
+| `has_active_public_link` | 該項目有至少一條**仍有效**的公開連結（`is_active` 且未過期） |
+
+兩者分開而非合併成單一 `is_shared`，因為前端要用兩種圖示分別呈現（proposal §29.5 決策 2）。由 `DriveService.list_items` 在組回應時以**一次**批次查詢填入（對當頁的 item id 做 `IN` 查詢），不逐列查。非 owner 檢視他人分享來的項目時兩者皆為 `false`——這是分享者自己的狀態，不對被分享者揭露。
+
+#### 可獨立測試項
+
+1. 分享給使用者後該項目出現在 `shared-by-me`，含對象與權限。
+2. 建立公開連結後該項目出現，且 `has_password` 正確、不回傳 hash。
+3. 同一項目分享給 3 人 + 1 條連結 → 只回 1 個 entry，`user_shares` 長度 3。
+4. 項目丟垃圾桶後不再列出。
+5. 連結停用後仍列出但 `is_active=false`。
+6. `list_items` 回傳的兩個標記欄位正確，且不隨列數增加而增加查詢次數。
 
 ### 6.13 FileVersion 模組
 

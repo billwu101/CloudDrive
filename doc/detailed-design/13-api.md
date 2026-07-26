@@ -132,9 +132,25 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | POST | `/share/items/{id}` | 分享給指定使用者 | 🔐 |
 | DELETE | `/share/items/{id}/users/{target_user_id}` | 移除分享對象 | 🔐 |
 | GET | `/share/shared-with-me` | 與我分享的項目 | 🔐 |
+| GET | `/share/shared-by-me` | 我分享出去的項目（proposal §29） | 🔐 |
 | POST | `/share/items/{id}/links` | 建立公開分享連結 | 🔐 |
-| POST | `/share/links/validate` | 驗證公開連結（token/密碼） | 🔓 |
 | DELETE | `/share/links/{link_id}` | 停用分享連結 | 🔐 |
+
+**PublicShare（`/public`）—— 訪客免認證存取（proposal §28、設計 §6.12.8）**
+
+🎫 = `Authorization: Bearer <share access token>`（短效存取憑證，非使用者權杖）。
+
+| Method | Path | 用途 | 認證 |
+| --- | --- | --- | --- |
+| POST | `/public/links/{token}/session` | 驗證 token（+密碼）→ 發存取憑證 | 🔓 |
+| POST | `/public/links/{token}/session/refresh` | 以未過期憑證續發 | 🎫 |
+| GET | `/public/items` | 連結根項目中繼資料 | 🎫 |
+| GET | `/public/items/{id}/children` | 瀏覽資料夾子樹（唯讀） | 🎫 |
+| GET | `/public/items/{id}/preview` | 線上預覽 | 🎫 |
+| GET | `/public/items/{id}/download` | 下載原檔 | 🎫 downloader |
+| GET | `/public/archive` | 子樹整包 zip | 🎫 downloader |
+
+> 原 `POST /share/links/validate` 由 `POST /public/links/{token}/session` 取代——前者只回「有效與否」，無法承載短效憑證，且掛在需登入的 `/share` 命名空間下容易誤加認證依賴。
 
 **Trash（`/trash`）**
 
