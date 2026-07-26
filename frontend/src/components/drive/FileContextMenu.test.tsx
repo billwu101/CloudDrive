@@ -69,4 +69,29 @@ describe('FileContextMenu', () => {
     expect(onCopyName).toHaveBeenCalledWith(MOCK_FILE)
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('opens sharing via the Share item', async () => {
+    const onShare = vi.fn()
+    const onClose = vi.fn()
+
+    render(
+      <FileContextMenu
+        item={MOCK_FILE}
+        position={{ x: 0, y: 0 }}
+        onClose={onClose}
+        onPreview={vi.fn()}
+        onRename={vi.fn()}
+        onMove={vi.fn()}
+        onShare={onShare}
+        onCopyName={vi.fn()}
+        onToggleStar={vi.fn()}
+        onTrash={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /share/i }))
+
+    expect(onShare).toHaveBeenCalledWith(MOCK_FILE)
+    expect(onClose).toHaveBeenCalled()
+  })
 })

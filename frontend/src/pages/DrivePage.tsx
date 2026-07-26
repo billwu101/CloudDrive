@@ -24,6 +24,7 @@ import { MoveDialog } from '@/components/drive/MoveDialog'
 import { MultiFileContextMenu } from '@/components/drive/MultiFileContextMenu'
 import { RenameDialog } from '@/components/drive/RenameDialog'
 import { PreviewDialog } from '@/components/preview/PreviewDialog'
+import { ShareDialog } from '@/components/share/ShareDialog'
 import { UploadMenu } from '@/components/upload/UploadMenu'
 import { UploadDropzone } from '@/components/upload/UploadDropzone'
 import { UploadQueue } from '@/components/upload/UploadQueue'
@@ -92,6 +93,7 @@ export function DrivePage() {
   const [moveTarget, setMoveTarget] = useState<DriveItemResponse | null>(null)
   const [trashTargets, setTrashTargets] = useState<DriveItemResponse[]>([])
   const [previewItemId, setPreviewItemId] = useState<string | null>(null)
+  const [shareTarget, setShareTarget] = useState<DriveItemResponse | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
   const [assistantSkillResult, setAssistantSkillResult] =
     useState<AssistantSkillExecuteResponse | null>(null)
@@ -289,7 +291,7 @@ export function DrivePage() {
             onDownload={(item) => downloadItem(item.id, item.name)}
             onRename={(item) => setRenameTarget(item)}
             onMove={(item) => setMoveTarget(item)}
-            onShare={() => {}}
+            onShare={(item) => setShareTarget(item)}
             onCopyName={(item) => void navigator.clipboard?.writeText(item.name)}
             onToggleStar={(item) => star.mutate({ id: item.id, starred: !item.is_starred })}
             onTrash={(item) => setTrashTargets([item])}
@@ -358,6 +360,14 @@ export function DrivePage() {
         <UploadQueue onRetry={handleRetryUpload} />
 
         <PreviewDialog itemId={previewItemId} onClose={() => setPreviewItemId(null)} />
+        {shareTarget && (
+          <ShareDialog
+            open
+            itemId={shareTarget.id}
+            itemName={shareTarget.name}
+            onClose={() => setShareTarget(null)}
+          />
+        )}
         <AssistantSkillResultDialog
           result={assistantSkillResult}
           onClose={() => setAssistantSkillResult(null)}
