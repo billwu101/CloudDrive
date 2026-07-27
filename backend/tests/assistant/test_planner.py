@@ -180,6 +180,39 @@ def test_plan_response_format_stays_in_sync_with_models() -> None:
     assert set(step_schema["required"]) == set(PlannedStep.model_fields)
 
 
+async def test_plan_result_exposes_llm_diagnostics() -> None:
+    # done_reason/token counts come from the LLMResponse, not the model's JSON
+    # content — PlanResult surfaces them via PrivateAttr (not a public field,
+    # see test_plan_response_format_stays_in_sync_with_models above) so the
+    # service layer can populate AssistantChatResponse.llm_meta.
+    response = LLMResponse(
+        content='{"reply": "ok", "steps": []}',
+        done_reason="stop",
+        prompt_tokens=42,
+        completion_tokens=7,
+    )
+    result = await _planner(ScriptedLLM([response])).plan(message="hi")
+    assert result.done_reason == "stop"
+    assert result.prompt_tokens == 42
+    assert result.completion_tokens == 7
+    # Not part of the model's own output schema.
+    assert "done_reason" not in PlanResult.model_fields
+
+
+async def test_plan_result_llm_diagnostics_on_invalid_json() -> None:
+    # Even when parsing fails and the fallback PlanResult is built directly
+    # (not via _parse), diagnostics must still be attached. Invalid JSON trips
+    # ModelRouter's own local-retry loop (max_local_attempts=3 in _planner());
+    # target="local" makes it return the last unvalidated response instead of
+    # falling through to (disabled) external, and needs 3 identical responses.
+    response = LLMResponse(content="not json at all", done_reason="length", prompt_tokens=10)
+    result = await _planner(ScriptedLLM([response, response, response]), max_repair=0).plan(
+        message="hi", target="local"
+    )
+    assert result.done_reason == "length"
+    assert result.prompt_tokens == 10
+
+
 async def test_planner_strips_code_fences() -> None:
     content = '```json\n{"reply": "ok", "steps": []}\n```'
     result = await _planner(ScriptedLLM([LLMResponse(content=content)])).plan(message="hi")

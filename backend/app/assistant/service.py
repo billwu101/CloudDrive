@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from app.assistant.llm.client import LLMMessage
 from app.assistant.permissions import classify_steps
-from app.assistant.planner import WorkflowPlanner
+from app.assistant.planner import PlanResult, WorkflowPlanner
 from app.assistant.repository import (
     WORKFLOW_CANCELLED,
     WORKFLOW_EXECUTED,
@@ -14,6 +14,7 @@ from app.assistant.repository import (
 )
 from app.assistant.schemas import (
     AssistantChatResponse,
+    AssistantLlmMeta,
     AssistantWorkflowConfirmResponse,
     WorkflowPlanView,
 )
@@ -49,6 +50,17 @@ def _run_status(results: list[StepResult]) -> str:
 
 def _all_ok(results: list[StepResult]) -> bool:
     return all(result.ok for result in results)
+
+
+def _llm_meta(plan: PlanResult) -> AssistantLlmMeta:
+    """Surface the planning call's diagnostics (see PlanResult) in the response —
+    additive/observability-only, never used by planning or execution logic."""
+
+    return AssistantLlmMeta(
+        done_reason=plan.done_reason,
+        prompt_tokens=plan.prompt_tokens,
+        completion_tokens=plan.completion_tokens,
+    )
 
 
 def _compose_failure_message(results: list[StepResult], *, retried: bool = False) -> str:
@@ -171,7 +183,9 @@ class WorkflowService:
             message=message, target=target, selected_items=selected_items, history=history
         )
         if not plan.steps:
-            return AssistantChatResponse(session_id=active_session_id, message=plan.reply)
+            return AssistantChatResponse(
+                session_id=active_session_id, message=plan.reply, llm_meta=_llm_meta(plan)
+            )
 
         steps = classify_steps(plan.steps, self._registry)
 
@@ -183,6 +197,7 @@ class WorkflowService:
                 return AssistantChatResponse(
                     session_id=active_session_id,
                     message="請先在硬碟勾選要操作的檔案。勾好後我就能用這個技能。",
+                    llm_meta=_llm_meta(plan),
                 )
             steps = apply_selection(steps, selected_items, self._registry)
 
@@ -215,6 +230,7 @@ class WorkflowService:
                 message=plan.reply if _all_ok(results) else _compose_failure_message(results),
                 plan=WorkflowPlanView(workflow_id=None, status="auto_executed", steps=steps),
                 results=results,
+                llm_meta=_llm_meta(plan),
             )
 
         workflow = await self._workflows.create_pending(
@@ -231,6 +247,7 @@ class WorkflowService:
                 status="pending_approval",
                 steps=steps,
             ),
+            llm_meta=_llm_meta(plan),
         )
 
     async def _replan_after_failure(
@@ -284,6 +301,7 @@ class WorkflowService:
             ),
             plan=WorkflowPlanView(workflow_id=None, status="auto_executed", steps=new_steps),
             results=new_results,
+            llm_meta=_llm_meta(replan),
         )
 
     async def confirm(

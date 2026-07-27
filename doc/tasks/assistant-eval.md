@@ -247,8 +247,16 @@ non_sensitive（內容會實際外送），使用時需有意識。
 
 對應設計：[detailed-design/10-assistant-eval.md](../detailed-design/10-assistant-eval.md) §10.13/§10.14。背景：07-24 會議記錄（`CloudDrive-Personal-Notes/docs/05-會議記錄/會議記錄.md`）學長回饋——M2–M5 分級依據需交代、需加客觀指標、thinking 截斷假設待驗證。
 
-- [ ] `eval/schema.py`／`eval/state.py`：新增 report-only 欄位 `prompt_tokens`/`completion_tokens`（取 Ollama `prompt_eval_count`/`eval_count`）、`tool_call_count`（既有執行軌跡步數）、`done_reason`（Ollama 原生欄位）；**不計入 pass/fail 加權**。
-- [ ] `eval/report.py`：報告新增效率欄位（token/tool-call/done_reason），依 tag（M2–M5）分組彙總。
+- [x] **token/done_reason 從 Ollama 一路接到 `/assistant/chat` 回應（alfred 2026-07-27 確認：直接加進正式 API 回應，附加欄位）**：
+  - `app/assistant/llm/client.py`：`LLMResponse` 新增 `done_reason`/`prompt_tokens`/`completion_tokens`（Ollama-only，其他 provider 維持 `None`）。
+  - `app/assistant/llm/ollama.py`：`_parse_ollama_response` 從原生 JSON 的 `done_reason`/`prompt_eval_count`/`eval_count` 填值。
+  - `app/assistant/planner.py`：`PlanResult` 用 `PrivateAttr`（非公開欄位）夾帶這些值——**不能用公開欄位**，因為 `PlanResult` 同時是 constrained-decoding 用的模型輸出 schema（`test_plan_response_format_stays_in_sync_with_models` 會抓漂移），模型自己不會也不該生出這些值。
+  - `app/assistant/schemas.py`：新增 `AssistantLlmMeta`，`AssistantChatResponse.llm_meta: AssistantLlmMeta | None`。
+  - `app/assistant/service.py`：5 個建構 `AssistantChatResponse` 的分支（有 `plan`/`replan` 物件的）都接上 `_llm_meta(plan)`；skill-authoring 分支（無 planner 呼叫）不接。
+  - **真模型驗證**：對生產遠端 gemma4:26b gateway 直接呼叫 `/assistant/chat`，回應含 `"llm_meta":{"done_reason":"stop","prompt_tokens":1165,"completion_tokens":42}`，數字真實。
+  - 測試：`tests/assistant/test_planner.py`（`PlanResult` 私有屬性正確帶出、非公開欄位）、`tests/assistant/test_workflow.py`（`AssistantChatResponse.llm_meta` 在 auto-executed 與 pending-approval 兩種分支都正確帶出）。
+- [x] `eval/scoring.py`：`CaseScore` 新增 `done_reason`/`prompt_tokens`/`completion_tokens`/`failure_category`（report-only，不進 `score`/`passed` 計算）；`score_case(..., llm_meta=response.get("llm_meta"))`。`eval/run.py` 已接上（`else` 分支，非 exec/browser-execute）。
+- [x] `eval/report.py`：新增 `efficiency_summary_to_markdown()`，依案例 `tags`（m2–m5）分組彙總平均 token 數與 failure_category 分布；`run.py` 非 `--json` 模式下自動印出。`aggregates_to_json` 的 `run_scores` 也帶出這些欄位。
 - [x] **探測性任務**：手動用低 `num_predict` 觸發一次已知截斷，確認 `done_reason` 實際回傳值（2026-07-27，對生產遠端 gemma4:26b gateway 實測）。**結果**：`num_predict:8`（逼截斷）→ `done_reason:"length"`、`eval_count:8`（卡在上限，句子被腰斬）；`num_predict:200`（自然講完）→ `done_reason:"stop"`、`eval_count:7`。機制確認成立，見 detailed-design §10.14。
 - [x] **M3/M5 全面重新設計（alfred 2026-07-27 最終決定，見 detailed-design §10.13）**：
   - [x] 比照 `M2_SCENARIOS` 寫 M3/M5 各 5 個真實情境（含 `reason`），敘事句型取代「幫我X（過程中可先Y、Z、W）」公式化句型；搭配 `M2_TOPICS` 20 個真實項目名稱湊到各 100（`generate_cases.py` `M3_SCENARIOS`/`M5_SCENARIOS`）。實測不重複 prompt 文字：**M3 100/100、M5 100/100**（原 50/100、8/100）。
@@ -258,11 +266,11 @@ non_sensitive（內容會實際外送），使用時需有意識。
   - [x] 重新產生 `cases/generated/gen-m{3,5}-*.yaml`（200 檔，`python -m eval.generate_cases`）。
   - [x] 回歸驗證：`--llm mock` 對完整 411 案例（400 產生+11 手寫）**411/411 全過**（實測，非只憑理論——先前直接 `--cases eval/cases` 誤觸發一個既有 `mode:[api]`-only 手寫案例`multiturn-create-second`的既有限制，非本次改動所致，改用 `tests/eval/test_inproc_runner.py` 同款 `mock_llm is not None` 篩選後確認）；`ruff check/format --check`、`mypy .`、`pytest`(755 跑過，排除 integration) 全綠，唯一既有問題在未觸碰的 `alembic/` 遷移檔（與本次無關）。
   - [x] **小樣本先探測（2026-07-27，對真實後端 + 生產遠端 gemma4:26b gateway 實測）**：抽 4 案（gen-m3-001 rename、gen-m3-021 star、gen-m3-041 move、gen-m5-003 M5 跨步驟引用）跑 `--mode api --llm real --no-strict-steps`，**規劃階段 4/4 產出正確 skill 序列＋pending_approval**（含 move_item 案例正確發兩次 search：一次找來源、一次找「報告封存」目的地）。其中 gen-m3-001 額外手動走完整條路（chat→confirm→execute）：`seed_folders` 真的在測試後端建出「報告」資料夾（真實 id）→ `search` 真的搜到它 → `rename_item` 用 `{"from":0,"path":"items.0.id"}` 正確解析到真實 id → 執行後 `/drive/items` 確認資料夾**真的**從「報告」變成「報告_正式版」。**端到端機制驗證成立**，非只 mock 結構層面。其餘 3 案僅驗證到規劃階段（未逐一手動 confirm+execute），因解析機制（`resolve_arguments`）已用同一套程式碼路徑驗證過，不重複手動走。可排進下面「階段 A」全量跑。
-- [ ] **失敗原因分類欄位（alfred 2026-07-27 提議，設計已定案）**：`CaseScore` 新增 `done_reason`/`prompt_tokens`/`completion_tokens`/`failure_category`（規則判斷：truncated/wrong_plan/safety_violation/state_mismatch/partial/other，見 detailed-design §10.15）；`report.py` 新增依 tag 統計 failure_category 分布的彙總。
-- [ ] **階段 A**：待上面 M3/M5 補嵌關鍵字修完、重新產生案例後，thinking off（現行 DEC-033 預設）× M2–M5 全量 400 案例 `--runs 3`（非單次，見 detailed-design §10.13 理由），收集通過率（驗證分級單調遞減）+ 效率指標 + done_reason 基線 + failure_category 分布。
+- [x] **失敗原因分類欄位**：`CaseScore._failure_category`（規則判斷、零額外 LLM 成本：truncated/wrong_plan/safety_violation/state_mismatch/partial/other，見 detailed-design §10.15），測試涵蓋全部 6 類（`tests/eval/test_eval_harness.py`）。
+- [ ] **階段 A**：thinking off（現行 DEC-033 預設）× M2–M5 全量 400 案例 `--runs 3`（非單次，見 detailed-design §10.13 理由），收集通過率（驗證分級單調遞減）+ 效率指標 + done_reason 基線 + failure_category 分布。**尚未執行**——會實際燒生產遠端 gemma4:26b gateway 的量，需另排時間跑。
 - [ ] **階段 B（小規模，暫緩全量）**：thinking on 只挑 E8 既有高風險 case（storage-quota/safety-destructive 等）小樣本探測，記錄 done_reason 分布與耗時；依探測結果再決定是否/如何跑全量 thinking-on（本輪不自動排入全量）。
-- [ ] 報告：整理「分級依據 + 效率指標 + thinking 截斷驗證」交代學長，引用 τ-bench/GAIA/Overthinking 論文佐證方法論（連結見 detailed-design §10.13/10.14）。
-- [ ] 測試：新增欄位的 harness 單元測試（mock 資料下 token/tool-call/done_reason 正確擷取與彙總，不影響既有 pass/fail 計算）。
+- [ ] 報告：整理「分級依據 + 效率指標 + thinking 截斷驗證」交代學長，引用 τ-bench/GAIA/Overthinking 論文佐證方法論（連結見 detailed-design §10.13/10.14）——待階段 A/B 實際跑出數據後才能寫。
+- [x] 測試：`tests/eval/test_eval_harness.py` 新增 9 個測試（llm_meta report-only 不影響 score/passed、6 種 failure_category、efficiency_summary_to_markdown 分組/無資料訊息）；`tests/assistant/test_planner.py`/`test_workflow.py` 新增 3 個測試（PlanResult 私有屬性、AssistantChatResponse.llm_meta 兩分支）。全數通過，`ruff/mypy/pytest`(766，排除 integration) 全綠。
 
 ## 測試/驗證任務
 

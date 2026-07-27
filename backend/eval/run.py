@@ -23,7 +23,12 @@ from eval.judge import (
     judge_case,
     judge_execution,
 )
-from eval.report import aggregates_to_json, aggregates_to_markdown, verbose_markdown
+from eval.report import (
+    aggregates_to_json,
+    aggregates_to_markdown,
+    efficiency_summary_to_markdown,
+    verbose_markdown,
+)
 from eval.runner import run_case_http
 from eval.runner_browser import run_browser_suite
 from eval.schema import EvalCase, load_cases
@@ -136,6 +141,7 @@ def main() -> int:
         result_summary = ""
         last_checks: list[CheckResult] = []
         for _ in range(runs):
+            llm_meta: dict[str, Any] | None = None
             if args.mode == "exec":
                 exec_output = run_execution_case(case)
                 checks = verify_execution(case, exec_output)
@@ -164,8 +170,9 @@ def main() -> int:
                     checks = checks + judge_case(case, response, judge, fallback_rubric=True)
                 checks = checks + _state_checks(case, args)
                 result_summary = _summarise_response(response)
+                llm_meta = response.get("llm_meta")
             last_checks = checks
-            run_scores.append(score_case(case, checks))
+            run_scores.append(score_case(case, checks, llm_meta=llm_meta))
         scores.append(aggregate_runs(case, run_scores))
         verbose_rows.append((case, result_summary, last_checks))
 
@@ -173,6 +180,10 @@ def main() -> int:
         print(verbose_markdown(verbose_rows))
         print()
     print(aggregates_to_json(scores) if args.json else aggregates_to_markdown(scores))
+    if not args.json:
+        print()
+        print("### 效率指標 / 失敗分類（依 tag 彙總，report-only）")
+        print(efficiency_summary_to_markdown(cases, scores))
 
     if args.save_baseline:
         save_baseline(args.save_baseline, scores)

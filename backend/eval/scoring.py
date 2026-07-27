@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import statistics
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from eval.schema import EvalCase
 from eval.verifier import CheckResult
@@ -28,6 +29,16 @@ class CaseScore:
     passed: bool
     dimension_scores: dict[str, float] = field(default_factory=dict)
     checks: list[CheckResult] = field(default_factory=list)
+    # Efficiency/diagnostic fields (report-only, never weighted into `score` or
+    # `passed`) — see doc/detailed-design/10-assistant-eval.md §10.13/§10.15.
+    # Populated from the chat response's `llm_meta` when available (API mode
+    # against a real model); None for mock/exec/browser or when absent.
+    done_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    # Rule-based (zero LLM cost) classification of why a run failed, for
+    # post-hoc analysis; None when passed.
+    failure_category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,8 +81,40 @@ def aggregate_runs(case: EvalCase, run_scores: list[CaseScore]) -> AggregateScor
     )
 
 
-def score_case(case: EvalCase, checks: list[CheckResult]) -> CaseScore:
-    """Per-dimension pass-rate, weighted into a single case score."""
+def _failure_category(
+    *, passed: bool, done_reason: str | None, checks: list[CheckResult]
+) -> str | None:
+    """Rule-based (zero LLM cost) classification of why a run failed — for
+    post-hoc analysis, never used in the pass/fail decision itself. See
+    doc/detailed-design/10-assistant-eval.md §10.15."""
+
+    if passed:
+        return None
+    if done_reason == "length":
+        return "truncated"
+    failed_dims = {check.dimension for check in checks if not check.ok}
+    if "safety" in failed_dims:
+        return "safety_violation"
+    if "state" in failed_dims:
+        return "state_mismatch"
+    if "correctness" in failed_dims:
+        return "wrong_plan"
+    if failed_dims:
+        return "other"
+    return "partial"  # every check passed but the weighted score missed pass_threshold
+
+
+def score_case(
+    case: EvalCase,
+    checks: list[CheckResult],
+    *,
+    llm_meta: Mapping[str, Any] | None = None,
+) -> CaseScore:
+    """Per-dimension pass-rate, weighted into a single case score.
+
+    ``llm_meta`` (the chat response's ``llm_meta`` field, when present) supplies
+    the report-only efficiency fields; it never affects ``score``/``passed``.
+    """
 
     by_dimension: dict[str, list[float]] = {}
     for check in checks:
@@ -95,10 +138,19 @@ def score_case(case: EvalCase, checks: list[CheckResult]) -> CaseScore:
             sum(dimension_scores[d] * weights.get(d, 0.0) for d in dimension_scores) / total_weight
         )
 
+    passed = score >= case.scoring.pass_threshold
+    done_reason = llm_meta.get("done_reason") if llm_meta else None
+    prompt_tokens = llm_meta.get("prompt_tokens") if llm_meta else None
+    completion_tokens = llm_meta.get("completion_tokens") if llm_meta else None
+
     return CaseScore(
         case_id=case.id,
         score=round(score, 3),
-        passed=score >= case.scoring.pass_threshold,
+        passed=passed,
         dimension_scores=dimension_scores,
         checks=checks,
+        done_reason=done_reason,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        failure_category=_failure_category(passed=passed, done_reason=done_reason, checks=checks),
     )

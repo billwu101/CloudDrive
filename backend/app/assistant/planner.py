@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse
@@ -70,6 +70,33 @@ def build_plan_response_format(registry: SkillRegistry) -> dict[str, object]:
 class PlanResult(BaseModel):
     reply: str = ""
     steps: list[PlannedStep] = Field(default_factory=list)
+    # Diagnostics from the planning LLM call that produced this result (see
+    # LLMResponse) — surfaced for eval/observability by the service layer
+    # (AssistantChatResponse.llm_meta). Deliberately PrivateAttr, not a public
+    # field: PlanResult doubles as the model's own JSON output schema for
+    # constrained decoding (_PLAN_RESPONSE_FORMAT, kept in sync by
+    # test_plan_response_format_stays_in_sync_with_models) — the model neither
+    # produces nor should be asked to produce these values.
+    _done_reason: str | None = PrivateAttr(default=None)
+    _prompt_tokens: int | None = PrivateAttr(default=None)
+    _completion_tokens: int | None = PrivateAttr(default=None)
+
+    @property
+    def done_reason(self) -> str | None:
+        return self._done_reason
+
+    @property
+    def prompt_tokens(self) -> int | None:
+        return self._prompt_tokens
+
+    @property
+    def completion_tokens(self) -> int | None:
+        return self._completion_tokens
+
+    def _set_llm_meta(self, response: LLMResponse) -> None:
+        self._done_reason = response.done_reason
+        self._prompt_tokens = response.prompt_tokens
+        self._completion_tokens = response.completion_tokens
 
 
 def build_planner_prompt(registry: SkillRegistry) -> str:
@@ -265,10 +292,13 @@ class WorkflowPlanner:
             )
             result = _parse(response.content)
             if result is None:
-                return PlanResult(reply=response.content.strip() or last_reply)
+                failed = PlanResult(reply=response.content.strip() or last_reply)
+                failed._set_llm_meta(response)
+                return failed
             last_reply = result.reply or last_reply
             problems = validate_plan(result.steps, self._registry)
             if not problems:
+                result._set_llm_meta(response)
                 return result
             if attempt < self._max_repair:
                 messages.append(LLMMessage(role="assistant", content=response.content))
@@ -286,7 +316,7 @@ class WorkflowPlanner:
                 )
 
         # Repairs exhausted — never execute an invalid plan; answer conversationally.
-        return PlanResult(
+        exhausted = PlanResult(
             reply=(
                 last_reply
                 if last_reply != "I could not plan that request."
@@ -295,3 +325,5 @@ class WorkflowPlanner:
             ),
             steps=[],
         )
+        exhausted._set_llm_meta(response)
+        return exhausted

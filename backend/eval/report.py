@@ -111,6 +111,10 @@ def aggregates_to_json(scores: list[AggregateScore]) -> str:
                     "score": run.score,
                     "passed": run.passed,
                     "dimension_scores": run.dimension_scores,
+                    "done_reason": run.done_reason,
+                    "prompt_tokens": run.prompt_tokens,
+                    "completion_tokens": run.completion_tokens,
+                    "failure_category": run.failure_category,
                     "checks": [
                         {
                             "dimension": c.dimension,
@@ -128,6 +132,56 @@ def aggregates_to_json(scores: list[AggregateScore]) -> str:
         for score in scores
     ]
     return json.dumps(payload, indent=2)
+
+
+def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[AggregateScore]) -> str:
+    """Per-tag rollup of token usage and failure-category distribution.
+
+    Report-only (never affects pass/fail) — lets M2-M5 tiers be compared on
+    cost/failure-mode, not just pass-rate. See
+    doc/detailed-design/10-assistant-eval.md §10.13/§10.15. Tags come from
+    each case's own `tags` (e.g. "m2".."m5"), matched by case_id; a case with
+    no matching mX tag or no llm_meta data is skipped.
+    """
+
+    by_id = {case.id: case for case in cases}
+    tiers = ("m2", "m3", "m4", "m5")
+    rows: list[str] = [
+        "| Tier | Cases w/ tokens | Avg prompt | Avg completion | Failure categories |"
+    ]
+    rows.append("|---|---|---|---|---|")
+    for tier in tiers:
+        prompt_tokens: list[int] = []
+        completion_tokens: list[int] = []
+        categories: dict[str, int] = {}
+        for score in scores:
+            case = by_id.get(score.case_id)
+            if case is None or tier not in case.tags:
+                continue
+            for run in score.run_scores:
+                if run.prompt_tokens is not None:
+                    prompt_tokens.append(run.prompt_tokens)
+                if run.completion_tokens is not None:
+                    completion_tokens.append(run.completion_tokens)
+                if run.failure_category is not None:
+                    categories[run.failure_category] = categories.get(run.failure_category, 0) + 1
+        if not prompt_tokens and not categories:
+            continue
+        avg_p = f"{sum(prompt_tokens) / len(prompt_tokens):.0f}" if prompt_tokens else "—"
+        avg_c = (
+            f"{sum(completion_tokens) / len(completion_tokens):.0f}" if completion_tokens else "—"
+        )
+        cat_str = (
+            "、".join(f"{name}×{count}" for name, count in sorted(categories.items()))
+            if categories
+            else "（無失敗）"
+        )
+        rows.append(f"| {tier} | {len(prompt_tokens)} | {avg_p} | {avg_c} | {cat_str} |")
+    if len(rows) <= 2:
+        return (
+            "（本次無 token/failure_category 資料——需 `--mode api --llm real` 且回應含 llm_meta）"
+        )
+    return "\n".join(rows)
 
 
 def to_markdown(scores: list[CaseScore]) -> str:

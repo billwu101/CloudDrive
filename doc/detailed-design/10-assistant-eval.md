@@ -200,16 +200,24 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
   - **階段 B（小規模探測，暫緩全量）**：thinking on 只挑少量高風險 case（沿用 E8 的 storage-quota/safety-destructive 等）先探測，觀察 `done_reason` 分布與耗時；若探測顯示大量截斷/超時，全量 thinking-on 跑法（樣本數、timeout）待探測結果出爐後再定，**現階段不排入全量**（避免大量案例卡進迴圈、跑到 timeout 才知道浪費）。
 - **方法論佐證**：thinking 對 agentic 任務有害非個案——[The Danger of Overthinking](https://arxiv.org/abs/2502.08235)（2025-02，4000+ 軌跡分析，overthinking 分數愈高表現愈差，篩選降低 overthinking 使表現 +30%／算力 -43%），與 DEC-033 實測（think:false 100% vs thinking-on 60%、快 10 倍）方向一致。[Circular Reasoning](https://arxiv.org/abs/2601.05693)（2026-01）解釋跳針成因（推理卡邏輯死路後自我強化注意力），**僅佐證跳針成因，未涉及 stop reason 偵測法**，不可誤引為驗證此做法的依據。
 
-### 10.15 失敗原因分類（分析用，零額外成本，2026-07-27 alfred 提議）
+### 10.15 失敗原因分類（分析用，零額外成本，2026-07-27 alfred 提議，已實作）
 
 - **動機**：`min_pass_rate`（見 §10.7）把 N 次執行收斂成單一通過率數字，會丟失「為什麼失敗」的細節（截斷？規劃錯？安全違規？）。但 `scoring.aggregate_runs` 其實**已經**把每次執行的完整 `CaseScore`（含各維度 `CheckResult.ok`/`detail`）存在 `AggregateScore.run_scores`，並經 `report.py` 序列化進 JSON——原始資料本來就沒丟，只是缺兩類欄位。
-- **新增欄位**（`CaseScore`，每次執行的原始紀錄，非聚合層）：
-  - `done_reason: str | None`、`prompt_tokens: int | None`、`completion_tokens: int | None`（承 §10.13/§10.14）。
-  - `failure_category: str | None`：**規則判斷、非 LLM 分類**，`passed=False` 時才填：
+- **新增欄位**（`CaseScore`，每次執行的原始紀錄，非聚合層；report-only，不進 `score`/`passed` 計算）：
+  - `done_reason: str | None`、`prompt_tokens: int | None`、`completion_tokens: int | None`：來自 `/assistant/chat` 回應的新增欄位 `llm_meta`（見下方「done_reason/token 如何接到正式 API」），`run.py` 呼叫 `score_case(..., llm_meta=response.get("llm_meta"))` 帶入。
+  - `failure_category: str | None`：**規則判斷、非 LLM 分類**（`scoring._failure_category`），`passed=False` 時才填：
     1. `done_reason == "length"` → `"truncated"`
-    2. 否則 `workflow` 維度未過 → `"wrong_plan"`（規劃錯/理解錯，含使用者說的「完全做錯」）
-    3. 否則 `safety` 維度未過 → `"safety_violation"`
-    4. 否則 `state` 維度未過 → `"state_mismatch"`
+    2. 否則 `safety` 維度未過 → `"safety_violation"`
+    3. 否則 `state` 維度未過 → `"state_mismatch"`
+    4. 否則 `correctness` 維度未過 → `"wrong_plan"`（規劃錯/理解錯，含使用者說的「完全做錯」；`verifier.py` 的 workflow/steps 斷言實際落在 `correctness` 維度，非字面上的 "workflow"）
     5. 各維度都過但未達 `pass_threshold` → `"partial"`
     6. 其餘 → `"other"`
-- **報告新增彙總**：依 tag（m2–m5）統計 `failure_category` 分布（如「M5 失敗中 60% wrong_plan、30% truncated、10% other」），供事後分析用，不影響既有 pass/fail 判定。
+- **報告新增彙總**：`report.efficiency_summary_to_markdown()` 依案例 `tags`（m2–m5）統計平均 token 數與 `failure_category` 分布（如「M5 失敗中 60% wrong_plan、30% truncated、10% other」），`run.py` 非 `--json` 模式下自動印出，供事後分析用，不影響既有 pass/fail 判定。
+
+**done_reason/token 如何接到正式 API（alfred 2026-07-27 決定：直接加進 `/assistant/chat` 回應，附加欄位）**：
+
+- `app/assistant/llm/client.py` 的 `LLMResponse` 新增 `done_reason`/`prompt_tokens`/`completion_tokens`（Ollama-only；`external.py`/`anthropic.py` 維持 `None`）；`app/assistant/llm/ollama.py` 的 `_parse_ollama_response` 從原生 JSON 填值。
+- **關鍵設計陷阱（已踩過、已修正）**：`app/assistant/planner.py` 的 `PlanResult` **同時是 constrained-decoding 用的模型輸出 schema**（`_PLAN_RESPONSE_FORMAT` 手寫、`test_plan_response_format_stays_in_sync_with_models` 防漂移）。一開始把 done_reason/token 加成 `PlanResult` 的**公開欄位**，會逼手寫 schema 也要求模型自己生出這些值——語意錯誤（模型不知道、也不該被要求輸出這些）。改用 pydantic `PrivateAttr`（不進 `model_fields`、不進 JSON schema，但物件建好後仍可讀寫）夾帶，經由 `PlanResult._set_llm_meta(response)` 設值、`done_reason`/`prompt_tokens`/`completion_tokens` 三個唯讀 property 讀出。
+- `app/assistant/schemas.py` 新增 `AssistantLlmMeta`，`AssistantChatResponse.llm_meta: AssistantLlmMeta | None`（純附加欄位，舊客戶端會直接忽略，不影響相容性）。
+- `app/assistant/service.py`：`_llm_meta(plan)` 輔助函式，5 個有 `plan`/`replan` 物件在範圍內的 `AssistantChatResponse` 建構分支都接上；skill-authoring 分支（未呼叫 planner）不接。
+- **真模型驗證**（2026-07-27，對生產遠端 gemma4:26b gateway）：真實呼叫 `/assistant/chat` 回應含 `"llm_meta":{"done_reason":"stop","prompt_tokens":1165,"completion_tokens":42}`，數字真實非造假。
