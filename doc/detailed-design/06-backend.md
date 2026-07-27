@@ -752,9 +752,13 @@ return StreamingResponse(
 
 ### 6.9.1 責任
 
-Preview 模組負責根據檔案 MIME type 判定預覽型別，並回傳預覽資訊與內容。
+Preview 模組負責判定預覽型別，並回傳預覽資訊與內容。
 
-支援的預覽型別（後端 `_resolve_preview_type` 依 MIME 判定）：
+**型別判定的來源順序**（`_resolve_preview_type` / `resolve_mime`）：`mime_type` 欄位 → `extension` 欄位 → **從 `name` 解析出的副檔名**。後兩層是必要的補救而非備案：實測 95 個檔案中有 38 個 `mime_type` 為空（瀏覽器未提供、技能寫入的檔案一律沒有），其中 31 個有副檔名；另有檔案兩欄皆空，只有檔名看得出型別。少了這層 fallback，一個明顯的 `.pdf` 會因為某個欄位是空的而顯示「不支援預覽」。
+
+同一組 fallback 也用在**輸出的 Content-Type**：否則型別判對了，內容仍以 `application/octet-stream` 送出，瀏覽器會直接下載而不是顯示。
+
+支援的預覽型別：
 
 1. 圖片（`image/*`）、影片（`video/*`）、音訊（`audio/*`）：`content` endpoint 直接串流原檔。
 2. PDF（`application/pdf`）：串流原檔給前端 PDF viewer。
