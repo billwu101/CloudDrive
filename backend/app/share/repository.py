@@ -113,6 +113,10 @@ class AbstractShareLinkRepository(ABC):
     @abstractmethod
     async def deactivate(self, link_id: UUID) -> None: ...
 
+    @abstractmethod
+    async def delete(self, link_id: UUID) -> None:
+        """Remove the row entirely (design §6.12.12 rule 5)."""
+
 
 class SQLShareManagementRepository(AbstractShareManagementRepository):  # pragma: no cover
     def __init__(self, session: AsyncSession) -> None:
@@ -338,4 +342,8 @@ class SQLShareLinkRepository(AbstractShareLinkRepository):  # pragma: no cover
         result = await self._session.execute(select(ShareLink).where(ShareLink.id == link_id))
         link = result.scalar_one()
         link.is_active = False
+        await self._session.flush()
+
+    async def delete(self, link_id: UUID) -> None:
+        await self._session.execute(delete(ShareLink).where(ShareLink.id == link_id))
         await self._session.flush()

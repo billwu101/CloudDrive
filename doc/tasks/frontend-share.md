@@ -114,3 +114,10 @@ proposal §29.3 全部 5 項通過；`npm run lint` / `typecheck` / `npx vitest 
 ### 驗證結果（2026-07-26）
 
 前端 **309 passed**（46 檔），含 `ShareTokenPage` 8 項、`SharedByMePage` 7 項、`ShareBadges` 3 項；`lint` / `typecheck` 全綠。
+
+### 追加（2026-07-27，使用者回報：失效連結無法清除）
+
+- [x] `src/api/shareApi.ts`：`deleteLinkRecord()`。
+- [x] `src/hooks/useShare.ts`：`useDeleteShareLinkRecord()`，成功後同時 invalidate share 與 drive。
+- [x] `src/components/share/SharedByMeRow.tsx`：每列連結只出現一顆按鈕——有效顯示「Disable」、失效顯示「Remove」。
+- [x] 測試：有效／失效各自顯示正確按鈕、點 Remove 打到 `/record` 端點。

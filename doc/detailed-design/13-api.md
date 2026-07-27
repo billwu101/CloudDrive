@@ -134,7 +134,8 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | GET | `/share/shared-with-me` | 與我分享的項目 | 🔐 |
 | GET | `/share/shared-by-me` | 我分享出去的項目（proposal §29） | 🔐 |
 | POST | `/share/items/{id}/links` | 建立公開分享連結 | 🔐 |
-| DELETE | `/share/links/{link_id}` | 停用分享連結 | 🔐 |
+| DELETE | `/share/links/{link_id}` | 停用分享連結（保留記錄） | 🔐 |
+| DELETE | `/share/links/{link_id}/record` | 刪除已失效的連結記錄 | 🔐 |
 
 **PublicShare（`/public`）—— 訪客免認證存取（proposal §28、設計 §6.12.8）**
 

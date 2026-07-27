@@ -74,6 +74,18 @@ export function useCreateShareLink() {
   })
 }
 
+/** Clears a dead link out of the Shared-by-me list. */
+export function useDeleteShareLinkRecord() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (linkId: string) => shareApi.deleteLinkRecord(linkId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['share'] })
+      qc.invalidateQueries({ queryKey: ['drive'] })
+    },
+  })
+}
+
 export function useDeactivateShareLink() {
   const qc = useQueryClient()
   return useMutation({

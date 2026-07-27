@@ -297,3 +297,31 @@ async def test_shared_by_me_drops_trashed_items_and_marks_dead_links(
     # The disabled link stays visible so the owner knows it once existed.
     assert body["items"][0]["links"][0]["is_active"] is False
     assert body["items"][0]["item"]["has_active_public_link"] is False
+
+
+async def test_a_dead_link_record_can_be_cleared_but_a_live_one_cannot(
+    client: AsyncClient,
+) -> None:
+    """Disabling and forgetting are separate steps (proposal §29.5 decision 4)."""
+    owner = await register_and_login(client, email="sbm-clear@test.com", username="sbmclear")
+    h = auth_headers(owner)
+    folder = (
+        await client.post("/api/v1/drive/folders", json={"name": "Cleanup"}, headers=h)
+    ).json()
+    created = await client.post(
+        f"/api/v1/share/items/{folder['id']}/links", json={"permission": "viewer"}, headers=h
+    )
+    link_id = created.json()["id"]
+
+    # While the link still works, removing the record is refused outright.
+    too_soon = await client.delete(f"/api/v1/share/links/{link_id}/record", headers=h)
+    assert too_soon.status_code == 422
+    assert len((await client.get("/api/v1/share/shared-by-me", headers=h)).json()["items"]) == 1
+
+    assert (await client.delete(f"/api/v1/share/links/{link_id}", headers=h)).status_code == 204
+    assert (
+        await client.delete(f"/api/v1/share/links/{link_id}/record", headers=h)
+    ).status_code == 204
+
+    # With its only share gone, the item drops out of the view entirely.
+    assert (await client.get("/api/v1/share/shared-by-me", headers=h)).json()["items"] == []

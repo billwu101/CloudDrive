@@ -129,6 +129,21 @@ async def create_link(
 
 
 @router.delete(
+    "/links/{link_id}/record",
+    status_code=204,
+    summary="Delete a dead share link's record",
+)
+async def delete_link_record(
+    link_id: UUID,
+    current_user_id: CurrentUserId,
+    service: LinkServiceDep,
+    session: DbSession,
+) -> None:
+    await service.delete_link_record(current_user_id, link_id)
+    await session.commit()
+
+
+@router.delete(
     "/links/{link_id}",
     status_code=204,
     summary="Deactivate a share link",

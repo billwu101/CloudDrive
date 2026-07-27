@@ -469,6 +469,7 @@ useSharedWithMe()
 useSharedByMe()          // GET /share/shared-by-me
 useCreateShareLink()
 useDisableShareLink()
+useDeleteShareLinkRecord()
 usePublicSession()       // POST /public/links/{token}/session
 usePublicChildren()
 ```
@@ -489,6 +490,7 @@ Sidebar 於「Shared with me」下方新增入口。
 2. **就地管理**：每筆對象與連結各自一個移除／停用按鈕，成功後 invalidate `sharedByMe` 與 `drive.items` 兩組 query key（後者讓 My Drive 的標記同步消失）。
 3. **不提供「收回全部」**（proposal §29.5 決策 3）。
 4. 已停用或已過期的連結以灰階呈現並標「已失效」，不隱藏。
+5. **每列連結只出現一顆按鈕**：仍有效 → 「Disable」；已失效 → 「Remove」。兩者不並存，避免使用者在想清掉一行時誤按到會切斷他人存取的那顆（proposal §29.5 決策 4）。
 
 **My Drive 標記**：`DriveItemRow` 依後端新增的兩個布林欄位（§6.12.12）顯示 `ShareBadges`——`is_shared_with_users` → 人物圖示、`has_active_public_link` → 連結圖示，兩者皆真則並列兩個。兩種圖示必須可分辨（proposal §29.5 決策 2），不可合併為單一「已分享」圖示。圖示需帶 `aria-label`（「已分享給其他使用者」／「已建立公開連結」）。
 

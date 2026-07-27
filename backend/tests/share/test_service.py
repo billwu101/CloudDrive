@@ -184,6 +184,9 @@ class MemShareLinkRepo(AbstractShareLinkRepository):
             if lnk.id == link_id:
                 lnk.is_active = False
 
+    async def delete(self, link_id: UUID) -> None:
+        self._links = [lnk for lnk in self._links if lnk.id != link_id]
+
 
 def _make_user(user_id: UUID | None = None, email: str = "target@test.com") -> User:
     now = datetime.now(UTC)
@@ -566,3 +569,65 @@ async def test_shared_by_me_is_empty_when_nothing_is_shared() -> None:
 
     assert page.total == 0
     assert page.items == []
+
+
+# ── deleting a dead link's record (proposal §29.2 rule 4.1) ──────────────────
+
+
+async def test_a_disabled_link_record_can_be_deleted() -> None:
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    await svc.deactivate_link(owner_id, created.id)
+
+    await svc.delete_link_record(owner_id, created.id)
+
+    assert await links.get_by_id(created.id) is None
+
+
+async def test_an_expired_link_record_can_be_deleted() -> None:
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(
+        owner_id,
+        item.id,
+        Permission.VIEWER,
+        expires_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+
+    await svc.delete_link_record(owner_id, created.id)
+
+    assert await links.get_by_id(created.id) is None
+
+
+async def test_a_live_link_must_be_disabled_before_its_record_is_removed() -> None:
+    """Deleting is tidying; disabling cuts off access. One must not do the other."""
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+
+    with pytest.raises(AppError) as exc:
+        await svc.delete_link_record(owner_id, created.id)
+
+    assert exc.value.status_code == 422
+    assert await links.get_by_id(created.id) is not None
+
+
+async def test_a_stranger_cannot_delete_a_link_record() -> None:
+    owner_id, other_id = uuid4(), uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    await svc.deactivate_link(owner_id, created.id)
+
+    with pytest.raises(ForbiddenError):
+        await svc.delete_link_record(other_id, created.id)
+
+    assert await links.get_by_id(created.id) is not None

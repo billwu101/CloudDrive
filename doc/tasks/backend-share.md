@@ -148,3 +148,10 @@ proposal §28.5 全部 9 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 proposal §29.3 全部 5 項通過（第 5 項需搭配前端）；三項品質檢查全綠。
 
 **驗證結果（2026-07-26）**：單元 6 項（`tests/share/test_service.py`）+ 標記欄位 3 項（`tests/drive/test_service.py::TestShareBadges`，含「每頁一次查詢、不隨列數增加」）+ integration 2 項（真 Postgres 聚合查詢）；後端全套 **790 passed**；`ruff` / `mypy` 全綠。
+
+### 追加（2026-07-27，使用者回報：失效連結無法清除）
+
+- [x] `app/share/repository.py`：`AbstractShareLinkRepository.delete()` + SQL 實作。
+- [x] `app/share/service.py`：`delete_link_record()`——驗證擁有權；連結仍有效時回 422 要求先停用。抽出 `_owned_link()` 供停用與刪除共用。
+- [x] `app/share/router.py`：`DELETE /share/links/{link_id}/record`（路由順序須在 `/links/{link_id}` 之前）。
+- [x] 測試：已停用可刪、已過期可刪、仍有效回 422、非 owner 回 403、integration 一輪完整流程。

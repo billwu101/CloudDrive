@@ -971,7 +971,8 @@ Share 模組負責分享檔案或資料夾，含三條互相獨立的路徑：
 | GET | `/api/v1/share/shared-with-me` | 與我分享 |
 | GET | `/api/v1/share/shared-by-me` | 我分享出去的項目（§6.12.12） |
 | POST | `/api/v1/share/items/{item_id}/links` | 建立公開連結 |
-| DELETE | `/api/v1/share/links/{link_id}` | 停用公開連結 |
+| DELETE | `/api/v1/share/links/{link_id}` | 停用公開連結（保留記錄） |
+| DELETE | `/api/v1/share/links/{link_id}/record` | 刪除已失效的連結記錄（§6.12.12 第 5 點） |
 
 免認證的訪客存取端點另見 §6.12.9（`/api/v1/public/*`）。
 
@@ -1195,6 +1196,7 @@ class SharedByMeEntry:
 2. **排除垃圾桶**：`drive_items.is_deleted = true` 的項目不列出（proposal §29.2 第 6 點）。
 3. **已停用／過期的連結仍列出**，以 `is_active=false` 呈現，讓使用者知道那條連結曾經存在；`shares` 移除後即消失（無軟刪除）。
 4. **無批次收回**（proposal §29.5 決策 3）：本端點唯讀，移除／停用沿用既有 `DELETE /share/items/{id}/users/{uid}` 與 `DELETE /share/links/{link_id}`。
+5. **刪除失效連結記錄**：`DELETE /api/v1/share/links/{link_id}/record` 把整筆 `share_links` 刪掉。**只接受已失效的連結**（已停用或已過期）；對仍有效的連結回 `422 INVALID_OPERATION`，訊息要求先停用。理由見 proposal §29.5 決策 4：停用會切斷別人的存取、刪除只是整理自己的清單，兩者後果差太多，不可合成同一個動作誤觸。與所有分享管理端點一樣要驗證擁有權。
 5. 查詢以 `item_id IN (...)` 批次撈取，避免 N+1。
 
 #### My Drive 標記
@@ -1216,6 +1218,8 @@ proposal §29.2 第 5 點要求在檔案列表標示已分享項目。`DriveItem
 4. 項目丟垃圾桶後不再列出。
 5. 連結停用後仍列出但 `is_active=false`。
 6. `list_items` 回傳的兩個標記欄位正確，且不隨列數增加而增加查詢次數。
+7. 已停用的連結記錄可被刪除，刪除後不再出現在 `shared-by-me`。
+8. 仍有效的連結不可直接刪除記錄（回 422），非 owner 也不可刪除他人的連結記錄。
 
 ### 6.13 FileVersion 模組
 

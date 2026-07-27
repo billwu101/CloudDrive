@@ -120,11 +120,32 @@ describe('SharedByMePage', () => {
     expect(screen.getByText(/Public link · expires .* · inactive/)).toBeInTheDocument()
   })
 
-  it('offers Disable only for links that are still live', async () => {
+  it('offers Disable for a live link and Remove for a dead one', async () => {
     renderPage()
     await userEvent.click(await screen.findByRole('button', { expanded: false }))
 
+    // Never both on the same row: Disable cuts off whoever holds the URL,
+    // Remove only clears a dead record (proposal §29.5 decision 4).
     expect(screen.getAllByRole('button', { name: 'Disable' })).toHaveLength(1)
+    // One Remove per recipient (2) plus one for the inactive link.
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(3)
+  })
+
+  it('deletes a dead link record in place', async () => {
+    let deleted: string | null = null
+    server.use(
+      http.delete(`${BASE}/share/links/:linkId/record`, ({ params }) => {
+        deleted = String(params['linkId'])
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { expanded: false }))
+    // The last Remove belongs to the inactive link, after the two recipients.
+    const removes = screen.getAllByRole('button', { name: 'Remove' })
+    await userEvent.click(removes[removes.length - 1]!)
+
+    await waitFor(() => expect(deleted).toBe('lnk-2'))
   })
 
   it('removes a single recipient in place', async () => {

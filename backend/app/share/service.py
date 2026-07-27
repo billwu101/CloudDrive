@@ -263,13 +263,34 @@ class ShareLinkService:
             raise ForbiddenError("Invalid password")
         return link
 
-    async def deactivate_link(self, actor_id: UUID, link_id: UUID) -> None:
-        # The old comment here claimed the router checked ownership; it never
-        # did, so any signed-in user could kill any link they knew the id of.
+    async def _owned_link(self, actor_id: UUID, link_id: UUID) -> ShareLink:
         link = await self._links.get_by_id(link_id)
         if link is None:
             raise NotFoundError("Share link not found")
         item = await self._items.get_by_id(link.item_id)
         if item is None or item.owner_id != actor_id:
-            raise ForbiddenError("Only the owner can deactivate share links")
+            raise ForbiddenError("Only the owner can manage share links")
+        return link
+
+    async def delete_link_record(self, actor_id: UUID, link_id: UUID) -> None:
+        """Drop a dead link from the owner's list (proposal §29.2 rule 4.1).
+
+        Refuses while the link still works: disabling cuts off whoever holds
+        the URL, deleting only tidies the list. Folding the two into one action
+        would turn "clear this row" into "cut off a link someone is using"
+        (proposal §29.5 decision 4).
+        """
+        link = await self._owned_link(actor_id, link_id)
+        if _link_live(link, datetime.now(UTC)):
+            raise AppError(
+                ErrorCode.INVALID_OPERATION,
+                "Disable the link before removing it",
+                status_code=422,
+            )
+        await self._links.delete(link_id)
+
+    async def deactivate_link(self, actor_id: UUID, link_id: UUID) -> None:
+        # The old comment here claimed the router checked ownership; it never
+        # did, so any signed-in user could kill any link they knew the id of.
+        await self._owned_link(actor_id, link_id)
         await self._links.deactivate(link_id)
