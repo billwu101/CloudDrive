@@ -177,3 +177,10 @@ proposal §30.3 全部 9 項通過；`lint` / `typecheck` / `vitest` 全綠。
 - [x] `src/hooks/useDragMove.ts`：`makeDragGhost()` + `setDragImage()`。顯示「N items」與前 3 個名稱（超出以 `+N more` 收合），依列表順序；單選時只顯示名稱。節點需掛進 DOM 才能被點陣化，故置於畫面外並於 `setTimeout(0)` 後移除。
 - [x] 測試 4 項：多選列出全部、長清單收合、單選只顯示名稱、節點不殘留在 DOM。
 - [x] Chrome 實機驗證：勾選 3 個檔案拖曳，拖曳影像內容為「3 items」加三個檔名。
+
+### 調整（同日）：每列並列「涵蓋」與「可回收」
+
+使用者追問「為什麼是 nothing？應該也有佔大小吧」——只顯示可回收量，會被讀成「這個快照是空的」。實測最新快照涵蓋 34 MB／引用 36 個檔案，但只有它持有的檔案數為 0，所以刪掉確實回收不到空間。
+
+- [x] `SnapshotUsagePanel`：每列改為「covers X · frees Y」；註腳改寫成解釋「為什麼會是 nothing」而非重述定義。
+- [x] 測試更新：兩個數字都要出現，零回收列也要顯示 covers。

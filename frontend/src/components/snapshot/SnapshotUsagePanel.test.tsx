@@ -81,6 +81,9 @@ describe('SnapshotUsagePanel', () => {
     expect(rows[0]).toContain('Partly shared')
     expect(rows[0]).toContain('frees 500 MB')
     expect(rows[1]).toContain('Sole holder')
+    // Both numbers on every row: coverage alone reads as cost, and
+    // "frees nothing" alone reads as "this snapshot is empty".
+    expect(rows[0]).toContain('covers 2.0 GB')
   })
 
   it('keeps the zero-reclaim snapshots visible for comparison', () => {
@@ -100,6 +103,9 @@ describe('SnapshotUsagePanel', () => {
     const rows = screen.getAllByRole('listitem').map((li) => li.textContent)
     expect(rows).toHaveLength(3)
     expect(rows[0]).toContain('frees 2.6 GB')
+    // The zero rows still show what they hold — that is the answer to
+    // "surely it takes up space?".
+    expect(rows[1]).toContain('covers 1.3 GB')
     expect(rows[1]).toContain('frees nothing')
     expect(rows[2]).toContain('frees nothing')
   })

@@ -111,18 +111,27 @@ export function SnapshotUsagePanel({ settings, snapshots }: SnapshotUsagePanelPr
                   <span className="min-w-0 flex-1 truncate text-muted-foreground">
                     {when(snap.created_at)} · {snap.label}
                   </span>
-                  <span
-                    className={`shrink-0 tabular-nums ${frees ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    {frees ? `frees ${formatBytes(snap.reclaimable_bytes)}` : 'frees nothing'}
+                  {/* Both numbers, because either alone misleads: coverage
+                      looks like cost, and "frees nothing" looks like the
+                      snapshot is empty. Side by side they say the real thing —
+                      it holds this much, but someone else holds it too. */}
+                  <span className="shrink-0 tabular-nums">
+                    <span className="text-muted-foreground">
+                      covers {formatBytes(snap.total_bytes)}
+                    </span>
+                    <span className="text-muted-foreground"> · </span>
+                    <span className={frees ? 'font-medium text-foreground' : 'text-muted-foreground'}>
+                      {frees ? `frees ${formatBytes(snap.reclaimable_bytes)}` : 'frees nothing'}
+                    </span>
                   </span>
                 </li>
               )
             })}
           </ul>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Space actually reclaimed, not the size of the drive each snapshot covers. A
-            snapshot frees nothing while another one still holds the same files.
+            A snapshot frees nothing when every file it holds is also held by another
+            snapshot or still on your drive — deleting it leaves those files exactly where
+            they are. Only files it alone still holds are reclaimed.
           </p>
         </div>
       )}
