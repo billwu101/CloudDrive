@@ -166,3 +166,27 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 2. **E2 Browser runner（Playwright）**：同案例可選跑真實 UI。
 3. **E3 LLM judge + real Gemma eval 套件 + baseline 回歸**：量測實際品質。
 4. **E4 內建案例覆蓋九大 tag**（read-only/daily-ops/skill-generation/safety/workflow-reuse/context）。
+5. **E9 效率指標 + done_reason 捕捉 + 分級/thinking 分階段驗證**：見 §10.13/§10.14。
+
+### 10.13 效率指標與分級驗證（07-24 會議回饋）
+
+- **背景**：07-24 會議記錄（`CloudDrive-Personal-Notes/docs/05-會議記錄/會議記錄.md`）學長回饋：（1）M2–M5 分級要交代設計依據，（2）目前只有人工關鍵步驟檢查點（主觀），建議加客觀指標（token 消耗、工具呼叫次數）。
+- **做法：與既有 M2–M5 全量案例合併為單次系統性測試**——同一輪跑 400 案例（`--mode api --llm real`，thinking 依現行 DEC-033 預設關閉），在既有 pass/fail 之外同步記錄：
+  - `prompt_tokens`／`completion_tokens`：取自 Ollama `/api/chat` 回應原生欄位 `prompt_eval_count`／`eval_count`（免另外估算；已核對 [Ollama API 文件](https://github.com/ollama/ollama/blob/main/docs/api.md) 存在此欄位）。
+  - `tool_call_count`：實際執行的 workflow step 數（既有 `state.py`/`verifier.py` 執行軌跡取得）。
+  - 以上為**報告欄位，不計入 pass/fail 加權**——確定性斷言仍是主軸，新增指標不動既有門檻。
+  - M2→M5 通過率若呈現單調遞減，即為分級難度遞增的實證支撐，寫入報告作為對學長的回覆依據。
+- **方法論佐證**（已 fetch 驗證原文，非僅憑搜尋摘要）：
+  - 多次執行通過率門檻對應 [τ-bench pass^k](https://arxiv.org/abs/2406.12045)（Yao et al., 2024）：以 k 次重跑「全部成功」而非單次成功衡量可靠度，即本 harness `runs:N`＋`min_pass_rate` 的學術對應概念。
+  - 難度分級揭露能力斷層的做法可對照 [GAIA](https://arxiv.org/abs/2311.12983)（Mialon et al., 2023）3 級難度設計；**精確分級判準未能於摘要頁核實**（嘗試 fetch abstract 與 html 版皆未見具體判準文字），僅引用其「分級可揭露能力落差」的做法，不宣稱判準相同。
+  - token/tool-call 為業界標準客觀指標，參考 [Confident AI](https://www.confident-ai.com/blog/llm-agent-evaluation-complete-guide)、[Maxim AI](https://www.getmaxim.ai/articles/evaluating-ai-agents-metrics-and-best-practices/)。
+
+### 10.14 thinking on/off 分階段測試（承 E8，回應截斷假設）
+
+- **背景**：07-24 會議學長提出「thinking 開啟時完成率下降，可能因 context window 太短、輸出被截斷」，建議查 log 的 stop reason 欄位驗證。
+- **現況落差**：backend 目前完全未捕捉 `done_reason`（Ollama 回應原生欄位）。E8 既有結論是「重複生成迴圈」（非單純截斷）；截斷是待驗證的另一假設，兩者不互斥。
+- **`done_reason` 可行性須先探測、不可假設**：[Ollama 官方文件](https://github.com/ollama/ollama/blob/main/docs/api.md) 只證實 `stop`/`load`/`unload` 三值，**未證實 `length` 為合法值**——正式設計分類前，先手動用低 `num_predict` 觸發一次已知截斷，觀察實際回傳值。
+- **分階段執行（避免大規模浪費）**：
+  - **階段 A（先跑）**：thinking off（現行預設）× M2–M5 全量 400 案，與 §10.13 同一輪，順便記錄 `done_reason`——作為「關閉 thinking 時是否仍有截斷」的基線。
+  - **階段 B（小規模探測，暫緩全量）**：thinking on 只挑少量高風險 case（沿用 E8 的 storage-quota/safety-destructive 等）先探測，觀察 `done_reason` 分布與耗時；若探測顯示大量截斷/超時，全量 thinking-on 跑法（樣本數、timeout）待探測結果出爐後再定，**現階段不排入全量**（避免大量案例卡進迴圈、跑到 timeout 才知道浪費）。
+- **方法論佐證**：thinking 對 agentic 任務有害非個案——[The Danger of Overthinking](https://arxiv.org/abs/2502.08235)（2025-02，4000+ 軌跡分析，overthinking 分數愈高表現愈差，篩選降低 overthinking 使表現 +30%／算力 -43%），與 DEC-033 實測（think:false 100% vs thinking-on 60%、快 10 倍）方向一致。[Circular Reasoning](https://arxiv.org/abs/2601.05693)（2026-01）解釋跳針成因（推理卡邏輯死路後自我強化注意力），**僅佐證跳針成因，未涉及 stop reason 偵測法**，不可誤引為驗證此做法的依據。

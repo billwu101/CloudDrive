@@ -243,6 +243,18 @@ Bearer key 驗證）。探測結果（2026-07-07）：
 水準。另注意該端點為純 HTTP 無加密，且 `PRIVACY_DEFAULT` 在開發 `.env` 為
 non_sensitive（內容會實際外送），使用時需有意識。
 
+## E9：效率指標 + 分級驗證 + thinking 分階段測試（07-24 會議回饋）
+
+對應設計：[detailed-design/10-assistant-eval.md](../detailed-design/10-assistant-eval.md) §10.13/§10.14。背景：07-24 會議記錄（`CloudDrive-Personal-Notes/docs/05-會議記錄/會議記錄.md`）學長回饋——M2–M5 分級依據需交代、需加客觀指標、thinking 截斷假設待驗證。
+
+- [ ] `eval/schema.py`／`eval/state.py`：新增 report-only 欄位 `prompt_tokens`/`completion_tokens`（取 Ollama `prompt_eval_count`/`eval_count`）、`tool_call_count`（既有執行軌跡步數）、`done_reason`（Ollama 原生欄位）；**不計入 pass/fail 加權**。
+- [ ] `eval/report.py`：報告新增效率欄位（token/tool-call/done_reason），依 tag（M2–M5）分組彙總。
+- [ ] **探測性任務（先做，決定後續範圍）**：手動用低 `num_predict` 觸發一次已知截斷，確認 `done_reason` 實際回傳值是否為 `length`（Ollama 官方文件未證實此值）；結果記錄於 [eval-prompt-log.md](../eval-prompt-log.md)。
+- [ ] **階段 A**：thinking off（現行 DEC-033 預設）× M2–M5 全量 400 案例跑一輪，收集通過率（驗證分級單調遞減）+ 效率指標 + done_reason 基線。
+- [ ] **階段 B（小規模，暫緩全量）**：thinking on 只挑 E8 既有高風險 case（storage-quota/safety-destructive 等）小樣本探測，記錄 done_reason 分布與耗時；依探測結果再決定是否/如何跑全量 thinking-on（本輪不自動排入全量）。
+- [ ] 報告：整理「分級依據 + 效率指標 + thinking 截斷驗證」交代學長，引用 τ-bench/GAIA/Overthinking 論文佐證方法論（連結見 detailed-design §10.13/10.14）。
+- [ ] 測試：新增欄位的 harness 單元測試（mock 資料下 token/tool-call/done_reason 正確擷取與彙總，不影響既有 pass/fail 計算）。
+
 ## 測試/驗證任務
 
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。
