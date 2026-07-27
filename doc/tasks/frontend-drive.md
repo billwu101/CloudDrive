@@ -115,3 +115,23 @@ proposal §30.3 全部 9 項通過；`lint` / `typecheck` / `vitest` 全綠。
 - 單元測試 8 項（`src/hooks/useDragMove.test.tsx`）：單一／整批／選取外、放到檔案、放到自身、外部拖曳、放置標示、部分失敗。前端全套 **318 passed**；`lint` / `typecheck` 全綠。
 - Chrome 實機驗證（dev server）：`draggable=true`、`dragstart` 寫入自訂 MIME payload、資料夾 `dragover` 接受而檔案不接受、放置標示與來源淡化都正確套用。
 - **未做**：真正的原生 OS 拖放。CDP 的合成滑鼠事件不會啟動 HTML5 drag，且真的放開會搬動使用者的實際檔案，故止於 `dragover`，由使用者手動確認最後一哩。
+
+---
+
+## 修正：選取狀態沒有跟著資料夾切換清掉（2026-07-27 使用者回報）
+
+**症狀**：進入資料夾後工具列仍顯示 `Download (1)` / `Trash (1)`。因為雙擊資料夾的第一下會先選取它，第二下才導航，結果你站在資料夾裡、而那個資料夾自己是被選取的狀態。
+
+**風險**：`Trash (N)` 會刪掉畫面上根本看不到的項目；`handleDownloadSelected` 當時用的是未過濾的 `selectedIds`，會下載到不在此資料夾的檔案。
+
+- [x] `src/pages/DrivePage.tsx`：`useEffect` 依 `folderId` 清空選取（同時涵蓋麵包屑、返回鍵、瀏覽器上一頁、直接輸入網址）。
+- [x] `src/pages/DrivePage.tsx`：新增 `visibleSelected`（選取 ∩ 當前列表），工具列數字、下載、垃圾桶一律改用它——即使 store 裡殘留舊 id 也無法被操作。
+- [x] `src/pages/DrivePage.selection.test.tsx`：進資料夾後按鈕消失且 store 已清空；殘留的幽靈 id 不計入數量。
+
+---
+
+## 調整：公開連結到期日預設 7 天（2026-07-27 使用者要求）
+
+- [x] `src/components/share/ShareLinkPanel.tsx`：`DEFAULT_EXPIRY_DAYS = 7`，欄位預填 7 天後的本地時間（`datetime-local` 需要本地時間字串，不能直接用 ISO/UTC，否則會偏移時區）。
+- [x] 欄位 aria-label 由「Link expiry (optional)」改為「Link expiry」——已有預設值，不再是選填。
+- [x] `ShareDialog.test.tsx`：驗證預設值落在 7 天 ±0.1 天。

@@ -95,3 +95,18 @@ describe('ShareDialog', () => {
     expect((select as HTMLSelectElement).value).toBe('editor')
   })
 })
+
+describe('link expiry default', () => {
+  it('starts 7 days out instead of blank', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+
+    const field = screen.getByLabelText('Link expiry') as HTMLInputElement
+    // A link with no expiry never dies, and leaving the field empty is the
+    // easiest thing to do by accident — so it comes pre-filled.
+    expect(field.value).not.toBe('')
+    const days = (new Date(field.value).getTime() - Date.now()) / 86_400_000
+    expect(days).toBeGreaterThan(6.9)
+    expect(days).toBeLessThan(7.1)
+  })
+})

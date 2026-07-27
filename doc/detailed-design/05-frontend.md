@@ -464,7 +464,7 @@ ShareDialog
 UserShareForm
 PermissionSelect
 ShareMemberList
-ShareLinkPanel
+ShareLinkPanel       — 到期日預設 7 天後（`DEFAULT_EXPIRY_DAYS`），可改可清空
 SharedByMeRow           # §5.9.5，可展開，展開後列出對象與連結
 ShareBadges             # My Drive 列表上的兩種標記（FileRow 與 FileCard 共用）
 ShareTokenPage          # §5.9.6，/s/:shareToken（沿用既有檔名，非另開 PublicSharePage）

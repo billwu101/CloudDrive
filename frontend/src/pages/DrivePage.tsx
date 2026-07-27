@@ -1,5 +1,5 @@
 import { ArrowLeft, FolderOpen } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { downloadItem, triggerBlobDownload } from '@/api/download'
@@ -110,6 +110,15 @@ export function DrivePage() {
     [assistantSkills, contextMenu],
   )
 
+  // Selection belongs to one folder's listing. Without this, double-clicking a
+  // folder (the click selects it, the second click navigates) left that folder
+  // selected while you stood inside it — the toolbar then offered to trash an
+  // item that wasn't even on screen. Keyed on folderId so it also covers
+  // breadcrumbs, the back button and browser history.
+  useEffect(() => {
+    clearSelection()
+  }, [folderId, clearSelection])
+
   const handleBack = useCallback(() => {
     if (!folderId) return
     const parentId = folderItem?.parent_id
@@ -172,13 +181,19 @@ export function DrivePage() {
     [star],
   )
 
+  // Belt and braces alongside the effect above: actions and counts are derived
+  // from what is actually listed, so a stale id can never be acted on.
+  const visibleSelected = useMemo(
+    () => items.filter((i) => selectedIds.has(i.id)),
+    [items, selectedIds],
+  )
+
   const handleTrashSelected = useCallback(() => {
-    const targets = items.filter((i) => selectedIds.has(i.id))
-    setTrashTargets(targets)
-  }, [items, selectedIds])
+    setTrashTargets(visibleSelected)
+  }, [visibleSelected])
 
   const handleDownloadSelected = useCallback(async () => {
-    const ids = [...selectedIds]
+    const ids = visibleSelected.map((i) => i.id)
     if (ids.length === 0) return
     const res = await driveApi.downloadArchive(ids)
     // The server names the zip after the selection (folder/file name); read it
@@ -187,7 +202,7 @@ export function DrivePage() {
     const match = /filename\*=UTF-8''([^;]+)/i.exec(cd)
     const filename = match ? decodeURIComponent(match[1]) : 'download.zip'
     triggerBlobDownload(res.data, filename)
-  }, [selectedIds])
+  }, [visibleSelected])
 
   const handleRetryUpload = useCallback(
     (task: { file: File | null }) => {
@@ -243,7 +258,7 @@ export function DrivePage() {
           <div className="flex items-center gap-2">
             <UploadMenu onFiles={upload} onFolders={uploadFolders} />
             <DriveToolbar
-              selectedCount={selectedIds.size}
+              selectedCount={visibleSelected.length}
               onNewFolder={() => setShowCreateFolder(true)}
               onDownloadSelected={handleDownloadSelected}
               onTrashSelected={handleTrashSelected}
