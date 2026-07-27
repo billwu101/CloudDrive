@@ -45,8 +45,11 @@ export function SnapshotUsagePanel({ settings, snapshots }: SnapshotUsagePanelPr
   // Snapshots share blobs, so the "biggest" snapshot is usually the one that
   // reclaims nothing — sorting by coverage sends the user to delete the wrong
   // thing (and then to wonder why no space came back).
-  const worthDeleting = [...(snapshots ?? [])]
-    .filter((s) => s.reclaimable_bytes > 0)
+  //
+  // The zero rows stay in the list: seeing "2.6 GB" next to four "nothing"s is
+  // what makes the trade-off legible. Hiding them just leaves one number with
+  // nothing to compare against.
+  const ranked = [...(snapshots ?? [])]
     .sort((a, b) => b.reclaimable_bytes - a.reclaimable_bytes)
     .slice(0, TOP_N)
 
@@ -95,36 +98,34 @@ export function SnapshotUsagePanel({ settings, snapshots }: SnapshotUsagePanelPr
         </p>
       )}
 
-      <div className="mt-4">
-        <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">
-          Worth deleting
-        </h3>
-        {worthDeleting.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Nothing here would free space on its own — every snapshot shares its files with
-            another one. Space is only reclaimed once all the snapshots holding a file are gone.
-          </p>
-        ) : (
-          <>
-            <ul className="space-y-1">
-              {worthDeleting.map((snap) => (
+      {ranked.length > 0 && (
+        <div className="mt-4">
+          <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">
+            Space you would reclaim
+          </h3>
+          <ul className="space-y-1">
+            {ranked.map((snap) => {
+              const frees = snap.reclaimable_bytes > 0
+              return (
                 <li key={snap.id} className="flex items-center justify-between gap-3 text-xs">
                   <span className="min-w-0 flex-1 truncate text-muted-foreground">
                     {when(snap.created_at)} · {snap.label}
                   </span>
-                  <span className="shrink-0 tabular-nums">
-                    frees {formatBytes(snap.reclaimable_bytes)}
+                  <span
+                    className={`shrink-0 tabular-nums ${frees ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
+                  >
+                    {frees ? `frees ${formatBytes(snap.reclaimable_bytes)}` : 'frees nothing'}
                   </span>
                 </li>
-              ))}
-            </ul>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Shown as space actually reclaimed, not the size of the drive each snapshot
-              covers — snapshots share unchanged files.
-            </p>
-          </>
-        )}
-      </div>
+              )
+            })}
+          </ul>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Space actually reclaimed, not the size of the drive each snapshot covers. A
+            snapshot frees nothing while another one still holds the same files.
+          </p>
+        </div>
+      )}
     </section>
   )
 }

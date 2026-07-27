@@ -162,3 +162,10 @@ proposal §30.3 全部 9 項通過；`lint` / `typecheck` / `vitest` 全綠。
 - [x] `backend/app/snapshot/service.py` / `schemas.py` / `router.py`：`SnapshotResponse.reclaimable_bytes`；列表端點每頁一次查詢。
 - [x] 面板改為「Worth deleting」，依可回收量排序、0 的不列出、全為 0 時顯示說明。
 - [x] 測試：後端單元 + router + integration（共用 blob 的快照回報 0）；前端排序與空狀態。
+
+### 調整（同日）：列出 5 個供比較，不只列出有得回收的
+
+只顯示可回收 > 0 的結果是整份清單只剩一列，使用者沒有比較基準。改為依可回收量由大到小列最多 5 個，0 的標示「frees nothing」。
+
+- [x] `SnapshotUsagePanel`：移除 `> 0` 過濾；標題改「Space you would reclaim」；零回收列以較淡樣式與「frees nothing」呈現。
+- [x] 測試 3 項：排序正確、零回收仍列出、上限 5 筆。

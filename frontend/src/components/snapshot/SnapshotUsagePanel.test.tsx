@@ -78,21 +78,42 @@ describe('SnapshotUsagePanel', () => {
     )
 
     const rows = screen.getAllByRole('listitem').map((li) => li.textContent)
-    expect(rows).toHaveLength(2) // the 0-byte one is not offered at all
     expect(rows[0]).toContain('Partly shared')
     expect(rows[0]).toContain('frees 500 MB')
     expect(rows[1]).toContain('Sole holder')
-    expect(screen.queryByText(/Covers everything/)).not.toBeInTheDocument()
   })
 
-  it('says so plainly when deleting anything would free nothing', () => {
+  it('keeps the zero-reclaim snapshots visible for comparison', () => {
+    // One number alone says nothing; "2.6 GB" next to several "nothing"s is
+    // what lets the user see which snapshot is actually worth deleting.
     render(
       <SnapshotUsagePanel
         settings={settings(3.5)}
-        snapshots={[snapshot('a', 'Scheduled', 1358 * 1024 * 1024, 0)]}
+        snapshots={[
+          snapshot('a', 'Scheduled', 1358 * 1024 * 1024, 0),
+          snapshot('b', 'Scheduled', 1358 * 1024 * 1024, 0),
+          snapshot('c', 'Scheduled', 3063 * 1024 * 1024, 2.6 * GB),
+        ]}
       />,
     )
-    expect(screen.getByText(/Nothing here would free space on its own/)).toBeInTheDocument()
+
+    const rows = screen.getAllByRole('listitem').map((li) => li.textContent)
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toContain('frees 2.6 GB')
+    expect(rows[1]).toContain('frees nothing')
+    expect(rows[2]).toContain('frees nothing')
+  })
+
+  it('shows at most five', () => {
+    render(
+      <SnapshotUsagePanel
+        settings={settings(1)}
+        snapshots={Array.from({ length: 9 }, (_, i) =>
+          snapshot(`s${i}`, 'Scheduled', 1024, (9 - i) * 1024),
+        )}
+      />,
+    )
+    expect(screen.getAllByRole('listitem')).toHaveLength(5)
   })
 
   it('renders nothing until settings arrive', () => {
