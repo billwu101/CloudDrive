@@ -96,6 +96,20 @@ describe('ShareDialog', () => {
   })
 })
 
+describe('link actions', () => {
+  it('offers copy but not deactivate', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /create link/i }))
+    await waitFor(() => expect(screen.getByText(/copy link/i)).toBeInTheDocument())
+
+    // Turning a link off belongs in "Shared by me", where every link the user
+    // has handed out is listed together — not in the dialog opened to give
+    // access, where it sits one slip away from the button you came for.
+    expect(screen.queryByRole('button', { name: /deactivate/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('link expiry default', () => {
   it('starts 7 days out instead of blank', async () => {
     renderDialog()

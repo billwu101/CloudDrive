@@ -121,3 +121,8 @@ proposal §29.3 全部 5 項通過；`npm run lint` / `typecheck` / `npx vitest 
 - [x] `src/hooks/useShare.ts`：`useDeleteShareLinkRecord()`，成功後同時 invalidate share 與 drive。
 - [x] `src/components/share/SharedByMeRow.tsx`：每列連結只出現一顆按鈕——有效顯示「Disable」、失效顯示「Remove」。
 - [x] 測試：有效／失效各自顯示正確按鈕、點 Remove 打到 `/record` 端點。
+
+### 調整（2026-07-27）：分享彈窗只留 Copy link
+
+- [x] `src/components/share/ShareLinkPanel.tsx`：移除「Deactivate」按鈕與 `useDeactivateShareLink` 依賴。停用改為一律走「Shared by me」——那裡把使用者分享出去的所有連結列在一起，是「收回權限」該去的地方；分享彈窗是「給出權限」時開的，把停用擺在 Copy link 旁邊只是多一個手滑的機會。
+- [x] `ShareDialog.test.tsx`：新增測試釘住「有 Copy、沒有 Deactivate」。

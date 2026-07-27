@@ -1,9 +1,9 @@
-import { Check, Copy, Link2Off, Link } from 'lucide-react'
+import { Check, Copy, Link } from 'lucide-react'
 import { useState } from 'react'
 
 import type { ShareLinkResponse } from '@/api/types'
 import type { Permission } from '@/hooks/useShare'
-import { useCreateShareLink, useDeactivateShareLink } from '@/hooks/useShare'
+import { useCreateShareLink } from '@/hooks/useShare'
 
 import { PermissionSelect } from './PermissionSelect'
 
@@ -40,7 +40,6 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
   const [activeLink, setActiveLink] = useState<ShareLinkResponse | null>(existingLink ?? null)
 
   const createLink = useCreateShareLink()
-  const deactivateLink = useDeactivateShareLink()
 
   const handleCreate = async () => {
     const result = await createLink.mutateAsync({
@@ -60,12 +59,6 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handleDeactivate = async () => {
-    if (!activeLink) return
-    await deactivateLink.mutateAsync(activeLink.id)
-    setActiveLink(null)
-  }
-
   if (activeLink) {
     return (
       <div className="space-y-3">
@@ -75,6 +68,9 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
             {window.location.origin}/s/{activeLink.token}
           </span>
         </div>
+        {/* Copy only. Turning a link off lives in "Shared by me", where every
+            link the user has handed out is listed together — the place you go
+            to take access away, rather than a dialog you opened to give it. */}
         <div className="flex gap-2">
           <button
             onClick={handleCopy}
@@ -83,15 +79,6 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
           >
             {copied ? <Check className="size-4 text-green-600" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
             {copied ? 'Copied!' : 'Copy link'}
-          </button>
-          <button
-            onClick={handleDeactivate}
-            disabled={deactivateLink.isPending}
-            className="flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
-            aria-label="Deactivate link"
-          >
-            <Link2Off className="size-4" aria-hidden="true" />
-            Deactivate
           </button>
         </div>
       </div>
