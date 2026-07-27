@@ -20,6 +20,11 @@ expect:
     - get_info
     - recent
     - rename_item
+  state:
+    item_present:
+    - 專案計畫_正式版
+    item_absent:
+    - 專案計畫
 scoring:
   weights:
     correctness: 1.0

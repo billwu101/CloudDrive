@@ -236,6 +236,10 @@ M3_SCENARIOS: list[dict[str, Any]] = [
                 },
             },
         ],
+        # Outcome, not just plan shape: the seeded name must be gone and the
+        # new one must exist for real (2026-07-27 E9 — a "non-empty plan"
+        # check alone can't tell a correct rename from any other plan).
+        "state": lambda t: {"item_present": [f"{t}_正式版"], "item_absent": [t]},
     },
     {
         "key": "star_frequent",
@@ -260,6 +264,10 @@ M3_SCENARIOS: list[dict[str, Any]] = [
                 "arguments": {"item_id": {"from_step": 2, "path": "id"}, "starred": True},
             },
         ],
+        # star_item doesn't rename/move anything — presence/absence can't
+        # distinguish "starred correctly" from "did nothing"; must check the
+        # real is_starred flag.
+        "state": lambda t: {"item_starred": [t]},
     },
     {
         "key": "archive_project",
@@ -290,6 +298,9 @@ M3_SCENARIOS: list[dict[str, Any]] = [
                 },
             },
         ],
+        # move_item doesn't rename either — must check the item's real
+        # parent_id resolves to the destination folder's name.
+        "state": lambda t: {"item_parent": {t: f"{t}封存"}},
     },
     {
         "key": "new_project",
@@ -312,6 +323,7 @@ M3_SCENARIOS: list[dict[str, Any]] = [
             {"skill": "search", "arguments": {"q": t}},
             {"skill": "create_folder", "arguments": {"name": t}},
         ],
+        "state": lambda t: {"item_present": [t]},
     },
     {
         "key": "cleanup_by_type",
@@ -334,6 +346,11 @@ M3_SCENARIOS: list[dict[str, Any]] = [
             {"skill": "recent", "arguments": {}},
             {"skill": "organize_by_type", "arguments": {}},
         ],
+        # No "state" here — deliberate known gap: organize_by_type creates an
+        # unpredictable number of type-named subfolders depending on what's in
+        # the account, so item_present/absent can't cheaply assert "did it
+        # right" the way a single rename/star/move target can. This scenario
+        # stays plan-level-verified only (see doc/tasks/assistant-eval.md E9).
     },
 ]
 
@@ -344,6 +361,11 @@ def _scenario_seed(scenario: dict[str, Any], topic: str) -> list[str]:
     if seed_extra is not None:
         seed = seed + seed_extra(topic)
     return seed
+
+
+def _scenario_state(scenario: dict[str, Any], topic: str) -> dict[str, Any] | None:
+    state = scenario.get("state")
+    return state(topic) if state is not None else None
 
 
 def build_m3() -> list[dict[str, Any]]:
@@ -357,6 +379,15 @@ def build_m3() -> list[dict[str, Any]]:
     for scenario in M3_SCENARIOS:
         for topic in M2_TOPICS:
             n += 1
+            expect: dict[str, Any] = {
+                "workflow": {
+                    "requires_confirmation": True,
+                    "steps_include": [*scenario["tools"], scenario["write"]],
+                }
+            }
+            state = _scenario_state(scenario, topic)
+            if state is not None:
+                expect["state"] = state
             cases.append(
                 {
                     "id": f"gen-m3-{n:03d}",
@@ -366,12 +397,7 @@ def build_m3() -> list[dict[str, Any]]:
                     "mode": ["api", "browser"],
                     "tags": ["daily-ops", "generated", "m3", f"scenario:{scenario['key']}"],
                     "seed_folders": _scenario_seed(scenario, topic),
-                    "expect": {
-                        "workflow": {
-                            "requires_confirmation": True,
-                            "steps_include": [*scenario["tools"], scenario["write"]],
-                        }
-                    },
+                    "expect": expect,
                     "scoring": _scoring(),
                     "mock_llm": {
                         "responses": [
@@ -417,6 +443,7 @@ M5_SCENARIOS: list[dict[str, Any]] = [
                 },
             },
         ],
+        "state": lambda t: {"item_present": [f"{t}_已確認"], "item_absent": [t]},
     },
     {
         "key": "star_after_browse",
@@ -443,6 +470,7 @@ M5_SCENARIOS: list[dict[str, Any]] = [
                 "arguments": {"item_id": {"from_step": 1, "path": "items.0.id"}, "starred": True},
             },
         ],
+        "state": lambda t: {"item_starred": [t]},
     },
     {
         "key": "archive_after_review",
@@ -472,6 +500,7 @@ M5_SCENARIOS: list[dict[str, Any]] = [
                 },
             },
         ],
+        "state": lambda t: {"item_parent": {t: f"{t}封存"}},
     },
     {
         "key": "rename_after_recent_first",
@@ -500,6 +529,7 @@ M5_SCENARIOS: list[dict[str, Any]] = [
                 },
             },
         ],
+        "state": lambda t: {"item_present": [f"{t}_更新版"], "item_absent": [t]},
     },
     {
         "key": "star_after_full_review",
@@ -524,6 +554,7 @@ M5_SCENARIOS: list[dict[str, Any]] = [
                 "arguments": {"item_id": {"from_step": 1, "path": "id"}, "starred": True},
             },
         ],
+        "state": lambda t: {"item_starred": [t]},
     },
 ]
 
@@ -545,6 +576,15 @@ def build_m5() -> list[dict[str, Any]]:
             seed_extra = scenario.get("seed_extra")
             if seed_extra is not None:
                 seed = seed + seed_extra(topic)
+            expect: dict[str, Any] = {
+                "workflow": {
+                    "requires_confirmation": True,
+                    "steps_include": [*scenario["tools"], scenario["write"]],
+                }
+            }
+            state = _scenario_state(scenario, topic)
+            if state is not None:
+                expect["state"] = state
             cases.append(
                 {
                     "id": f"gen-m5-{n:03d}",
@@ -554,12 +594,7 @@ def build_m5() -> list[dict[str, Any]]:
                     "mode": ["api", "browser"],
                     "tags": ["workflow-reuse", "generated", "m5", f"scenario:{scenario['key']}"],
                     "seed_folders": seed,
-                    "expect": {
-                        "workflow": {
-                            "requires_confirmation": True,
-                            "steps_include": [*scenario["tools"], scenario["write"]],
-                        }
-                    },
+                    "expect": expect,
                     "scoring": _scoring(),
                     "mock_llm": {
                         "responses": [

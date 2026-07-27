@@ -37,7 +37,8 @@ from eval.report import aggregates_to_json, aggregates_to_markdown, efficiency_s
 from eval.runner import EvalRunnerError, run_case_http
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, CaseScore, aggregate_runs, score_case
-from eval.verifier import CheckResult, verify
+from eval.state import StateFetchError, fetch_items_http
+from eval.verifier import CheckResult, verify, verify_state
 
 
 def _register(base_url: str, stamp: str, *, timeout: float = 30.0) -> str:
@@ -60,6 +61,28 @@ def _register(base_url: str, stamp: str, *, timeout: float = 30.0) -> str:
     return token
 
 
+def _confirm_workflow(
+    base_url: str, token: str, workflow_id: str, *, timeout: float = 180.0
+) -> dict[str, Any]:
+    """POST /assistant/workflows/{id}/confirm — actually executes a pending
+    plan. Without this, a "pass" only means the model produced *some* plan;
+    it never proves the seed_folders/ref_search grounding resolved to the
+    right real item and actually did the right thing (2026-07-27, alfred:
+    "還是要驗證他做的對不對吧？否則沒有意義")."""
+
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/assistant/workflows/{workflow_id}/confirm",
+        data=json.dumps({}).encode(),
+        method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        data = json.load(response)
+    if not isinstance(data, dict):
+        raise EvalRunnerError(f"confirm {workflow_id} returned unexpected type {type(data)!r}")
+    return data
+
+
 def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore:
     run_scores: list[CaseScore] = []
     for i in range(runs):
@@ -72,8 +95,33 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
         response = run_case_http(case, base_url=base_url, token=token, timeout=180.0)
         # Real model: exact step sequence isn't guaranteed, only that a
         # sensible plan + confirmation tier was produced (matches eval.run's
-        # --no-strict-steps behaviour for api+real).
+        # --no-strict-steps behaviour for api+real). This alone does NOT prove
+        # the plan was *correct* — that's what confirm+execute+state check
+        # below is for.
         checks = verify(case, response, strict_steps=False)
+
+        plan = response.get("plan") or {}
+        status = plan.get("status") if isinstance(plan, dict) else None
+        workflow_id = plan.get("workflow_id") if isinstance(plan, dict) else None
+        if status == "pending_approval" and workflow_id:
+            try:
+                _confirm_workflow(base_url, token, str(workflow_id))
+            except (urllib.error.URLError, EvalRunnerError) as exc:
+                checks = [
+                    *checks,
+                    CheckResult("execution", "workflow confirm succeeded", False, str(exc)),
+                ]
+
+        if case.expect.state is not None:
+            try:
+                items = fetch_items_http(base_url, token)
+                checks = [*checks, *verify_state(case, items)]
+            except StateFetchError as exc:
+                checks = [
+                    *checks,
+                    CheckResult("state", "post-execution state fetch succeeded", False, str(exc)),
+                ]
+
         llm_meta = response.get("llm_meta")
         run_scores.append(score_case(case, checks, llm_meta=llm_meta))
     return aggregate_runs(case, run_scores)

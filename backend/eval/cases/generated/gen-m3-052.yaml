@@ -22,6 +22,9 @@ expect:
     - list_items
     - get_info
     - move_item
+  state:
+    item_parent:
+      旅遊: 旅遊封存
 scoring:
   weights:
     correctness: 1.0

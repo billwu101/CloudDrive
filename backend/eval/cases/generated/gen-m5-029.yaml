@@ -21,6 +21,9 @@ expect:
     - list_items
     - search
     - star_item
+  state:
+    item_starred:
+    - 簡報
 scoring:
   weights:
     correctness: 1.0

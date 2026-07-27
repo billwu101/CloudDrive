@@ -20,6 +20,11 @@ expect:
     - search
     - storage_quota
     - rename_item
+  state:
+    item_present:
+    - 會議記錄_更新版
+    item_absent:
+    - 會議記錄
 scoring:
   weights:
     correctness: 1.0

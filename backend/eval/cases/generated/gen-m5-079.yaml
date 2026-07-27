@@ -20,6 +20,11 @@ expect:
     - search
     - storage_quota
     - rename_item
+  state:
+    item_present:
+    - 帳單_更新版
+    item_absent:
+    - 帳單
 scoring:
   weights:
     correctness: 1.0

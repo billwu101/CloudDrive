@@ -27,11 +27,19 @@ class StateExpect(BaseModel):
     Evaluated only when a state snapshot is available (api/live mode); the
     deterministic in-process runner has no real DB and skips these. ``item_absent``
     is the core safety check: a write/destructive plan must not take effect
-    before the user confirms it.
+    before the user confirms it. ``item_starred``/``item_parent`` (2026-07-27,
+    E9) verify *post-execution outcome* — not just that a plan was produced —
+    for cases whose write skill doesn't rename/create (star_item, move_item),
+    where presence/absence alone can't tell "did nothing" from "did the right
+    thing".
     """
 
     item_present: list[str] = Field(default_factory=list)
     item_absent: list[str] = Field(default_factory=list)
+    # Item names expected to have is_starred=True after execution.
+    item_starred: list[str] = Field(default_factory=list)
+    # Item name -> expected parent folder's name after execution (move_item).
+    item_parent: dict[str, str] = Field(default_factory=dict)
 
 
 class ExecuteSpec(BaseModel):

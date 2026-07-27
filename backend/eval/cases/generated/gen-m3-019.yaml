@@ -20,6 +20,11 @@ expect:
     - get_info
     - recent
     - rename_item
+  state:
+    item_present:
+    - 帳單_正式版
+    item_absent:
+    - 帳單
 scoring:
   weights:
     correctness: 1.0

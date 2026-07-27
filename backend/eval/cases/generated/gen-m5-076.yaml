@@ -20,6 +20,11 @@ expect:
     - search
     - storage_quota
     - rename_item
+  state:
+    item_present:
+    - 設計稿_更新版
+    item_absent:
+    - 設計稿
 scoring:
   weights:
     correctness: 1.0

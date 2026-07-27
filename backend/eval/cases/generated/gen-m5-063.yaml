@@ -20,6 +20,11 @@ expect:
     - search
     - storage_quota
     - rename_item
+  state:
+    item_present:
+    - 照片_更新版
+    item_absent:
+    - 照片
 scoring:
   weights:
     correctness: 1.0

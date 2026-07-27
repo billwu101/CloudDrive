@@ -20,6 +20,11 @@ expect:
     - search
     - storage_quota
     - rename_item
+  state:
+    item_present:
+    - 專案計畫_更新版
+    item_absent:
+    - 專案計畫
 scoring:
   weights:
     correctness: 1.0

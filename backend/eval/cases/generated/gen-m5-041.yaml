@@ -21,6 +21,9 @@ expect:
     - get_info
     - list_items
     - move_item
+  state:
+    item_parent:
+      報告: 報告封存
 scoring:
   weights:
     correctness: 1.0

@@ -33,7 +33,7 @@ from eval.runner import run_case_http
 from eval.runner_browser import run_browser_suite
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, aggregate_runs, score_case
-from eval.state import fetch_item_names_http
+from eval.state import fetch_items_http
 from eval.verifier import CheckResult, verify, verify_execution, verify_state
 
 
@@ -243,8 +243,8 @@ def _state_checks(case: EvalCase, args: argparse.Namespace) -> list[CheckResult]
         return []
     if args.mode != "api" or args.llm != "real" or not args.token:
         return []
-    item_names = fetch_item_names_http(args.base_url, args.token)
-    return verify_state(case, item_names)
+    items = fetch_items_http(args.base_url, args.token)
+    return verify_state(case, items)
 
 
 def _build_judge(args: argparse.Namespace) -> JudgeModel | None:

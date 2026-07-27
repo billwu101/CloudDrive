@@ -20,6 +20,9 @@ expect:
     - search
     - get_info
     - star_item
+  state:
+    item_starred:
+    - 專案計畫
 scoring:
   weights:
     correctness: 1.0

@@ -19,6 +19,9 @@ expect:
     - list_items
     - search
     - create_folder
+  state:
+    item_present:
+    - 使用手冊
 scoring:
   weights:
     correctness: 1.0

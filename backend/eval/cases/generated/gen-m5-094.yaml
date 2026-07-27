@@ -20,6 +20,9 @@ expect:
     - get_info
     - storage_quota
     - star_item
+  state:
+    item_starred:
+    - 備份
 scoring:
   weights:
     correctness: 1.0
