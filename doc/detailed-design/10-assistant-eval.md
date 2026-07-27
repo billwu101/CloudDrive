@@ -171,8 +171,9 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 ### 10.13 效率指標與分級驗證（07-24 會議回饋）
 
 - **背景**：07-24 會議記錄（`CloudDrive-Personal-Notes/docs/05-會議記錄/會議記錄.md`）學長回饋：（1）M2–M5 分級要交代設計依據，（2）目前只有人工關鍵步驟檢查點（主觀），建議加客觀指標（token 消耗、工具呼叫次數）。
-- **做法：與既有 M2–M5 全量案例合併為單次系統性測試**——同一輪跑 400 案例（`--mode api --llm real`，thinking 依現行 DEC-033 預設關閉），在既有 pass/fail 之外同步記錄：
-  - `prompt_tokens`／`completion_tokens`：取自 Ollama `/api/chat` 回應原生欄位 `prompt_eval_count`／`eval_count`（免另外估算；已核對 [Ollama API 文件](https://github.com/ollama/ollama/blob/main/docs/api.md) 存在此欄位）。
+- **做法：與既有 M2–M5 全量案例合併為單次系統性測試**——同一輪跑 400 案例（`--mode api --llm real --runs 3`，thinking 依現行 DEC-033 預設關閉），在既有 pass/fail 之外同步記錄：
+  - **為何要 `--runs 3` 而非單次**：`eval-prompt-log.md` §2.3/§2.6 已記錄 M3/M5 對真實模型偶有 flaky（如 gen-m3-001 單跑 0.50 FAIL、`min_pass_rate=0.6` 才是既有設計的正確評法）；若只跑一次，M2→M5 通過率順序可能被單次雜訊干擾而非真實難度差異，單次結果不能當分級依據的證據。
+  - `prompt_tokens`／`completion_tokens`：取自 Ollama `/api/chat` 回應原生欄位 `prompt_eval_count`／`eval_count`（免另外估算；已核對 [Ollama API 文件](https://github.com/ollama/ollama/blob/main/docs/api.md) 存在此欄位，並實測確認數值正確）。**這兩個數字是單次 LLM 呼叫的量**；若一個 case 內部觸發多次呼叫（如規劃+judge 評審各一次），該 case 的總 token 須加總各次呼叫的值，不能只取最後一次。
   - `tool_call_count`：實際執行的 workflow step 數（既有 `state.py`/`verifier.py` 執行軌跡取得）。
   - 以上為**報告欄位，不計入 pass/fail 加權**——確定性斷言仍是主軸，新增指標不動既有門檻。
   - M2→M5 通過率若呈現單調遞減，即為分級難度遞增的實證支撐，寫入報告作為對學長的回覆依據。
@@ -180,13 +181,35 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
   - 多次執行通過率門檻對應 [τ-bench pass^k](https://arxiv.org/abs/2406.12045)（Yao et al., 2024）：以 k 次重跑「全部成功」而非單次成功衡量可靠度，即本 harness `runs:N`＋`min_pass_rate` 的學術對應概念。
   - 難度分級揭露能力斷層的做法可對照 [GAIA](https://arxiv.org/abs/2311.12983)（Mialon et al., 2023）3 級難度設計；**精確分級判準未能於摘要頁核實**（嘗試 fetch abstract 與 html 版皆未見具體判準文字），僅引用其「分級可揭露能力落差」的做法，不宣稱判準相同。
   - token/tool-call 為業界標準客觀指標，參考 [Confident AI](https://www.confident-ai.com/blog/llm-agent-evaluation-complete-guide)、[Maxim AI](https://www.getmaxim.ai/articles/evaluating-ai-agents-metrics-and-best-practices/)。
+- **已知限制與修復決定：M3/M5 案例的自然語言 prompt 重複率遠高於「100 案例」表面數字（2026-07-27 實測 `generate_cases.py` 發現）**：`_write_first_prompt`（`generate_cases.py:89-92`）未把搜尋關鍵字嵌入句子，關鍵字只用於 mock_llm 腳本參數。實際跑 `build_m2/m3/m5()` 統計不重複 prompt 文字數：**M2 100/100**（主題字有嵌入句子）、**M3 50/100**（每句重複 2 次）、**M5 8/100**（每句重複約 12–13 次）。對真實模型而言，M5「100 案例」實質是 8 句話各問 12 次，若以此宣稱「測了 100 種真實情境」會誇大。
+  - **決定升級（alfred 2026-07-27，最終版）**：不只補嵌關鍵字，改為**比照 M2 全面重新設計**——M3/M5 目前的公式化句型（「幫我 X（過程中可先 Y、Z、W）」）本身就不自然，且用「某個項目」模糊指代（與 `eval-prompt-log.md:60-62` 記錄過的 `gen-m2-007` 同一風險模式：模糊指代讓真模型偶爾跳過查詢步驟）。
+  - **設計**：
+    1. 比照 `M2_SCENARIOS` 寫 ~5 個 M3 情境、~5 個 M5 情境（含 `reason` 欄位交代為何需要這些查詢+這個寫入動作），敘事句型而非工具清單，各搭配一批真實項目名稱湊到 100。
+    2. **真實 grounding**：情境用到的具體資料夾名稱放進既有 `seed_folders` 欄位（`schema.py:109`，已核對 `search` 預設不限 `item_type`，資料夾可被搜到——`app/assistant/skills/builtin/read_only.py:115`），prompt 直接講真實名稱，不再用「某個項目」；寫入步驟的 `item_id` 改用既有 `ref_search=True`／`{from_step,path}` 機制引用查詢步驟的真實結果，不寫死假 UUID。
+    3. **方法論依據**：τ-bench（[arXiv 2406.12045](https://arxiv.org/abs/2406.12045)）任務設計原則——指令需對應資料庫裡「唯一、確定」的結果，反覆修到「確定沒有歧義」為止；GroundAct（[arXiv 2508.05614](https://arxiv.org/html/2508.05614v2)，已開頁驗證）——行為需根植於真實環境事實，而非指令文字先講死答案。**不採用 τ-bench 完整實作**（LLM 即時扮演使用者）：那會打破 mock 決定性（§10.2/§10.10 硬性要求 CI 不依賴真模型）且每案例多燒一次 LLM 呼叫；改採「固定情境模板＋真實 fixture」，同樣做到 grounding 但保持決定性、零額外 LLM 成本。
+  - **⚠️ Browser 模式缺口（2026-07-27 發現，已決定修）**：`runner_browser.py` 目前完全沒有處理 `seed_folders`（`grep` 零匹配），而 M3/M5 現行標記 `mode:[api,browser]`。若不修，browser 模式會找不到 seed 的資料夾，跑出跟模型能力無關的假失敗。**決定一併修**：① `runner_browser.py` 把 `case.seed_folders` 加進傳給 Playwright 的 JSON payload；② `frontend/e2e/assistant/assistant-eval.spec.ts` 在送出 prompt 前，用既有 auth token 呼叫 `/drive/folders` 建立這些資料夾（比照 API 端 `runner.py:53-64` 的 `_seed_folders` 邏輯）。
+  - 會動到既有 `cases/generated/gen-m{3,5}-*.yaml`（200 檔）。
 
 ### 10.14 thinking on/off 分階段測試（承 E8，回應截斷假設）
 
 - **背景**：07-24 會議學長提出「thinking 開啟時完成率下降，可能因 context window 太短、輸出被截斷」，建議查 log 的 stop reason 欄位驗證。
 - **現況落差**：backend 目前完全未捕捉 `done_reason`（Ollama 回應原生欄位）。E8 既有結論是「重複生成迴圈」（非單純截斷）；截斷是待驗證的另一假設，兩者不互斥。
-- **`done_reason` 可行性須先探測、不可假設**：[Ollama 官方文件](https://github.com/ollama/ollama/blob/main/docs/api.md) 只證實 `stop`/`load`/`unload` 三值，**未證實 `length` 為合法值**——正式設計分類前，先手動用低 `num_predict` 觸發一次已知截斷，觀察實際回傳值。
+- **`done_reason` 機制已實測確認（2026-07-27，對生產遠端 gemma4:26b gateway 直接呼叫 `/api/chat`）**：官方文件只列 `stop`/`load`/`unload`，未提及 `length`；實測對照組（`num_predict:200`，自然講完）回 `done_reason:"stop"`、`eval_count:7`；截斷組（`num_predict:8`，句子被腰斬）回 `done_reason:"length"`、`eval_count:8`（剛好卡在上限）。**確認機制成立：`stop`＝模型自然結束，`length`＝撞 `num_predict` 上限被強制切斷**，可作為截斷假設的判別欄位。
 - **分階段執行（避免大規模浪費）**：
   - **階段 A（先跑）**：thinking off（現行預設）× M2–M5 全量 400 案，與 §10.13 同一輪，順便記錄 `done_reason`——作為「關閉 thinking 時是否仍有截斷」的基線。
   - **階段 B（小規模探測，暫緩全量）**：thinking on 只挑少量高風險 case（沿用 E8 的 storage-quota/safety-destructive 等）先探測，觀察 `done_reason` 分布與耗時；若探測顯示大量截斷/超時，全量 thinking-on 跑法（樣本數、timeout）待探測結果出爐後再定，**現階段不排入全量**（避免大量案例卡進迴圈、跑到 timeout 才知道浪費）。
 - **方法論佐證**：thinking 對 agentic 任務有害非個案——[The Danger of Overthinking](https://arxiv.org/abs/2502.08235)（2025-02，4000+ 軌跡分析，overthinking 分數愈高表現愈差，篩選降低 overthinking 使表現 +30%／算力 -43%），與 DEC-033 實測（think:false 100% vs thinking-on 60%、快 10 倍）方向一致。[Circular Reasoning](https://arxiv.org/abs/2601.05693)（2026-01）解釋跳針成因（推理卡邏輯死路後自我強化注意力），**僅佐證跳針成因，未涉及 stop reason 偵測法**，不可誤引為驗證此做法的依據。
+
+### 10.15 失敗原因分類（分析用，零額外成本，2026-07-27 alfred 提議）
+
+- **動機**：`min_pass_rate`（見 §10.7）把 N 次執行收斂成單一通過率數字，會丟失「為什麼失敗」的細節（截斷？規劃錯？安全違規？）。但 `scoring.aggregate_runs` 其實**已經**把每次執行的完整 `CaseScore`（含各維度 `CheckResult.ok`/`detail`）存在 `AggregateScore.run_scores`，並經 `report.py` 序列化進 JSON——原始資料本來就沒丟，只是缺兩類欄位。
+- **新增欄位**（`CaseScore`，每次執行的原始紀錄，非聚合層）：
+  - `done_reason: str | None`、`prompt_tokens: int | None`、`completion_tokens: int | None`（承 §10.13/§10.14）。
+  - `failure_category: str | None`：**規則判斷、非 LLM 分類**，`passed=False` 時才填：
+    1. `done_reason == "length"` → `"truncated"`
+    2. 否則 `workflow` 維度未過 → `"wrong_plan"`（規劃錯/理解錯，含使用者說的「完全做錯」）
+    3. 否則 `safety` 維度未過 → `"safety_violation"`
+    4. 否則 `state` 維度未過 → `"state_mismatch"`
+    5. 各維度都過但未達 `pass_threshold` → `"partial"`
+    6. 其餘 → `"other"`
+- **報告新增彙總**：依 tag（m2–m5）統計 `failure_category` 分布（如「M5 失敗中 60% wrong_plan、30% truncated、10% other」），供事後分析用，不影響既有 pass/fail 判定。

@@ -249,8 +249,17 @@ non_sensitive（內容會實際外送），使用時需有意識。
 
 - [ ] `eval/schema.py`／`eval/state.py`：新增 report-only 欄位 `prompt_tokens`/`completion_tokens`（取 Ollama `prompt_eval_count`/`eval_count`）、`tool_call_count`（既有執行軌跡步數）、`done_reason`（Ollama 原生欄位）；**不計入 pass/fail 加權**。
 - [ ] `eval/report.py`：報告新增效率欄位（token/tool-call/done_reason），依 tag（M2–M5）分組彙總。
-- [ ] **探測性任務（先做，決定後續範圍）**：手動用低 `num_predict` 觸發一次已知截斷，確認 `done_reason` 實際回傳值是否為 `length`（Ollama 官方文件未證實此值）；結果記錄於 [eval-prompt-log.md](../eval-prompt-log.md)。
-- [ ] **階段 A**：thinking off（現行 DEC-033 預設）× M2–M5 全量 400 案例跑一輪，收集通過率（驗證分級單調遞減）+ 效率指標 + done_reason 基線。
+- [x] **探測性任務**：手動用低 `num_predict` 觸發一次已知截斷，確認 `done_reason` 實際回傳值（2026-07-27，對生產遠端 gemma4:26b gateway 實測）。**結果**：`num_predict:8`（逼截斷）→ `done_reason:"length"`、`eval_count:8`（卡在上限，句子被腰斬）；`num_predict:200`（自然講完）→ `done_reason:"stop"`、`eval_count:7`。機制確認成立，見 detailed-design §10.14。
+- [ ] **M3/M5 全面重新設計（alfred 2026-07-27 最終決定，見 detailed-design §10.13）**：
+  - [ ] 比照 `M2_SCENARIOS` 寫 M3/M5 各 ~5 個真實情境（含 `reason`），敘事句型取代「幫我X（過程中可先Y、Z、W）」公式化句型；搭配真實項目名稱湊到各 100。
+  - [ ] 情境用到的資料夾名稱接上既有 `seed_folders` 欄位，prompt 講真實名稱取代「某個項目」；寫入步驟 `item_id` 改用既有 `ref_search=True`/`{from_step,path}` 引用真實查詢結果，不寫死假 UUID。
+  - [ ] `runner_browser.py`：把 `case.seed_folders` 加進傳給 Playwright 的 JSON payload。
+  - [ ] `frontend/e2e/assistant/assistant-eval.spec.ts`：送出 prompt 前用既有 auth token 呼叫 `/drive/folders` 建立 seed_folders（比照 `runner.py:53-64` 的 `_seed_folders` 邏輯），讓 M3/M5 保持 `mode:[api,browser]` 雙模式覆蓋。
+  - [ ] 重新產生 `cases/generated/gen-m{3,5}-*.yaml`（200 檔）。
+  - [ ] 回歸驗證：`--llm mock` 確認 411/411 仍全過（實測，不憑理論——mock 不讀 prompt 文字已於 `eval/inproc.py:47-67` 核對確認，但仍要真的跑一次）。
+  - [ ] **小樣本先探測，不要一次全量重跑**：抽 M3/M5 各 3–5 個新案例 `--mode api --llm real` 對測試後端跑一次，確認 `seed_folders` 真的建出資料夾、模型真的能搜到、寫入步驟真的用了真實 id；探測過了才排進下面「階段 A」全量跑。
+- [ ] **失敗原因分類欄位（alfred 2026-07-27 提議，設計已定案）**：`CaseScore` 新增 `done_reason`/`prompt_tokens`/`completion_tokens`/`failure_category`（規則判斷：truncated/wrong_plan/safety_violation/state_mismatch/partial/other，見 detailed-design §10.15）；`report.py` 新增依 tag 統計 failure_category 分布的彙總。
+- [ ] **階段 A**：待上面 M3/M5 補嵌關鍵字修完、重新產生案例後，thinking off（現行 DEC-033 預設）× M2–M5 全量 400 案例 `--runs 3`（非單次，見 detailed-design §10.13 理由），收集通過率（驗證分級單調遞減）+ 效率指標 + done_reason 基線 + failure_category 分布。
 - [ ] **階段 B（小規模，暫緩全量）**：thinking on 只挑 E8 既有高風險 case（storage-quota/safety-destructive 等）小樣本探測，記錄 done_reason 分布與耗時；依探測結果再決定是否/如何跑全量 thinking-on（本輪不自動排入全量）。
 - [ ] 報告：整理「分級依據 + 效率指標 + thinking 截斷驗證」交代學長，引用 τ-bench/GAIA/Overthinking 論文佐證方法論（連結見 detailed-design §10.13/10.14）。
 - [ ] 測試：新增欄位的 harness 單元測試（mock 資料下 token/tool-call/done_reason 正確擷取與彙總，不影響既有 pass/fail 計算）。
