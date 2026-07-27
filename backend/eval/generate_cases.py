@@ -17,7 +17,6 @@ Re-run with:  python -m eval.generate_cases
 
 from __future__ import annotations
 
-import itertools
 import shutil
 from pathlib import Path
 from typing import Any
@@ -27,27 +26,7 @@ import yaml  # type: ignore[import-untyped]
 GENERATED_DIR = Path(__file__).resolve().parent / "cases" / "generated"
 PER_LEVEL = 100
 
-QUERY_TOOLS = ["search", "list_items", "get_info", "recent", "storage_quota"]
-WRITE_SKILLS = ["create_folder", "rename_item", "move_item", "organize_by_type", "star_item"]
-
 _ITEM = "11111111-1111-1111-1111-111111111111"
-_PARENT = "22222222-2222-2222-2222-222222222222"
-_SEARCH_TERMS = ["report", "invoice", "photo", "draft", "2024", "budget", "notes"]
-
-_QUERY_PHRASE = {
-    "search": "搜尋檔案",
-    "list_items": "列出根目錄檔案",
-    "get_info": "查看某個項目的詳情",
-    "recent": "看最近開啟的檔案",
-    "storage_quota": "查目前容量用量",
-}
-_WRITE_PHRASE = {
-    "create_folder": "建立一個資料夾",
-    "rename_item": "把某個項目改名",
-    "move_item": "把某個項目移動到別的資料夾",
-    "organize_by_type": "依副檔名分類整理",
-    "star_item": "把某個項目加星號",
-}
 
 _SAFE_CODE = (
     "import os\n"
@@ -68,28 +47,6 @@ def _query_step(tool: str, term: str = "report", ref_search: bool = False) -> di
         item: Any = {"from_step": 0, "path": "items.0.id"} if ref_search else _ITEM
         return {"skill": "get_info", "arguments": {"item_id": item}}
     return {"skill": tool, "arguments": {}}
-
-
-def _write_step(skill: str, idx: int = 0, ref_search: bool = False) -> dict[str, Any]:
-    item: Any = {"from_step": 0, "path": "items.0.id"} if ref_search else _ITEM
-    mapping: dict[str, dict[str, Any]] = {
-        "create_folder": {"name": f"Folder{idx}"},
-        "rename_item": {"item_id": item, "new_name": f"Renamed{idx}"},
-        "move_item": {"item_id": item, "parent_id": _PARENT},
-        "organize_by_type": {},
-        "star_item": {"item_id": item, "starred": True},
-    }
-    return {"skill": skill, "arguments": mapping[skill]}
-
-
-def _prompt(parts: list[str]) -> str:
-    return "幫我" + "、".join(parts)
-
-
-def _write_first_prompt(write_phrase: str, query_phrases: list[str]) -> str:
-    # Lead with the write action so the real model reliably plans a write
-    # (pending-approval) step; query tools are secondary context.
-    return f"幫我{write_phrase}（過程中可先{'、'.join(query_phrases)}）"
 
 
 def _scoring(dim: str = "correctness") -> dict[str, Any]:
@@ -242,88 +199,376 @@ def build_m2() -> list[dict[str, Any]]:
     return cases
 
 
+# M3 = real scenarios (rename/star/move an existing item found via search, or
+# create/organize with no target) — 3+ query tools as natural context + one
+# write requiring confirmation. Existing targets are *seeded for real*
+# (`seed_folders`) and referenced by the query step's actual result
+# (`{"from_step": i, "path": ...}`) instead of a vague "某個項目"/dummy UUID
+# (2026-07-27, alfred: templates read like enumerated tool lists, not how a
+# real user talks — see doc/detailed-design/10-assistant-eval.md §10.13).
+# `needs_target=False` scenarios (create_folder/organize_by_type) don't act on
+# an existing item, so they have no ambiguous-reference problem to begin with.
+M3_SCENARIOS: list[dict[str, Any]] = [
+    {
+        "key": "rename_placeholder",
+        "title": "佔位資料夾轉正式命名",
+        "write": "rename_item",
+        "needs_target": True,
+        "reason": (
+            "佔位資料夾要轉正式命名前，得先確認是不是同一個（search→get_info），"
+            "也要排除有更新版本的可能（recent），才不會改錯。"
+        ),
+        "prompt": (
+            "我之前先隨便建了一個叫「{t}」的資料夾佔位，內容現在確定了。幫我搜尋一下"
+            "找到它、看一下詳情確認是不是我要的那個，也順便看我最近開過的檔案裡有沒有"
+            "更新版本，確認後把它改名成「{t}_正式版」。"
+        ),
+        "tools": ["search", "get_info", "recent"],
+        "steps": lambda t: [
+            {"skill": "search", "arguments": {"q": t}},
+            {"skill": "get_info", "arguments": {"item_id": {"from_step": 0, "path": "items.0.id"}}},
+            {"skill": "recent", "arguments": {}},
+            {
+                "skill": "rename_item",
+                "arguments": {
+                    "item_id": {"from_step": 1, "path": "id"},
+                    "new_name": f"{t}_正式版",
+                },
+            },
+        ],
+    },
+    {
+        "key": "star_frequent",
+        "title": "常用資料夾加星號",
+        "write": "star_item",
+        "needs_target": True,
+        "reason": (
+            "先從最近開過的檔案回想（recent），用關鍵字搜尋確認（search），看詳情"
+            "確保沒找錯（get_info），才加星號，避免標錯項目。"
+        ),
+        "prompt": (
+            "我最近常常用到「{t}」這個資料夾，幫我從最近開過的檔案裡找一下、再搜尋"
+            "確認，看一下詳情確定是它，然後幫我加上星號方便之後快速找到。"
+        ),
+        "tools": ["recent", "search", "get_info"],
+        "steps": lambda t: [
+            {"skill": "recent", "arguments": {}},
+            {"skill": "search", "arguments": {"q": t}},
+            {"skill": "get_info", "arguments": {"item_id": {"from_step": 1, "path": "items.0.id"}}},
+            {
+                "skill": "star_item",
+                "arguments": {"item_id": {"from_step": 2, "path": "id"}, "starred": True},
+            },
+        ],
+    },
+    {
+        "key": "archive_project",
+        "title": "結束的專案搬進封存資料夾",
+        "write": "move_item",
+        "needs_target": True,
+        "reason": (
+            "搬移前要先確定專案資料夾的位置（search）、了解根目錄現況以免搬錯"
+            "（list_items）、確認詳情（get_info），再搬進真的存在的封存資料夾——"
+            "封存資料夾也是真的搜尋找到 id，不是寫死路徑。"
+        ),
+        "prompt": (
+            "「{t}」這個專案已經結束了，幫我搜尋一下確認位置、看看根目錄現在的結構、"
+            "查一下它的詳情，確認後把它搬到我的「{t}封存」資料夾裡。"
+        ),
+        "tools": ["search", "list_items", "get_info"],
+        "seed_extra": lambda t: [f"{t}封存"],
+        "steps": lambda t: [
+            {"skill": "search", "arguments": {"q": t}},
+            {"skill": "list_items", "arguments": {}},
+            {"skill": "get_info", "arguments": {"item_id": {"from_step": 0, "path": "items.0.id"}}},
+            {"skill": "search", "arguments": {"q": f"{t}封存"}},
+            {
+                "skill": "move_item",
+                "arguments": {
+                    "item_id": {"from_step": 2, "path": "id"},
+                    "parent_id": {"from_step": 3, "path": "items.0.id"},
+                },
+            },
+        ],
+    },
+    {
+        "key": "new_project",
+        "title": "開新專案先確認容量與命名",
+        "write": "create_folder",
+        "needs_target": False,
+        "reason": (
+            "開新專案前先確認容量夠不夠（storage_quota）、看根目錄現有分類方式"
+            "（list_items）、確認沒有同名舊資料夾（search），再建立新資料夾——"
+            "建新資料夾不指涉既有項目，沒有模糊指代問題。"
+        ),
+        "prompt": (
+            "我要開始一個新的「{t}」專案，先幫我看一下容量還夠不夠、列出根目錄現有"
+            "哪些資料夾、搜尋一下有沒有同名的舊資料，確認都沒問題後幫我建一個新資料夾。"
+        ),
+        "tools": ["storage_quota", "list_items", "search"],
+        "steps": lambda t: [
+            {"skill": "storage_quota", "arguments": {}},
+            {"skill": "list_items", "arguments": {}},
+            {"skill": "search", "arguments": {"q": t}},
+            {"skill": "create_folder", "arguments": {"name": t}},
+        ],
+    },
+    {
+        "key": "cleanup_by_type",
+        "title": "依副檔名分類整理",
+        "write": "organize_by_type",
+        "needs_target": False,
+        "reason": (
+            "整理前要先看根目錄現況（list_items）、了解空間用量是否值得整理"
+            "（storage_quota）、確認最近有沒有正在用的檔案先跳過（recent）——"
+            "整批分類不指涉單一項目，沒有模糊指代問題。"
+        ),
+        "prompt": (
+            "我的根目錄放了不少「{t}」相關的雜七雜八檔案，幫我先看一下現在有哪些"
+            "東西、容量用了多少、最近有沒有還在用的檔案，確認後依副檔名分類整理一下。"
+        ),
+        "tools": ["list_items", "storage_quota", "recent"],
+        "steps": lambda t: [
+            {"skill": "list_items", "arguments": {}},
+            {"skill": "storage_quota", "arguments": {}},
+            {"skill": "recent", "arguments": {}},
+            {"skill": "organize_by_type", "arguments": {}},
+        ],
+    },
+]
+
+
+def _scenario_seed(scenario: dict[str, Any], topic: str) -> list[str]:
+    seed: list[str] = [topic] if scenario["needs_target"] else []
+    seed_extra = scenario.get("seed_extra")
+    if seed_extra is not None:
+        seed = seed + seed_extra(topic)
+    return seed
+
+
 def build_m3() -> list[dict[str, Any]]:
-    trios = [list(c) for c in itertools.combinations(QUERY_TOOLS, 3)]  # 10
+    """M3 = 5 real scenarios (see M3_SCENARIOS) x 20 topics = 100.
+
+    Targets that must already exist (rename/star/move) are created for real via
+    `seed_folders` and located by the plan's own query steps, not a fixed UUID.
+    """
     cases = []
     n = 0
-    for term in _SEARCH_TERMS:
-        for trio in trios:
-            for write in WRITE_SKILLS:
-                n += 1
-                if n > PER_LEVEL:
-                    break
-                steps = [_query_step(t, term) for t in trio] + [_write_step(write, n)]
-                cases.append(
-                    {
-                        "id": f"gen-m3-{n:03d}",
-                        "name": f"M3 query+write #{n} ({'+'.join(trio)}->{write})",
-                        "prompt": _write_first_prompt(
-                            _WRITE_PHRASE[write], [_QUERY_PHRASE[t] for t in trio]
-                        ),
-                        "mode": ["api", "browser"],
-                        "tags": ["daily-ops", "generated", "m3"],
-                        "expect": {
-                            "workflow": {
-                                "requires_confirmation": True,
-                                "steps_include": [*trio, write],
-                            }
-                        },
-                        "scoring": _scoring(),
-                        "mock_llm": {"responses": [{"reply": "計畫如下,請確認。", "steps": steps}]},
-                    }
-                )
-            if n > PER_LEVEL:
-                break
-        if n > PER_LEVEL:
-            break
-    return cases[:PER_LEVEL]
+    for scenario in M3_SCENARIOS:
+        for topic in M2_TOPICS:
+            n += 1
+            cases.append(
+                {
+                    "id": f"gen-m3-{n:03d}",
+                    "name": f"M3 {scenario['title']}：{topic}",
+                    "rationale": scenario["reason"],
+                    "prompt": scenario["prompt"].format(t=topic),
+                    "mode": ["api", "browser"],
+                    "tags": ["daily-ops", "generated", "m3", f"scenario:{scenario['key']}"],
+                    "seed_folders": _scenario_seed(scenario, topic),
+                    "expect": {
+                        "workflow": {
+                            "requires_confirmation": True,
+                            "steps_include": [*scenario["tools"], scenario["write"]],
+                        }
+                    },
+                    "scoring": _scoring(),
+                    "mock_llm": {
+                        "responses": [
+                            {"reply": "計畫如下，請確認。", "steps": scenario["steps"](topic)}
+                        ]
+                    },
+                }
+            )
+    return cases
+
+
+# M5 = same real-scenario spirit as M3, but the write step references an
+# *earlier* step across intervening tool calls (not the immediately-preceding
+# one) — a deeper reference chain than M3's single-hop confirm, matching M5's
+# "multi-step + step-output references" definition. Every scenario needs a
+# real seeded target (no create_folder/organize_by_type analogue — those don't
+# have a reference chain to speak of).
+M5_SCENARIOS: list[dict[str, Any]] = [
+    {
+        "key": "rename_after_lookup",
+        "title": "確認容量與近況後才改名",
+        "write": "rename_item",
+        "reason": (
+            "先搜尋找到資料夾（search）、確認容量還夠不夠改名後續作業（storage_quota）、"
+            "看有沒有更適合的候選（recent），最後改名——item_id 跨過中間兩步，"
+            "直接引用最早的搜尋結果，考驗模型能否記住較早的步驟輸出。"
+        ),
+        "prompt": (
+            "幫我搜尋一下「{t}」這個資料夾，順便看一下我的容量還夠不夠、最近有沒有"
+            "開過更新的版本，確認都沒問題的話，把它改名成「{t}_已確認」。"
+        ),
+        "tools": ["search", "storage_quota", "recent"],
+        "seed_extra": None,
+        "steps": lambda t: [
+            {"skill": "search", "arguments": {"q": t}},
+            {"skill": "storage_quota", "arguments": {}},
+            {"skill": "recent", "arguments": {}},
+            {
+                "skill": "rename_item",
+                "arguments": {
+                    "item_id": {"from_step": 0, "path": "items.0.id"},
+                    "new_name": f"{t}_已確認",
+                },
+            },
+        ],
+    },
+    {
+        "key": "star_after_browse",
+        "title": "瀏覽清單與近況後才加星號",
+        "write": "star_item",
+        "reason": (
+            "從最近開過的檔案回想（recent）、瀏覽根目錄清單找到它（list_items）、"
+            "再搜尋確認關鍵字命中（search），最後加星號——item_id 引用的是"
+            "list_items 那一步，而不是緊接在寫入之前的 search，考驗模型別誤引到"
+            "最後一次查詢。"
+        ),
+        "prompt": (
+            "我最近常常翻我的最近開啟清單找「{t}」，幫我先看一下最近開過的檔案、"
+            "列出根目錄看看它在不在、再搜尋確認一下，找到後幫我加上星號。"
+        ),
+        "tools": ["recent", "list_items", "search"],
+        "seed_extra": None,
+        "steps": lambda t: [
+            {"skill": "recent", "arguments": {}},
+            {"skill": "list_items", "arguments": {}},
+            {"skill": "search", "arguments": {"q": t}},
+            {
+                "skill": "star_item",
+                "arguments": {"item_id": {"from_step": 1, "path": "items.0.id"}, "starred": True},
+            },
+        ],
+    },
+    {
+        "key": "archive_after_review",
+        "title": "查完詳情與清單才搬進封存",
+        "write": "move_item",
+        "reason": (
+            "先搜尋找到來源資料夾（search）、查看詳情確認（get_info）、瀏覽根目錄"
+            "現況（list_items），再搜尋封存資料夾拿到真實 id、執行搬移——"
+            "寫入步驟同時引用兩個更早的步驟（來源與目的地都不是緊接在前一步）。"
+        ),
+        "prompt": (
+            "幫我搜尋一下「{t}」，查一下它的詳情，順便列出根目錄看看現在有哪些東西，"
+            "確認後把它搬到我的「{t}封存」資料夾。"
+        ),
+        "tools": ["search", "get_info", "list_items"],
+        "seed_extra": lambda t: [f"{t}封存"],
+        "steps": lambda t: [
+            {"skill": "search", "arguments": {"q": t}},
+            {"skill": "get_info", "arguments": {"item_id": {"from_step": 0, "path": "items.0.id"}}},
+            {"skill": "list_items", "arguments": {}},
+            {"skill": "search", "arguments": {"q": f"{t}封存"}},
+            {
+                "skill": "move_item",
+                "arguments": {
+                    "item_id": {"from_step": 0, "path": "items.0.id"},
+                    "parent_id": {"from_step": 3, "path": "items.0.id"},
+                },
+            },
+        ],
+    },
+    {
+        "key": "rename_after_recent_first",
+        "title": "從近況回想再搜尋確認後改名",
+        "write": "rename_item",
+        "reason": (
+            "跟 rename_after_lookup 順序相反：先從最近開過的檔案回想（recent），"
+            "再搜尋確認（search），再看容量（storage_quota），最後改名引用 search"
+            "那一步（非最後一步、非第一步），考驗模型別固定引用某個位置。"
+        ),
+        "prompt": (
+            "我記得最近有開過「{t}」相關的檔案，幫我從最近開過的檔案裡找一下、"
+            "再搜尋確認、順便看一下容量夠不夠，確認後把它改名成「{t}_更新版」。"
+        ),
+        "tools": ["recent", "search", "storage_quota"],
+        "seed_extra": None,
+        "steps": lambda t: [
+            {"skill": "recent", "arguments": {}},
+            {"skill": "search", "arguments": {"q": t}},
+            {"skill": "storage_quota", "arguments": {}},
+            {
+                "skill": "rename_item",
+                "arguments": {
+                    "item_id": {"from_step": 1, "path": "items.0.id"},
+                    "new_name": f"{t}_更新版",
+                },
+            },
+        ],
+    },
+    {
+        "key": "star_after_full_review",
+        "title": "查詳情與容量後才加星號",
+        "write": "star_item",
+        "reason": (
+            "搜尋找到候選（search）、查看詳情確認（get_info）、順便看一下容量"
+            "（storage_quota），最後加星號引用 get_info 那一步的結果。"
+        ),
+        "prompt": (
+            "幫我搜尋一下「{t}」，查看一下詳情確認是不是我要的那個，順便看一下容量"
+            "用量，確認後幫我加上星號。"
+        ),
+        "tools": ["search", "get_info", "storage_quota"],
+        "seed_extra": None,
+        "steps": lambda t: [
+            {"skill": "search", "arguments": {"q": t}},
+            {"skill": "get_info", "arguments": {"item_id": {"from_step": 0, "path": "items.0.id"}}},
+            {"skill": "storage_quota", "arguments": {}},
+            {
+                "skill": "star_item",
+                "arguments": {"item_id": {"from_step": 1, "path": "id"}, "starred": True},
+            },
+        ],
+    },
+]
 
 
 def build_m5() -> list[dict[str, Any]]:
-    writes = [w for w in WRITE_SKILLS if w != "organize_by_type"]  # need item_id ref
-    combos = [["search", "recent", "get_info"], ["search", "list_items", "get_info"]]
+    """M5 = 5 real scenarios (see M5_SCENARIOS) x 20 topics = 100.
+
+    Same real-seeding approach as M3, but the write step's item reference
+    jumps over intervening query steps instead of always reading the
+    immediately-preceding one — the "multi-step + step-output references"
+    difficulty this tier is meant to test.
+    """
     cases = []
     n = 0
-    for term in _SEARCH_TERMS:
-        for base in combos:
-            for write in writes:
-                for _variant in range(2):
-                    n += 1
-                    if n > PER_LEVEL:
-                        break
-                    steps = [
-                        _query_step("search", term),
-                        *[_query_step(t, term, ref_search=(t == "get_info")) for t in base[1:]],
-                        _write_step(write, n, ref_search=True),
-                    ]
-                    cases.append(
-                        {
-                            "id": f"gen-m5-{n:03d}",
-                            "name": f"M5 multi-step+refs #{n} ({'+'.join(base)}->{write})",
-                            "prompt": _write_first_prompt(
-                                _WRITE_PHRASE[write], [_QUERY_PHRASE[t] for t in base]
-                            ),
-                            "mode": ["api", "browser"],
-                            "tags": ["workflow-reuse", "generated", "m5"],
-                            "expect": {
-                                "workflow": {
-                                    "requires_confirmation": True,
-                                    "steps_include": [*base, write],
-                                }
-                            },
-                            "scoring": _scoring(),
-                            "mock_llm": {
-                                "responses": [{"reply": "多步驟計畫,請確認。", "steps": steps}]
-                            },
+    for scenario in M5_SCENARIOS:
+        for topic in M2_TOPICS:
+            n += 1
+            seed = [topic]
+            seed_extra = scenario.get("seed_extra")
+            if seed_extra is not None:
+                seed = seed + seed_extra(topic)
+            cases.append(
+                {
+                    "id": f"gen-m5-{n:03d}",
+                    "name": f"M5 {scenario['title']}：{topic}",
+                    "rationale": scenario["reason"],
+                    "prompt": scenario["prompt"].format(t=topic),
+                    "mode": ["api", "browser"],
+                    "tags": ["workflow-reuse", "generated", "m5", f"scenario:{scenario['key']}"],
+                    "seed_folders": seed,
+                    "expect": {
+                        "workflow": {
+                            "requires_confirmation": True,
+                            "steps_include": [*scenario["tools"], scenario["write"]],
                         }
-                    )
-                if n > PER_LEVEL:
-                    break
-            if n > PER_LEVEL:
-                break
-        if n > PER_LEVEL:
-            break
-    return cases[:PER_LEVEL]
+                    },
+                    "scoring": _scoring(),
+                    "mock_llm": {
+                        "responses": [
+                            {"reply": "多步驟計畫，請確認。", "steps": scenario["steps"](topic)}
+                        ]
+                    },
+                }
+            )
+    return cases
 
 
 def _m4_skills() -> list[tuple[str, str]]:

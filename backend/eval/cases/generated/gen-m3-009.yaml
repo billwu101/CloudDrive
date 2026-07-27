@@ -1,6 +1,7 @@
 id: gen-m3-009
-name: 'M3 query+write #9 (search+list_items+recent->organize_by_type)'
-prompt: 幫我依副檔名分類整理（過程中可先搜尋檔案、列出根目錄檔案、看最近開啟的檔案）
+name: M3 佔位資料夾轉正式命名：簡報
+rationale: 佔位資料夾要轉正式命名前，得先確認是不是同一個（search→get_info），也要排除有更新版本的可能（recent），才不會改錯。
+prompt: 我之前先隨便建了一個叫「簡報」的資料夾佔位，內容現在確定了。幫我搜尋一下找到它、看一下詳情確認是不是我要的那個，也順便看我最近開過的檔案裡有沒有更新版本，確認後把它改名成「簡報_正式版」。
 mode:
 - api
 - browser
@@ -8,14 +9,17 @@ tags:
 - daily-ops
 - generated
 - m3
+- scenario:rename_placeholder
+seed_folders:
+- 簡報
 expect:
   workflow:
     requires_confirmation: true
     steps_include:
     - search
-    - list_items
+    - get_info
     - recent
-    - organize_by_type
+    - rename_item
 scoring:
   weights:
     correctness: 1.0
@@ -23,14 +27,21 @@ scoring:
   min_pass_rate: 0.6
 mock_llm:
   responses:
-  - reply: 計畫如下,請確認。
+  - reply: 計畫如下，請確認。
     steps:
     - skill: search
       arguments:
-        q: report
-    - skill: list_items
-      arguments: {}
+        q: 簡報
+    - skill: get_info
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.0.id
     - skill: recent
       arguments: {}
-    - skill: organize_by_type
-      arguments: {}
+    - skill: rename_item
+      arguments:
+        item_id:
+          from_step: 1
+          path: id
+        new_name: 簡報_正式版

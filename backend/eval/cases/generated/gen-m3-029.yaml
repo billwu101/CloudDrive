@@ -1,6 +1,7 @@
 id: gen-m3-029
-name: 'M3 query+write #29 (search+recent+storage_quota->organize_by_type)'
-prompt: 幫我依副檔名分類整理（過程中可先搜尋檔案、看最近開啟的檔案、查目前容量用量）
+name: M3 常用資料夾加星號：簡報
+rationale: 先從最近開過的檔案回想（recent），用關鍵字搜尋確認（search），看詳情確保沒找錯（get_info），才加星號，避免標錯項目。
+prompt: 我最近常常用到「簡報」這個資料夾，幫我從最近開過的檔案裡找一下、再搜尋確認，看一下詳情確定是它，然後幫我加上星號方便之後快速找到。
 mode:
 - api
 - browser
@@ -8,14 +9,17 @@ tags:
 - daily-ops
 - generated
 - m3
+- scenario:star_frequent
+seed_folders:
+- 簡報
 expect:
   workflow:
     requires_confirmation: true
     steps_include:
-    - search
     - recent
-    - storage_quota
-    - organize_by_type
+    - search
+    - get_info
+    - star_item
 scoring:
   weights:
     correctness: 1.0
@@ -23,14 +27,21 @@ scoring:
   min_pass_rate: 0.6
 mock_llm:
   responses:
-  - reply: 計畫如下,請確認。
+  - reply: 計畫如下，請確認。
     steps:
-    - skill: search
-      arguments:
-        q: report
     - skill: recent
       arguments: {}
-    - skill: storage_quota
-      arguments: {}
-    - skill: organize_by_type
-      arguments: {}
+    - skill: search
+      arguments:
+        q: 簡報
+    - skill: get_info
+      arguments:
+        item_id:
+          from_step: 1
+          path: items.0.id
+    - skill: star_item
+      arguments:
+        item_id:
+          from_step: 2
+          path: id
+        starred: true

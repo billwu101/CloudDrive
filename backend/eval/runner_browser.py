@@ -37,6 +37,11 @@ def run_browser_suite(
     frontend (the Docker stack at ``base_url`` by default), and reads back the
     captured ``/assistant/chat`` response per case id. Those responses feed the
     same deterministic verifier/scoring used by the API and in-process runners.
+
+    ``seed_folders`` (real folders a case's prompt needs to already exist,
+    e.g. M3/M5 scenarios) are passed through in the payload; the spec creates
+    them via the backend API before sending the prompt — mirroring
+    ``runner.py``'s ``_seed_folders`` for the API-mode runner.
     """
 
     if not cases:
@@ -55,6 +60,8 @@ def run_browser_suite(
             "prompt": case.prompt,
             "auto_confirm": case.auto_confirm,
         }
+        if case.seed_folders:
+            item["seed_folders"] = case.seed_folders
         # Execution cases also drive approve → run-on-fixture → assert output.
         if case.expect.execute is not None:
             ex = case.expect.execute
