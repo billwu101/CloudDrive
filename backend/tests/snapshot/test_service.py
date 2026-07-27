@@ -161,6 +161,28 @@ class MemSnapshotRepo(AbstractSnapshotRepository):
                     sizes[e.checksum_sha256] = max(sizes.get(e.checksum_sha256, 0), e.size_bytes)
         return sum(sizes.values())
 
+    async def reclaimable_bytes_by_snapshot(self, user_id: UUID) -> dict[UUID, int]:
+        # Sole-holder accounting, mirroring the SQL: a blob counts only when no
+        # other snapshot, no drive item and no file version still points at it.
+        holders: dict[str, set[UUID]] = {}
+        sizes: dict[str, int] = {}
+        for snap in self.snapshots.values():
+            if snap.user_id != user_id:
+                continue
+            for e in self.entries.get(snap.id, []):
+                if e.storage_key is None:
+                    continue
+                holders.setdefault(e.storage_key, set()).add(snap.id)
+                sizes[e.storage_key] = max(sizes.get(e.storage_key, 0), e.size_bytes)
+        elsewhere = {i.storage_key for i in self.items.values() if i.storage_key}
+        out: dict[UUID, int] = {}
+        for key, snap_ids in holders.items():
+            if len(snap_ids) != 1 or key in elsewhere:
+                continue
+            only = next(iter(snap_ids))
+            out[only] = out.get(only, 0) + sizes[key]
+        return out
+
     async def referenced_storage_keys(self) -> set[str]:
         keys: set[str] = set()
         for item in self.items.values():

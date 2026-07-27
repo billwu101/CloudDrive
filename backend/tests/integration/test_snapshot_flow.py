@@ -107,3 +107,31 @@ async def test_restore_rebuilds_a_folder_tree_parents_first(client: AsyncClient)
     assert "Sub" in [i["name"] for i in in_top.json()["items"]]
     in_sub = await client.get(f"/api/v1/drive/items?parent_id={sub_id}", headers=h)
     assert "deep.txt" in [i["name"] for i in in_sub.json()["items"]]
+
+
+async def test_a_shared_snapshot_reports_nothing_to_reclaim(client: AsyncClient) -> None:
+    """Coverage is not cost — the number the timeline shows must be the latter.
+
+    Two snapshots of unchanged content point at the same blob, so deleting
+    either frees nothing. Reporting `total_bytes` would tell the user to delete
+    the biggest snapshot when that reclaims zero bytes.
+    """
+    token = await register_and_login(client, email="snap-reclaim@test.com")
+    h = auth_headers(token)
+    await client.post(
+        "/api/v1/upload/simple",
+        headers=h,
+        files={"file": ("big.txt", io.BytesIO(b"x" * 5000), "text/plain")},
+    )
+
+    for label in ("first", "second"):
+        assert (
+            await client.post("/api/v1/snapshots", json={"label": label}, headers=h)
+        ).status_code == 200
+
+    snaps = (await client.get("/api/v1/snapshots", headers=h)).json()
+    assert len(snaps) == 2
+    # Both cover the file...
+    assert all(s["total_bytes"] >= 5000 for s in snaps)
+    # ...but neither is the sole holder: the live item still references the blob.
+    assert all(s["reclaimable_bytes"] == 0 for s in snaps)

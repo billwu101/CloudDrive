@@ -6,7 +6,7 @@ import { formatBytes } from '@/lib/uploadLimits'
 /** Above this share of the cap, the oldest snapshots start getting dropped soon. */
 export const SNAPSHOT_WARN_AT = 0.8
 
-/** How many of the heaviest snapshots to name. */
+/** How many snapshots to name. */
 const TOP_N = 5
 
 /** Scheduled snapshots all share the label "Scheduled", so the timestamp is
@@ -41,8 +41,13 @@ export function SnapshotUsagePanel({ settings, snapshots }: SnapshotUsagePanelPr
   const percent = Math.min(ratio * 100, 100)
   const nearFull = ratio >= SNAPSHOT_WARN_AT
 
-  const heaviest = [...(snapshots ?? [])]
-    .sort((a, b) => b.total_bytes - a.total_bytes)
+  // Ranked by what deleting them would free, not by what they cover.
+  // Snapshots share blobs, so the "biggest" snapshot is usually the one that
+  // reclaims nothing — sorting by coverage sends the user to delete the wrong
+  // thing (and then to wonder why no space came back).
+  const worthDeleting = [...(snapshots ?? [])]
+    .filter((s) => s.reclaimable_bytes > 0)
+    .sort((a, b) => b.reclaimable_bytes - a.reclaimable_bytes)
     .slice(0, TOP_N)
 
   return (
@@ -90,27 +95,36 @@ export function SnapshotUsagePanel({ settings, snapshots }: SnapshotUsagePanelPr
         </p>
       )}
 
-      {heaviest.length > 0 && (
-        <div className="mt-4">
-          <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">Largest snapshots</h3>
-          <ul className="space-y-1">
-            {heaviest.map((snap) => (
-              <li key={snap.id} className="flex items-center justify-between gap-3 text-xs">
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {when(snap.created_at)} · {snap.label}
-                </span>
-                <span className="shrink-0 tabular-nums">{formatBytes(snap.total_bytes)}</span>
-              </li>
-            ))}
-          </ul>
-          {/* Snapshots share content, so one blob kept by three snapshots is
-              counted once in the total above but shows in all three here. */}
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            These add up to more than the total — snapshots share unchanged files, which the
-            total counts only once.
+      <div className="mt-4">
+        <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">
+          Worth deleting
+        </h3>
+        {worthDeleting.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Nothing here would free space on its own — every snapshot shares its files with
+            another one. Space is only reclaimed once all the snapshots holding a file are gone.
           </p>
-        </div>
-      )}
+        ) : (
+          <>
+            <ul className="space-y-1">
+              {worthDeleting.map((snap) => (
+                <li key={snap.id} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    {when(snap.created_at)} · {snap.label}
+                  </span>
+                  <span className="shrink-0 tabular-nums">
+                    frees {formatBytes(snap.reclaimable_bytes)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Shown as space actually reclaimed, not the size of the drive each snapshot
+              covers — snapshots share unchanged files.
+            </p>
+          </>
+        )}
+      </div>
     </section>
   )
 }

@@ -158,6 +158,10 @@ class SnapshotService:
     async def used_bytes(self, *, user_id: UUID) -> int:
         return await self._repo.used_snapshot_bytes(user_id)
 
+    async def reclaimable_bytes(self, *, user_id: UUID) -> dict[UUID, int]:
+        """Per snapshot: how much deleting it would actually free."""
+        return await self._repo.reclaimable_bytes_by_snapshot(user_id)
+
     # ----- settings -------------------------------------------------------
 
     async def get_settings(self, *, user_id: UUID) -> SnapshotSettings:

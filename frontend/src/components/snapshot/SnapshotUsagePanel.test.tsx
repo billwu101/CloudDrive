@@ -20,13 +20,19 @@ function settings(usedGb: number, capGb = 7.5): SnapshotSettingsResponse {
   }
 }
 
-function snapshot(id: string, label: string, bytes: number): SnapshotResponse {
+function snapshot(
+  id: string,
+  label: string,
+  bytes: number,
+  reclaimable = 0,
+): SnapshotResponse {
   return {
     id,
     trigger: 'scheduled',
     label,
     item_count: 1,
     total_bytes: bytes,
+    reclaimable_bytes: reclaimable,
     pinned: false,
     created_at: '2026-07-01T00:00:00Z',
   }
@@ -56,33 +62,37 @@ describe('SnapshotUsagePanel', () => {
     expect(alert).toHaveTextContent(/oldest snapshots are deleted automatically/)
   })
 
-  it('lists the heaviest snapshots first', () => {
+  it('ranks by space reclaimed, not by size covered', () => {
+    // The 3 GB snapshot that shares everything must not outrank the small one
+    // that is the sole holder of its blobs — sorting by coverage would send
+    // the user to delete the wrong snapshot and reclaim nothing.
     render(
       <SnapshotUsagePanel
         settings={settings(1)}
         snapshots={[
-          snapshot('s1', 'Small one', 1024),
-          snapshot('s2', 'Huge one', 900 * 1024 * 1024),
-          snapshot('s3', 'Middling', 5 * 1024 * 1024),
+          snapshot('big', 'Covers everything', 3 * GB, 0),
+          snapshot('small', 'Sole holder', 10 * 1024 * 1024, 8 * 1024 * 1024),
+          snapshot('mid', 'Partly shared', 2 * GB, 500 * 1024 * 1024),
         ]}
       />,
     )
 
     const rows = screen.getAllByRole('listitem').map((li) => li.textContent)
-    // Dated, because every scheduled snapshot is labelled "Scheduled" —
-    // five identical rows would be useless for deciding what to delete.
-    expect(rows[0]).toMatch(/Jul \d+.*Huge one/)
-    expect(rows[0]).toContain('Huge one')
-    expect(rows[1]).toContain('Middling')
-    expect(rows[2]).toContain('Small one')
+    expect(rows).toHaveLength(2) // the 0-byte one is not offered at all
+    expect(rows[0]).toContain('Partly shared')
+    expect(rows[0]).toContain('frees 500 MB')
+    expect(rows[1]).toContain('Sole holder')
+    expect(screen.queryByText(/Covers everything/)).not.toBeInTheDocument()
   })
 
-  it('explains why the per-snapshot sizes overshoot the total', () => {
+  it('says so plainly when deleting anything would free nothing', () => {
     render(
-      <SnapshotUsagePanel settings={settings(1)} snapshots={[snapshot('s1', 'One', 1024)]} />,
+      <SnapshotUsagePanel
+        settings={settings(3.5)}
+        snapshots={[snapshot('a', 'Scheduled', 1358 * 1024 * 1024, 0)]}
+      />,
     )
-    // Without this, the list looks like it contradicts the total.
-    expect(screen.getByText(/snapshots share unchanged files/)).toBeInTheDocument()
+    expect(screen.getByText(/Nothing here would free space on its own/)).toBeInTheDocument()
   })
 
   it('renders nothing until settings arrive', () => {

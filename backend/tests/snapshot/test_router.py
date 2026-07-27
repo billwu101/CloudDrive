@@ -92,12 +92,20 @@ async def test_create_snapshot_returns_200(user_id: UUID, headers: dict[str, str
 
 async def test_list_snapshots(user_id: UUID, headers: dict[str, str]) -> None:
     svc = AsyncMock(spec=SnapshotService)
-    svc.list_snapshots.return_value = [_snapshot(user_id), _snapshot(user_id)]
+    snaps = [_snapshot(user_id), _snapshot(user_id)]
+    svc.list_snapshots.return_value = snaps
+    # Only the first snapshot is the sole holder of anything.
+    svc.reclaimable_bytes.return_value = {snaps[0].id: 4096}
     app = _make_app(svc, user_id)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.get("/snapshots", headers=headers)
     assert resp.status_code == 200
-    assert len(resp.json()) == 2
+    body = resp.json()
+    assert len(body) == 2
+    # A snapshot that shares every blob frees nothing when deleted — the
+    # timeline must be able to say so rather than showing its coverage.
+    assert body[0]["reclaimable_bytes"] == 4096
+    assert body[1]["reclaimable_bytes"] == 0
 
 
 async def test_browse_snapshot_items(user_id: UUID, headers: dict[str, str]) -> None:

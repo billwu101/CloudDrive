@@ -33,7 +33,12 @@ class SnapshotResponse(BaseModel):
     trigger: str
     label: str
     item_count: int
+    # How much content this snapshot covers. Snapshots share blobs, so this is
+    # NOT what deleting it frees — see reclaimable_bytes.
     total_bytes: int
+    # What deleting this snapshot would actually free: the blobs it alone
+    # still holds. Usually far smaller than total_bytes, and often zero.
+    reclaimable_bytes: int = 0
     pinned: bool
     created_at: datetime
 

@@ -259,7 +259,10 @@ export interface SnapshotResponse {
   trigger: 'scheduled' | 'manual' | 'assistant' | 'pre_restore' | string
   label: string
   item_count: number
+  /** How much content this snapshot covers — NOT what deleting it frees. */
   total_bytes: number
+  /** What deleting it actually frees: blobs it alone still holds. Often 0. */
+  reclaimable_bytes: number
   pinned: boolean
   created_at: string
 }

@@ -151,3 +151,14 @@ proposal §30.3 全部 9 項通過；`lint` / `typecheck` / `vitest` 全綠。
 ### 驗證結果（2026-07-27）
 
 前端 **330 passed**；`lint` / `typecheck` 全綠。Chrome 實機確認：時光機頁顯示「3.5 GB of 7.5 GB」、最大快照 3.0 GB、側邊欄兩條量表（33.4 MB / 15.0 GB 與 3.5 GB / 7.5 GB）。
+
+### 修正（同日）：面板顯示的是「涵蓋量」而非「可回收量」
+
+使用者追問「這些檔案不是都一樣嗎，為什麼還要一直存 1.3 GB」——問題不在儲存，在**我顯示的數字**。`total_bytes` 是該快照涵蓋的內容大小，不是刪掉它能省的空間。五列各寫 1.3 GB，讀起來就是每個各佔 1.3 GB。
+
+實測：涵蓋 3063 MB 的快照與 6 個各 1358 MB 的快照，後者刪掉全部釋放 **0 bytes**（彼此共用同一份 blob）。
+
+- [x] `backend/app/snapshot/repository.py`：`reclaimable_bytes_by_snapshot()`——以 `storage_key` 計算「僅此快照持有」的 blob（其他快照、drive_items、file_versions 皆無引用）。
+- [x] `backend/app/snapshot/service.py` / `schemas.py` / `router.py`：`SnapshotResponse.reclaimable_bytes`；列表端點每頁一次查詢。
+- [x] 面板改為「Worth deleting」，依可回收量排序、0 的不列出、全為 0 時顯示說明。
+- [x] 測試：後端單元 + router + integration（共用 blob 的快照回報 0）；前端排序與空狀態。
