@@ -77,3 +77,41 @@
 - [x] 測試列表與格狀切換。
 - [x] 測試 loading/empty/error 狀態。
 - [x] 測試框選命中、取代選取、空白點擊清除及無效拖曳起點。
+
+---
+
+## 追加：拖曳移動到資料夾（proposal §30）
+
+**目標**：不必開對話框，直接把項目拖到看得見的資料夾上完成移動。
+**不含範圍**：拖到麵包屑／側邊欄、跨分頁拖曳、拖曳排序、拖曳複製（proposal §30.4）。
+**後端**：無需改動——`PATCH /drive/items/{id}/parent` 既有的驗證（目的地須為資料夾、不可移入自身子樹、同名衝突）已足夠。
+**設計依據**：§5.6.2「拖曳移動到資料夾」。
+
+### 子任務
+
+- [x] `src/hooks/useDragMove.ts`：自訂 MIME `application/x-clouddrive-items`；管理 `draggingIds` / `dropTargetId`；逐一送出移動、收集部分失敗。
+- [x] `src/components/drive/FileCard.tsx`：`draggable` + drag/drop handlers + 放置態樣式。
+- [x] `src/components/drive/FileRow.tsx`：同上。
+- [x] `src/components/drive/FileGrid.tsx` / `FileTable.tsx`：把 handlers 往下傳。
+- [x] `src/pages/DrivePage.tsx`：接上 `useDragMove`，顯示移動失敗訊息。
+- [x] `src/components/upload/UploadDropzone.tsx`：`drop` 監聽補上 `types.includes('Files')` 判斷（`dragenter`/`dragover` 已有）。
+
+### 測試任務
+
+- [x] 拖曳單一項目到資料夾會呼叫移動，帶正確的目的地 id。
+- [x] 拖曳選取範圍內的項目 → 整批移動。
+- [x] 拖曳未選取的項目 → 只移動它，且既有選取不變。
+- [x] 放到檔案上不觸發移動。
+- [x] 放到被拖曳項目自身不觸發移動。
+- [x] 部分失敗時其餘照常完成，並列出失敗項目。
+- [x] 內部拖曳不會叫出上傳覆蓋層。
+
+### 驗收條件
+
+proposal §30.3 全部 9 項通過；`lint` / `typecheck` / `vitest` 全綠。
+
+### 驗證結果（2026-07-27）
+
+- 單元測試 8 項（`src/hooks/useDragMove.test.tsx`）：單一／整批／選取外、放到檔案、放到自身、外部拖曳、放置標示、部分失敗。前端全套 **318 passed**；`lint` / `typecheck` 全綠。
+- Chrome 實機驗證（dev server）：`draggable=true`、`dragstart` 寫入自訂 MIME payload、資料夾 `dragover` 接受而檔案不接受、放置標示與來源淡化都正確套用。
+- **未做**：真正的原生 OS 拖放。CDP 的合成滑鼠事件不會啟動 HTML5 drag，且真的放開會搬動使用者的實際檔案，故止於 `dragover`，由使用者手動確認最後一哩。

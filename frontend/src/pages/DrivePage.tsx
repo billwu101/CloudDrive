@@ -30,6 +30,7 @@ import { UploadDropzone } from '@/components/upload/UploadDropzone'
 import { UploadQueue } from '@/components/upload/UploadQueue'
 import { useAssistantSkills, useExecuteAssistantSkill } from '@/hooks/useAssistant'
 import { useCreateFolder, useDriveItems, useFolderAncestors, useFolderItem, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
+import { useDragMove } from '@/hooks/useDragMove'
 import { useDragSelect } from '@/hooks/useDragSelect'
 import { useUploadFiles, useUploadFolders } from '@/hooks/useUpload'
 import { useUIStore } from '@/stores/uiStore'
@@ -207,6 +208,7 @@ export function DrivePage() {
 
   const handleDragSelect = useCallback((ids: string[]) => selectAll(ids), [selectAll])
   const { dragRect } = useDragSelect(fileListRef, handleDragSelect, clearSelection)
+  const drag = useDragMove({ selectedIds, items })
 
   const sharedProps = {
     items,
@@ -219,6 +221,7 @@ export function DrivePage() {
     onItemContextMenu: handleContextMenu,
     onStarClick: handleStarClick,
     onCheckboxClick: handleCheckboxClick,
+    drag,
   }
 
   return (
@@ -258,6 +261,23 @@ export function DrivePage() {
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
             <FolderOpen className="size-12" aria-hidden="true" />
             <p className="text-sm">This folder is empty</p>
+          </div>
+        )}
+
+        {drag.moveError && (
+          <div
+            role="alert"
+            className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            <span>Could not move: {drag.moveError}</span>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={drag.clearMoveError}
+              className="shrink-0 rounded px-1 hover:bg-destructive/10"
+            >
+              ×
+            </button>
           </div>
         )}
 

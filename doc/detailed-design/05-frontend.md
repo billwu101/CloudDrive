@@ -248,6 +248,7 @@ FileTable            — header checkbox (indeterminate) + onSelectAll
 FileGrid
 FileRow              — checkbox overlays icon on hover; always visible when selected
 FileCard             — absolute-positioned checkbox top-left
+                       兩者皆 draggable，並在資料夾上接受放置（見下方「拖曳移動到資料夾」）
 FileIcon
 FileContextMenu      — single-item right-click menu
 MultiFileContextMenu — multi-item right-click menu (count label + trash only)
@@ -270,6 +271,17 @@ ConfirmTrashDialog   — supports itemNames: string[] for bulk confirmation
 - `uiStore.selectAll(ids)` 提供 header checkbox 全選功能。
 - 批次移至垃圾桶後自動 `clearSelection()`。
 
+**拖曳移動到資料夾（proposal §30）：**
+- 以 **HTML5 Drag and Drop** 實作（`draggable` + `dragstart`/`dragover`/`drop`），不是 pointer events。`dataTransfer` 帶自訂 MIME `application/x-clouddrive-items`，內容為要移動的 id 陣列。
+- **這個自訂 MIME 就是三種拖曳彼此隔離的依據**：
+  - `UploadDropzone` 只在 `dataTransfer.types` 含 `Files` 時才反應，內部拖曳不會叫出上傳覆蓋層；
+  - `useDragSelect` 的 `pointerdown` 已排除 `[data-item-id]`，從項目上開始拖曳不會啟動框選；
+  - 反過來，放到資料夾上的處理只認自訂 MIME，外部檔案拖進來不會被誤判成移動。
+- **要移動哪些**：被拖曳項目在目前選取範圍內 → 整批；不在 → 只有它，且**不改動既有選取**（proposal §30.5 決策 2）。
+- **可放置判定**（`dragover` 時）：目標須是 `FOLDER`，且不在被拖曳的 id 之中。是否為自身子孫由後端把關（前端沒有完整樹）；不可放置時不呼叫 `preventDefault()`，瀏覽器自然顯示「禁止」游標。
+- **執行**：無批次移動端點，故逐一呼叫 `PATCH /drive/items/{id}/parent`；**部分失敗不回滾**（proposal §30.5 決策 3），成功的保留，失敗的收集成訊息顯示。
+- 全部結束後 invalidate `drive.items`，並清掉拖曳狀態。
+
 ### 5.6.3 Hooks
 
 ```ts
@@ -283,6 +295,7 @@ useSetStarred()
 useMoveToTrash()
 useRecentItems()
 useDragSelect(containerRef, onSelectIds, onClear)
+useDragMove({ selectedIds, onMove })   // 拖曳移動到資料夾（proposal §30）
 ```
 
 `useFolderItem` + `useFolderAncestors` 一起驅動 DrivePage 的 Breadcrumbs 元件，並提供 ArrowLeft 返回按鈕所需的 `parent_id`。

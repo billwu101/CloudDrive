@@ -13,6 +13,13 @@ interface FileRowProps {
   onContextMenu: (e: React.MouseEvent) => void
   onStarClick: (e: React.MouseEvent) => void
   onCheckboxClick: (e: React.MouseEvent) => void
+  dragging?: boolean
+  dropTarget?: boolean
+  onDragStart?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  onDragOver?: (e: React.DragEvent) => void
+  onDragLeave?: () => void
+  onDrop?: (e: React.DragEvent) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -30,16 +37,37 @@ function formatDate(iso: string): string {
   })
 }
 
-export function FileRow({ item, selected, onClick, onDoubleClick, onContextMenu, onStarClick, onCheckboxClick }: FileRowProps) {
+export function FileRow({
+  item,
+  selected,
+  onClick,
+  onDoubleClick,
+  onContextMenu,
+  onStarClick,
+  onCheckboxClick,
+  dragging,
+  dropTarget,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: FileRowProps) {
   return (
     <tr
       role="row"
       aria-selected={selected}
       data-item-id={item.id}
+      draggable
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      className={`group cursor-pointer select-none border-b transition-colors last:border-b-0 hover:bg-accent/50 ${selected ? 'bg-accent' : ''}`}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`group cursor-pointer select-none border-b transition-colors last:border-b-0 hover:bg-accent/50 ${selected ? 'bg-accent' : ''} ${dragging ? 'opacity-40' : ''} ${dropTarget ? 'bg-primary/10 outline outline-2 -outline-offset-2 outline-primary' : ''}`}
     >
       {/* Checkbox column — its own space, so it never covers the file icon.
           Fades in on hover but the slot is always reserved (no layout shift). */}
