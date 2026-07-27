@@ -16,7 +16,9 @@ export function ShareBadges({ isSharedWithUsers, hasActivePublicLink }: ShareBad
   if (!isSharedWithUsers && !hasActivePublicLink) return null
 
   return (
-    <span className="flex items-center gap-1 text-muted-foreground">
+    // shrink-0: in the grid the name sits beside these in a flex row, and a
+    // long filename would otherwise squeeze the icons down to nothing.
+    <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
       {isSharedWithUsers && (
         <Users className="size-3.5" aria-label="Shared with other people" role="img" />
       )}
