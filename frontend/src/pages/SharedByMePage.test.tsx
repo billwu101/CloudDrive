@@ -120,32 +120,14 @@ describe('SharedByMePage', () => {
     expect(screen.getByText(/Public link · expires .* · inactive/)).toBeInTheDocument()
   })
 
-  it('offers Disable for a live link and Remove for a dead one', async () => {
+  it('offers a single Remove on every share, links included', async () => {
     renderPage()
     await userEvent.click(await screen.findByRole('button', { expanded: false }))
 
-    // Never both on the same row: Disable cuts off whoever holds the URL,
-    // Remove only clears a dead record (proposal §29.5 decision 4).
-    expect(screen.getAllByRole('button', { name: 'Disable' })).toHaveLength(1)
-    // One Remove per recipient (2) plus one for the inactive link.
-    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(3)
-  })
-
-  it('deletes a dead link record in place', async () => {
-    let deleted: string | null = null
-    server.use(
-      http.delete(`${BASE}/share/links/:linkId/record`, ({ params }) => {
-        deleted = String(params['linkId'])
-        return new HttpResponse(null, { status: 204 })
-      }),
-    )
-    renderPage()
-    await userEvent.click(await screen.findByRole('button', { expanded: false }))
-    // The last Remove belongs to the inactive link, after the two recipients.
-    const removes = screen.getAllByRole('button', { name: 'Remove' })
-    await userEvent.click(removes[removes.length - 1]!)
-
-    await waitFor(() => expect(deleted).toBe('lnk-2'))
+    // Two recipients + two links = four Removes, and no Disable anywhere:
+    // removing a link is the revocation, not a second step after it.
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(4)
+    expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument()
   })
 
   it('removes a single recipient in place', async () => {
@@ -163,19 +145,21 @@ describe('SharedByMePage', () => {
     await waitFor(() => expect(removed).toBe('u2'))
   })
 
-  it('disables a single link in place', async () => {
-    let disabled: string | null = null
+  it('removes a live link outright', async () => {
+    let removed: string | null = null
     server.use(
-      http.delete(`${BASE}/share/links/:linkId`, ({ params }) => {
-        disabled = String(params['linkId'])
+      http.delete(`${BASE}/share/links/:linkId/record`, ({ params }) => {
+        removed = String(params['linkId'])
         return new HttpResponse(null, { status: 204 })
       }),
     )
     renderPage()
     await userEvent.click(await screen.findByRole('button', { expanded: false }))
-    await userEvent.click(screen.getByRole('button', { name: 'Disable' }))
+    // Third Remove: after the two recipients comes the active link.
+    const buttons = screen.getAllByRole('button', { name: 'Remove' })
+    await userEvent.click(buttons[2]!)
 
-    await waitFor(() => expect(disabled).toBe('lnk-1'))
+    await waitFor(() => expect(removed).toBe('lnk-1'))
   })
 
   it('offers no way to revoke everything at once', async () => {

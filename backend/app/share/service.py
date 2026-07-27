@@ -273,20 +273,14 @@ class ShareLinkService:
         return link
 
     async def delete_link_record(self, actor_id: UUID, link_id: UUID) -> None:
-        """Drop a dead link from the owner's list (proposal §29.2 rule 4.1).
+        """Remove a public link outright (proposal §29.2 rule 4.1).
 
-        Refuses while the link still works: disabling cuts off whoever holds
-        the URL, deleting only tidies the list. Folding the two into one action
-        would turn "clear this row" into "cut off a link someone is using"
-        (proposal §29.5 decision 4).
+        Live links included: deleting the row *is* the revocation — the token
+        lookup and every credential check resolve through it, so access stops
+        immediately. There is no undo and no separate "disable" step in front
+        of it (proposal §29.5 decision 4, revised 2026-07-27).
         """
-        link = await self._owned_link(actor_id, link_id)
-        if _link_live(link, datetime.now(UTC)):
-            raise AppError(
-                ErrorCode.INVALID_OPERATION,
-                "Disable the link before removing it",
-                status_code=422,
-            )
+        await self._owned_link(actor_id, link_id)
         await self._links.delete(link_id)
 
     async def deactivate_link(self, actor_id: UUID, link_id: UUID) -> None:

@@ -604,19 +604,21 @@ async def test_an_expired_link_record_can_be_deleted() -> None:
     assert await links.get_by_id(created.id) is None
 
 
-async def test_a_live_link_must_be_disabled_before_its_record_is_removed() -> None:
-    """Deleting is tidying; disabling cuts off access. One must not do the other."""
+async def test_removing_a_live_link_revokes_it_outright() -> None:
+    """One action, no disable step first (proposal §29.5 decision 4, revised).
+
+    Deleting the row *is* the revocation: guest access resolves through it, so
+    the link stops working the moment it is gone. There is no undo.
+    """
     owner_id = uuid4()
     item = _item(owner_id=owner_id)
     items = MemDriveItemRepo([item])
     svc, links = _make_link_svc(items)
     created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
 
-    with pytest.raises(AppError) as exc:
-        await svc.delete_link_record(owner_id, created.id)
+    await svc.delete_link_record(owner_id, created.id)
 
-    assert exc.value.status_code == 422
-    assert await links.get_by_id(created.id) is not None
+    assert await links.get_by_id(created.id) is None
 
 
 async def test_a_stranger_cannot_delete_a_link_record() -> None:

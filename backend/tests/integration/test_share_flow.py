@@ -299,10 +299,8 @@ async def test_shared_by_me_drops_trashed_items_and_marks_dead_links(
     assert body["items"][0]["item"]["has_active_public_link"] is False
 
 
-async def test_a_dead_link_record_can_be_cleared_but_a_live_one_cannot(
-    client: AsyncClient,
-) -> None:
-    """Disabling and forgetting are separate steps (proposal §29.5 decision 4)."""
+async def test_removing_a_link_revokes_it_and_clears_the_row(client: AsyncClient) -> None:
+    """One action, not two (proposal §29.5 decision 4, revised 2026-07-27)."""
     owner = await register_and_login(client, email="sbm-clear@test.com", username="sbmclear")
     h = auth_headers(owner)
     folder = (
@@ -312,16 +310,16 @@ async def test_a_dead_link_record_can_be_cleared_but_a_live_one_cannot(
         f"/api/v1/share/items/{folder['id']}/links", json={"permission": "viewer"}, headers=h
     )
     link_id = created.json()["id"]
+    guest_token = created.json()["token"]
 
-    # While the link still works, removing the record is refused outright.
-    too_soon = await client.delete(f"/api/v1/share/links/{link_id}/record", headers=h)
-    assert too_soon.status_code == 422
-    assert len((await client.get("/api/v1/share/shared-by-me", headers=h)).json()["items"]) == 1
-
-    assert (await client.delete(f"/api/v1/share/links/{link_id}", headers=h)).status_code == 204
+    # Removing a live link is allowed and is itself the revocation.
     assert (
         await client.delete(f"/api/v1/share/links/{link_id}/record", headers=h)
     ).status_code == 204
+
+    # The guest side stops working straight away — the token no longer resolves.
+    opened = await client.post(f"/api/v1/public/links/{guest_token}/session", json={})
+    assert opened.status_code == 404
 
     # With its only share gone, the item drops out of the view entirely.
     assert (await client.get("/api/v1/share/shared-by-me", headers=h)).json()["items"] == []

@@ -2,12 +2,7 @@ import { Share2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { SharedByMeRow } from '@/components/share/SharedByMeRow'
-import {
-  useDeactivateShareLink,
-  useDeleteShareLinkRecord,
-  useRemoveUserShare,
-  useSharedByMe,
-} from '@/hooks/useShare'
+import { useDeleteShareLinkRecord, useRemoveUserShare, useSharedByMe } from '@/hooks/useShare'
 
 /**
  * What this user has shared out (proposal §29).
@@ -23,12 +18,11 @@ export function SharedByMePage() {
   const [page, setPage] = useState(1)
   const { data, isLoading, isError } = useSharedByMe(page)
   const removeShare = useRemoveUserShare()
-  const disableLink = useDeactivateShareLink()
-  const deleteLink = useDeleteShareLinkRecord()
+  const removeLink = useDeleteShareLinkRecord()
 
   const entries = data?.items ?? []
   const totalPages = data?.pages ?? 1
-  const isBusy = removeShare.isPending || disableLink.isPending || deleteLink.isPending
+  const isBusy = removeShare.isPending || removeLink.isPending
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -64,8 +58,7 @@ export function SharedByMePage() {
                 onRemoveUser={(targetUserId) =>
                   removeShare.mutate({ itemId: entry.item.id, targetUserId })
                 }
-                onDisableLink={(linkId) => disableLink.mutate(linkId)}
-                onDeleteLink={(linkId) => deleteLink.mutate(linkId)}
+                onRemoveLink={(linkId) => removeLink.mutate(linkId)}
               />
             ))}
           </ul>

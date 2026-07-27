@@ -126,3 +126,14 @@ proposal §29.3 全部 5 項通過；`npm run lint` / `typecheck` / `npx vitest 
 
 - [x] `src/components/share/ShareLinkPanel.tsx`：移除「Deactivate」按鈕與 `useDeactivateShareLink` 依賴。停用改為一律走「Shared by me」——那裡把使用者分享出去的所有連結列在一起，是「收回權限」該去的地方；分享彈窗是「給出權限」時開的，把停用擺在 Copy link 旁邊只是多一個手滑的機會。
 - [x] `ShareDialog.test.tsx`：新增測試釘住「有 Copy、沒有 Deactivate」。
+
+### 翻案（2026-07-27，使用者決定）：Disable 直接改成 Remove
+
+原設計是兩步（有效 → Disable、失效 → Remove），為的是避免「想清掉一行」變成「切斷還在用的連結」。使用者評估後認為兩步的操作成本高於該風險，改為單一動作。
+
+- [x] `backend/app/share/service.py`：`delete_link_record` 移除「必須已失效」的 422 檢查，仍有效的連結也可直接移除；擁有權檢查保留。
+- [x] `src/components/share/SharedByMeRow.tsx`：`onDisableLink` / `onDeleteLink` 併為 `onRemoveLink`，按鈕一律顯示「Remove」。
+- [x] `src/pages/SharedByMePage.tsx`：不再使用 `useDeactivateShareLink`。
+- [x] 測試更新：後端「移除仍有效的連結會直接撤銷」、integration「移除後訪客端立即 404」、前端「每筆分享各一顆 Remove、畫面上沒有 Disable」。
+
+**已知取捨**：一次點擊即不可逆撤銷對外連結，無二次確認、無復原。若誤按成為實際問題，補救是加確認對話框而非退回兩步驟。

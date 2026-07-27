@@ -1196,7 +1196,8 @@ class SharedByMeEntry:
 2. **排除垃圾桶**：`drive_items.is_deleted = true` 的項目不列出（proposal §29.2 第 6 點）。
 3. **已停用／過期的連結仍列出**，以 `is_active=false` 呈現，讓使用者知道那條連結曾經存在；`shares` 移除後即消失（無軟刪除）。
 4. **無批次收回**（proposal §29.5 決策 3）：本端點唯讀，移除／停用沿用既有 `DELETE /share/items/{id}/users/{uid}` 與 `DELETE /share/links/{link_id}`。
-5. **刪除失效連結記錄**：`DELETE /api/v1/share/links/{link_id}/record` 把整筆 `share_links` 刪掉。**只接受已失效的連結**（已停用或已過期）；對仍有效的連結回 `422 INVALID_OPERATION`，訊息要求先停用。理由見 proposal §29.5 決策 4：停用會切斷別人的存取、刪除只是整理自己的清單，兩者後果差太多，不可合成同一個動作誤觸。與所有分享管理端點一樣要驗證擁有權。
+5. **移除連結**：`DELETE /api/v1/share/links/{link_id}/record` 把整筆 `share_links` 刪掉，**仍有效的連結也接受**（proposal §29.5 決策 4，2026-07-27 翻案）。刪除該列即是撤銷：`open_session` 以 token hash 查該列、`_authorize` 以 link id 查該列，列不存在一律回 `404 SHARE_LINK_INVALID`。與所有分享管理端點一樣要驗證擁有權。
+   - `DELETE /api/v1/share/links/{link_id}`（停用、保留記錄）仍保留於 API，但前端不再使用；連結顯示為「已失效」因此只剩「已過期」一種來源。
 5. 查詢以 `item_id IN (...)` 批次撈取，避免 N+1。
 
 #### My Drive 標記
@@ -1219,7 +1220,7 @@ proposal §29.2 第 5 點要求在檔案列表標示已分享項目。`DriveItem
 5. 連結停用後仍列出但 `is_active=false`。
 6. `list_items` 回傳的兩個標記欄位正確，且不隨列數增加而增加查詢次數。
 7. 已停用的連結記錄可被刪除，刪除後不再出現在 `shared-by-me`。
-8. 仍有效的連結不可直接刪除記錄（回 422），非 owner 也不可刪除他人的連結記錄。
+8. 仍有效的連結可直接移除，且移除後訪客端立即失效；非 owner 不可移除他人的連結。
 
 ### 6.13 FileVersion 模組
 

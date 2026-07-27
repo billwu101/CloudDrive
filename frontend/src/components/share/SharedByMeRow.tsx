@@ -7,8 +7,7 @@ import { FileIcon } from '@/components/drive/FileIcon'
 interface SharedByMeRowProps {
   entry: SharedByMeEntry
   onRemoveUser: (targetUserId: string) => void
-  onDisableLink: (linkId: string) => void
-  onDeleteLink: (linkId: string) => void
+  onRemoveLink: (linkId: string) => void
   isBusy: boolean
 }
 
@@ -42,8 +41,7 @@ function summarise(entry: SharedByMeEntry): string {
 export function SharedByMeRow({
   entry,
   onRemoveUser,
-  onDisableLink,
-  onDeleteLink,
+  onRemoveLink,
   isBusy,
 }: SharedByMeRowProps) {
   const [open, setOpen] = useState(false)
@@ -104,18 +102,16 @@ export function SharedByMeRow({
               <span className="shrink-0 text-xs capitalize text-muted-foreground">
                 {link.permission}
               </span>
-              {/* One button per row, never both: "Disable" cuts off whoever
-                  holds the URL, "Remove" only clears a dead row from this
-                  list. Showing them together invites the wrong click. */}
+              {/* One action: removing the link is the revocation. Anyone
+                  holding the URL loses access immediately, and there is no
+                  undo — the row is gone rather than kept as "inactive". */}
               <button
                 type="button"
                 disabled={isBusy}
-                onClick={() =>
-                  link.is_active ? onDisableLink(link.link_id) : onDeleteLink(link.link_id)
-                }
+                onClick={() => onRemoveLink(link.link_id)}
                 className="shrink-0 rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
               >
-                {link.is_active ? 'Disable' : 'Remove'}
+                Remove
               </button>
             </div>
           ))}
