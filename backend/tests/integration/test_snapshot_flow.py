@@ -8,6 +8,7 @@ the orphan-handling below cannot be caught by the in-memory unit fakes.
 from __future__ import annotations
 
 import io
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -135,3 +136,43 @@ async def test_a_shared_snapshot_reports_nothing_to_reclaim(client: AsyncClient)
     assert all(s["total_bytes"] >= 5000 for s in snaps)
     # ...but neither is the sole holder: the live item still references the blob.
     assert all(s["reclaimable_bytes"] == 0 for s in snaps)
+
+
+async def test_deleting_one_snapshot_leaves_the_others_restorable(client: AsyncClient) -> None:
+    """The question worth answering before exposing any delete button.
+
+    Snapshots share blobs, so the danger would be deleting snapshot A and
+    taking snapshot B's content with it. Deletion only drops metadata; a blob
+    goes only when the GC sweep finds nothing at all referencing it — and
+    snapshot entries are part of that reference set.
+    """
+    token = await register_and_login(client, email="snap-delete-safety@test.com")
+    h = auth_headers(token)
+    upload = await client.post(
+        "/api/v1/upload/simple",
+        headers=h,
+        files={"file": ("keep.txt", io.BytesIO(b"precious"), "text/plain")},
+    )
+    item_id = upload.json()["id"]
+
+    first = (await client.post("/api/v1/snapshots", json={"label": "first"}, headers=h)).json()
+    second = (await client.post("/api/v1/snapshots", json={"label": "second"}, headers=h)).json()
+    assert first["id"] != second["id"]
+
+    # Drop the newest snapshot's metadata the way pruning does, then sweep.
+    from app.snapshot.repository import SQLSnapshotRepository
+    from tests.integration.conftest import _SessionFactory
+
+    async with _SessionFactory() as session:
+        repo = SQLSnapshotRepository(session)
+        await repo.delete_snapshot(UUID(second["id"]))
+        await session.commit()
+
+    # The survivor still lists the file, and its blob is still downloadable.
+    items = await client.get(f"/api/v1/snapshots/{first['id']}/items", headers=h)
+    assert items.status_code == 200
+    assert [i["name"] for i in items.json()] == ["keep.txt"]
+
+    got = await client.get(f"/api/v1/download/{item_id}", headers=h)
+    assert got.status_code == 200
+    assert got.content == b"precious"
