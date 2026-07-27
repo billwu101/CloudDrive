@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
+from app.core.mime import EXT_MIME, effective_extension, resolve_mime
 from app.drive.repository import AbstractDriveItemRepository
 from app.drive.schemas import ItemType
 from app.models.drive_item import DriveItem
@@ -34,34 +35,6 @@ _OFFICE_MIMES = {
 }
 _MARKDOWN_EXTS = {"md", "markdown"}
 
-# Fallback for files stored without a MIME type. Browsers don't always send one
-# (and skill-written files never do), which used to make an obvious .pdf show
-# up as "Preview not available" purely because a column was blank.
-_EXT_MIME = {
-    "pdf": "application/pdf",
-    "png": "image/png",
-    "jpg": "image/jpeg",
-    "jpeg": "image/jpeg",
-    "gif": "image/gif",
-    "webp": "image/webp",
-    "bmp": "image/bmp",
-    "svg": "image/svg+xml",
-    "txt": "text/plain",
-    "log": "text/plain",
-    "json": "application/json",
-    "xml": "text/xml",
-    "yaml": "text/yaml",
-    "yml": "text/yaml",
-    "csv": "text/csv",
-    "mp4": "video/mp4",
-    "webm": "video/webm",
-    "mov": "video/quicktime",
-    "mp3": "audio/mpeg",
-    "wav": "audio/wav",
-    "ogg": "audio/ogg",
-    "m4a": "audio/mp4",
-}
-
 
 class PreviewType(StrEnum):
     IMAGE = "image"
@@ -86,7 +59,7 @@ def _resolve_preview_type(
     mime_type: str | None, extension: str | None, *, office: bool
 ) -> PreviewType:
     ext = (extension or "").lower().lstrip(".")
-    m = (mime_type or "").lower() or _EXT_MIME.get(ext, "")
+    m = (mime_type or "").lower() or EXT_MIME.get(ext, "")
     # Markdown first — its MIME often starts with text/ and would be caught below.
     if ext in _MARKDOWN_EXTS or m == "text/markdown":
         return PreviewType.MARKDOWN
@@ -107,39 +80,18 @@ def _resolve_preview_type(
     return PreviewType.UNSUPPORTED
 
 
-def _effective_extension(item: DriveItem) -> str | None:
-    """The item's extension, falling back to the one in its name.
-
-    The stored column goes stale or blank in several ways — uploads that
-    arrived without one, files written by skills, and renames (which change
-    `name` but leave `extension` alone). The name is what the user sees and
-    what they renamed, so it is the more trustworthy source when the column
-    has nothing useful.
-    """
-    if item.extension:
-        return item.extension
-    _stem, dot, ext = (item.name or "").rpartition(".")
-    return ext if dot and ext else None
-
-
 def resolve_preview_type(item: DriveItem) -> PreviewType:
     """How this item should be previewed, given the server's Office support."""
     return _resolve_preview_type(
-        item.mime_type, _effective_extension(item), office=office_available()
+        item.mime_type,
+        effective_extension(name=item.name, extension=item.extension),
+        office=office_available(),
     )
 
 
-def resolve_mime(item: DriveItem) -> str | None:
-    """The MIME type to serve this item with.
-
-    Without the fallback a PDF stored with a blank mime streams as
-    ``application/octet-stream``, which browsers download instead of render —
-    so the preview would still fail even once its type is recognised.
-    """
-    if item.mime_type:
-        return item.mime_type
-    ext = (_effective_extension(item) or "").lower().lstrip(".")
-    return _EXT_MIME.get(ext)
+def resolve_item_mime(item: DriveItem) -> str | None:
+    """The MIME type to serve this item with (see `app.core.mime`)."""
+    return resolve_mime(mime_type=item.mime_type, name=item.name, extension=item.extension)
 
 
 class PreviewService:
@@ -166,7 +118,7 @@ class PreviewService:
         item = await self._get_file(user_id, item_id)
         ptype = resolve_preview_type(item)
         # Document is delivered as PDF; report that so the client uses the PDF viewer.
-        mime = "application/pdf" if ptype == PreviewType.DOCUMENT else resolve_mime(item)
+        mime = "application/pdf" if ptype == PreviewType.DOCUMENT else resolve_item_mime(item)
         return PreviewInfoResponse(
             item_id=item.id,
             preview_type=ptype,
@@ -205,10 +157,10 @@ class PreviewService:
             return PreviewType.MARKDOWN, "text/markdown", stream
         if ptype == PreviewType.TEXT:
             stream = _limited_text_stream(self._storage.open_read(item.storage_key))
-            return ptype, resolve_mime(item) or "text/plain", stream
+            return ptype, resolve_item_mime(item) or "text/plain", stream
         return (
             ptype,
-            resolve_mime(item) or "application/octet-stream",
+            resolve_item_mime(item) or "application/octet-stream",
             self._storage.open_read(item.storage_key),
         )
 

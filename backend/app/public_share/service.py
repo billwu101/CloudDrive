@@ -16,6 +16,7 @@ from uuid import UUID
 from app.core.config import get_settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, ForbiddenError
+from app.core.mime import resolve_mime
 from app.core.security import (
     ShareAccessClaims,
     create_share_access_token,
@@ -312,7 +313,10 @@ class PublicShareService:
             )
         return DownloadFileResult(
             filename=item.name,
-            mime_type=item.mime_type or "application/octet-stream",
+            mime_type=resolve_mime(
+                mime_type=item.mime_type, name=item.name, extension=item.extension
+            )
+            or "application/octet-stream",
             size_bytes=item.size_bytes,
             stream=self._storage.open_read(item.storage_key),
         )

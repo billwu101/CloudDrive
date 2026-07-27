@@ -16,7 +16,7 @@ from app.preview.service import (
     PreviewService,
     PreviewType,
     _resolve_preview_type,
-    resolve_mime,
+    resolve_item_mime,
     resolve_preview_type,
 )
 from tests.drive.test_service import MemDriveItemRepo, _item
@@ -291,6 +291,6 @@ def test_an_unknown_extension_is_still_unsupported() -> None:
 def test_the_served_mime_is_filled_in_from_the_name() -> None:
     # Without this a recognised PDF still streams as octet-stream, which
     # browsers download rather than render.
-    assert resolve_mime(_bare("115-health-qa.pdf")) == "application/pdf"
-    assert resolve_mime(_bare("report.pdf", mime="application/pdf")) == "application/pdf"
-    assert resolve_mime(_bare("mystery.bin")) is None
+    assert resolve_item_mime(_bare("115-health-qa.pdf")) == "application/pdf"
+    assert resolve_item_mime(_bare("report.pdf", mime="application/pdf")) == "application/pdf"
+    assert resolve_item_mime(_bare("mystery.bin")) is None

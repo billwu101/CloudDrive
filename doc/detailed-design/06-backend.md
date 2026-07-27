@@ -758,6 +758,8 @@ Preview 模組負責判定預覽型別，並回傳預覽資訊與內容。
 
 同一組 fallback 也用在**輸出的 Content-Type**：否則型別判對了，內容仍以 `application/octet-stream` 送出，瀏覽器會直接下載而不是顯示。
 
+判定邏輯放在共用的 `app/core/mime.py`（`EXT_MIME` / `effective_extension` / `resolve_mime`），**Preview、Download 與 PublicShare 三條路徑共用**。這不是為了少寫幾行：前端的預覽對非轉檔型別（圖片／PDF／文字／影音）是打 `GET /download/{id}` 而非 `/preview/{id}/content`，只修 Preview 一邊會讓同一個檔案「在某個端點顯示得出來、在另一個端點只能下載」。
+
 支援的預覽型別：
 
 1. 圖片（`image/*`）、影片（`video/*`）、音訊（`audio/*`）：`content` endpoint 直接串流原檔。
