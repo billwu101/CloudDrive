@@ -16,6 +16,65 @@ import { useMoveItem } from './useDrive'
  */
 export const DRAG_MIME = 'application/x-clouddrive-items'
 
+/** Names listed in full on the drag image before it collapses to "+N more". */
+const GHOST_NAMES = 3
+
+/**
+ * Builds the image dragged under the cursor.
+ *
+ * The browser's default is a snapshot of the one element the drag started on,
+ * which is actively misleading for a multi-selection: you pick up eight files
+ * and the cursor shows one. This shows the count and names so it is obvious
+ * what is about to move.
+ *
+ * The node has to be in the document for the browser to rasterise it, so it is
+ * parked off-screen and removed once the snapshot has been taken.
+ */
+function makeDragGhost(names: string[]): HTMLElement {
+  const ghost = document.createElement('div')
+  ghost.setAttribute('aria-hidden', 'true')
+  ghost.style.cssText = [
+    'position:fixed',
+    'top:-10000px',
+    'left:-10000px',
+    'pointer-events:none',
+    'display:inline-block',
+    'min-width:160px',
+    'max-width:280px',
+    'padding:8px 10px',
+    'border:1px solid rgba(0,0,0,0.12)',
+    'border-radius:8px',
+    'background:#fff',
+    'box-shadow:0 6px 16px rgba(0,0,0,0.18), 4px 4px 0 -1px #fff, 5px 5px 0 -1px rgba(0,0,0,0.12)',
+    'font:500 12px/1.5 system-ui,-apple-system,sans-serif',
+    'color:#111',
+  ].join(';')
+
+  const heading = document.createElement('div')
+  heading.textContent = names.length === 1 ? names[0]! : `${names.length} items`
+  heading.style.cssText = 'font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'
+  ghost.appendChild(heading)
+
+  if (names.length > 1) {
+    for (const name of names.slice(0, GHOST_NAMES)) {
+      const row = document.createElement('div')
+      row.textContent = name
+      row.style.cssText =
+        'color:#555;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400'
+      ghost.appendChild(row)
+    }
+    if (names.length > GHOST_NAMES) {
+      const more = document.createElement('div')
+      more.textContent = `+${names.length - GHOST_NAMES} more`
+      more.style.cssText = 'color:#888;font-weight:400'
+      ghost.appendChild(more)
+    }
+  }
+
+  document.body.appendChild(ghost)
+  return ghost
+}
+
 export interface DragMove {
   /** Ids currently being dragged — used to dim them while in flight. */
   draggingIds: Set<string>
@@ -53,8 +112,18 @@ export function useDragMove({ selectedIds, items }: UseDragMoveOptions): DragMov
       setMoveError(null)
       e.dataTransfer.effectAllowed = 'move'
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(ids))
+
+      // Keep the drag image in the same order as the listing, so it reads like
+      // what the user just selected rather than an arbitrary set.
+      const names = items.filter((i) => ids.includes(i.id)).map((i) => i.name)
+      if (typeof e.dataTransfer.setDragImage === 'function' && names.length > 0) {
+        const ghost = makeDragGhost(names)
+        e.dataTransfer.setDragImage(ghost, 12, 12)
+        // The browser rasterises during this event; drop the node right after.
+        setTimeout(() => ghost.remove(), 0)
+      }
     },
-    [selectedIds],
+    [selectedIds, items],
   )
 
   const onItemDragEnd = useCallback(() => {

@@ -279,6 +279,7 @@ ConfirmTrashDialog   — supports itemNames: string[] for bulk confirmation
   - 反過來，放到資料夾上的處理只認自訂 MIME，外部檔案拖進來不會被誤判成移動。
 - **要移動哪些**：被拖曳項目在目前選取範圍內 → 整批；不在 → 只有它，且**不改動既有選取**（proposal §30.5 決策 2）。
 - **可放置判定**（`dragover` 時）：目標須是 `FOLDER`，且不在被拖曳的 id 之中。是否為自身子孫由後端把關（前端沒有完整樹）；不可放置時不呼叫 `preventDefault()`，瀏覽器自然顯示「禁止」游標。
+- **拖曳影像**：以 `dataTransfer.setDragImage()` 換掉瀏覽器預設（預設是起始元素的截圖，多選時只看得到一個）。`makeDragGhost()` 依當前列表順序組出「N items + 前 3 個名稱 + `+N more`」的節點；瀏覽器必須能對節點做點陣化，故先掛到 `document.body` 的畫面外位置，`setTimeout(0)` 後移除。單選時只顯示該項目名稱。
 - **執行**：無批次移動端點，故逐一呼叫 `PATCH /drive/items/{id}/parent`；**部分失敗不回滾**（proposal §30.5 決策 3），成功的保留，失敗的收集成訊息顯示。
 - 全部結束後 invalidate `drive.items`，並清掉拖曳狀態。
 

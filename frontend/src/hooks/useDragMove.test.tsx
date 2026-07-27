@@ -39,6 +39,8 @@ const FILE_B = item('file-b', 'b.txt', 'FILE')
 const ITEMS = [FOLDER, FILE_A, FILE_B]
 
 /** A DragEvent stand-in carrying just the bits the hook reads. */
+let lastDragImage: HTMLElement | null = null
+
 function dragEvent(types: string[], payload?: string) {
   let prevented = false
   return {
@@ -57,6 +59,10 @@ function dragEvent(types: string[], payload?: string) {
         payload = value
       },
       getData: () => payload ?? '',
+      setDragImage(node: HTMLElement) {
+        // Snapshot the node's text now: the hook removes it right afterwards.
+        lastDragImage = node.cloneNode(true) as HTMLElement
+      },
     },
   } as unknown as React.DragEvent & { defaultPrevented: boolean }
 }
@@ -191,5 +197,58 @@ describe('useDragMove', () => {
     expect(moves).toEqual([{ id: 'file-a', parent: 'folder-1' }])
     expect(result.current.moveError).toContain('b.txt')
     expect(result.current.moveError).toContain('already exists')
+  })
+})
+
+
+describe('drag image', () => {
+  it('names every selected item, not just the one under the cursor', () => {
+    // The browser's default drag image is the single element the drag began
+    // on — picking up three files and seeing one is what this replaces.
+    const { result } = setup(['file-a', 'file-b', 'folder-1'])
+    act(() => result.current.onItemDragStart(FILE_A, dragEvent([])))
+
+    const text = lastDragImage?.textContent ?? ''
+    expect(text).toContain('3 items')
+    expect(text).toContain('a.txt')
+    expect(text).toContain('b.txt')
+    expect(text).toContain('Target')
+  })
+
+  it('collapses a long selection to a count plus the first few', () => {
+    const many = Array.from({ length: 9 }, (_, i) => item(`x${i}`, `file${i}.txt`, 'FILE'))
+    useAuthStore.setState({ accessToken: 'test-token' })
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const { result } = renderHook(
+      () => useDragMove({ selectedIds: new Set(many.map((m) => m.id)), items: many }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    )
+    act(() => result.current.onItemDragStart(many[0]!, dragEvent([])))
+
+    const text = lastDragImage?.textContent ?? ''
+    expect(text).toContain('9 items')
+    expect(text).toContain('+6 more')
+  })
+
+  it('shows just the name when a single item is dragged', () => {
+    const { result } = setup()
+    act(() => result.current.onItemDragStart(FILE_A, dragEvent([])))
+
+    expect(lastDragImage?.textContent).toBe('a.txt')
+  })
+
+  it('leaves nothing behind in the document', async () => {
+    // The ghost has to be attached for the browser to rasterise it, so the
+    // hook parks it off-screen — it must not accumulate there.
+    const { result } = setup(['file-a', 'file-b'])
+    act(() => result.current.onItemDragStart(FILE_A, dragEvent([])))
+
+    await waitFor(() =>
+      expect(document.body.querySelectorAll('[aria-hidden="true"]')).toHaveLength(0),
+    )
   })
 })

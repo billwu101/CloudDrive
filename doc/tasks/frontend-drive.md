@@ -169,3 +169,11 @@ proposal §30.3 全部 9 項通過；`lint` / `typecheck` / `vitest` 全綠。
 
 - [x] `SnapshotUsagePanel`：移除 `> 0` 過濾；標題改「Space you would reclaim」；零回收列以較淡樣式與「frees nothing」呈現。
 - [x] 測試 3 項：排序正確、零回收仍列出、上限 5 筆。
+
+### 追加：多選拖曳的拖曳影像（proposal §30.2 第 3.1 點）
+
+瀏覽器預設的拖曳影像是起始元素的截圖——選 8 個檔案拖曳，游標下只看到 1 個。
+
+- [x] `src/hooks/useDragMove.ts`：`makeDragGhost()` + `setDragImage()`。顯示「N items」與前 3 個名稱（超出以 `+N more` 收合），依列表順序；單選時只顯示名稱。節點需掛進 DOM 才能被點陣化，故置於畫面外並於 `setTimeout(0)` 後移除。
+- [x] 測試 4 項：多選列出全部、長清單收合、單選只顯示名稱、節點不殘留在 DOM。
+- [x] Chrome 實機驗證：勾選 3 個檔案拖曳，拖曳影像內容為「3 items」加三個檔名。
