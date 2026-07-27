@@ -15,12 +15,14 @@ import { Fragment, useMemo, useState } from 'react'
 import { isApiError } from '@/api/client'
 import type { RestoreRequest, SnapshotResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { SnapshotUsagePanel } from '@/components/snapshot/SnapshotUsagePanel'
 import { SnapshotSettingsDialog } from '@/components/timemachine/SnapshotSettingsDialog'
 import {
   useCreateSnapshot,
   useRestoreSnapshot,
   useSnapshotItems,
   useSnapshots,
+  useSnapshotSettings,
 } from '@/hooks/useSnapshots'
 
 function formatBytes(n: number): string {
@@ -111,6 +113,7 @@ function SnapshotRow({
 
 export function TimeMachinePage() {
   const { data: snapshots, isLoading } = useSnapshots()
+  const { data: settings } = useSnapshotSettings()
   const createSnapshot = useCreateSnapshot()
   const restore = useRestoreSnapshot()
 
@@ -210,6 +213,8 @@ export function TimeMachinePage() {
           {result}
         </p>
       )}
+
+      <SnapshotUsagePanel settings={settings} snapshots={snapshots} />
 
       <div className="grid gap-6 md:grid-cols-[20rem_1fr]">
         {/* Timeline */}

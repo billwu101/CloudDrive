@@ -135,3 +135,19 @@ proposal §30.3 全部 9 項通過；`lint` / `typecheck` / `vitest` 全綠。
 - [x] `src/components/share/ShareLinkPanel.tsx`：`DEFAULT_EXPIRY_DAYS = 7`，欄位預填 7 天後的本地時間（`datetime-local` 需要本地時間字串，不能直接用 ISO/UTC，否則會偏移時區）。
 - [x] 欄位 aria-label 由「Link expiry (optional)」改為「Link expiry」——已有預設值，不再是選填。
 - [x] `ShareDialog.test.tsx`：驗證預設值落在 7 天 ±0.1 天。
+
+---
+
+## 追加：快照用量可見性（proposal §30）
+
+**背景**：實測本機帳號現存檔案 34 MB、快照歷史 3.5 GB，介面完全沒有呈現，且快照配額滿了會自動刪除最舊快照而使用者無從得知。
+**後端**：零改動——`GET /snapshots/settings` 已回傳 `used_bytes`（依 checksum 去重）與 `effective_quota_bytes`。
+
+- [x] `src/components/snapshot/SnapshotUsagePanel.tsx`：用量條、80% 警告、最大前 5 個快照（含時間，因為排程快照標籤全是「Scheduled」）、去重說明。
+- [x] `src/pages/TimeMachinePage.tsx`：掛上面板，接 `useSnapshotSettings()`。
+- [x] `src/components/layout/StorageUsageBar.tsx`：抽出 `Meter`，檔案與快照各一條獨立量表（§30.4 決策 1）。
+- [x] 測試 9 項：`SnapshotUsagePanel.test.tsx` 6 項 + `StorageUsageBar.test.tsx` 3 項。
+
+### 驗證結果（2026-07-27）
+
+前端 **330 passed**；`lint` / `typecheck` 全綠。Chrome 實機確認：時光機頁顯示「3.5 GB of 7.5 GB」、最大快照 3.0 GB、側邊欄兩條量表（33.4 MB / 15.0 GB 與 3.5 GB / 7.5 GB）。

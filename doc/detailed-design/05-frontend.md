@@ -201,7 +201,7 @@ Sidebar
 TopBar
 TopSearchBar
 UserMenu
-StorageUsageBar
+StorageUsageBar      — 兩條獨立量表：檔案（滿 90% 轉紅）與快照（滿 80% 轉紅）
 ```
 
 ### 5.5.3 uiStore
