@@ -47,10 +47,14 @@ from eval.verifier import (
     CheckResult,
     compute_path_deviation,
     count_tool_calls,
+    step_results,
     verify,
     verify_codegen_execution,
     verify_reference_grounding,
+    verify_reply_honesty,
+    verify_required_skills,
     verify_state,
+    verify_step_results,
 )
 
 
@@ -94,6 +98,9 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
         # earlier step's real output, not a literal/guessed id (2026-07-28,
         # alfred: "順序很重要...一定要先search").
         checks = [*checks, *verify_reference_grounding(case, response)]
+        # Hard gate too: with the case's data really seeded, skipping a
+        # declared query tool is a modelling failure, not sequence noise.
+        checks = [*checks, *verify_required_skills(case, response)]
         # M4: does the actually-generated code run, not just "proposed a
         # skill" (2026-07-28, alfred). Smoke test only — see
         # eval/codegen_smoke.py docstring for exact scope.
@@ -106,24 +113,34 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
         # honours auto_confirm=False — those cases assert that nothing ran
         # *because* the user never approved.
         workflow_id = pending_workflow_id(response) if case.auto_confirm else None
+        executed_results = step_results(response)  # auto-executed plans report here
         if workflow_id is not None:
             try:
-                confirm_workflow_http(base_url, token, workflow_id)
+                confirmed = confirm_workflow_http(base_url, token, workflow_id)
+                executed_results = step_results(confirmed)
             except (urllib.error.URLError, EvalRunnerError) as exc:
                 checks = [
                     *checks,
                     CheckResult("execution", "workflow confirm succeeded", False, str(exc)),
                 ]
+        # What happened *during* execution — every step ok, none skipped, the
+        # declared read steps actually found something.
+        checks = [*checks, *verify_step_results(case, executed_results)]
 
+        state_checks: list[CheckResult] = []
         if case.expect.state is not None:
             try:
                 items = fetch_items_http(base_url, token)
-                checks = [*checks, *verify_state(case, items)]
+                state_checks = verify_state(case, items)
+                checks = [*checks, *state_checks]
             except StateFetchError as exc:
-                checks = [
-                    *checks,
-                    CheckResult("state", "post-execution state fetch succeeded", False, str(exc)),
+                state_checks = [
+                    CheckResult("state", "post-execution state fetch succeeded", False, str(exc))
                 ]
+                checks = [*checks, *state_checks]
+        # Rule-based false-claim detector: reply says "done" while the state
+        # says otherwise (2026-07-28 alfred — cheap alternative to an LLM judge).
+        checks = [*checks, *verify_reply_honesty(case, response, state_checks)]
 
         llm_meta = response.get("llm_meta")
         plan_is_none = response.get("plan") is None

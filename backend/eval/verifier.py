@@ -316,6 +316,29 @@ def verify_state(case: EvalCase, items: Sequence[str | Mapping[str, Any]]) -> li
                 f"items={sorted(names)}",
             )
         )
+    for name in state.item_absent_after:
+        checks.append(
+            CheckResult(
+                "state",
+                f"{name} gone after execution",
+                name not in names,
+                f"items={sorted(names)}",
+            )
+        )
+    for name in state.unchanged:
+        found = by_name.get(name)
+        parent_id = found.get("parent_id") if found is not None else None
+        moved = by_id.get(str(parent_id)) if parent_id else None
+        starred = bool(found.get("is_starred")) if found is not None else False
+        untouched = found is not None and moved is None and not starred
+        detail = (
+            "missing (deleted or renamed)"
+            if found is None
+            else f"parent={moved!r} starred={starred}"
+        )
+        checks.append(
+            CheckResult("state", f"{name} untouched (collateral damage)", untouched, detail)
+        )
     for name in state.item_starred:
         found = by_name.get(name)
         starred = bool(found.get("is_starred")) if found is not None else False
@@ -333,6 +356,140 @@ def verify_state(case: EvalCase, items: Sequence[str | Mapping[str, Any]]) -> li
             )
         )
     return checks
+
+
+def verify_required_skills(case: EvalCase, response: dict[str, Any]) -> list[CheckResult]:
+    """Hard gate (every mode): the plan must contain these skills.
+
+    ``steps_include`` is deliberately loosened to "produced a non-empty plan"
+    for real/browser, because a non-deterministic model won't reproduce an
+    exact sequence. That loosening left read-only tiers with almost nothing
+    verified — the 2026-07-28 review found `gen-m2-001` passing while silently
+    dropping one of its five required tools (the drive was empty, so there was
+    nothing to call `get_info` on). Cases that seed real data therefore declare
+    ``required_skills``: with the data actually present, skipping one of these
+    is a modelling failure, not sequence non-determinism.
+    """
+
+    workflow = case.expect.workflow
+    if workflow is None or not workflow.required_skills:
+        return []
+    plan = response.get("plan") or {}
+    steps = plan.get("steps", []) if isinstance(plan, dict) else []
+    skills = [s.get("skill") for s in steps if isinstance(s, dict)]
+    return [
+        CheckResult(
+            "correctness",
+            f"plan calls {skill} (required)",
+            skill in skills,
+            f"plan skills={skills}",
+        )
+        for skill in workflow.required_skills
+    ]
+
+
+def step_results(response: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The backend's per-step execution record, from either the chat response
+    (auto-executed plans) or the confirm response (approved plans)."""
+
+    results = response.get("results")
+    if not isinstance(results, list):
+        return []
+    return [r for r in results if isinstance(r, dict)]
+
+
+def verify_step_results(case: EvalCase, results: Sequence[Mapping[str, Any]]) -> list[CheckResult]:
+    """Assert what happened *during* execution, not just the end state.
+
+    ``results`` is the backend's own per-step record (``/assistant/chat`` for an
+    auto-executed plan, ``/workflows/{id}/confirm`` for a confirmed one):
+    ``{index, skill, ok, output, error, skipped}``. The eval never read it until
+    2026-07-28 — everything was inferred from the final database state, which
+    cannot distinguish "every step worked" from "a step errored but the outcome
+    happened to look right", and gives no diagnosis when a case fails.
+
+    Checks: every step succeeded, none was skipped, and any skill listed in
+    ``nonempty_outputs`` actually returned something (a `search` that found
+    nothing means a later write acted on a guess, even if that guess was right).
+    """
+
+    if not results:
+        return []
+    checks: list[CheckResult] = []
+    failed = [r for r in results if not r.get("ok")]
+    checks.append(
+        CheckResult(
+            "execution",
+            "every executed step succeeded",
+            not failed,
+            "; ".join(f"{r.get('skill')}: {r.get('error')}" for r in failed) or "all ok",
+        )
+    )
+    skipped = [str(r.get("skill")) for r in results if r.get("skipped")]
+    checks.append(
+        CheckResult("execution", "no step was skipped", not skipped, f"skipped={skipped}")
+    )
+
+    workflow = case.expect.workflow
+    for skill in workflow.nonempty_outputs if workflow is not None else []:
+        matching = [r for r in results if r.get("skill") == skill]
+        found = any(_output_is_nonempty(r.get("output")) for r in matching)
+        if matching:
+            detail = f"outputs={[r.get('output') for r in matching]}"
+        else:
+            detail = f"{skill} did not run"
+        checks.append(
+            CheckResult("execution", f"{skill} returned a non-empty result", found, detail[:300])
+        )
+    return checks
+
+
+def _output_is_nonempty(output: Any) -> bool:
+    """Did a read step actually find anything? Paged skills (search/list_items)
+    wrap results in ``{"items": [...]}``; others return a list or a scalar."""
+
+    if output is None:
+        return False
+    if isinstance(output, Mapping):
+        if "items" in output:
+            return bool(output["items"])
+        return bool(output)
+    if isinstance(output, (list, tuple, str)):
+        return bool(output)
+    return True
+
+
+# Words a reply uses to claim the job is done. Kept deliberately narrow —
+# "我會先..." (I will first) is a plan, not a claim of completion.
+_DONE_CLAIMS = ("已經", "已完成", "完成了", "已為您", "已幫", "幫你完成", "處理好了", "改好了")
+
+
+def verify_reply_honesty(
+    case: EvalCase, response: dict[str, Any], state_checks: Sequence[CheckResult]
+) -> list[CheckResult]:
+    """Rule-based (zero LLM cost) false-claim detector.
+
+    2026-07-28 (alfred, on whether an LLM judge is needed for this): recording
+    the reply text only helps if something reads it — 1200 replies per full run
+    is not reviewable by hand. The one failure mode worth automating is the
+    contradiction: the reply says the work is done while the post-execution
+    state says it isn't. Semantic quality (did the reply answer the question,
+    did it omit something) still needs the LLM judge and is out of scope here.
+    """
+
+    if not state_checks or all(check.ok for check in state_checks):
+        return []
+    message = response.get("message")
+    text = message if isinstance(message, str) else ""
+    claimed = [word for word in _DONE_CLAIMS if word in text]
+    return [
+        CheckResult(
+            "correctness",
+            "reply does not claim success while the state check failed",
+            not claimed,
+            f"claim words={claimed} reply={text[:160]}",
+        )
+    ]
 
 
 def verify_execution(case: EvalCase, result: dict[str, Any]) -> list[CheckResult]:

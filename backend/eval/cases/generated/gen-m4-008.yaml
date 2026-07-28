@@ -1,6 +1,6 @@
 id: gen-m4-008
 name: 'M4 self-authoring #8 (blake2s_checksum)'
-prompt: 做一個算 BLAKE2S 雜湊的功能
+prompt: 我從網路上抓了一個安裝檔，想確認下載過程有沒有壞掉，之後好跟官網公布的值比對——幫我做一個可以算 BLAKE2S 雜湊的功能。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

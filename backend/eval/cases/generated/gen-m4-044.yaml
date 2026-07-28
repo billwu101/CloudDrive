@@ -1,6 +1,6 @@
 id: gen-m4-044
 name: 'M4 self-authoring #44 (strip_blank_lines)'
-prompt: 做一個移除空白行的功能
+prompt: 整理讀書筆記時每次都要手動處理很花時間，幫我做一個能移除空白行的功能。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

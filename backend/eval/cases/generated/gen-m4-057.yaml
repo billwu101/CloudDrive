@@ -1,6 +1,6 @@
 id: gen-m4-057
 name: 'M4 self-authoring #57 (flatten_json)'
-prompt: 做一個把巢狀 JSON 攤平的功能
+prompt: 我想把匯出的資料丟進程式裡分析，但格式不對，幫我做一個能把巢狀 JSON 攤平的功能。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

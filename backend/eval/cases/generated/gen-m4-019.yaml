@@ -1,6 +1,6 @@
 id: gen-m4-019
 name: 'M4 self-authoring #19 (ascii85_decode)'
-prompt: 做一個做 ascii85 解碼的功能
+prompt: 同事傳來的資料是編過碼的，我想在自己的雲端硬碟上直接處理，幫我做一個能做 ascii85 解碼的功能。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

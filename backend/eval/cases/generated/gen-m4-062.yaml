@@ -1,6 +1,6 @@
 id: gen-m4-062
 name: 'M4 self-authoring #62 (image_rotate_90)'
-prompt: 做一個把圖片旋轉 90 度的功能
+prompt: 投影片裡的圖片規格不一，看起來很雜亂，幫我做一個能把圖片旋轉 90 度的功能。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

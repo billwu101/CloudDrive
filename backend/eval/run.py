@@ -44,11 +44,15 @@ from eval.verifier import (
     CheckResult,
     compute_path_deviation,
     count_tool_calls,
+    step_results,
     verify,
     verify_codegen_execution,
     verify_execution,
     verify_reference_grounding,
+    verify_reply_honesty,
+    verify_required_skills,
     verify_state,
+    verify_step_results,
 )
 
 
@@ -185,11 +189,25 @@ def main() -> int:
                 strict = args.mode != "browser" and not args.no_strict_steps
                 checks = verify(case, response, strict_steps=strict)
                 checks = checks + verify_reference_grounding(case, response)
+                checks = checks + verify_required_skills(case, response)
                 checks = checks + verify_codegen_execution(case, response)
                 if judge is not None:
                     checks = checks + judge_case(case, response, judge, fallback_rubric=True)
-                checks = checks + _execute_pending(case, args, response)
-                checks = checks + _state_checks(case, args)
+                confirm_checks, confirmed_results = _execute_pending(case, args, response)
+                checks = checks + confirm_checks
+                # Auto-executed plans report their steps on the chat response
+                # itself; confirmed ones only on the confirm response. Live runs
+                # only: the in-process mock backend has no real drive, so its
+                # queries legitimately return nothing and its references cannot
+                # resolve — asserting on that would fail every case for a reason
+                # that has nothing to do with the model.
+                if _is_live(args):
+                    checks = checks + verify_step_results(
+                        case, confirmed_results or step_results(response)
+                    )
+                state_checks = _state_checks(case, args)
+                checks = checks + state_checks
+                checks = checks + verify_reply_honesty(case, response, state_checks)
                 result_summary = _summarise_response(response)
                 llm_meta = response.get("llm_meta")
                 plan_is_none = response.get("plan") is None
@@ -267,6 +285,13 @@ def _summarise_exec(exec_output: dict[str, Any]) -> str:
     return f"產出檔: {files} | 內容: {'; '.join(snippets)}"
 
 
+def _is_live(args: argparse.Namespace) -> bool:
+    """Running against a real backend with a real model (so seeded data exists
+    and executed steps mean something)."""
+
+    return bool(args.mode == "api" and args.llm == "real" and args.token)
+
+
 def _wants_live_state(case: EvalCase, args: argparse.Namespace) -> bool:
     """Whether this run both expects a post-execution state and can observe one.
 
@@ -279,12 +304,12 @@ def _wants_live_state(case: EvalCase, args: argparse.Namespace) -> bool:
 
     if case.expect.state is None:
         return False
-    return args.mode == "api" and args.llm == "real" and bool(args.token)
+    return _is_live(args)
 
 
 def _execute_pending(
     case: EvalCase, args: argparse.Namespace, response: dict[str, Any]
-) -> list[CheckResult]:
+) -> tuple[list[CheckResult], list[dict[str, Any]]]:
     """Confirm a pending plan so ``expect.state`` describes something that
     actually ran. No-op when the plan needs no approval (auto-executed), when
     there is no plan at all, or when this run cannot observe state anyway.
@@ -296,15 +321,15 @@ def _execute_pending(
     """
 
     if not case.auto_confirm or not _wants_live_state(case, args):
-        return []
+        return [], []
     workflow_id = pending_workflow_id(response)
     if workflow_id is None:
-        return []
+        return [], []
     try:
-        confirm_workflow_http(args.base_url, args.token, workflow_id)
+        confirmed = confirm_workflow_http(args.base_url, args.token, workflow_id)
     except (EvalRunnerError, urllib.error.URLError) as exc:
-        return [CheckResult("execution", "workflow confirm succeeded", False, str(exc))]
-    return []
+        return [CheckResult("execution", "workflow confirm succeeded", False, str(exc))], []
+    return [], step_results(confirmed)
 
 
 def _state_checks(case: EvalCase, args: argparse.Namespace) -> list[CheckResult]:

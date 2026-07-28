@@ -1,6 +1,6 @@
 id: gen-m4-094
 name: 'M4 self-authoring #94 (csv_headers)'
-prompt: 做一個列出 CSV 欄位名的功能
+prompt: 我要把一批文字檔交給下游流程，對方要求格式統一，幫我做一個能列出 CSV 欄位名的功能。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

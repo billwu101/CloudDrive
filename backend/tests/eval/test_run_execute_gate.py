@@ -52,10 +52,11 @@ def test_confirms_pending_plan_when_case_expects_state(monkeypatch: pytest.Monke
     _stub_confirm(monkeypatch, calls)
     case = _case(expect={"state": {"item_present": ["報告_正式版"]}})
 
-    checks = _execute_pending(case, _args(), _PENDING)
+    checks, results = _execute_pending(case, _args(), _PENDING)
 
     assert calls == [("http://backend/api/v1", "tok", "wf-1")]
     assert checks == []
+    assert results == []  # stub confirm returned no step records
 
 
 def test_does_not_confirm_when_case_has_no_state_expectation(
@@ -66,7 +67,7 @@ def test_does_not_confirm_when_case_has_no_state_expectation(
     calls: list[tuple[str, str, str]] = []
     _stub_confirm(monkeypatch, calls)
 
-    assert _execute_pending(_case(), _args(), _PENDING) == []
+    assert _execute_pending(_case(), _args(), _PENDING) == ([], [])
     assert calls == []
 
 
@@ -80,7 +81,7 @@ def test_does_not_confirm_when_the_case_simulates_a_user_who_never_approves(
     _stub_confirm(monkeypatch, calls)
     case = _case(auto_confirm=False, expect={"state": {"item_absent": ["Reports"]}})
 
-    assert _execute_pending(case, _args(), _PENDING) == []
+    assert _execute_pending(case, _args(), _PENDING) == ([], [])
     assert calls == []
 
 
@@ -95,7 +96,7 @@ def test_does_not_confirm_when_state_is_unobservable(
     _stub_confirm(monkeypatch, calls)
     case = _case(expect={"state": {"item_present": ["x"]}})
 
-    assert _execute_pending(case, _args(**override), _PENDING) == []
+    assert _execute_pending(case, _args(**override), _PENDING) == ([], [])
     assert calls == []
 
 
@@ -115,7 +116,7 @@ def test_does_not_confirm_when_there_is_nothing_pending(
     _stub_confirm(monkeypatch, calls)
     case = _case(expect={"state": {"item_present": ["x"]}})
 
-    assert _execute_pending(case, _args(), response) == []
+    assert _execute_pending(case, _args(), response) == ([], [])
     assert calls == []
 
 
@@ -132,8 +133,9 @@ def test_confirm_failure_is_recorded_as_a_check_not_raised(
     monkeypatch.setattr("eval.run.confirm_workflow_http", fake)
     case = _case(expect={"state": {"item_present": ["x"]}})
 
-    checks = _execute_pending(case, _args(), _PENDING)
+    checks, results = _execute_pending(case, _args(), _PENDING)
 
+    assert results == []
     assert len(checks) == 1
     assert checks[0].dimension == "execution"
     assert checks[0].ok is False

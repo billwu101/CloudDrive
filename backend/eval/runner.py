@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from eval.schema import EvalCase
+from eval.schema import EvalCase, SeedFile
 
 _FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -109,25 +109,35 @@ def _seed_folders(root: str, token: str, names: list[str], *, timeout: float) ->
                 raise
 
 
-def _seed_files(root: str, token: str, fixture_names: list[str], *, timeout: float) -> None:
+def _seed_files(root: str, token: str, entries: list[str | SeedFile], *, timeout: float) -> None:
     """Upload each named fixture (from eval/fixtures/) to the drive root via
     POST /upload/simple — gives a case a real file with a known extension, so
     an outcome like organize_by_type's ``{ext}-files`` folders is deterministic
-    and checkable via expect.state, not just "did it produce a plan"."""
-    for name in fixture_names:
-        path = _FIXTURES_DIR / name
+    and checkable via expect.state, not just "did it produce a plan".
+
+    A ``SeedFile`` entry uploads that fixture's bytes under a different name:
+    filename-classification cases need many meaningfully-named files
+    (發票A.pdf, 考卷B.pdf ...) whose content is irrelevant.
+    """
+    for entry in entries:
+        fixture = entry if isinstance(entry, str) else entry.fixture
+        upload_name = entry if isinstance(entry, str) else entry.name
+        path = _FIXTURES_DIR / fixture
         if not path.is_file():
             raise EvalRunnerError(f"seed_files: fixture not found: {path}")
-        _upload_simple(root, token, path, timeout=timeout)
+        _upload_simple(root, token, path, timeout=timeout, upload_name=upload_name)
 
 
-def _upload_simple(root: str, token: str, path: Path, *, timeout: float) -> None:
+def _upload_simple(
+    root: str, token: str, path: Path, *, timeout: float, upload_name: str | None = None
+) -> None:
+    name = upload_name or path.name
     boundary = uuid.uuid4().hex
-    mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
     body = (
         (
             f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
+            f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'
             f"Content-Type: {mime_type}\r\n\r\n"
         ).encode()
         + path.read_bytes()
@@ -146,7 +156,7 @@ def _upload_simple(root: str, token: str, path: Path, *, timeout: float) -> None
         with urllib.request.urlopen(request, timeout=timeout) as response:
             response.read()
     except urllib.error.HTTPError as exc:
-        raise EvalRunnerError(f"upload {path.name} failed: {exc.code} {exc.reason}") from exc
+        raise EvalRunnerError(f"upload {name} failed: {exc.code} {exc.reason}") from exc
 
 
 def _post(

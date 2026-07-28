@@ -1,6 +1,6 @@
 id: gen-m4-084
 name: 'M4 self-authoring #84 (hexdump_file)'
-prompt: 做一個產生檔案 hex dump的功能
+prompt: 我在整理雲端硬碟，想先摸清楚每個檔案的狀況再決定怎麼分類，幫我做一個能產生檔案 hex dump的功能。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

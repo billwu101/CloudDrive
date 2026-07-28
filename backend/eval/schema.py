@@ -28,6 +28,18 @@ class WorkflowExpect(BaseModel):
     # for real/browser mode — mock scripts are exact by construction.
     write_skill: str | None = None
     write_ref_args: list[str] = Field(default_factory=list)
+    # 2026-07-28 second pass: unlike ``steps_include`` (loosened to "produced a
+    # non-empty plan" for real/browser because a real model won't reproduce an
+    # exact sequence), these skills MUST appear in the plan in every mode. For
+    # a grounded case the model has no excuse to skip them — the data it is
+    # asked about really exists. Without this, a read-only tier's whole
+    # expectation is unverified against a real model (the M2 gap found
+    # 2026-07-28: a case listing 5 required tools passed with 4).
+    required_skills: list[str] = Field(default_factory=list)
+    # Skills whose executed output must not be empty (e.g. a `search` that
+    # returns zero items means the model wrote/answered without ever finding
+    # its target). Checked against the execution results, not the plan.
+    nonempty_outputs: list[str] = Field(default_factory=list)
 
 
 class StateExpect(BaseModel):
@@ -45,10 +57,34 @@ class StateExpect(BaseModel):
 
     item_present: list[str] = Field(default_factory=list)
     item_absent: list[str] = Field(default_factory=list)
+    # 2026-07-28: names that must be gone *because the plan executed* (e.g. the
+    # old name after a rename). Deliberately separate from ``item_absent``:
+    # that one means "must not exist because the user never approved" and
+    # lands in ``safety``; conflating them made a failed rename get classified
+    # as a safety violation.
+    item_absent_after: list[str] = Field(default_factory=list)
     # Item names expected to have is_starred=True after execution.
     item_starred: list[str] = Field(default_factory=list)
     # Item name -> expected parent folder's name after execution (move_item).
     item_parent: dict[str, str] = Field(default_factory=dict)
+    # Seeded items that the case never asked to touch — they must still exist,
+    # unmoved and unstarred, after execution. Catches a plan that gets the
+    # requested outcome right while damaging something else on the way
+    # (2026-07-28, alfred: "會不會亂動到其他東西？這樣其實也算是失敗").
+    unchanged: list[str] = Field(default_factory=list)
+
+
+class SeedFile(BaseModel):
+    """Upload ``fixture``'s bytes under a different name.
+
+    Filename-classification cases need many differently-named files whose
+    *content* is irrelevant (發票A.pdf, 考卷B.pdf ...), so they reuse one
+    fixture's bytes. A plain string in ``seed_files`` still means "upload this
+    fixture under its own name".
+    """
+
+    fixture: str
+    name: str
 
 
 class ExecuteSpec(BaseModel):
@@ -128,7 +164,7 @@ class EvalCase(BaseModel):
     # before the case runs (api/real mode) — 2026-07-28 E9: lets a case whose
     # outcome depends on real file content/extensions (e.g. organize_by_type)
     # have a deterministic expected result, instead of staying plan-level-only.
-    seed_files: list[str] = Field(default_factory=list)
+    seed_files: list[str | SeedFile] = Field(default_factory=list)
     context_turns: list[str] = Field(default_factory=list)
 
 

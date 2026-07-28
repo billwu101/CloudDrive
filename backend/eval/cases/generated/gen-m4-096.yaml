@@ -1,6 +1,6 @@
 id: gen-m4-096
 name: 'M4 self-authoring #96 (json_to_jsonl)'
-prompt: 做一個把 JSON 陣列轉成 JSONL的功能
+prompt: 我手上有一份從別的系統匯出的文字檔，格式亂七八糟不好讀，幫我做一個能把 JSON 陣列轉成 JSONL的功能，之後整理這類檔案就能直接用。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

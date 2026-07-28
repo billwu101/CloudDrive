@@ -1,6 +1,6 @@
 id: gen-m4-069
 name: 'M4 self-authoring #69 (image_crop_center)'
-prompt: 做一個置中裁切圖片的功能
+prompt: 這些照片要放到網頁上，原檔太大載入很慢，幫我做一個能置中裁切圖片的功能。
 mode:
 - api
 - browser
@@ -13,6 +13,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6
