@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,44 @@ def run_case_http(
         session_id = prior.get("session_id") or session_id
 
     return _chat(root, token, message=case.prompt, session_id=session_id, timeout=timeout)
+
+
+def confirm_workflow_http(
+    base_url: str, token: str, workflow_id: str, *, timeout: float = 180.0
+) -> dict[str, Any]:
+    """POST /assistant/workflows/{id}/confirm — actually execute a pending plan.
+
+    Without this, a "pass" only means the model produced *some* plan; it never
+    proves the ``seed_folders``/``ref_search`` grounding resolved to the right
+    real item and actually did the right thing (2026-07-27, alfred: 還是要驗證他做
+    的對不對吧, 否則沒有意義). Any caller asserting ``expect.state`` must
+    call this first, or it will assert a state nobody ever executed.
+
+    Deliberately ``retries=1`` unlike the chat calls: a confirm that fails
+    *after* partially executing must not be replayed, or the retry re-runs the
+    write steps that already happened.
+    """
+
+    return _post(
+        f"{base_url.rstrip('/')}/assistant/workflows/{workflow_id}/confirm",
+        {},
+        token,
+        timeout=timeout,
+        retries=1,
+    )
+
+
+def pending_workflow_id(response: Mapping[str, Any]) -> str | None:
+    """The workflow id of a plan awaiting approval, or None if there is nothing
+    to execute (no plan, auto-executed already, or a skill proposal instead)."""
+
+    plan = response.get("plan")
+    if not isinstance(plan, Mapping):
+        return None
+    if plan.get("status") != "pending_approval":
+        return None
+    workflow_id = plan.get("workflow_id")
+    return str(workflow_id) if workflow_id else None
 
 
 def _chat(

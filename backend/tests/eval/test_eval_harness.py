@@ -5,7 +5,13 @@ from pathlib import Path
 from eval.report import efficiency_summary_to_markdown
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, score_case
-from eval.verifier import CheckResult, compute_path_deviation, verify, verify_reference_grounding
+from eval.verifier import (
+    CheckResult,
+    compute_path_deviation,
+    count_tool_calls,
+    verify,
+    verify_reference_grounding,
+)
 
 CASES_DIR = Path(__file__).resolve().parents[2] / "eval" / "cases"
 
@@ -162,6 +168,50 @@ def test_efficiency_summary_groups_by_tag_and_reports_tokens_and_categories() ->
     assert "m2" in markdown and "m3" in markdown
     assert "100" in markdown  # m2 avg prompt tokens
     assert "truncated" in markdown  # m3's failure category
+
+
+def test_count_tool_calls_counts_planned_steps() -> None:
+    response = {"plan": {"steps": [{"skill": "search"}, {"skill": "rename_item"}]}}
+    assert count_tool_calls(response) == 2
+
+
+def test_count_tool_calls_is_none_without_a_plan() -> None:
+    # M4's skill-authoring path (a proposal, no plan) and refusals must record
+    # None, not 0 — averaging a zero in would understate every other tier.
+    assert count_tool_calls({"skill_proposal": {"name": "md5"}}) is None
+    assert count_tool_calls({"plan": None}) is None
+
+
+def test_tool_call_count_is_report_only_and_never_affects_scoring() -> None:
+    case = _case()
+    checks = [CheckResult("correctness", "x", True, "")]
+    with_count = score_case(case, checks, tool_call_count=7)
+    without = score_case(case, checks)
+    assert with_count.tool_call_count == 7
+    assert without.tool_call_count is None
+    assert (with_count.score, with_count.passed) == (without.score, without.passed)
+
+
+def test_efficiency_summary_reports_average_tool_calls_per_tier() -> None:
+    case_m2 = _case(id="gen-m2-001", tags=["m2"])
+    runs = [
+        score_case(case_m2, [], tool_call_count=2),
+        score_case(case_m2, [], tool_call_count=4),
+    ]
+    aggregate = AggregateScore(
+        case_id="gen-m2-001",
+        score=1.0,
+        passed=True,
+        runs=2,
+        pass_rate=1.0,
+        min_score=1.0,
+        max_score=1.0,
+        stddev=0.0,
+        run_scores=runs,
+    )
+    markdown = efficiency_summary_to_markdown([case_m2], [aggregate])
+    assert "工具呼叫" in markdown
+    assert "3.0" in markdown  # mean of 2 and 4
 
 
 def test_efficiency_summary_reports_no_data_message_when_empty() -> None:

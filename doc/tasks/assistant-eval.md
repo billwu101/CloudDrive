@@ -269,6 +269,7 @@ non_sensitive（內容會實際外送），使用時需有意識。
   - [x] **⚠️ 驗證深度缺口與修正（2026-07-27，alfred 質疑「有沒有檢驗結果是否正確」後查證發現）**：一開始要跑階段 A 的批次工具（`run_isolated_e9.py`）只呼叫 `/assistant/chat`（規劃），從未呼叫 confirm 執行；`verify(strict_steps=False)` 對 M3/M5 也只檢查「非空計畫」+「確認層級對」，**不檢查工具選對、item_id 解析對、或執行後結果正確**——PASS 只代表「模型講了些什麼」，不代表「做對了」。已修正：`StateExpect` 新增 `item_starred`/`item_parent`（`star_item`/`move_item` 原本 schema 查不到結果，只能查名字存不存在）；`state.py` 新增 `fetch_items_http` 抓完整項目（含 `is_starred`/`parent_id`）；M3/M5 的 rename/star/move 情境都補上 `expect.state`；`run_isolated_e9.py` 改為真的呼叫 confirm 執行、再抓真實狀態驗證。**真實驗證**：rename/star/move 三情境各真跑一次，checks 裡確實出現「報告 is starred: True」「報告 parent is '報告封存': True」等真實結果驗證。`organize_by_type` 情境**已於 2026-07-28 補上真實驗證**（alfred 建議「自己控制輸入，驗證方式就能自己定義」）：查證 `write.py` 實作後發現輸出其實完全決定性（固定搬進 `{副檔名}-files` 資料夾），改用 `seed_files`（新增機制，上傳 `eval/fixtures/sample.pdf`/`sample.png`）取代原本的空白輸入，`expect.state` 補上 `item_present`/`item_parent`，真實對生產 gateway 驗證通過。已無「只驗規劃層級」的情境。
 - [x] **失敗原因分類欄位**：`CaseScore._failure_category`（規則判斷、零額外 LLM 成本：truncated/wrong_plan/safety_violation/state_mismatch/partial/other，見 detailed-design §10.15），測試涵蓋全部 6 類（`tests/eval/test_eval_harness.py`）。
 - [x] **階段 A 已完成（2026-07-28，對生產遠端 gemma4:26b gateway 真實跑，`eval/run_isolated_e9.py`，結果存 `eval/out/e9_stage_a.jsonl`）**：thinking off（DEC-033 預設）× M2–M5 全量 400 案例 `--runs 3`，每案獨立帳號（避免 §10.13 提過的資料污染），每案都真的 confirm+執行、查真實資料庫狀態驗證結果。
+  - **⚠️ 量測基準（2026-07-28 審計補注，引用這批數字時必須一起講）**：這 400/400 是 **07-28 04:09** 產出的，當時的驗證標準**不含**後來才進 code 的 `seed_files`（06:36）與驗證深度四項強化（08:16–08:41）。檢查 `e9_stage_a.jsonl` 內容可證：不含 `path_deviation` 欄位、不含 reference-grounding 檢查。也就是說，**這批數字反映的是強化前的標準**，不是「在最嚴格標準下 400 案全過」。新標準下的抽樣結果見下一條。
   - **整體 400/400 通過**（`min_pass_rate=0.6` 門檻下）；逐 run 全過（3/3）的案例數：M2 100/100、M3 **99/100**、M4 100/100、M5 100/100。
   - **抓到一個真實失敗**：`gen-m3-073`（開新專案情境）3 次裡 1 次模型漏規劃 `create_folder` 寫入步驟，只做了唯讀查詢；`failure_category` 正確標成 `state_mismatch`（執行後資料夾真的不存在）。這正是本輪要補的「驗證結果對不對」機制發揮作用的實例，不是誤判。
   - **分級單調遞減的假設沒有在數據裡出現**——如實記錄：M2/M4/M5 三層 100% 全過、M3 只差 1 案，四層幾乎都在天花板，看不出「M2→M5 越難越低分」的遞減曲線。**判讀**：多半是因為 M3/M5 剛做完 grounding 重新設計（真實 seed_folders/ref_search 取代舊版模糊指代），模型在新設計下明顯變好做（對照修正前 eval-prompt-log.md 記錄的舊版 M3/M5 pass rate 只有 20–50%），而非分級標準本身有問題。**分級依據要交代給學長時，這點需要老實說明**：現有數據撐不住「四級難度遞減」的敘事，只能說「M3/M5 經重新設計後大幅改善，且新設計本身經真實驗證可靠」。
@@ -288,6 +289,31 @@ non_sensitive（內容會實際外送），使用時需有意識。
   4. **M4 生成程式碼真實執行驗證**（`eval/codegen_smoke.py` + `verifier.verify_codegen_execution`）：落地 07-24 已拍板但延後的 DEC（見 memory `clouddrive-codegen-smoke-test-dec`）——拿真正生成的程式碼（非手寫參考）在正式 `SkillSandbox` 對照宣告的 `item_types` 各跑一次最小 fixture，驗證 `run()` 真的能執行、有產出、回傳值可 JSON 序列化。刻意限定 smoke test 範圍，不驗證 100 種技能各自的語意正確性（需 100 份參考實作，超出範圍）。真實跑出 MD5 技能宣告 FILE+FOLDER 雙型別、兩種皆真的執行成功產出真實檔案。
   - 全部 4 項皆有真實模型驗證 + 對應單元測試（scoring/verifier/codegen_smoke 共 20+ 新測試），790 測試全過、ruff/mypy 全綠。
 - [x] 測試：`tests/eval/test_eval_harness.py` 新增 9 個測試（llm_meta report-only 不影響 score/passed、6 種 failure_category、efficiency_summary_to_markdown 分組/無資料訊息）；`tests/assistant/test_planner.py`/`test_workflow.py` 新增 3 個測試（PlanResult 私有屬性、AssistantChatResponse.llm_meta 兩分支）。全數通過，`ruff/mypy/pytest`(766，排除 integration) 全綠。
+
+### E9 補正（2026-07-28 跨 session 審計發現，見下方「審計根因」）
+
+- [x] **`eval/run.py` 補 confirm——正規入口不執行計畫卻檢查執行後狀態**：`_confirm_workflow()` 當初只加進 `eval/run_isolated_e9.py`，`run.py` 從頭到尾沒有任何 confirm 呼叫，但 `_state_checks()` 會抓真實狀態斷言。現有 **200 個 generated 案例同時具備 `expect.state` 與 `requires_confirmation: true`**，用文件寫的正規指令 `eval/run.py --mode api --llm real --token ...` 跑會全數假失敗。mock 回歸抓不到（`_state_checks` 在 `--llm mock` 直接 return，結構性失明）。
+  - 子任務：把 confirm 抽到 `eval/runner.py` 成共用 `confirm_workflow_http()`，`run.py` 與 `run_isolated_e9.py` 同用一份；`run.py` 的觸發條件與 `_state_checks` 對齊（`expect.state` 非空 + api + real + token），避免對沒有狀態期待的案例做多餘的真實寫入。
+  - 驗收：新增單元測試涵蓋「有 expect.state → 會 confirm」「無 expect.state → 不 confirm」「confirm 失敗 → 記成 execution 檢查失敗而非整批炸掉」。
+- [x] **browser 模式 `seed_files` 缺口**：`runner_browser.py` 只把 `seed_folders` 放進 payload，`seed_files` 沒跟上；`cleanup_by_type` 那批（`gen-m3-08x/09x`，`mode:[api,browser]`）需要 `sample.pdf`/`sample.png` 才有東西可分類。與 2026-07-27 剛修過的 `seed_folders` 是同一個坑的第二次發作。
+  - 子任務：`runner_browser.py` payload 加 `seed_files`；`frontend/e2e/assistant/assistant-eval.spec.ts` 新增 `seedFiles()`（讀既有 `FIXTURES_DIR`、沿用既有 `mimeFor()`，POST `/upload/simple`），`runChatCase` 在送 prompt 前呼叫。
+  - 驗收：`tsc --noEmit` + `eslint` 過；payload 單元測試確認 `seed_files` 有被帶出去。
+- [x] **實作 `tool_call_count`**：07-24 學長要的兩個客觀指標（token、工具呼叫次數）只交付了 token。`detailed-design §10.13` 寫了這個指標，卻從來沒變成本檔的任何一個 `[ ]`——**設計層有、任務層沒有，所以沒有任何機制會發現它沒做**。
+  - 子任務：`scoring.CaseScore` 新增 `tool_call_count: int | None`（report-only，不進 score/passed）；`score_case()` 帶入；`report.efficiency_summary_to_markdown()` 依 tier 統計平均值；`run.py`/`run_isolated_e9.py` 兩個入口都接。
+  - 定義（要同步寫回設計文件）：取**計畫步驟數**（`plan.steps` 長度）而非執行軌跡——`plan` 每個案例都拿得到，執行軌跡只有 confirm 過的案例才有；M4（codegen 路徑）無計畫，記 `None`。
+  - 驗收：單元測試涵蓋有計畫/無計畫/M4 三種；確認不影響既有 score/passed。
+- [x] **回填 `doc/detailed-design/`（違反 CLAUDE.md 五.6/五.7）**：四項驗證深度強化、`seed_files`、`no_plan` 全都只寫進本檔（進度層），設計層零記載——`grep` 在 `doc/detailed-design/` 對這些識別字零匹配。
+  - 子任務：§10.15 的 failure_category 補第 7 類 `no_plan`（目前仍只列 6 類，已與程式碼不一致）；§10 檔案結構清單補 `codegen_smoke.py`；新增一節寫四項強化的實作面（公開資料結構 `EvalCase.seed_files`／`StateExpect.item_starred|item_parent`／`WorkflowExpect.write_skill|write_ref_args`、硬 gate vs report-only 的分界、標準路徑定義）；§10.13 的 `tool_call_count` 描述改成實際實作的定義。
+- [x] **標注「400/400」的量測基準並抽樣重跑**：`eval/out/e9_stage_a.jsonl` 產出時間 07-28 04:09，而 `seed_files`（06:36）與四項強化（08:16–08:41）都在其後才進 code；實際檢查該 jsonl 內容確認**不含 `path_deviation`、不含 reference-grounding 檢查**——那 400/400 是舊 bar 的數字。目前文件把它和四項強化寫在同一段，會讓讀者以為是強化後的成績。
+  - 子任務：在階段 A 段落明確標注量測基準與時間；抽 20–30 案在新 bar 下重跑取樣，結果另記，不覆寫原始數字。
+  - [x] **已完成（2026-07-28，對生產遠端 gemma4:26b gateway 真跑，結果存 `eval/out/e9_newbar_sample.jsonl`）**：抽 M2–M5 各前 6 案共 24 案 `--runs 1`（M3/M5 的情境是 5 個一輪、依 index 輪轉，取前 6 案剛好覆蓋全部 5 種情境），在**含四項強化 + `seed_files` + `tool_call_count`** 的新標準下重跑，**24/24 全過**。
+    - 證據顯示新檢查真的有跑到（不是掛在那裡沒作用）：M3/M5 每案的檢查維度含 `state`（confirm 執行後回讀真實狀態）與 `safety`；M4 每案含 `execution` 維度（生成的程式碼真的丟進 SkillSandbox 跑過，6 案共 7 個 execution 檢查——有一案宣告雙 item_types 所以跑兩次）。
+    - **`tool_call_count` 首次有真實數據**：M2 平均 4.5 次工具呼叫、M3 4.0、M5 4.0；M4 為 `None`（技能生成路徑無計畫，符合設計）。**與 token 一樣看不出隨難度遞增的趨勢**，與階段 A 的 token 結論一致。
+    - 效率指標：M2 prompt 1481／completion 178；M3 1225／189；M5 1205／166；M4 740／453（M4 prompt 最短但 completion 最長——它要生出整支程式碼，符合預期）。
+    - 路徑偏離（report-only）：M2 6 次裡 3 次走了與 mock 腳本不同但仍通過的路徑，M3/M4/M5 皆 0。M2 偏離率明顯較高值得之後查，但**不扣分**，符合設計。
+    - **抽樣限制**：`--runs 1`（非階段 A 的 3 次），且是各層前 6 案而非隨機抽樣，只能說「新標準下這 24 案全過」，不能反推「全 400 案在新標準下也會全過」。要那個結論得重跑全量。
+
+**審計根因（供之後避免重演）**：`tool_call_count` 與四項強化的共同模式是「知識沒有家」——設計文件或 session 待辦裡有，卻沒有落成本檔的 `[ ]`，於是沒有任何一個框需要被勾。往後任何「之後要做」的事，當下就要寫成本檔的 `[ ]`（含驗收條件），session 待辦只當本輪工作台；收工前做一次 design→tasks 對照，把「設計有、任務沒有」列成缺口。另一組（run.py 未同步、browser `seed_files` 未同步）的模式是「改了一個入口沒走完所有入口」——往後新增 case schema 欄位或驗證 gate 後，必須逐一走過**所有 runner 入口 × 所有 mode**（api/browser/exec × `run.py`/`run_isolated_e9.py`/`runner_browser.py`）確認同步。
 
 ## 測試/驗證任務
 

@@ -249,6 +249,28 @@ def compute_path_deviation(case: EvalCase, response: dict[str, Any]) -> str | No
     return f"canonical={canonical_skills} actual={actual_skills}"
 
 
+def count_tool_calls(response: dict[str, Any]) -> int | None:
+    """How many tool (skill) calls the model asked for — the second objective
+    metric from the 07-24 review (token usage being the first).
+
+    Counts **planned** steps, not executed ones: every case yields a plan, while
+    an execution trace exists only for the cases a driver confirms, so planned
+    steps are the only definition comparable across the whole M2-M5 suite (and
+    it is the number that reflects the model's own decision — a step that
+    fails at runtime was still a tool the model chose to call). Returns None
+    when there is no plan at all (M4's skill-authoring path, or a refusal), so
+    "no plan" is never averaged in as a zero.
+    """
+
+    plan = response.get("plan")
+    if not isinstance(plan, dict):
+        return None
+    steps = plan.get("steps")
+    if not isinstance(steps, list):
+        return None
+    return len(steps)
+
+
 def verify_state(case: EvalCase, items: Sequence[str | Mapping[str, Any]]) -> list[CheckResult]:
     """Assert real backend state after a case ran (E1 state/safety).
 

@@ -36,6 +36,11 @@ class CaseScore:
     done_reason: str | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    # The 07-24 review asked for two objective metrics: token usage (above) and
+    # tool-call count (here). Planned skill steps — see
+    # ``verifier.count_tool_calls`` for why planned rather than executed, and
+    # why None (not 0) when there is no plan.
+    tool_call_count: int | None = None
     # Rule-based (zero LLM cost) classification of why a run failed, for
     # post-hoc analysis; None when passed.
     failure_category: str | None = None
@@ -130,6 +135,7 @@ def score_case(
     llm_meta: Mapping[str, Any] | None = None,
     plan_is_none: bool = False,
     path_deviation: str | None = None,
+    tool_call_count: int | None = None,
 ) -> CaseScore:
     """Per-dimension pass-rate, weighted into a single case score.
 
@@ -139,7 +145,8 @@ def score_case(
     ``failure_category`` to "no_plan" instead of "wrong_plan" — see
     ``_failure_category``. ``path_deviation`` (see
     ``verifier.compute_path_deviation``) is purely descriptive and never
-    affects ``score``/``passed`` either.
+    affects ``score``/``passed`` either, and so is ``tool_call_count`` (see
+    ``verifier.count_tool_calls``).
     """
 
     by_dimension: dict[str, list[float]] = {}
@@ -178,6 +185,7 @@ def score_case(
         done_reason=done_reason,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        tool_call_count=tool_call_count,
         failure_category=_failure_category(
             passed=passed, done_reason=done_reason, checks=checks, plan_is_none=plan_is_none
         ),

@@ -68,10 +68,12 @@ backend/eval/
   inproc.py          # In-process（mock-LLM）runner：進程內建真實 pipeline、無需 backend，供 CI 穩定跑
   state.py           # 抓取執行後 drive/storage 狀態供 verifier 斷言
   verifier.py        # 確定性斷言（workflow/state/safety）
+  codegen_smoke.py   # M4：把真正生成的技能程式碼丟進正式 SkillSandbox 試跑（見 §10.16）
   judge.py           # 可選 LLM 評審（rubric → 分數）
   scoring.py         # 多維度加權、通過率/變異、套件彙總
   report.py          # 產出 JSON（機器）+ Markdown（人讀）
   run.py             # CLI 入口
+  run_isolated_e9.py # E9 跑批專用 driver：每個 (case, run) 一個拋棄式帳號（見 §10.16）
   baseline.py        # 基準分數載入與回歸比較（CLI 以 --baseline 指向 baseline.json 資料檔）
   fixtures/          # exec 模式的確定性輸入 fixture 生成（make_fixtures）
 frontend/e2e/assistant/
@@ -174,7 +176,7 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 - **做法：與既有 M2–M5 全量案例合併為單次系統性測試**——同一輪跑 400 案例（`--mode api --llm real --runs 3`，thinking 依現行 DEC-033 預設關閉），在既有 pass/fail 之外同步記錄：
   - **為何要 `--runs 3` 而非單次**：`eval-prompt-log.md` §2.3/§2.6 已記錄 M3/M5 對真實模型偶有 flaky（如 gen-m3-001 單跑 0.50 FAIL、`min_pass_rate=0.6` 才是既有設計的正確評法）；若只跑一次，M2→M5 通過率順序可能被單次雜訊干擾而非真實難度差異，單次結果不能當分級依據的證據。
   - `prompt_tokens`／`completion_tokens`：取自 Ollama `/api/chat` 回應原生欄位 `prompt_eval_count`／`eval_count`（免另外估算；已核對 [Ollama API 文件](https://github.com/ollama/ollama/blob/main/docs/api.md) 存在此欄位，並實測確認數值正確）。**這兩個數字是單次 LLM 呼叫的量**；若一個 case 內部觸發多次呼叫（如規劃+judge 評審各一次），該 case 的總 token 須加總各次呼叫的值，不能只取最後一次。
-  - `tool_call_count`：實際執行的 workflow step 數（既有 `state.py`/`verifier.py` 執行軌跡取得）。
+  - `tool_call_count`（`verifier.count_tool_calls` → `CaseScore.tool_call_count`）：**計畫步驟數**（`plan.steps` 長度），非執行軌跡長度。原設計寫的是「實際執行的 workflow step 數」，實作時改成計畫步驟數，理由：① 每個案例都拿得到 `plan`，執行軌跡只有被 confirm 的案例才有（見 §10.16 的 confirm gate），計畫步驟數才是全 M2–M5 可比的定義；② 這個數字反映的是**模型自己的決策**——一個執行時失敗的步驟，仍然是模型選擇要呼叫的工具。無計畫時（M4 技能生成路徑、或模型拒答）記 `None` 而非 `0`，避免把「沒有計畫」平均成零而低估其他層。`report.efficiency_summary_to_markdown()` 依 tier 出平均值。
   - 以上為**報告欄位，不計入 pass/fail 加權**——確定性斷言仍是主軸，新增指標不動既有門檻。
   - M2→M5 通過率若呈現單調遞減，即為分級難度遞增的實證支撐，寫入報告作為對學長的回覆依據。
 - **方法論佐證**（已 fetch 驗證原文，非僅憑搜尋摘要）：
@@ -205,13 +207,16 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 - **動機**：`min_pass_rate`（見 §10.7）把 N 次執行收斂成單一通過率數字，會丟失「為什麼失敗」的細節（截斷？規劃錯？安全違規？）。但 `scoring.aggregate_runs` 其實**已經**把每次執行的完整 `CaseScore`（含各維度 `CheckResult.ok`/`detail`）存在 `AggregateScore.run_scores`，並經 `report.py` 序列化進 JSON——原始資料本來就沒丟，只是缺兩類欄位。
 - **新增欄位**（`CaseScore`，每次執行的原始紀錄，非聚合層；report-only，不進 `score`/`passed` 計算）：
   - `done_reason: str | None`、`prompt_tokens: int | None`、`completion_tokens: int | None`：來自 `/assistant/chat` 回應的新增欄位 `llm_meta`（見下方「done_reason/token 如何接到正式 API」），`run.py` 呼叫 `score_case(..., llm_meta=response.get("llm_meta"))` 帶入。
-  - `failure_category: str | None`：**規則判斷、非 LLM 分類**（`scoring._failure_category`），`passed=False` 時才填：
+  - `tool_call_count: int | None`：見 §10.13（計畫步驟數，report-only）。
+  - `path_deviation: str | None`：見 §10.16（走了與標準路徑不同但仍合法的路線，report-only 不扣分）。
+  - `failure_category: str | None`：**規則判斷、非 LLM 分類**（`scoring._failure_category`），`passed=False` 時才填，依序判定：
     1. `done_reason == "length"` → `"truncated"`
-    2. 否則 `safety` 維度未過 → `"safety_violation"`
-    3. 否則 `state` 維度未過 → `"state_mismatch"`
-    4. 否則 `correctness` 維度未過 → `"wrong_plan"`（規劃錯/理解錯，含使用者說的「完全做錯」；`verifier.py` 的 workflow/steps 斷言實際落在 `correctness` 維度，非字面上的 "workflow"）
-    5. 各維度都過但未達 `pass_threshold` → `"partial"`
-    6. 其餘 → `"other"`
+    2. 否則回應根本沒有 `plan` 物件（`plan_is_none`）→ `"no_plan"`（2026-07-28 新增）。**刻意不宣稱是「模型合理拒答」**：`AssistantChatResponse` 讓「模型判斷資訊不足而不規劃」與「模型產不出可解析輸出」收斂到 service.py 同一個分支，eval 端無從區分，因此只記錄「沒有計畫」這個事實，不臆測原因。分成獨立一類的用意是不要把它誤標成 `wrong_plan`（那會高估「模型規劃錯」的比例）。
+    3. 否則 `safety` 維度未過 → `"safety_violation"`
+    4. 否則 `state` 維度未過 → `"state_mismatch"`
+    5. 否則 `correctness` 維度未過 → `"wrong_plan"`（規劃錯/理解錯，含使用者說的「完全做錯」；`verifier.py` 的 workflow/steps 斷言實際落在 `correctness` 維度，非字面上的 "workflow"）
+    6. 還有其他維度未過（如 §10.16 的 `execution`：confirm 失敗、生成程式碼跑不起來）→ `"other"`
+    7. 每項檢查都過、只是加權分數未達 `pass_threshold` → `"partial"`
 - **報告新增彙總**：`report.efficiency_summary_to_markdown()` 依案例 `tags`（m2–m5）統計平均 token 數與 `failure_category` 分布（如「M5 失敗中 60% wrong_plan、30% truncated、10% other」），`run.py` 非 `--json` 模式下自動印出，供事後分析用，不影響既有 pass/fail 判定。
 
 **done_reason/token 如何接到正式 API（alfred 2026-07-27 決定：直接加進 `/assistant/chat` 回應，附加欄位）**：
@@ -221,3 +226,46 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 - `app/assistant/schemas.py` 新增 `AssistantLlmMeta`，`AssistantChatResponse.llm_meta: AssistantLlmMeta | None`（純附加欄位，舊客戶端會直接忽略，不影響相容性）。
 - `app/assistant/service.py`：`_llm_meta(plan)` 輔助函式，5 個有 `plan`/`replan` 物件在範圍內的 `AssistantChatResponse` 建構分支都接上；skill-authoring 分支（未呼叫 planner）不接。
 - **真模型驗證**（2026-07-27，對生產遠端 gemma4:26b gateway）：真實呼叫 `/assistant/chat` 回應含 `"llm_meta":{"done_reason":"stop","prompt_tokens":1165,"completion_tokens":42}`，數字真實非造假。
+
+### 10.16 驗證深度：從「有沒有計畫」到「做對了沒有」（2026-07-28）
+
+**問題**：E9 之前的 M3/M5 判定實際上只檢查「模型有沒有產出非空計畫 + 確認層級對不對」（`verify(strict_steps=False)`），沒有檢查工具選對、`item_id` 有沒有解析到真的項目、執行後結果對不對。PASS 只代表「模型講了些什麼」。alfred：「還是要驗證他做的對不對吧，否則沒有意義」「驗證得非常鬆散，不是一個很有結構性的測試」。以下五項是對這個問題的完整回應，設計上分成**硬性 gate**（影響 pass/fail）與 **report-only**（只記錄、不扣分）兩類，界線刻意畫清楚。
+
+**A. 執行後真實狀態驗證（硬性）**
+
+- `StateExpect` 新增 `item_starred: list[str]`、`item_parent: dict[str, str]`。原本只有 `item_present`/`item_absent`（按名字），對 `star_item`（不改名）、`move_item`（只換父層）這類寫入動作查不出結果對不對。
+- `state.fetch_items_http()`：抓完整項目 dict（`id`/`name`/`is_starred`/`parent_id`，含每個根資料夾往下一層），取代原本只回名字清單的 `fetch_item_names_http`（後者保留向下相容）。`verify_state` 兩種輸入都吃。
+- **必須先執行才有狀態可驗**：`runner.confirm_workflow_http()`（POST `/assistant/workflows/{id}/confirm`）+ `runner.pending_workflow_id()` 為兩個 driver 共用。
+  - `run.py`：`_execute_pending()` 與 `_state_checks()` 共用同一個 `_wants_live_state()` 閘（`expect.state` 非空 ∧ api ∧ real ∧ 有 token）——confirm 了卻不回讀，等於對開發者的帳號做多餘的真實寫入；回讀了卻不 confirm，等於斷言一個沒人執行過的結果。
+  - `run_isolated_e9.py`：**所有** pending 計畫都 confirm（不限有 `expect.state` 的案例），因為每次執行都用拋棄式帳號，執行成本為零，且讓觀察到的狀態忠於「真實使用者按下確認後」的樣子。
+  - `confirm_workflow_http` 刻意 `retries=1`（其他 POST 有 4 次退避重試）：confirm 若在**部分執行後**失敗，重送會把已經發生的寫入步驟再跑一次。
+- confirm 失敗記成 `execution` 維度的 `CheckResult`（該案例失敗），不讓單次後端抖動中斷整批。
+
+**B. 寫入順序硬性驗證（硬性）——`verifier.verify_reference_grounding`**
+
+- alfred：「做事情一定要有一套順序，在不知道要改寫哪一個工具的情況下，一定要先 search」。
+- `WorkflowExpect` 新增 `write_skill: str | None`、`write_ref_args: list[str]`；`generate_cases._WRITE_REF_ARGS` 依技能名集中推導（`rename_item`→`item_id`；`star_item`→`item_id`；`move_item`→`item_id`+`parent_id`）。
+- 判準：寫入步驟的這些參數必須是 `{"from": <step>, "path": ...}` 形式的步驟引用，**不能是字面值/猜的 UUID**。直接重用生產端 `app.assistant.workflow.is_step_ref`——與 `resolve_arguments` 執行時實際接受的形式同一套邏輯，避免 eval 自己另寫一份判斷而與生產漂移。
+- **不隨模式放寬**：`steps_include` 對 real/browser 會鬆綁（模型不保證重現精確序列），但「用字面 id 寫入」在任何模式下都是錯的，因此這條在所有模式都硬性生效。
+
+**C. 路徑偏離記錄（report-only）——`verifier.compute_path_deviation`**
+
+- alfred：走不同但合理的路徑「可以先不扣分（可以判 PASS），但一定要記錄下來」。
+- **標準路徑的定義**（alfred 選定）：拿案例自帶的 `mock_llm.responses[0].steps` 技能序列當基準——這是案例作者寫案例時心中的解法，不必另外維護一份標準答案，且與 mock 模式的斷言天然一致。
+- 相同或案例沒有 mock 腳本 → `None`；不同 → `"canonical=[...] actual=[...]"` 字串存進 `CaseScore.path_deviation`，`report.efficiency_summary_to_markdown()` 出「路徑偏離 = 偏離次數/總次數」欄位。**永不影響 `score`/`passed`**。
+
+**D. M4 生成程式碼真實執行（硬性）——`eval/codegen_smoke.py` + `verifier.verify_codegen_execution`**
+
+- alfred：「只驗證『有沒有提出技能提案』非常沒有意義……如果功能不對、程式碼的結果不對，做錯了根本就沒有意義」。
+- `CodegenSubAgent.author()` 只做**靜態**驗證（AST 安全掃描 + manifest schema），從不執行程式碼；真模型實際出現過語法合法但執行必爆的 token 亂碼錯字（`os.pathlext`）。
+- 做法：把**真正生成的**程式碼（不是案例作者手寫的參考實作——那是 `exec_runner.py` 的職責）丟進生產用的 `app.assistant.skills.sandbox.SkillSandbox`，對每個宣告的 `item_types` 各跑一次最小 fixture（FILE 用 `eval/fixtures/sample.txt`；FOLDER 臨時建 `a.txt` + `sub/b.txt`）。宣告雙型別就兩種都要過。
+- **範圍刻意限定為 smoke test**：`run()` 可呼叫且不拋錯、`output_dir` 至少產出一個檔、回傳值可 JSON 序列化。**不驗語意正確性**（例如 md5 技能算出來的雜湊值對不對）——那需要 100 種技能各一份參考實作，超出範圍。落在 `execution` 維度。
+- 這項是 2026-07-24 已拍板但當時延後的工作（原因：不要併進資料夾技能的 PR），E9 一併落地。
+
+**E. `seed_files`：讓輸出決定性的案例輸入（支援 A）**
+
+- `EvalCase` 新增 `seed_files: list[str]`（`eval/fixtures/` 底下的檔名），`runner._seed_files()` 以 `POST /upload/simple` multipart 上傳到雲端硬碟根目錄，**保留原始檔名**（`expect.state` 會斷言 `sample.pdf` 最後在哪）。
+- 動機：`organize_by_type` 原本是唯一無法驗證執行結果的情境（沒有輸入檔就沒有輸出）。查證 `app/assistant/skills/builtin/write.py` 後確認它的行為其實完全決定性（固定把檔案搬進 `{副檔名}-files` 資料夾），因此只要自己控制輸入，就能用 `item_present` + `item_parent` 精確斷言。
+- **模式一致性（硬性要求）**：任何新增的 seeding 機制必須同時接上 API 與 browser 兩條路徑——`runner_browser.build_payload()`（已抽成獨立函式以便單元測試）帶出 `seed_folders`/`seed_files`，`frontend/e2e/assistant/assistant-eval.spec.ts` 的 `seedFolders()`/`seedFiles()` 負責建立。`seed_folders`（2026-07-27）與 `seed_files`（2026-07-28）都曾經只接了 API 端，造成 browser 模式對著空硬碟跑出與模型無關的假失敗，因此以 `tests/eval/test_runner_browser_payload.py` 釘住這條對等關係。
+
+**判讀時的重要限制**：`eval/out/e9_stage_a.jsonl` 那份「400/400 全過」是 2026-07-28 04:09 產出的，而 E（06:36）與 A–D（08:16–08:41）都在其後才進 code——該批數字反映的是**強化前**的驗證標準（檢查該檔內容可證：不含 `path_deviation`、不含 reference-grounding 檢查）。引用這個數字時必須連同量測基準一起講，或以新標準重跑。

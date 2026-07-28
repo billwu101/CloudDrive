@@ -34,13 +34,19 @@ from pathlib import Path
 from typing import Any
 
 from eval.report import aggregates_to_json, aggregates_to_markdown, efficiency_summary_to_markdown
-from eval.runner import EvalRunnerError, run_case_http
+from eval.runner import (
+    EvalRunnerError,
+    confirm_workflow_http,
+    pending_workflow_id,
+    run_case_http,
+)
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, CaseScore, aggregate_runs, score_case
 from eval.state import StateFetchError, fetch_items_http
 from eval.verifier import (
     CheckResult,
     compute_path_deviation,
+    count_tool_calls,
     verify,
     verify_codegen_execution,
     verify_reference_grounding,
@@ -68,28 +74,6 @@ def _register(base_url: str, stamp: str, *, timeout: float = 30.0) -> str:
     return token
 
 
-def _confirm_workflow(
-    base_url: str, token: str, workflow_id: str, *, timeout: float = 180.0
-) -> dict[str, Any]:
-    """POST /assistant/workflows/{id}/confirm — actually executes a pending
-    plan. Without this, a "pass" only means the model produced *some* plan;
-    it never proves the seed_folders/ref_search grounding resolved to the
-    right real item and actually did the right thing (2026-07-27, alfred:
-    "還是要驗證他做的對不對吧？否則沒有意義")."""
-
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/assistant/workflows/{workflow_id}/confirm",
-        data=json.dumps({}).encode(),
-        method="POST",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        data = json.load(response)
-    if not isinstance(data, dict):
-        raise EvalRunnerError(f"confirm {workflow_id} returned unexpected type {type(data)!r}")
-    return data
-
-
 def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore:
     run_scores: list[CaseScore] = []
     for i in range(runs):
@@ -115,12 +99,16 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
         # eval/codegen_smoke.py docstring for exact scope.
         checks = [*checks, *verify_codegen_execution(case, response)]
 
-        plan = response.get("plan") or {}
-        status = plan.get("status") if isinstance(plan, dict) else None
-        workflow_id = plan.get("workflow_id") if isinstance(plan, dict) else None
-        if status == "pending_approval" and workflow_id:
+        # Unlike eval.run, this driver confirms every pending plan, not just
+        # the cases carrying expect.state: each run here owns a throwaway
+        # account, so executing costs nothing and keeps the observed state
+        # faithful to what a real user would have after approving. Still
+        # honours auto_confirm=False — those cases assert that nothing ran
+        # *because* the user never approved.
+        workflow_id = pending_workflow_id(response) if case.auto_confirm else None
+        if workflow_id is not None:
             try:
-                _confirm_workflow(base_url, token, str(workflow_id))
+                confirm_workflow_http(base_url, token, workflow_id)
             except (urllib.error.URLError, EvalRunnerError) as exc:
                 checks = [
                     *checks,
@@ -140,6 +128,7 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
         llm_meta = response.get("llm_meta")
         plan_is_none = response.get("plan") is None
         path_deviation = compute_path_deviation(case, response)
+        tool_call_count = count_tool_calls(response)
         run_scores.append(
             score_case(
                 case,
@@ -147,6 +136,7 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
                 llm_meta=llm_meta,
                 plan_is_none=plan_is_none,
                 path_deviation=path_deviation,
+                tool_call_count=tool_call_count,
             )
         )
     return aggregate_runs(case, run_scores)
@@ -175,6 +165,7 @@ def _score_from_jsonable(data: dict[str, Any]) -> AggregateScore:
             done_reason=run.get("done_reason"),
             prompt_tokens=run.get("prompt_tokens"),
             completion_tokens=run.get("completion_tokens"),
+            tool_call_count=run.get("tool_call_count"),
             failure_category=run.get("failure_category"),
             path_deviation=run.get("path_deviation"),
         )

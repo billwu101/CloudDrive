@@ -19,6 +19,37 @@ class BrowserRunnerError(Exception):
     """Raised when the Playwright eval suite cannot be driven or produced no output."""
 
 
+def build_payload(cases: list[EvalCase]) -> list[dict[str, Any]]:
+    """The per-case JSON the Playwright spec consumes.
+
+    Extracted from ``run_browser_suite`` so the API-mode/browser-mode parity
+    that keeps breaking (``seed_folders`` in 2026-07-27, ``seed_files`` in the
+    2026-07-28 audit) is unit-testable without driving a real browser: every
+    field a case needs seeded in API mode must appear here too.
+    """
+
+    payload: list[dict[str, Any]] = []
+    for case in cases:
+        item: dict[str, Any] = {
+            "id": case.id,
+            "prompt": case.prompt,
+            "auto_confirm": case.auto_confirm,
+        }
+        if case.seed_folders:
+            item["seed_folders"] = case.seed_folders
+        if case.seed_files:
+            item["seed_files"] = case.seed_files
+        # Execution cases also drive approve → run-on-fixture → assert output.
+        if case.expect.execute is not None:
+            ex = case.expect.execute
+            item["execute"] = {
+                "fixture": ex.fixture,
+                "context_menu_label": ex.context_menu_label,
+            }
+        payload.append(item)
+    return payload
+
+
 def run_browser_suite(
     cases: list[EvalCase],
     *,
@@ -39,9 +70,13 @@ def run_browser_suite(
     same deterministic verifier/scoring used by the API and in-process runners.
 
     ``seed_folders`` (real folders a case's prompt needs to already exist,
-    e.g. M3/M5 scenarios) are passed through in the payload; the spec creates
-    them via the backend API before sending the prompt — mirroring
-    ``runner.py``'s ``_seed_folders`` for the API-mode runner.
+    e.g. M3/M5 scenarios) and ``seed_files`` (fixtures from ``eval/fixtures/``
+    a case needs on the drive, e.g. the ``organize_by_type`` scenarios) are
+    passed through in the payload; the spec creates/uploads them via the
+    backend API before sending the prompt — mirroring ``runner.py``'s
+    ``_seed_folders``/``_seed_files`` for the API-mode runner. Both must stay
+    in step with the API runner: a case seeded in one mode but not the other
+    produces failures that say nothing about the model.
     """
 
     if not cases:
@@ -53,23 +88,7 @@ def run_browser_suite(
 
     stamp = str(int(time.time()))
     fixtures_dir = Path(__file__).resolve().parent / "fixtures"
-    payload = []
-    for case in cases:
-        item: dict[str, Any] = {
-            "id": case.id,
-            "prompt": case.prompt,
-            "auto_confirm": case.auto_confirm,
-        }
-        if case.seed_folders:
-            item["seed_folders"] = case.seed_folders
-        # Execution cases also drive approve → run-on-fixture → assert output.
-        if case.expect.execute is not None:
-            ex = case.expect.execute
-            item["execute"] = {
-                "fixture": ex.fixture,
-                "context_menu_label": ex.context_menu_label,
-            }
-        payload.append(item)
+    payload = build_payload(cases)
 
     with tempfile.TemporaryDirectory(prefix="assistant_eval_") as tmp:
         cases_file = Path(tmp) / "cases.json"

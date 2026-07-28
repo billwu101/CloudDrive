@@ -114,6 +114,7 @@ def aggregates_to_json(scores: list[AggregateScore]) -> str:
                     "done_reason": run.done_reason,
                     "prompt_tokens": run.prompt_tokens,
                     "completion_tokens": run.completion_tokens,
+                    "tool_call_count": run.tool_call_count,
                     "failure_category": run.failure_category,
                     "path_deviation": run.path_deviation,
                     "checks": [
@@ -148,12 +149,14 @@ def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[Aggregate
     by_id = {case.id: case for case in cases}
     tiers = ("m2", "m3", "m4", "m5")
     rows: list[str] = [
-        "| Tier | Cases w/ tokens | Avg prompt | Avg completion | 路徑偏離 | Failure categories |"
+        "| Tier | Cases w/ tokens | Avg prompt | Avg completion | Avg 工具呼叫 | 路徑偏離 "
+        "| Failure categories |"
     ]
-    rows.append("|---|---|---|---|---|---|")
+    rows.append("|---|---|---|---|---|---|---|")
     for tier in tiers:
         prompt_tokens: list[int] = []
         completion_tokens: list[int] = []
+        tool_calls: list[int] = []
         categories: dict[str, int] = {}
         total_runs = 0
         deviated_runs = 0
@@ -167,6 +170,8 @@ def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[Aggregate
                     prompt_tokens.append(run.prompt_tokens)
                 if run.completion_tokens is not None:
                     completion_tokens.append(run.completion_tokens)
+                if run.tool_call_count is not None:
+                    tool_calls.append(run.tool_call_count)
                 if run.failure_category is not None:
                     categories[run.failure_category] = categories.get(run.failure_category, 0) + 1
                 if run.path_deviation is not None:
@@ -177,6 +182,9 @@ def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[Aggregate
         avg_c = (
             f"{sum(completion_tokens) / len(completion_tokens):.0f}" if completion_tokens else "—"
         )
+        # The 07-24 review's second objective metric (token usage being the
+        # first): how many tool calls a tier's plans take on average.
+        avg_t = f"{sum(tool_calls) / len(tool_calls):.1f}" if tool_calls else "—"
         cat_str = (
             "、".join(f"{name}×{count}" for name, count in sorted(categories.items()))
             if categories
@@ -187,7 +195,8 @@ def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[Aggregate
         # "standard path", for analysing habitual behaviour, not scoring it.
         dev_str = f"{deviated_runs}/{total_runs}" if total_runs else "—"
         rows.append(
-            f"| {tier} | {len(prompt_tokens)} | {avg_p} | {avg_c} | {dev_str} | {cat_str} |"
+            f"| {tier} | {len(prompt_tokens)} | {avg_p} | {avg_c} | {avg_t} | {dev_str} "
+            f"| {cat_str} |"
         )
     if len(rows) <= 2:
         return (

@@ -30,6 +30,7 @@ interface BrowserCase {
   auto_confirm: boolean
   execute?: ExecuteMeta
   seed_folders?: string[]
+  seed_files?: string[]
 }
 
 const CASES_FILE = process.env.EVAL_CASES_FILE
@@ -71,6 +72,23 @@ async function seedFolders(request: APIRequestContext, names: string[]): Promise
     })
     if (!res.ok() && res.status() !== 409) {
       throw new Error(`seed folder "${name}" failed: ${res.status()} ${await res.text()}`)
+    }
+  }
+}
+
+// Upload each named fixture to the drive root, keeping its original filename —
+// mirroring runner.py's `_seed_files` for API mode. The name matters: cases
+// like organize_by_type assert on where `sample.pdf` ended up, so unlike the
+// execution-case upload below this must NOT prefix a per-case unique name.
+async function seedFiles(request: APIRequestContext, names: string[]): Promise<void> {
+  for (const name of names) {
+    const buffer = readFileSync(join(FIXTURES_DIR, name))
+    const res = await request.post(`${API_BASE}/upload/simple`, {
+      headers: authHeaders(),
+      multipart: { file: { name, mimeType: mimeFor(name), buffer } },
+    })
+    if (!res.ok()) {
+      throw new Error(`seed file "${name}" failed: ${res.status()} ${await res.text()}`)
     }
   }
 }
@@ -191,6 +209,9 @@ async function runChatCase(
   await login(page)
   if (evalCase.seed_folders?.length) {
     await seedFolders(request, evalCase.seed_folders)
+  }
+  if (evalCase.seed_files?.length) {
+    await seedFiles(request, evalCase.seed_files)
   }
   await openAssistant(page)
   const body = await sendPrompt(page, evalCase.prompt)

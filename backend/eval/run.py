@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import urllib.error
 from typing import Any
 
 from eval.baseline import (
@@ -29,7 +30,12 @@ from eval.report import (
     efficiency_summary_to_markdown,
     verbose_markdown,
 )
-from eval.runner import run_case_http
+from eval.runner import (
+    EvalRunnerError,
+    confirm_workflow_http,
+    pending_workflow_id,
+    run_case_http,
+)
 from eval.runner_browser import run_browser_suite
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, aggregate_runs, score_case
@@ -37,6 +43,7 @@ from eval.state import fetch_items_http
 from eval.verifier import (
     CheckResult,
     compute_path_deviation,
+    count_tool_calls,
     verify,
     verify_codegen_execution,
     verify_execution,
@@ -152,6 +159,7 @@ def main() -> int:
             llm_meta: dict[str, Any] | None = None
             plan_is_none = False
             path_deviation: str | None = None
+            tool_call_count: int | None = None
             if args.mode == "exec":
                 exec_output = run_execution_case(case)
                 checks = verify_execution(case, exec_output)
@@ -180,11 +188,13 @@ def main() -> int:
                 checks = checks + verify_codegen_execution(case, response)
                 if judge is not None:
                     checks = checks + judge_case(case, response, judge, fallback_rubric=True)
+                checks = checks + _execute_pending(case, args, response)
                 checks = checks + _state_checks(case, args)
                 result_summary = _summarise_response(response)
                 llm_meta = response.get("llm_meta")
                 plan_is_none = response.get("plan") is None
                 path_deviation = compute_path_deviation(case, response)
+                tool_call_count = count_tool_calls(response)
             last_checks = checks
             run_scores.append(
                 score_case(
@@ -193,6 +203,7 @@ def main() -> int:
                     llm_meta=llm_meta,
                     plan_is_none=plan_is_none,
                     path_deviation=path_deviation,
+                    tool_call_count=tool_call_count,
                 )
             )
         scores.append(aggregate_runs(case, run_scores))
@@ -256,14 +267,52 @@ def _summarise_exec(exec_output: dict[str, Any]) -> str:
     return f"產出檔: {files} | 內容: {'; '.join(snippets)}"
 
 
+def _wants_live_state(case: EvalCase, args: argparse.Namespace) -> bool:
+    """Whether this run both expects a post-execution state and can observe one.
+
+    ``_execute_pending`` and ``_state_checks`` share this gate on purpose: a
+    case whose plan we confirm but whose state we never read would perform real
+    writes for nothing, and a case whose state we read without confirming would
+    assert an outcome nobody executed (the 2026-07-28 audit found exactly that
+    second half — ``run.py`` asserted ``expect.state`` for 200 cases while only
+    ``run_isolated_e9.py`` ever confirmed)."""
+
+    if case.expect.state is None:
+        return False
+    return args.mode == "api" and args.llm == "real" and bool(args.token)
+
+
+def _execute_pending(
+    case: EvalCase, args: argparse.Namespace, response: dict[str, Any]
+) -> list[CheckResult]:
+    """Confirm a pending plan so ``expect.state`` describes something that
+    actually ran. No-op when the plan needs no approval (auto-executed), when
+    there is no plan at all, or when this run cannot observe state anyway.
+
+    ``auto_confirm=False`` means the case simulates a user who never approves —
+    its ``expect.state`` asserts the *opposite* (that nothing took effect before
+    approval, e.g. ``safety_no_side_effect.yaml``'s ``item_absent``). Confirming
+    those would invert exactly the safety property they exist to prove.
+    """
+
+    if not case.auto_confirm or not _wants_live_state(case, args):
+        return []
+    workflow_id = pending_workflow_id(response)
+    if workflow_id is None:
+        return []
+    try:
+        confirm_workflow_http(args.base_url, args.token, workflow_id)
+    except (EvalRunnerError, urllib.error.URLError) as exc:
+        return [CheckResult("execution", "workflow confirm succeeded", False, str(exc))]
+    return []
+
+
 def _state_checks(case: EvalCase, args: argparse.Namespace) -> list[CheckResult]:
     """Post-run state/safety assertions — only when a live snapshot is reachable
     (api mode against a real backend with a token). Skipped otherwise (the
     in-process mock runner has no real DB)."""
 
-    if case.expect.state is None:
-        return []
-    if args.mode != "api" or args.llm != "real" or not args.token:
+    if not _wants_live_state(case, args):
         return []
     items = fetch_items_http(args.base_url, args.token)
     return verify_state(case, items)
