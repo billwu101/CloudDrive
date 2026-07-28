@@ -38,6 +38,7 @@ from eval.verifier import (
     CheckResult,
     compute_path_deviation,
     verify,
+    verify_codegen_execution,
     verify_execution,
     verify_reference_grounding,
     verify_state,
@@ -176,6 +177,7 @@ def main() -> int:
                 strict = args.mode != "browser" and not args.no_strict_steps
                 checks = verify(case, response, strict_steps=strict)
                 checks = checks + verify_reference_grounding(case, response)
+                checks = checks + verify_codegen_execution(case, response)
                 if judge is not None:
                     checks = checks + judge_case(case, response, judge, fallback_rubric=True)
                 checks = checks + _state_checks(case, args)

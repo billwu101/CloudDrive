@@ -83,6 +83,7 @@ known-first-party = ["app", "eval"]
 "eval/report.py" = ["RUF001", "RUF002"]
 "eval/run.py" = ["RUF001", "RUF002"]
 "eval/run_isolated_e9.py" = ["RUF001", "RUF002"]
+"eval/codegen_smoke.py" = ["RUF001", "RUF002"]
 
 [tool.ruff.format]
 quote-style = "double"

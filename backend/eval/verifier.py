@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.assistant.workflow import is_step_ref
+from eval.codegen_smoke import smoke_test_skill
 from eval.schema import EvalCase
 
 
@@ -174,6 +175,47 @@ def verify_reference_grounding(case: EvalCase, response: dict[str, Any]) -> list
                 f"{workflow.write_skill}.{arg_name} references an earlier step (not guessed)",
                 is_step_ref(value),
                 f"{arg_name}={value!r}",
+            )
+        )
+    return checks
+
+
+def verify_codegen_execution(case: EvalCase, response: dict[str, Any]) -> list[CheckResult]:
+    """M4 hard gate: does the *actually generated* code run, not just "did it
+    propose a skill" (2026-07-28, alfred: "只驗證有沒有提出技能提案非常沒有
+    意義...如果功能不對、程式碼的結果不對做錯了根本就沒有意義"). Runs
+    ``eval.codegen_smoke.smoke_test_skill`` — see its docstring for exactly
+    what "smoke test" does and doesn't verify (execution succeeds + produces
+    output; NOT semantic/output correctness per skill type). Lands in the
+    ``execution`` dimension. Only meaningful for cases whose
+    ``expect.workflow.skill_generated`` is set (M4); returns [] otherwise.
+    """
+
+    workflow = case.expect.workflow
+    if workflow is None or workflow.skill_generated is None:
+        return []
+    proposal = response.get("skill_proposal")
+    if not isinstance(proposal, dict) or not proposal.get("code"):
+        return [CheckResult("execution", "skill proposal has code to run", False, "no proposal")]
+
+    code = proposal["code"]
+    manifest = proposal.get("manifest") or {}
+    context_menu = (manifest.get("ui") or {}).get("context_menu") or []
+    item_types = (
+        context_menu[0].get("item_types", ["FILE"])
+        if context_menu and isinstance(context_menu[0], dict)
+        else ["FILE"]
+    )
+    outcome = smoke_test_skill(code=code, item_types=item_types)
+    checks: list[CheckResult] = []
+    for item_type, result in outcome["results"].items():
+        checks.append(
+            CheckResult(
+                "execution",
+                f"generated skill runs on a {item_type} fixture and produces output",
+                result["ok"],
+                f"error={result['error']} produced={result['produced_files']} "
+                f"json_serializable={result['json_serializable']}",
             )
         )
     return checks

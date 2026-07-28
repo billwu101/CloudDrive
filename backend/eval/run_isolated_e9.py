@@ -42,6 +42,7 @@ from eval.verifier import (
     CheckResult,
     compute_path_deviation,
     verify,
+    verify_codegen_execution,
     verify_reference_grounding,
     verify_state,
 )
@@ -109,6 +110,10 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
         # earlier step's real output, not a literal/guessed id (2026-07-28,
         # alfred: "順序很重要...一定要先search").
         checks = [*checks, *verify_reference_grounding(case, response)]
+        # M4: does the actually-generated code run, not just "proposed a
+        # skill" (2026-07-28, alfred). Smoke test only — see
+        # eval/codegen_smoke.py docstring for exact scope.
+        checks = [*checks, *verify_codegen_execution(case, response)]
 
         plan = response.get("plan") or {}
         status = plan.get("status") if isinstance(plan, dict) else None
