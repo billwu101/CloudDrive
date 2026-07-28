@@ -115,6 +115,7 @@ def aggregates_to_json(scores: list[AggregateScore]) -> str:
                     "prompt_tokens": run.prompt_tokens,
                     "completion_tokens": run.completion_tokens,
                     "failure_category": run.failure_category,
+                    "path_deviation": run.path_deviation,
                     "checks": [
                         {
                             "dimension": c.dimension,
@@ -147,25 +148,30 @@ def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[Aggregate
     by_id = {case.id: case for case in cases}
     tiers = ("m2", "m3", "m4", "m5")
     rows: list[str] = [
-        "| Tier | Cases w/ tokens | Avg prompt | Avg completion | Failure categories |"
+        "| Tier | Cases w/ tokens | Avg prompt | Avg completion | 路徑偏離 | Failure categories |"
     ]
-    rows.append("|---|---|---|---|---|")
+    rows.append("|---|---|---|---|---|---|")
     for tier in tiers:
         prompt_tokens: list[int] = []
         completion_tokens: list[int] = []
         categories: dict[str, int] = {}
+        total_runs = 0
+        deviated_runs = 0
         for score in scores:
             case = by_id.get(score.case_id)
             if case is None or tier not in case.tags:
                 continue
             for run in score.run_scores:
+                total_runs += 1
                 if run.prompt_tokens is not None:
                     prompt_tokens.append(run.prompt_tokens)
                 if run.completion_tokens is not None:
                     completion_tokens.append(run.completion_tokens)
                 if run.failure_category is not None:
                     categories[run.failure_category] = categories.get(run.failure_category, 0) + 1
-        if not prompt_tokens and not categories:
+                if run.path_deviation is not None:
+                    deviated_runs += 1
+        if not prompt_tokens and not categories and total_runs == 0:
             continue
         avg_p = f"{sum(prompt_tokens) / len(prompt_tokens):.0f}" if prompt_tokens else "—"
         avg_c = (
@@ -176,7 +182,13 @@ def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[Aggregate
             if categories
             else "（無失敗）"
         )
-        rows.append(f"| {tier} | {len(prompt_tokens)} | {avg_p} | {avg_c} | {cat_str} |")
+        # 2026-07-28 (alfred): non-gating — how often the model took a
+        # different-but-still-passing path than the case's mock-script
+        # "standard path", for analysing habitual behaviour, not scoring it.
+        dev_str = f"{deviated_runs}/{total_runs}" if total_runs else "—"
+        rows.append(
+            f"| {tier} | {len(prompt_tokens)} | {avg_p} | {avg_c} | {dev_str} | {cat_str} |"
+        )
     if len(rows) <= 2:
         return (
             "（本次無 token/failure_category 資料——需 `--mode api --llm real` 且回應含 llm_meta）"

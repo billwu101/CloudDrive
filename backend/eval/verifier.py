@@ -179,6 +179,34 @@ def verify_reference_grounding(case: EvalCase, response: dict[str, Any]) -> list
     return checks
 
 
+def compute_path_deviation(case: EvalCase, response: dict[str, Any]) -> str | None:
+    """Compare the real model's actual skill sequence against the case's own
+    mock-script sequence (the "standard path" a case author scripted as the
+    intended solution) — purely descriptive, NEVER affects pass/fail
+    (2026-07-28, alfred: a different-but-valid path — e.g. re-searching
+    instead of reusing an earlier reference — should still PASS, but the
+    deviation should be recorded so later analysis can see the model's
+    habitual behaviour). Returns None when there's nothing to compare (no
+    mock script) or the sequences match exactly; otherwise a short
+    "canonical=[...] actual=[...]" string for the report.
+    """
+
+    if case.mock_llm is None or not case.mock_llm.responses:
+        return None
+    canonical_response = case.mock_llm.responses[0]
+    if not isinstance(canonical_response, dict):
+        return None
+    canonical_skills = [
+        s.get("skill") for s in canonical_response.get("steps", []) if isinstance(s, dict)
+    ]
+    plan = response.get("plan") or {}
+    actual_steps = plan.get("steps", []) if isinstance(plan, dict) else []
+    actual_skills = [s.get("skill") for s in actual_steps if isinstance(s, dict)]
+    if actual_skills == canonical_skills:
+        return None
+    return f"canonical={canonical_skills} actual={actual_skills}"
+
+
 def verify_state(case: EvalCase, items: Sequence[str | Mapping[str, Any]]) -> list[CheckResult]:
     """Assert real backend state after a case ran (E1 state/safety).
 

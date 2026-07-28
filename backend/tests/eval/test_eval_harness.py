@@ -5,7 +5,7 @@ from pathlib import Path
 from eval.report import efficiency_summary_to_markdown
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, score_case
-from eval.verifier import CheckResult, verify, verify_reference_grounding
+from eval.verifier import CheckResult, compute_path_deviation, verify, verify_reference_grounding
 
 CASES_DIR = Path(__file__).resolve().parents[2] / "eval" / "cases"
 
@@ -313,3 +313,63 @@ def test_reference_grounding_no_op_when_not_declared() -> None:
     case = _case()  # no write_ref_args on the base workflow expect
     response = {"plan": {"steps": [{"skill": "rename_item", "arguments": {"item_id": "guessed"}}]}}
     assert verify_reference_grounding(case, response) == []
+
+
+# ── compute_path_deviation (2026-07-28, non-gating, "拿 mock 腳本當標準路徑") ──
+
+
+def _path_case() -> EvalCase:
+    return _case(
+        mock_llm={
+            "responses": [
+                {
+                    "reply": "ok",
+                    "steps": [
+                        {"skill": "search", "arguments": {}},
+                        {"skill": "get_info", "arguments": {}},
+                        {"skill": "rename_item", "arguments": {}},
+                    ],
+                }
+            ]
+        }
+    )
+
+
+def test_path_deviation_none_when_actual_matches_canonical() -> None:
+    case = _path_case()
+    response = {
+        "plan": {
+            "steps": [
+                {"skill": "search"},
+                {"skill": "get_info"},
+                {"skill": "rename_item"},
+            ]
+        }
+    }
+    assert compute_path_deviation(case, response) is None
+
+
+def test_path_deviation_recorded_when_model_took_a_different_valid_path() -> None:
+    # e.g. re-searching instead of reusing an earlier reference — still a
+    # valid path (verify_reference_grounding may still pass), just different
+    # from what the case scripted. Must be recorded, not silently dropped.
+    case = _path_case()
+    response = {
+        "plan": {
+            "steps": [
+                {"skill": "recent"},
+                {"skill": "search"},
+                {"skill": "get_info"},
+                {"skill": "rename_item"},
+            ]
+        }
+    }
+    deviation = compute_path_deviation(case, response)
+    assert deviation is not None
+    assert "canonical=" in deviation and "actual=" in deviation
+
+
+def test_path_deviation_none_when_case_has_no_mock_script() -> None:
+    case = _case(mock_llm=None)
+    response = {"plan": {"steps": [{"skill": "search"}]}}
+    assert compute_path_deviation(case, response) is None

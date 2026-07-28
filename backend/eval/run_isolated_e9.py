@@ -38,7 +38,13 @@ from eval.runner import EvalRunnerError, run_case_http
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, CaseScore, aggregate_runs, score_case
 from eval.state import StateFetchError, fetch_items_http
-from eval.verifier import CheckResult, verify, verify_reference_grounding, verify_state
+from eval.verifier import (
+    CheckResult,
+    compute_path_deviation,
+    verify,
+    verify_reference_grounding,
+    verify_state,
+)
 
 
 def _register(base_url: str, stamp: str, *, timeout: float = 30.0) -> str:
@@ -128,7 +134,16 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
 
         llm_meta = response.get("llm_meta")
         plan_is_none = response.get("plan") is None
-        run_scores.append(score_case(case, checks, llm_meta=llm_meta, plan_is_none=plan_is_none))
+        path_deviation = compute_path_deviation(case, response)
+        run_scores.append(
+            score_case(
+                case,
+                checks,
+                llm_meta=llm_meta,
+                plan_is_none=plan_is_none,
+                path_deviation=path_deviation,
+            )
+        )
     return aggregate_runs(case, run_scores)
 
 
@@ -156,6 +171,7 @@ def _score_from_jsonable(data: dict[str, Any]) -> AggregateScore:
             prompt_tokens=run.get("prompt_tokens"),
             completion_tokens=run.get("completion_tokens"),
             failure_category=run.get("failure_category"),
+            path_deviation=run.get("path_deviation"),
         )
         for run in data["run_scores"]
     ]

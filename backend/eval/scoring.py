@@ -39,6 +39,11 @@ class CaseScore:
     # Rule-based (zero LLM cost) classification of why a run failed, for
     # post-hoc analysis; None when passed.
     failure_category: str | None = None
+    # 2026-07-28 (alfred): non-gating — never affects score/passed. Records
+    # when the model's actual skill sequence differs from the case's own
+    # mock-script "standard path" (a different-but-valid path still passes;
+    # this is purely descriptive for analysing the model's habits).
+    path_deviation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,7 @@ def score_case(
     *,
     llm_meta: Mapping[str, Any] | None = None,
     plan_is_none: bool = False,
+    path_deviation: str | None = None,
 ) -> CaseScore:
     """Per-dimension pass-rate, weighted into a single case score.
 
@@ -131,7 +137,9 @@ def score_case(
     the report-only efficiency fields; it never affects ``score``/``passed``.
     ``plan_is_none`` (the raw response's ``plan`` key, when present) refines
     ``failure_category`` to "no_plan" instead of "wrong_plan" — see
-    ``_failure_category``.
+    ``_failure_category``. ``path_deviation`` (see
+    ``verifier.compute_path_deviation``) is purely descriptive and never
+    affects ``score``/``passed`` either.
     """
 
     by_dimension: dict[str, list[float]] = {}
@@ -173,4 +181,5 @@ def score_case(
         failure_category=_failure_category(
             passed=passed, done_reason=done_reason, checks=checks, plan_is_none=plan_is_none
         ),
+        path_deviation=path_deviation,
     )
