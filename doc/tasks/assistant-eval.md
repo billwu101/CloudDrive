@@ -280,7 +280,13 @@ non_sensitive（內容會實際外送），使用時需有意識。
   - 另外 2 案（4 次執行）全過，`done_reason` 皆 `stop`（無截斷跡象），但 `completion_tokens` 波動劇烈且明顯偏高（218–**1664**，對照同案例 thinking off 基準的 150–190）——直接證據顯示 thinking 會消耗大量不可預期的 token。
   - 單次簡單呼叫（`storage_quota`）耗時 27 秒，對照 thinking off 基準 ~4 秒，慢 **~7 倍**，與 DEC-033 先前量測的「慢 10 倍」量級一致。
   - **判定：小樣本已足夠支持不擴大規模**——n=3 就抓到 1 次真實 503，且未觀察到任何品質上的好處（沒有截斷、沒有更正確的規劃），只有延遲與 token 成本上升、且有服務中斷風險。**不建議跑全量 thinking-on**，維持 DEC-033 現行 thinking off 預設的決定，本輪佐證方向一致（[The Danger of Overthinking](https://arxiv.org/abs/2502.08235)）。
-- [ ] 報告：整理「分級依據 + 效率指標 + thinking 截斷驗證」交代學長，引用 τ-bench/GAIA/Overthinking 論文佐證方法論（連結見 detailed-design §10.13/10.14）——待階段 A/B 實際跑出數據後才能寫。
+- [ ] 報告：整理「分級依據 + 效率指標 + thinking 截斷驗證」交代學長，引用 τ-bench/GAIA/Overthinking 論文佐證方法論（連結見 detailed-design §10.13/10.14）——待階段 A/B 實際跑出數據後才能寫。目前不用做（alfred 2026-07-28 指示）。
+- [x] **驗證深度四項強化（2026-07-28，alfred 質疑「驗證得非常鬆散、不是很有結構性」後逐項補上，全部真實對生產 gemma4:26b 驗證過）**：
+  1. **`no_plan` 失敗分類**：區分「模型合理拒答/規劃失敗」與「規劃出東西但錯」，誠實承認 API 層級無法完全區分前兩者（`scoring._failure_category`）。
+  2. **寫入順序硬性驗證**（`verifier.verify_reference_grounding`）：write 步驟的 `item_id`/`parent_id` 必須是引用早期步驟的真實輸出（重用 `app.assistant.workflow.is_step_ref`，跟正式 `resolve_arguments` 同一套邏輯），不能是手寫/猜測的字面值——**硬性 gate，會影響 pass/fail**。`EvalCase.expect.workflow` 新增 `write_skill`/`write_ref_args`。
+  3. **路徑記錄機制**（`verifier.compute_path_deviation`）：拿案例自帶的 mock 腳本序列當「標準路徑」，跟真實模型的實際序列比對；不同**不扣分**（`CaseScore.path_deviation`，report-only），純記錄供之後分析模型習慣。`report.efficiency_summary_to_markdown` 新增「路徑偏離」欄位。
+  4. **M4 生成程式碼真實執行驗證**（`eval/codegen_smoke.py` + `verifier.verify_codegen_execution`）：落地 07-24 已拍板但延後的 DEC（見 memory `clouddrive-codegen-smoke-test-dec`）——拿真正生成的程式碼（非手寫參考）在正式 `SkillSandbox` 對照宣告的 `item_types` 各跑一次最小 fixture，驗證 `run()` 真的能執行、有產出、回傳值可 JSON 序列化。刻意限定 smoke test 範圍，不驗證 100 種技能各自的語意正確性（需 100 份參考實作，超出範圍）。真實跑出 MD5 技能宣告 FILE+FOLDER 雙型別、兩種皆真的執行成功產出真實檔案。
+  - 全部 4 項皆有真實模型驗證 + 對應單元測試（scoring/verifier/codegen_smoke 共 20+ 新測試），790 測試全過、ruff/mypy 全綠。
 - [x] 測試：`tests/eval/test_eval_harness.py` 新增 9 個測試（llm_meta report-only 不影響 score/passed、6 種 failure_category、efficiency_summary_to_markdown 分組/無資料訊息）；`tests/assistant/test_planner.py`/`test_workflow.py` 新增 3 個測試（PlanResult 私有屬性、AssistantChatResponse.llm_meta 兩分支）。全數通過，`ruff/mypy/pytest`(766，排除 integration) 全綠。
 
 ## 測試/驗證任務
