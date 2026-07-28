@@ -116,9 +116,15 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         "- Skills are composable. Any argument value may be a literal OR a reference. "
         "Two kinds of reference:\n"
         '  (a) an earlier step\'s output: {"from": <earlier index>, "path": "items.0.id"}. '
-        'search and list_items return {"items": [{"id", "name", "item_type", ...}], "total": N}. '
         'To act on EVERY item a step returned, put "*" where the list index goes: '
         '{"from": <index>, "path": "items.*.id"} — the step then runs once per item.\n'
+        "  The path depends on what that step returns — pick the matching shape:\n"
+        '  - search, list_items, list_trash return {"items": [{"id", "name", "item_type", ...}], '
+        '"total": N} → use "items.0.id" (or "items.*.id").\n'
+        '  - recent returns a plain list of items → use "0.id" (or "*.id").\n'
+        "  - get_info, create_folder, rename_item, move_item, star_item return the ITEM ITSELF, "
+        'not a list → use "id". For example, to put files into a folder you just created at '
+        'step 1: {"parent_id": {"from": 1, "path": "id"}} — "items.0.id" would fail there.\n'
         '  (b) the user\'s current file selection: {"from": "selection", "item": <i>} for one '
         'selected file, or {"from": "selection", "each": true} to act on EVERY selected file '
         "(the step runs once per file; the other arguments are copied to each).\n"

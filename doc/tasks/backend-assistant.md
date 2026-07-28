@@ -197,3 +197,21 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 - [ ] **（可選）zip 內保留空目錄**：執行層已落地空目錄，但生成的 `os.walk` code 通常跳過空目錄；若要 zip 內也含空資料夾，需在 `_CODEGEN_SYSTEM` 再加一條。
 - [ ] **（既有限制）生成觸發措辭**：`_looks_like_skill_generation_request` 需動詞（做一個/生成…）；「幫我把…壓縮」不觸發生成。可放寬觸發詞或改意圖判斷。
 - [ ] **（若需要）A 逐檔批次對資料夾**：對資料夾內每檔各跑一次 FILE 技能（fan-out）——本次以整體資料夾（B）為主，未做；需要時再驗證勾多檔/資料夾展開路徑。
+
+## planner 提示未交代步驟輸出形狀（2026-07-28，由 E9 eval 抓到）
+
+> 背景：E9 第二輪新增的「依檔名分類」情境（`gen-m3-101`）真實試跑失敗，步驟級錯誤訊息為
+> `move_item: argument 'parent_id': cannot resolve path 'items.0.id' from step 1`。查證
+> `planner.py:118-121` 後確認**不是模型憑空出錯**：系統提示只說明了 `search`/`list_items`
+> 回 `{"items": [...]}`，從未說明 `create_folder` 等寫入技能回什麼，而所有範例都寫
+> `items.0.id` —— 模型要引用「自己剛建立的資料夾」時，只能照它唯一看過的形狀套。
+> 這是 eval 抓到的**產品缺口**（提示資訊不足），非單純模型能力問題。
+
+- [x] `planner.py` 系統提示補上各技能的輸出形狀與對應的 `path` 寫法（依實際實作核對過）：
+  - `search` / `list_items` / `list_trash` → `{"items": [...], "total": N}`（`items.0.id`、`items.*.id`）
+  - `recent` → **直接是一個 list**（`0.id`、`*.id`）
+  - `get_info` / `create_folder` / `rename_item` / `move_item` / `star_item` → **項目物件本身**（`id`）
+  - `organize_by_type` → `{"moved_files": N, "folders": [...]}`
+- [x] 單元測試：斷言提示含這段輸出形狀說明（`test_planner_prompt_documents_each_step_output_shape`）（防之後被改掉又沒人發現）。
+- [x] 真模型驗證：同 4 案修改前後各跑一次，`execution` 維度 **0.67 → 1.00**（`cannot resolve path` 錯誤消失），確認此缺口確為失敗主因之一。
+- **但案例仍失敗，且曝露另一層能力缺口**：模型改用 `move_item` 對 `list_items` 結果做 `*` 全量 fan-out，把根目錄**所有**項目（含兩個 canary 資料夾）一起搬進最後建立的資料夾。canary 檢查抓到：`勿動-舊備份 untouched (collateral damage) | parent='履歷'`。**選擇性批次分類（先分組再各自搬移）超出目前模型能力**，記為能力邊界，不放寬案例。

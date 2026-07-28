@@ -10,6 +10,7 @@ from app.assistant.planner import (
     PlanResult,
     WorkflowPlanner,
     build_plan_response_format,
+    build_planner_prompt,
     validate_plan,
 )
 from app.assistant.skills.registry import RegisteredSkill, SkillRegistry
@@ -329,3 +330,38 @@ async def test_planner_gives_up_gracefully_without_executing_invalid_plan() -> N
     assert result.steps == []  # nothing to execute → no "missing argument" failure
     assert result.reply  # has a conversational explanation
     assert llm.calls == 3  # initial + 2 repairs
+
+
+def test_planner_prompt_documents_each_step_output_shape() -> None:
+    """The planner must be told what each skill returns, not just search/list_items.
+
+    2026-07-28: an eval case (gen-m3-101, "sort these files into folders by
+    name") failed live with `move_item: argument 'parent_id': cannot resolve
+    path 'items.0.id' from step 1` — the model referenced a folder it had just
+    created as if create_folder returned {"items": [...]}. The prompt only ever
+    documented the paged shape and every example used items.0.id, so that was
+    the only shape it had seen. Verified against the real implementations in
+    skills/builtin/{read_only,write}.py.
+    """
+
+    async def handler(context, args):  # type: ignore[no-untyped-def]
+        return {}
+
+    registry = SkillRegistry()
+    registry.register(
+        RegisteredSkill(
+            name="create_folder",
+            description="Create a folder.",
+            parameters={"type": "object", "properties": {}},
+            permission_tier="write",
+            handler=handler,
+        )
+    )
+    prompt = build_planner_prompt(registry)
+
+    # The paged shape (unchanged) and the two shapes that were missing.
+    assert '"items": [{"id", "name", "item_type", ...}], "total": N' in prompt
+    assert "recent returns a plain list of items" in prompt
+    assert "return the ITEM ITSELF" in prompt
+    # And the concrete correction for the observed failure.
+    assert '{"parent_id": {"from": 1, "path": "id"}}' in prompt
