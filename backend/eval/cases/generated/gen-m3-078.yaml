@@ -20,6 +20,8 @@ expect:
     - list_items
     - search
     - create_folder
+    write_skill: create_folder
+    write_ref_args: []
   state:
     item_present:
     - 訂單

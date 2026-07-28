@@ -20,6 +20,9 @@ expect:
     - get_info
     - storage_quota
     - star_item
+    write_skill: star_item
+    write_ref_args:
+    - item_id
   state:
     item_starred:
     - 設計稿

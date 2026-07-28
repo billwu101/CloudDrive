@@ -19,6 +19,15 @@ class WorkflowExpect(BaseModel):
     # (e.g. the plan renames to "Renamed", proving it pulled an item_id from the
     # prior turn's result summary rather than asking which file).
     steps_arg_contains: list[str] = Field(default_factory=list)
+    # 2026-07-28 (alfred): "順序很重要" — a case whose target must be *found*,
+    # not guessed, can hard-fail if the write step's target argument isn't an
+    # actual step-output reference. write_skill names which planned step to
+    # check; write_ref_args lists its argument keys that must be a
+    # {"from": <earlier step>, ...} reference (see app.assistant.workflow.
+    # is_step_ref) rather than a literal/hallucinated value. Only meaningful
+    # for real/browser mode — mock scripts are exact by construction.
+    write_skill: str | None = None
+    write_ref_args: list[str] = Field(default_factory=list)
 
 
 class StateExpect(BaseModel):

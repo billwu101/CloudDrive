@@ -34,7 +34,13 @@ from eval.runner_browser import run_browser_suite
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, aggregate_runs, score_case
 from eval.state import fetch_items_http
-from eval.verifier import CheckResult, verify, verify_execution, verify_state
+from eval.verifier import (
+    CheckResult,
+    verify,
+    verify_execution,
+    verify_reference_grounding,
+    verify_state,
+)
 
 
 def main() -> int:
@@ -167,6 +173,7 @@ def main() -> int:
                 # (--no-strict-steps extends the loose check to api+real too.)
                 strict = args.mode != "browser" and not args.no_strict_steps
                 checks = verify(case, response, strict_steps=strict)
+                checks = checks + verify_reference_grounding(case, response)
                 if judge is not None:
                     checks = checks + judge_case(case, response, judge, fallback_rubric=True)
                 checks = checks + _state_checks(case, args)

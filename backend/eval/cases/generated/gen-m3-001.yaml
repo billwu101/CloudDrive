@@ -21,6 +21,9 @@ expect:
     - get_info
     - recent
     - rename_item
+    write_skill: rename_item
+    write_ref_args:
+    - item_id
   state:
     item_present:
     - 報告_正式版

@@ -23,6 +23,10 @@ expect:
     - list_items
     - get_info
     - move_item
+    write_skill: move_item
+    write_ref_args:
+    - item_id
+    - parent_id
   state:
     item_parent:
       報稅: 報稅封存

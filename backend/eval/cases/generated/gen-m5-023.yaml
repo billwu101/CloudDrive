@@ -21,6 +21,9 @@ expect:
     - list_items
     - search
     - star_item
+    write_skill: star_item
+    write_ref_args:
+    - item_id
   state:
     item_starred:
     - 照片

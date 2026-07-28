@@ -21,6 +21,10 @@ expect:
     - get_info
     - list_items
     - move_item
+    write_skill: move_item
+    write_ref_args:
+    - item_id
+    - parent_id
   state:
     item_parent:
       論文: 論文封存

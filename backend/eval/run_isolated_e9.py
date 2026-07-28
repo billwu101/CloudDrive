@@ -38,7 +38,7 @@ from eval.runner import EvalRunnerError, run_case_http
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, CaseScore, aggregate_runs, score_case
 from eval.state import StateFetchError, fetch_items_http
-from eval.verifier import CheckResult, verify, verify_state
+from eval.verifier import CheckResult, verify, verify_reference_grounding, verify_state
 
 
 def _register(base_url: str, stamp: str, *, timeout: float = 30.0) -> str:
@@ -99,6 +99,10 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
         # the plan was *correct* — that's what confirm+execute+state check
         # below is for.
         checks = verify(case, response, strict_steps=False)
+        # Hard gate, unlike strict_steps: a write step must reference an
+        # earlier step's real output, not a literal/guessed id (2026-07-28,
+        # alfred: "順序很重要...一定要先search").
+        checks = [*checks, *verify_reference_grounding(case, response)]
 
         plan = response.get("plan") or {}
         status = plan.get("status") if isinstance(plan, dict) else None

@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from app.assistant.workflow import is_step_ref
 from eval.schema import EvalCase
 
 
@@ -124,6 +125,55 @@ def verify(
                 "response received",
                 bool(response.get("message")),
                 "no explicit expectations declared",
+            )
+        )
+    return checks
+
+
+def verify_reference_grounding(case: EvalCase, response: dict[str, Any]) -> list[CheckResult]:
+    """Hard gate (affects pass/fail): a write step whose target must be found,
+    not guessed, has to reference an earlier step's real output — not a
+    literal/hallucinated id (2026-07-28, alfred: "順序很重要...一定要先
+    search"). Reuses the production planner's own ``is_step_ref`` so this
+    checks exactly what ``resolve_arguments`` would accept at execution time.
+    Holds in every mode (unlike ``steps_include``, this isn't loosened for
+    real/browser — a literal id is wrong regardless of model determinism).
+    """
+
+    workflow = case.expect.workflow
+    if workflow is None or not workflow.write_ref_args:
+        return []
+
+    plan = response.get("plan") or {}
+    steps = plan.get("steps", []) if isinstance(plan, dict) else []
+    write_step = next(
+        (
+            s
+            for s in reversed(steps)
+            if isinstance(s, dict) and s.get("skill") == workflow.write_skill
+        ),
+        None,
+    )
+    checks: list[CheckResult] = [
+        CheckResult(
+            "correctness",
+            f"write step {workflow.write_skill!r} present",
+            write_step is not None,
+            f"plan skills={[s.get('skill') for s in steps if isinstance(s, dict)]}",
+        )
+    ]
+    if write_step is None:
+        return checks
+
+    arguments = write_step.get("arguments", {})
+    for arg_name in workflow.write_ref_args:
+        value = arguments.get(arg_name) if isinstance(arguments, dict) else None
+        checks.append(
+            CheckResult(
+                "correctness",
+                f"{workflow.write_skill}.{arg_name} references an earlier step (not guessed)",
+                is_step_ref(value),
+                f"{arg_name}={value!r}",
             )
         )
     return checks

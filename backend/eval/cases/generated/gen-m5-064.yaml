@@ -20,6 +20,9 @@ expect:
     - search
     - storage_quota
     - rename_item
+    write_skill: rename_item
+    write_ref_args:
+    - item_id
   state:
     item_present:
     - 草稿_更新版

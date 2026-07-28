@@ -22,6 +22,8 @@ expect:
     - storage_quota
     - recent
     - organize_by_type
+    write_skill: organize_by_type
+    write_ref_args: []
   state:
     item_present:
     - pdf-files

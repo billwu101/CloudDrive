@@ -373,6 +373,19 @@ def _scenario_state(scenario: dict[str, Any], topic: str) -> dict[str, Any] | No
     return state(topic) if state is not None else None
 
 
+# 2026-07-28 (alfred): which argument(s) on the write step must be a real
+# step-output reference, not a literal — derived from the skill itself
+# (rename_item/star_item act on one existing item; move_item on an existing
+# item AND an existing destination; create_folder/organize_by_type don't act
+# on an existing item at all, so nothing to ground). See
+# verify_reference_grounding in eval/verifier.py.
+_WRITE_REF_ARGS: dict[str, list[str]] = {
+    "rename_item": ["item_id"],
+    "star_item": ["item_id"],
+    "move_item": ["item_id", "parent_id"],
+}
+
+
 def build_m3() -> list[dict[str, Any]]:
     """M3 = 5 real scenarios (see M3_SCENARIOS) x 20 topics = 100.
 
@@ -388,6 +401,8 @@ def build_m3() -> list[dict[str, Any]]:
                 "workflow": {
                     "requires_confirmation": True,
                     "steps_include": [*scenario["tools"], scenario["write"]],
+                    "write_skill": scenario["write"],
+                    "write_ref_args": _WRITE_REF_ARGS.get(scenario["write"], []),
                 }
             }
             state = _scenario_state(scenario, topic)
@@ -586,6 +601,8 @@ def build_m5() -> list[dict[str, Any]]:
                 "workflow": {
                     "requires_confirmation": True,
                     "steps_include": [*scenario["tools"], scenario["write"]],
+                    "write_skill": scenario["write"],
+                    "write_ref_args": _WRITE_REF_ARGS.get(scenario["write"], []),
                 }
             }
             state = _scenario_state(scenario, topic)

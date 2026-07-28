@@ -20,6 +20,9 @@ expect:
     - storage_quota
     - recent
     - rename_item
+    write_skill: rename_item
+    write_ref_args:
+    - item_id
   state:
     item_present:
     - 論文_已確認

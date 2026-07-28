@@ -5,7 +5,7 @@ from pathlib import Path
 from eval.report import efficiency_summary_to_markdown
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, score_case
-from eval.verifier import CheckResult, verify
+from eval.verifier import CheckResult, verify, verify_reference_grounding
 
 CASES_DIR = Path(__file__).resolve().parents[2] / "eval" / "cases"
 
@@ -242,3 +242,74 @@ def test_write_case_expects_pending_confirmation() -> None:
     }
     score = score_case(case, verify(case, response))
     assert score.passed is True
+
+
+# ── verify_reference_grounding (2026-07-28, alfred: "順序很重要...一定要先search") ──
+
+
+def _grounding_case() -> EvalCase:
+    return _case(
+        id="g",
+        expect={
+            "workflow": {
+                "requires_confirmation": True,
+                "write_skill": "rename_item",
+                "write_ref_args": ["item_id"],
+            },
+        },
+    )
+
+
+def test_reference_grounding_passes_when_item_id_is_a_step_reference() -> None:
+    case = _grounding_case()
+    response = {
+        "plan": {
+            "steps": [
+                {"skill": "search", "arguments": {"q": "報告"}},
+                {
+                    "skill": "rename_item",
+                    "arguments": {
+                        "item_id": {"from": 0, "path": "items.0.id"},
+                        "new_name": "x",
+                    },
+                },
+            ]
+        }
+    }
+    checks = verify_reference_grounding(case, response)
+    assert all(c.ok for c in checks)
+
+
+def test_reference_grounding_fails_on_literal_guessed_id() -> None:
+    # The model never searched — it just made up (or hardcoded) an id. This
+    # must hard-fail even though a plan with the right skill was produced.
+    case = _grounding_case()
+    response = {
+        "plan": {
+            "steps": [
+                {
+                    "skill": "rename_item",
+                    "arguments": {
+                        "item_id": "11111111-1111-1111-1111-111111111111",
+                        "new_name": "x",
+                    },
+                },
+            ]
+        }
+    }
+    checks = verify_reference_grounding(case, response)
+    assert any(not c.ok for c in checks)
+
+
+def test_reference_grounding_fails_when_write_step_missing() -> None:
+    case = _grounding_case()
+    response = {"plan": {"steps": [{"skill": "search", "arguments": {"q": "報告"}}]}}
+    checks = verify_reference_grounding(case, response)
+    assert checks[0].ok is False
+    assert "present" in checks[0].name
+
+
+def test_reference_grounding_no_op_when_not_declared() -> None:
+    case = _case()  # no write_ref_args on the base workflow expect
+    response = {"plan": {"steps": [{"skill": "rename_item", "arguments": {"item_id": "guessed"}}]}}
+    assert verify_reference_grounding(case, response) == []
