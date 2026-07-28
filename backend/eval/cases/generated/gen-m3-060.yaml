@@ -14,6 +14,7 @@ tags:
 seed_folders:
 - 課程筆記
 - 課程筆記封存
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true

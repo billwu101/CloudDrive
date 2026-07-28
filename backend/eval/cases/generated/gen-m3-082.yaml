@@ -11,6 +11,9 @@ tags:
 - m3
 - scenario:cleanup_by_type
 seed_folders: []
+seed_files:
+- sample.pdf
+- sample.png
 expect:
   workflow:
     requires_confirmation: true
@@ -19,6 +22,13 @@ expect:
     - storage_quota
     - recent
     - organize_by_type
+  state:
+    item_present:
+    - pdf-files
+    - png-files
+    item_parent:
+      sample.pdf: pdf-files
+      sample.png: png-files
 scoring:
   weights:
     correctness: 1.0

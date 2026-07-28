@@ -14,6 +14,7 @@ tags:
 seed_folders:
 - 備份
 - 備份封存
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true

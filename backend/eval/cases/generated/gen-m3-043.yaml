@@ -14,6 +14,7 @@ tags:
 seed_folders:
 - 照片
 - 照片封存
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true

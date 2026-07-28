@@ -14,6 +14,7 @@ tags:
 seed_folders:
 - 帳單
 - 帳單封存
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true

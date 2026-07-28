@@ -346,11 +346,16 @@ M3_SCENARIOS: list[dict[str, Any]] = [
             {"skill": "recent", "arguments": {}},
             {"skill": "organize_by_type", "arguments": {}},
         ],
-        # No "state" here — deliberate known gap: organize_by_type creates an
-        # unpredictable number of type-named subfolders depending on what's in
-        # the account, so item_present/absent can't cheaply assert "did it
-        # right" the way a single rename/star/move target can. This scenario
-        # stays plan-level-verified only (see doc/tasks/assistant-eval.md E9).
+        # 2026-07-28 (alfred): organize_by_type's outcome IS predictable once
+        # we control the input — its real implementation (write.py) always
+        # moves a root file into a folder literally named "{ext}-files". Seed
+        # two real fixture files with known extensions so the expected result
+        # is exact, instead of leaving this scenario plan-level-only.
+        "seed_files": ["sample.pdf", "sample.png"],
+        "state": lambda t: {
+            "item_present": ["pdf-files", "png-files"],
+            "item_parent": {"sample.pdf": "pdf-files", "sample.png": "png-files"},
+        },
     },
 ]
 
@@ -397,6 +402,7 @@ def build_m3() -> list[dict[str, Any]]:
                     "mode": ["api", "browser"],
                     "tags": ["daily-ops", "generated", "m3", f"scenario:{scenario['key']}"],
                     "seed_folders": _scenario_seed(scenario, topic),
+                    "seed_files": scenario.get("seed_files", []),
                     "expect": expect,
                     "scoring": _scoring(),
                     "mock_llm": {

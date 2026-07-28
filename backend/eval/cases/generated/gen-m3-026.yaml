@@ -12,6 +12,7 @@ tags:
 - scenario:star_frequent
 seed_folders:
 - 會議記錄
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true

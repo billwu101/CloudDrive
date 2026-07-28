@@ -115,6 +115,11 @@ class EvalCase(BaseModel):
     # on one session to build history; ``prompt`` is the final turn that gets
     # verified. Empty ⇒ ordinary single-turn case (unchanged behaviour).
     seed_folders: list[str] = Field(default_factory=list)
+    # Fixture filenames (under eval/fixtures/) to upload to the drive root
+    # before the case runs (api/real mode) — 2026-07-28 E9: lets a case whose
+    # outcome depends on real file content/extensions (e.g. organize_by_type)
+    # have a deterministic expected result, instead of staying plan-level-only.
+    seed_files: list[str] = Field(default_factory=list)
     context_turns: list[str] = Field(default_factory=list)
 
 

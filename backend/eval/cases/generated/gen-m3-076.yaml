@@ -11,6 +11,7 @@ tags:
 - m3
 - scenario:new_project
 seed_folders: []
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true

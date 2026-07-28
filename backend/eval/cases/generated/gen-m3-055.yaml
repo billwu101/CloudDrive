@@ -14,6 +14,7 @@ tags:
 seed_folders:
 - 使用手冊
 - 使用手冊封存
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true

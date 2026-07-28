@@ -12,6 +12,7 @@ tags:
 - scenario:rename_placeholder
 seed_folders:
 - 發票
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true
