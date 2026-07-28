@@ -348,3 +348,23 @@ non_sensitive（內容會實際外送），使用時需有意識。
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。
 - [x] API 模式 mock-LLM 案例可整進 CI（`eval/inproc.py` + `run.py --llm mock`,決定性、免後端/Gemma）。
 - [x] `ruff format/check`、`mypy`、`pytest` 全綠（eval 切片）。
+
+### 語意分類額外測試集（2026-07-28，alfred 指定：「比較偏語意分類的方式」）
+
+> 背景：先前加的 `classify_by_name` 情境檔名開頭就是類別名（`報告A.pdf` → 「報告」資料夾），
+> 而且 prompt 也直接把類別名講出來——模型只要做**字串比對**就能過，與 alfred 要的「語意分類」
+> 落在不同難度層級。本測試集補上真正需要理解檔案性質的版本。
+
+- [x] `eval/cases/semantic/`（5 案，`generate_cases.build_semantic()` 產生）：
+  - **檔名裡完全不出現類別名**：`台積電_2024Q3.pdf`／`中華電信_三月.pdf` → 「發票」；
+    `微積分期中.pdf`／`線性代數小考.pdf` → 「考卷」。模型必須看懂檔案是什麼東西才分得出來。
+  - **兩類副檔名組合相同**（各 2 pdf + 1 txt），避免副檔名變成免費線索。
+  - **資料夾名稱仍寫在 prompt 裡**——不是為了幫模型，而是為了讓 `item_parent` 能精確斷言；
+    若讓模型自己命名資料夾，落點就無法驗證。這是「可驗證性」與「純語意」之間的取捨，需在報告中說明。
+  - 5 組不同領域（發票/考卷、合約/履歷、帳單/論文、旅遊/課程筆記、會議記錄/設計稿），
+    **刻意手寫、不套 20 主題模板**：語意案例的價值在每組都不一樣，模板量產會退回成同一題問五次。
+  - **不標 `m3` tag**（只標 `semantic`）：折進 M2–M5 的層級統計會混淆分級比較。
+  - 沿用第二輪的全套檢查：`required_skills`／`nonempty_outputs`／步驟級 `results` 驗證／
+    canary 防誤傷／謊報偵測／四維度計分。
+- [x] mock 回歸 5/5 通過。
+- [ ] 真模型試跑（等全量 420 跑完再跑，避免兩批同時打同一個 gateway）。

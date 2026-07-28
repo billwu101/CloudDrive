@@ -1043,6 +1043,177 @@ def build_m4() -> list[dict[str, Any]]:
     return cases
 
 
+# --- 語意分類額外測試集（2026-07-28，alfred 指定）--------------------------
+#
+# `classify_by_name` 的檔名開頭就是類別名（報告A.pdf → 報告），模型只要做字串
+# 比對；alfred 要的是「比較偏語意分類的方式」。這一組**檔名裡完全不出現類別
+# 名**（台積電_2024Q3.pdf → 發票），模型必須看懂檔案的性質才知道該歸哪一類。
+# 兩邊刻意用相同的副檔名組合（2 pdf + 1 txt），避免副檔名變成免費線索。
+# 資料夾名稱仍寫在 prompt 裡——不是為了幫模型，而是為了讓 `item_parent` 能精確
+# 斷言；若讓模型自己命名資料夾，落點就無法驗證。
+# 刻意手寫 5 組不同領域、不套 20 主題模板：語意案例的價值在每組都不一樣，
+# 模板量產反而會退回成同一題問五次。
+SEMANTIC_DIR = Path(__file__).resolve().parent / "cases" / "semantic"
+
+SEMANTIC_SETS: list[dict[str, Any]] = [
+    {
+        "key": "invoice_vs_exam",
+        "a": (
+            "發票",
+            "廠商請款的單據",
+            ["台積電_2024Q3.pdf", "中華電信_三月.pdf", "台電_五月.txt"],
+        ),
+        "b": (
+            "考卷",
+            "課堂考試的卷子",
+            ["微積分期中.pdf", "線性代數小考.pdf", "物理期末.txt"],
+        ),
+    },
+    {
+        "key": "contract_vs_resume",
+        "a": (
+            "合約",
+            "跟人簽的正式協議",
+            ["甲方乙方協議書.pdf", "保密協定_2025.pdf", "租賃條款.txt"],
+        ),
+        "b": (
+            "履歷",
+            "求職用的個人資料",
+            ["王小明_自傳.pdf", "應徵資料_前端工程師.pdf", "個人經歷表.txt"],
+        ),
+    },
+    {
+        "key": "bill_vs_thesis",
+        "a": (
+            "帳單",
+            "每個月要繳的費用單據",
+            ["瓦斯費_一月.pdf", "信用卡_2025春.pdf", "管理費繳納.txt"],
+        ),
+        "b": (
+            "論文",
+            "研究寫作的稿件",
+            ["深度學習於醫療影像之應用.pdf", "文獻回顧_第二章.pdf", "研究方法.txt"],
+        ),
+    },
+    {
+        "key": "travel_vs_notes",
+        "a": (
+            "旅遊",
+            "出去玩的安排",
+            ["京都行程規劃.pdf", "機票訂位紀錄.pdf", "民宿確認信.txt"],
+        ),
+        "b": (
+            "課程筆記",
+            "上課抄的東西",
+            ["資料結構_第三週.pdf", "演算法上課筆記.pdf", "作業系統重點整理.txt"],
+        ),
+    },
+    {
+        "key": "meeting_vs_design",
+        "a": (
+            "會議記錄",
+            "開會當下記下來的東西",
+            ["週會_行銷部.pdf", "客戶訪談摘要.pdf", "決議事項追蹤.txt"],
+        ),
+        "b": (
+            "設計稿",
+            "視覺稿與版面草案",
+            ["首頁改版_v3.pdf", "配色提案.pdf", "元件規範說明.txt"],
+        ),
+    },
+]
+
+
+def build_semantic() -> list[dict[str, Any]]:
+    """5 個語意分類案例：檔名不含類別名，必須靠理解才分得出來。"""
+
+    cases: list[dict[str, Any]] = []
+    for n, spec in enumerate(SEMANTIC_SETS, start=1):
+        (folder_a, desc_a, files_a) = spec["a"]
+        (folder_b, desc_b, files_b) = spec["b"]
+        all_files = [*files_a, *files_b]
+        seed_files = [
+            {"fixture": "sample.pdf" if name.endswith(".pdf") else "sample.txt", "name": name}
+            for name in all_files
+        ]
+        # Scripted reference plan: list once, create both folders, then move each
+        # file individually (there is no query that separates these groups — the
+        # separation IS the semantic judgement being tested).
+        steps: list[dict[str, Any]] = [
+            {"skill": "list_items", "arguments": {}},
+            {"skill": "create_folder", "arguments": {"name": folder_a}},
+            {"skill": "create_folder", "arguments": {"name": folder_b}},
+        ]
+        for index, name in enumerate(all_files):
+            destination = 1 if name in files_a else 2
+            steps.append(
+                {
+                    "skill": "move_item",
+                    "arguments": {
+                        "item_id": {"from_step": 0, "path": f"items.{index}.id"},
+                        "parent_id": {"from_step": destination, "path": "id"},
+                    },
+                }
+            )
+        cases.append(
+            {
+                "id": f"gen-sem-{n:03d}",
+                "name": f"語意分類：{folder_a} vs {folder_b}",
+                "rationale": (
+                    f"檔名裡完全沒有「{folder_a}」「{folder_b}」這兩個詞，模型必須看懂"
+                    "每個檔案是什麼東西才分得出來；兩類的副檔名組合相同，副檔名不構成線索。"
+                ),
+                "prompt": (
+                    f"我根目錄裡有一堆檔案混在一起，有些是{desc_a}、有些是{desc_b}。"
+                    f"幫我先看一下有哪些檔案，然後建「{folder_a}」和「{folder_b}」兩個"
+                    "資料夾，把對應的檔案分別搬進去。"
+                ),
+                "mode": ["api", "browser"],
+                # Deliberately NOT tagged m3: these are an extra set, and folding
+                # them into the tier statistics would muddy the M2-M5 comparison.
+                "tags": ["daily-ops", "generated", "semantic", "scenario:classify_by_meaning"],
+                "seed_folders": list(CANARY_FOLDERS),
+                "seed_files": seed_files,
+                "expect": {
+                    "workflow": {
+                        "requires_confirmation": True,
+                        "steps_include": ["list_items", "create_folder", "move_item"],
+                        "required_skills": ["list_items"],
+                        "nonempty_outputs": ["list_items"],
+                        "write_skill": "move_item",
+                        "write_ref_args": ["item_id", "parent_id"],
+                    },
+                    "state": {
+                        "item_present": [folder_a, folder_b],
+                        "item_parent": {
+                            **{name: folder_a for name in files_a},
+                            **{name: folder_b for name in files_b},
+                        },
+                        "unchanged": list(CANARY_FOLDERS),
+                    },
+                },
+                "scoring": _scoring(),
+                "mock_llm": {"responses": [{"reply": "計畫如下，請確認。", "steps": steps}]},
+            }
+        )
+    return cases
+
+
+def generate_semantic() -> int:
+    """Write only the semantic set (kept separate from `generate()` so it can be
+    regenerated without touching cases/generated/)."""
+
+    if SEMANTIC_DIR.exists():
+        shutil.rmtree(SEMANTIC_DIR)
+    SEMANTIC_DIR.mkdir(parents=True)
+    cases = build_semantic()
+    for case in cases:
+        (SEMANTIC_DIR / f"{case['id']}.yaml").write_text(
+            yaml.safe_dump(case, allow_unicode=True, sort_keys=False, width=100)
+        )
+    return len(cases)
+
+
 def generate() -> int:
     if GENERATED_DIR.exists():
         shutil.rmtree(GENERATED_DIR)
@@ -1060,6 +1231,7 @@ def generate() -> int:
                 yaml.safe_dump(case, allow_unicode=True, sort_keys=False, width=100)
             )
             total += 1
+    total += generate_semantic()
     return total
 
 

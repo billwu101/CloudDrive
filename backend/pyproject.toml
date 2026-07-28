@@ -76,7 +76,7 @@ known-first-party = ["app", "eval"]
 # is @lru_cache, so these imports are intentionally not at module top.
 "tests/integration/conftest.py" = ["E402"]
 # Eval cases are Chinese prompts; fullwidth punctuation （）「」 is intentional.
-"eval/generate_cases.py" = ["RUF001", "RUF002"]
+"eval/generate_cases.py" = ["RUF001", "RUF002", "RUF003"]
 # Judge rubrics / report headings / --verbose labels are Traditional Chinese
 # (fullwidth ，：／（）).
 "eval/judge.py" = ["RUF001", "RUF002"]

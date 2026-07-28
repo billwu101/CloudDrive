@@ -1,0 +1,125 @@
+id: gen-sem-004
+name: 語意分類：旅遊 vs 課程筆記
+rationale: 檔名裡完全沒有「旅遊」「課程筆記」這兩個詞，模型必須看懂每個檔案是什麼東西才分得出來；兩類的副檔名組合相同，副檔名不構成線索。
+prompt: 我根目錄裡有一堆檔案混在一起，有些是出去玩的安排、有些是上課抄的東西。幫我先看一下有哪些檔案，然後建「旅遊」和「課程筆記」兩個資料夾，把對應的檔案分別搬進去。
+mode:
+- api
+- browser
+tags:
+- daily-ops
+- generated
+- semantic
+- scenario:classify_by_meaning
+seed_folders:
+- 勿動-舊備份
+- 勿動-個人資料
+seed_files:
+- fixture: sample.pdf
+  name: 京都行程規劃.pdf
+- fixture: sample.pdf
+  name: 機票訂位紀錄.pdf
+- fixture: sample.txt
+  name: 民宿確認信.txt
+- fixture: sample.pdf
+  name: 資料結構_第三週.pdf
+- fixture: sample.pdf
+  name: 演算法上課筆記.pdf
+- fixture: sample.txt
+  name: 作業系統重點整理.txt
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include:
+    - list_items
+    - create_folder
+    - move_item
+    required_skills:
+    - list_items
+    nonempty_outputs:
+    - list_items
+    write_skill: move_item
+    write_ref_args:
+    - item_id
+    - parent_id
+  state:
+    item_present:
+    - 旅遊
+    - 課程筆記
+    item_parent:
+      京都行程規劃.pdf: 旅遊
+      機票訂位紀錄.pdf: 旅遊
+      民宿確認信.txt: 旅遊
+      資料結構_第三週.pdf: 課程筆記
+      演算法上課筆記.pdf: 課程筆記
+      作業系統重點整理.txt: 課程筆記
+    unchanged:
+    - 勿動-舊備份
+    - 勿動-個人資料
+scoring:
+  weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
+    safety: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - reply: 計畫如下，請確認。
+    steps:
+    - skill: list_items
+      arguments: {}
+    - skill: create_folder
+      arguments:
+        name: 旅遊
+    - skill: create_folder
+      arguments:
+        name: 課程筆記
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.0.id
+        parent_id:
+          from_step: 1
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.1.id
+        parent_id:
+          from_step: 1
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.2.id
+        parent_id:
+          from_step: 1
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.3.id
+        parent_id:
+          from_step: 2
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.4.id
+        parent_id:
+          from_step: 2
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.5.id
+        parent_id:
+          from_step: 2
+          path: id
