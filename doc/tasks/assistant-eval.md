@@ -275,7 +275,11 @@ non_sensitive（內容會實際外送），使用時需有意識。
   - **效率指標**（`report.efficiency_summary_to_markdown`）：M2 平均 prompt 1455 token／completion 180；M3 平均 1259／181；M5 平均 1293／181——三層 token 量相近，沒有隨難度遞增的明顯趨勢。
   - **M4 沒有 token/done_reason 資料（已知、設計如此，非缺漏）**：M4 走 `skill_authoring` 分支（CodegenSubAgent 生成技能），不經過 planner 的 `_llm_meta` 掛載點（`service.py` 5 個掛 `llm_meta` 的分支裡不含這條路徑，§10.15 已記錄此邊界）。
   - 3 個案例（gen-m2-011/012/013）中途因暫時性錯誤被跳過，事後用 `--resume --tag m2` 補跑成功，全過。
-- [ ] **階段 B（小規模，暫緩全量）**：thinking on 只挑 E8 既有高風險 case（storage-quota/safety-destructive 等）小樣本探測，記錄 done_reason 分布與耗時；依探測結果再決定是否/如何跑全量 thinking-on（本輪不自動排入全量）。
+- [x] **階段 B 已完成（2026-07-28，對生產遠端 gemma4:26b gateway 實測）**：改用這批新 M3 案例（`gen-m3-001/002/003`）小樣本探測（非沿用 E8 舊 case，因舊 case 已被本輪重新設計取代），臨時把後端環境變數 `LLM_PLANNER_DISABLE_THINKING=false` 啟動、探測完立刻改回預設值。
+  - **3 案 × 2 runs**：`gen-m3-002` 整案直接 **503 Service Unavailable 失敗**（1/3 案例，未進入任何 run 就掛掉）——跟 DEC-031 歷史記錄的 thinking 重複生成迴圈拖垮 timeout 是同一種失敗模式的重演。
+  - 另外 2 案（4 次執行）全過，`done_reason` 皆 `stop`（無截斷跡象），但 `completion_tokens` 波動劇烈且明顯偏高（218–**1664**，對照同案例 thinking off 基準的 150–190）——直接證據顯示 thinking 會消耗大量不可預期的 token。
+  - 單次簡單呼叫（`storage_quota`）耗時 27 秒，對照 thinking off 基準 ~4 秒，慢 **~7 倍**，與 DEC-033 先前量測的「慢 10 倍」量級一致。
+  - **判定：小樣本已足夠支持不擴大規模**——n=3 就抓到 1 次真實 503，且未觀察到任何品質上的好處（沒有截斷、沒有更正確的規劃），只有延遲與 token 成本上升、且有服務中斷風險。**不建議跑全量 thinking-on**，維持 DEC-033 現行 thinking off 預設的決定，本輪佐證方向一致（[The Danger of Overthinking](https://arxiv.org/abs/2502.08235)）。
 - [ ] 報告：整理「分級依據 + 效率指標 + thinking 截斷驗證」交代學長，引用 τ-bench/GAIA/Overthinking 論文佐證方法論（連結見 detailed-design §10.13/10.14）——待階段 A/B 實際跑出數據後才能寫。
 - [x] 測試：`tests/eval/test_eval_harness.py` 新增 9 個測試（llm_meta report-only 不影響 score/passed、6 種 failure_category、efficiency_summary_to_markdown 分組/無資料訊息）；`tests/assistant/test_planner.py`/`test_workflow.py` 新增 3 個測試（PlanResult 私有屬性、AssistantChatResponse.llm_meta 兩分支）。全數通過，`ruff/mypy/pytest`(766，排除 integration) 全綠。
 
