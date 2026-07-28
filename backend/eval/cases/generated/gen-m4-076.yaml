@@ -1,6 +1,7 @@
 id: gen-m4-076
 name: 'M4 self-authoring #76 (pdf_rotate_pages)'
 prompt: 客戶寄來的合約是 PDF，我想拿裡面的資訊來做後續處理，幫我做一個能旋轉 PDF 每一頁的功能。
+codegen_fixture: sample.pdf
 mode:
 - api
 - browser

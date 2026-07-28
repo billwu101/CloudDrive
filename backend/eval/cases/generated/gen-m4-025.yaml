@@ -1,6 +1,7 @@
 id: gen-m4-025
 name: 'M4 self-authoring #25 (extract_gzip)'
 prompt: 廠商寄來的資料是壓縮包，我想直接在雲端硬碟上打開，幫我做一個能解開 gzip的功能。
+codegen_fixture: sample.txt.gz
 mode:
 - api
 - browser

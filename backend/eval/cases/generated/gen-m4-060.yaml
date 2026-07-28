@@ -1,6 +1,7 @@
 id: gen-m4-060
 name: 'M4 self-authoring #60 (image_grayscale)'
 prompt: 這些照片要放到網頁上，原檔太大載入很慢，幫我做一個能把圖片轉灰階的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser

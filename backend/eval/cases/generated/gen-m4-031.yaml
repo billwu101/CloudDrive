@@ -1,6 +1,7 @@
 id: gen-m4-031
 name: 'M4 self-authoring #31 (compress_gzip)'
 prompt: 備份資料佔了太多雲端空間，我想先打包再存，幫我做一個能壓成 gzip的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

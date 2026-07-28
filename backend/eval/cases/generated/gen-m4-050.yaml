@@ -1,6 +1,7 @@
 id: gen-m4-050
 name: 'M4 self-authoring #50 (slugify_text)'
 prompt: 整理讀書筆記時每次都要手動處理很花時間，幫我做一個能把文字轉成 slug的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

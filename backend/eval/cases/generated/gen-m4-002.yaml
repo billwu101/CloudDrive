@@ -1,6 +1,7 @@
 id: gen-m4-002
 name: 'M4 self-authoring #2 (sha1_checksum)'
 prompt: 我從網路上抓了一個安裝檔，想確認下載過程有沒有壞掉，之後好跟官網公布的值比對——幫我做一個可以算 SHA1 雜湊的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

@@ -1,6 +1,7 @@
 id: gen-m4-081
 name: 'M4 self-authoring #81 (tabs_to_spaces)'
 prompt: 跨系統搬檔案常常出現看不見的格式問題，幫我做一個能把 Tab 換成空白的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

@@ -1,6 +1,7 @@
 id: gen-m4-083
 name: 'M4 self-authoring #83 (count_bytes)'
 prompt: 跨系統搬檔案常常出現看不見的格式問題，幫我做一個能統計位元組數的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

@@ -1,6 +1,7 @@
 id: gen-m4-089
 name: 'M4 self-authoring #89 (char_frequency)'
 prompt: 整理讀書筆記時每次都要手動處理很花時間，幫我做一個能統計字元頻率的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

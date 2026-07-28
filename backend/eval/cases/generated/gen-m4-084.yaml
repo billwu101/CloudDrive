@@ -1,6 +1,7 @@
 id: gen-m4-084
 name: 'M4 self-authoring #84 (hexdump_file)'
 prompt: 我在整理雲端硬碟，想先摸清楚每個檔案的狀況再決定怎麼分類，幫我做一個能產生檔案 hex dump的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

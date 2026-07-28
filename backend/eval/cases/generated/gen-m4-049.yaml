@@ -1,6 +1,7 @@
 id: gen-m4-049
 name: 'M4 self-authoring #49 (trim_whitespace)'
 prompt: 我要把一批文字檔交給下游流程，對方要求格式統一，幫我做一個能去除前後空白的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

@@ -1,6 +1,7 @@
 id: gen-m4-053
 name: 'M4 self-authoring #53 (csv_to_tsv)'
 prompt: 我想把匯出的資料丟進程式裡分析，但格式不對，幫我做一個能把 CSV 轉成 TSV的功能。
+codegen_fixture: sample.csv
 mode:
 - api
 - browser

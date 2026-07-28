@@ -1,6 +1,7 @@
 id: gen-m4-012
 name: 'M4 self-authoring #12 (hex_encode)'
 prompt: 我要把一份檔案貼進只吃純文字的系統裡，直接丟二進位會壞掉，幫我做一個能做 hex 編碼的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

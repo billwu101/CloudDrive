@@ -5,8 +5,15 @@ Run once and commit the outputs:  python -m eval.fixtures.make_fixtures
 
 from __future__ import annotations
 
+import base64
+import bz2
+import csv
+import gzip
 import io
+import json
+import lzma
 import tarfile
+import zipfile
 import zlib
 from pathlib import Path
 
@@ -30,6 +37,65 @@ def _make_tar() -> None:
             info.size = len(body)
             tar.addfile(info, io.BytesIO(body))
     (FIXTURES / "sample.tar").write_bytes(buf.getvalue())
+
+
+# --- M4 codegen smoke fixtures (2026-07-28) --------------------------------
+#
+# The smoke test used to feed sample.txt to every generated skill. Format-specific
+# skills (decode / extract / image / pdf / json / csv) then produced nothing and
+# were scored as failures — 48 of 99 M4 cases, purely an artefact of the input.
+# Proven by A/B on one real generated skill (invert_image_colors): sample.txt →
+# no output, sample.png → correct output. Each skill family now gets an input it
+# can actually work on, so the check measures the model rather than the fixture.
+
+
+def _make_archives() -> None:
+    """One archive per format an extract_* skill may be generated for."""
+
+    members = [("alpha.txt", b"AAA\n"), ("docs/beta.txt", b"BBB\n")]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, body in members:
+            zf.writestr(name, body)
+    (FIXTURES / "sample.zip").write_bytes(buf.getvalue())
+
+    tar_bytes = (FIXTURES / "sample.tar").read_bytes()
+    (FIXTURES / "sample.tar.gz").write_bytes(gzip.compress(tar_bytes, mtime=0))
+    (FIXTURES / "sample.txt.gz").write_bytes(gzip.compress(SAMPLE_TXT, mtime=0))
+    (FIXTURES / "sample.txt.bz2").write_bytes(bz2.compress(SAMPLE_TXT))
+    (FIXTURES / "sample.txt.xz").write_bytes(lzma.compress(SAMPLE_TXT))
+    # 7z needs py7zr (already a backend dependency for the built-in skill).
+    import py7zr
+
+    path = FIXTURES / "sample.7z"
+    with py7zr.SevenZipFile(path, "w") as archive:
+        archive.writestr(SAMPLE_TXT.decode(), "alpha.txt")
+
+
+def _make_encoded() -> None:
+    """Inputs a decoder can actually decode (of the *same* SAMPLE_TXT)."""
+
+    (FIXTURES / "sample.base64.txt").write_bytes(base64.b64encode(SAMPLE_TXT))
+    (FIXTURES / "sample.base32.txt").write_bytes(base64.b32encode(SAMPLE_TXT))
+    (FIXTURES / "sample.hex.txt").write_bytes(SAMPLE_TXT.hex().encode())
+    (FIXTURES / "sample.ascii85.txt").write_bytes(base64.a85encode(SAMPLE_TXT))
+
+
+def _make_data() -> None:
+    rows = [
+        {"name": "alpha", "size": "10", "kind": "doc"},
+        {"name": "beta", "size": "20", "kind": "image"},
+        {"name": "gamma", "size": "30", "kind": "doc"},
+    ]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=["name", "size", "kind"], lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    (FIXTURES / "sample.csv").write_text(buf.getvalue(), encoding="utf-8")
+    (FIXTURES / "sample.json").write_text(
+        json.dumps({"items": rows, "total": len(rows)}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _make_png() -> None:
@@ -72,6 +138,9 @@ def main() -> None:
     _make_tar()
     _make_png()
     _make_pdf()
+    _make_archives()
+    _make_encoded()
+    _make_data()
     print("fixtures:", sorted(p.name for p in FIXTURES.glob("sample.*")))
 
 

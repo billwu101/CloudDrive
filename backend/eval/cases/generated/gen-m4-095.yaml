@@ -1,6 +1,7 @@
 id: gen-m4-095
 name: 'M4 self-authoring #95 (csv_row_count)'
 prompt: 整理讀書筆記時每次都要手動處理很花時間，幫我做一個能數 CSV 列數的功能。
+codegen_fixture: sample.csv
 mode:
 - api
 - browser

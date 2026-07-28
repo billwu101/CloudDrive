@@ -136,3 +136,51 @@ def test_verify_codegen_execution_catches_broken_generated_code() -> None:
     }
     checks = verify_codegen_execution(case, response)
     assert checks[0].ok is False
+
+
+_IMAGE_CODE = (
+    "import os\n"
+    "from PIL import Image\n"
+    "def run(input_path, output_dir, params):\n"
+    "    img = Image.open(input_path).convert('L')\n"
+    "    out = os.path.join(output_dir, 'gray.png')\n"
+    "    img.save(out)\n"
+    "    return {'produced': ['gray.png']}\n"
+)
+
+
+def test_format_specific_skill_needs_a_matching_fixture() -> None:
+    """The 2026-07-28 full run scored 48/99 M4 cases as failures because every
+    FILE skill was fed sample.txt. Same code, right input → passes; wrong input
+    → fails. Without ``codegen_fixture`` the check measures the fixture, not the
+    model."""
+
+    wrong = smoke_test_skill(code=_IMAGE_CODE, item_types=["FILE"])
+    right = smoke_test_skill(code=_IMAGE_CODE, item_types=["FILE"], file_fixture="sample.png")
+
+    assert wrong["results"]["FILE"]["ok"] is False
+    assert right["results"]["FILE"]["ok"] is True
+    assert right["results"]["FILE"]["produced_files"] == ["gray.png"]
+
+
+def test_unknown_fixture_is_a_loud_error_not_a_silent_pass() -> None:
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        smoke_test_skill(code=_GOOD_CODE, item_types=["FILE"], file_fixture="nope.bin")
+
+
+def test_verify_codegen_execution_uses_the_cases_declared_fixture() -> None:
+    case = _case(
+        id="m4",
+        expect={"workflow": {"skill_generated": "*"}},
+        codegen_fixture="sample.png",
+    )
+    response = {
+        "skill_proposal": {
+            "code": _IMAGE_CODE,
+            "manifest": {"ui": {"context_menu": [{"item_types": ["FILE"]}]}},
+        }
+    }
+    checks = verify_codegen_execution(case, response)
+    assert checks[0].ok is True

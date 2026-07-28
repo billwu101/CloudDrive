@@ -1,6 +1,7 @@
 id: gen-m4-059
 name: 'M4 self-authoring #59 (image_thumbnail)'
 prompt: 投影片裡的圖片規格不一，看起來很雜亂，幫我做一個能產生圖片縮圖的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser

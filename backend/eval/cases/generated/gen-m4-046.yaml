@@ -1,6 +1,7 @@
 id: gen-m4-046
 name: 'M4 self-authoring #46 (wrap_lines)'
 prompt: 我要把一批文字檔交給下游流程，對方要求格式統一，幫我做一個能把長行折成 80 字的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

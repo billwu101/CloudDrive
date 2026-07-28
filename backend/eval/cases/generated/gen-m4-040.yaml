@@ -1,6 +1,7 @@
 id: gen-m4-040
 name: 'M4 self-authoring #40 (titlecase_text)'
 prompt: 我要把一批文字檔交給下游流程，對方要求格式統一，幫我做一個能轉成首字大寫的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

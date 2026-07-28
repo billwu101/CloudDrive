@@ -1,6 +1,7 @@
 id: gen-m4-067
 name: 'M4 self-authoring #67 (image_to_webp)'
 prompt: 我要把手機拍的圖整批處理成一致的樣式再交出去，幫我做一個能把圖片轉成 WebP的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser

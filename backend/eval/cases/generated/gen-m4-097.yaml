@@ -1,6 +1,7 @@
 id: gen-m4-097
 name: 'M4 self-authoring #97 (base85_encode)'
 prompt: 我要把一批文字檔交給下游流程，對方要求格式統一，幫我做一個能做 base85 編碼的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

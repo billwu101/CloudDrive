@@ -1,6 +1,7 @@
 id: gen-m4-024
 name: 'M4 self-authoring #24 (extract_tar)'
 prompt: 我從舊硬碟翻出一包封存檔，想拿回裡面的東西，幫我做一個能解開 tar的功能。
+codegen_fixture: sample.tar
 mode:
 - api
 - browser

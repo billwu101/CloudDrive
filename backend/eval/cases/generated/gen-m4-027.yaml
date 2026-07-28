@@ -1,6 +1,7 @@
 id: gen-m4-027
 name: 'M4 self-authoring #27 (extract_xz)'
 prompt: 廠商寄來的資料是壓縮包，我想直接在雲端硬碟上打開，幫我做一個能解開 xz的功能。
+codegen_fixture: sample.txt.xz
 mode:
 - api
 - browser

@@ -1,6 +1,7 @@
 id: gen-m4-045
 name: 'M4 self-authoring #45 (number_lines)'
 prompt: 我手上有一份從別的系統匯出的文字檔，格式亂七八糟不好讀，幫我做一個能為每行加行號的功能，之後整理這類檔案就能直接用。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

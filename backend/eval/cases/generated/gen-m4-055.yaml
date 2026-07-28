@@ -1,6 +1,7 @@
 id: gen-m4-055
 name: 'M4 self-authoring #55 (json_prettify)'
 prompt: 我想把匯出的資料丟進程式裡分析，但格式不對，幫我做一個能把 JSON 美化縮排的功能。
+codegen_fixture: sample.json
 mode:
 - api
 - browser

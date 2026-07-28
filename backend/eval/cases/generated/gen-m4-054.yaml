@@ -1,6 +1,7 @@
 id: gen-m4-054
 name: 'M4 self-authoring #54 (tsv_to_csv)'
 prompt: 會計那邊給的報表格式我這邊的工具讀不了，幫我做一個能把 TSV 轉成 CSV的功能。
+codegen_fixture: sample.csv
 mode:
 - api
 - browser

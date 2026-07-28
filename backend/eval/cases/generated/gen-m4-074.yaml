@@ -1,6 +1,7 @@
 id: gen-m4-074
 name: 'M4 self-authoring #74 (pdf_page_count)'
 prompt: 客戶寄來的合約是 PDF，我想拿裡面的資訊來做後續處理，幫我做一個能數 PDF 頁數的功能。
+codegen_fixture: sample.pdf
 mode:
 - api
 - browser

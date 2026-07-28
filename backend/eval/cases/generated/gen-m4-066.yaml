@@ -1,6 +1,7 @@
 id: gen-m4-066
 name: 'M4 self-authoring #66 (image_to_jpeg)'
 prompt: 這些照片要放到網頁上，原檔太大載入很慢，幫我做一個能把圖片轉成 JPEG的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser

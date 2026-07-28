@@ -1,6 +1,7 @@
 id: gen-m4-061
 name: 'M4 self-authoring #61 (image_resize_half)'
 prompt: 我要把手機拍的圖整批處理成一致的樣式再交出去，幫我做一個能把圖片縮一半的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser

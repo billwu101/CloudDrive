@@ -37,6 +37,23 @@ from app.assistant.skills.sandbox import SkillSandbox
 _FILE_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "sample.txt"
 
 
+def _resolve_fixture(name: str | None) -> Path:
+    """The input a generated skill is smoke-tested against.
+
+    ``None`` keeps the historical plain-text fixture (right for hash / encode /
+    compress / text-processing skills). A named fixture is required for skills
+    whose input must be a specific format — feeding sample.txt to an image or
+    PDF skill tests the fixture, not the model (2026-07-28: that alone accounted
+    for 48 of 99 M4 failures)."""
+
+    if name is None:
+        return _FILE_FIXTURE
+    path = _FILE_FIXTURE.parent / name
+    if not path.is_file():
+        raise FileNotFoundError(f"codegen_fixture not found: {path}")
+    return path
+
+
 def _folder_fixture() -> Path:
     """Minimal FOLDER input: 1-2 files + a subfolder, per the smoke-test spec
     in memory clouddrive-codegen-smoke-test-dec. Caller must delete it."""
@@ -48,7 +65,13 @@ def _folder_fixture() -> Path:
     return root
 
 
-def smoke_test_skill(*, code: str, item_types: list[str], timeout_sec: int = 20) -> dict[str, Any]:
+def smoke_test_skill(
+    *,
+    code: str,
+    item_types: list[str],
+    timeout_sec: int = 20,
+    file_fixture: str | None = None,
+) -> dict[str, Any]:
     """Run ``code`` against a minimal fixture for each declared item_type.
 
     Returns ``{"ok": bool, "results": {item_type: {ok, error, produced_files,
@@ -62,7 +85,7 @@ def smoke_test_skill(*, code: str, item_types: list[str], timeout_sec: int = 20)
     for item_type in types:
         folder_fixture: Path | None = None
         if item_type == "FILE":
-            fixture = _FILE_FIXTURE
+            fixture = _resolve_fixture(file_fixture)
         else:
             folder_fixture = _folder_fixture()
             fixture = folder_fixture

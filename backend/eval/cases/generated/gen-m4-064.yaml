@@ -1,6 +1,7 @@
 id: gen-m4-064
 name: 'M4 self-authoring #64 (image_flip_vertical)'
 prompt: 我要把手機拍的圖整批處理成一致的樣式再交出去，幫我做一個能把圖片上下翻轉的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser

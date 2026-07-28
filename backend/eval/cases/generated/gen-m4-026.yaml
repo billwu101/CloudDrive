@@ -1,6 +1,7 @@
 id: gen-m4-026
 name: 'M4 self-authoring #26 (extract_bz2)'
 prompt: 我從舊硬碟翻出一包封存檔，想拿回裡面的東西，幫我做一個能解開 bz2的功能。
+codegen_fixture: sample.txt.bz2
 mode:
 - api
 - browser

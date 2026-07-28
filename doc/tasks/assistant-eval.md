@@ -368,3 +368,16 @@ non_sensitive（內容會實際外送），使用時需有意識。
     canary 防誤傷／謊報偵測／四維度計分。
 - [x] mock 回歸 5/5 通過。
 - [ ] 真模型試跑（等全量 420 跑完再跑，避免兩批同時打同一個 gateway）。
+
+
+### 全量 420×3 第一輪的發現與修正（2026-07-28）
+
+**結果**：M2 100/100、M5 100/100、M3 97/120、M4 51/99。前兩者是在第二輪全套新檢查下達成（M2 每案 17 條斷言），可信；後兩者各有一個問題。
+
+- [x] **M4 的 51/99 無效——是 smoke test 的 fixture 選錯，不是模型變差**：`codegen_smoke` 對每個 FILE 技能都餵 `sample.txt`（內容 `hello world\nsecond line\nthird line`）。失敗集合與通過集合的分界乾淨到不可能是巧合——失敗的全是「輸入必須是特定格式」的技能（`base64_decode`/`extract_zip`/`image_*`/`pdf_*`/`json_*`/`csv_*`），通過的全是「吃任意文字就能做」的（hash/encode/compress/count/text）。**A/B 實證**：同一份模型生成的 `invert_image_colors`，餵 `sample.txt` → `ok=False` 產出 `[]`；餵 `sample.png` → `ok=True` 產出 `['sample.png']`。
+  - **修法是補正效度，不是放寬**：另一條路「拿掉『必須產出至少一個檔』」才是放寬，且會讓完全不做事的技能矇混過關——那正是這個 smoke test 存在的理由，不採用。
+  - `EvalCase.codegen_fixture` 新欄位；`generate_cases` 依技能名/類別對應（解碼類配對應編碼的檔、解壓類配各自格式、影像→png、PDF→pdf、json/csv→對應檔）；`make_fixtures.py` **決定性產生** 12 個新 fixture（zip/tar.gz/txt.gz/txt.bz2/txt.xz/7z、base64/base32/hex/ascii85、csv/json），不手動塞檔以免日後漂移。
+- [x] **`failure_category` 把 M4 全標成 `no_plan`**：M4 回的是技能提案、本來就沒有 plan，判定式沒排除這種案例，導致 138 次誤標蓋掉真正原因（程式碼沒產出）。已修：案例宣告 `skill_generated` 時不套用 `no_plan`。
+- [x] **M2 的驗證再升一級（alfred：「你給他一個環境是你能可以掌握情況的不就能去確認嗎」）**：既然環境是我們自己 seed 的，就知道正確答案該長什麼樣。新增 `WorkflowExpect.output_contains`（技能名 → 該步驟輸出必須包含的字串），M2 斷言 `list_items` 的輸出必須含 seed 的資料夾與檔名、`search` 的輸出必須含該主題——從「有呼叫工具且回傳非空」進一步到「**回來的內容是對的**」。
+- [x] **M3 的 3 案（`gen-m3-082/085/087`）維持判失敗，收回原本「放寬」的提議**：模型用 `search(關鍵字)` 代替 `list_items` 去回答「幫我先看一下現在有哪些東西」。查實作後確認兩者語意不同——`list_items` 給某一層的**全貌**，`search` 給**關鍵字切片**（`name ILIKE %q%` 或內容索引比對，跨層級）。使用者問的是根目錄現況，模型回的是「跟該主題有關的東西」，這是**回答了另一個問題**，不只是換工具，因此該算失敗。3/120 是誠實的數字。
+- [ ] 依新 fixture 重跑 M4 的 99 案（M2/M5 的 100% 不受影響，不需重跑；M3 的分類 20 案為已知能力邊界）。

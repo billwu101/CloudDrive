@@ -1,6 +1,7 @@
 id: gen-m4-071
 name: 'M4 self-authoring #71 (image_blur)'
 prompt: 投影片裡的圖片規格不一，看起來很雜亂，幫我做一個能把圖片模糊化的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser

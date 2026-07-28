@@ -1,6 +1,7 @@
 id: gen-m4-016
 name: 'M4 self-authoring #16 (base32_decode)'
 prompt: 我要把一份檔案貼進只吃純文字的系統裡，直接丟二進位會壞掉，幫我做一個能做 base32 解碼的功能。
+codegen_fixture: sample.base32.txt
 mode:
 - api
 - browser

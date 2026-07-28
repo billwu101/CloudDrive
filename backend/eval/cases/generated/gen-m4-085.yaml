@@ -1,6 +1,7 @@
 id: gen-m4-085
 name: 'M4 self-authoring #85 (base32_hex)'
 prompt: 跨系統搬檔案常常出現看不見的格式問題，幫我做一個能把檔案轉 base32hex的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

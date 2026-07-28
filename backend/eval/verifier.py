@@ -206,7 +206,7 @@ def verify_codegen_execution(case: EvalCase, response: dict[str, Any]) -> list[C
         if context_menu and isinstance(context_menu[0], dict)
         else ["FILE"]
     )
-    outcome = smoke_test_skill(code=code, item_types=item_types)
+    outcome = smoke_test_skill(code=code, item_types=item_types, file_fixture=case.codegen_fixture)
     checks: list[CheckResult] = []
     for item_type, result in outcome["results"].items():
         checks.append(
@@ -431,6 +431,18 @@ def verify_step_results(case: EvalCase, results: Sequence[Mapping[str, Any]]) ->
     )
 
     workflow = case.expect.workflow
+    for skill, needles in (workflow.output_contains if workflow is not None else {}).items():
+        matching = [r for r in results if r.get("skill") == skill]
+        blob = json.dumps([r.get("output") for r in matching], ensure_ascii=False)
+        for needle in needles:
+            checks.append(
+                CheckResult(
+                    "execution",
+                    f"{skill} output contains {needle!r}",
+                    needle in blob,
+                    (f"{skill} did not run" if not matching else f"output={blob[:200]}"),
+                )
+            )
     for skill in workflow.nonempty_outputs if workflow is not None else []:
         matching = [r for r in results if r.get("skill") == skill]
         found = any(_output_is_nonempty(r.get("output")) for r in matching)

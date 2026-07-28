@@ -1,6 +1,7 @@
 id: gen-m4-017
 name: 'M4 self-authoring #17 (hex_decode)'
 prompt: 同事傳來的資料是編過碼的，我想在自己的雲端硬碟上直接處理，幫我做一個能做 hex 解碼的功能。
+codegen_fixture: sample.hex.txt
 mode:
 - api
 - browser

@@ -1,6 +1,7 @@
 id: gen-m4-011
 name: 'M4 self-authoring #11 (base32_encode)'
 prompt: 同事傳來的資料是編過碼的，我想在自己的雲端硬碟上直接處理，幫我做一個能做 base32 編碼的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

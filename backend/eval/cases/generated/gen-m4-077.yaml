@@ -1,6 +1,7 @@
 id: gen-m4-077
 name: 'M4 self-authoring #77 (pdf_split_pages)'
 prompt: 我掃描的文件存成 PDF 之後不好處理，幫我做一個能把 PDF 拆成單頁的功能。
+codegen_fixture: sample.pdf
 mode:
 - api
 - browser

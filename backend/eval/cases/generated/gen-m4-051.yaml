@@ -1,6 +1,7 @@
 id: gen-m4-051
 name: 'M4 self-authoring #51 (csv_to_json)'
 prompt: 我想把匯出的資料丟進程式裡分析，但格式不對，幫我做一個能把 CSV 轉成 JSON的功能。
+codegen_fixture: sample.csv
 mode:
 - api
 - browser

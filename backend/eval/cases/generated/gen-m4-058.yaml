@@ -1,6 +1,7 @@
 id: gen-m4-058
 name: 'M4 self-authoring #58 (json_keys)'
 prompt: 會計那邊給的報表格式我這邊的工具讀不了，幫我做一個能列出 JSON 的所有鍵的功能。
+codegen_fixture: sample.json
 mode:
 - api
 - browser

@@ -1,6 +1,7 @@
 id: gen-m4-052
 name: 'M4 self-authoring #52 (json_to_csv)'
 prompt: 會計那邊給的報表格式我這邊的工具讀不了，幫我做一個能把 JSON 轉成 CSV的功能。
+codegen_fixture: sample.json
 mode:
 - api
 - browser

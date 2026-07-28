@@ -31,6 +31,12 @@ expect:
     nonempty_outputs:
     - search
     - list_items
+    output_contains:
+      list_items:
+      - 旅遊
+      - 旅遊_v1.pdf
+      search:
+      - 旅遊
     write_skill: get_info
     write_ref_args:
     - item_id

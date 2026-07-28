@@ -1,6 +1,7 @@
 id: gen-m4-091
 name: 'M4 self-authoring #91 (unique_words)'
 prompt: 我要把一批文字檔交給下游流程，對方要求格式統一，幫我做一個能列出不重複的詞的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

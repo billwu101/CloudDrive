@@ -172,6 +172,12 @@ def score_case(
         )
 
     passed = score >= case.scoring.pass_threshold
+    # A skill-generation case (M4) answers with a proposal and never a plan, so
+    # "no plan" is its normal shape — labelling every M4 failure "no_plan" hid
+    # the real cause (the generated code produced nothing). 2026-07-28.
+    workflow = case.expect.workflow
+    if workflow is not None and workflow.skill_generated is not None:
+        plan_is_none = False
     done_reason = llm_meta.get("done_reason") if llm_meta else None
     prompt_tokens = llm_meta.get("prompt_tokens") if llm_meta else None
     completion_tokens = llm_meta.get("completion_tokens") if llm_meta else None

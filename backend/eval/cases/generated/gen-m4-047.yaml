@@ -1,6 +1,7 @@
 id: gen-m4-047
 name: 'M4 self-authoring #47 (head_lines)'
 prompt: 整理讀書筆記時每次都要手動處理很花時間，幫我做一個能取前 10 行的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

@@ -1,6 +1,7 @@
 id: gen-m4-094
 name: 'M4 self-authoring #94 (csv_headers)'
 prompt: 我要把一批文字檔交給下游流程，對方要求格式統一，幫我做一個能列出 CSV 欄位名的功能。
+codegen_fixture: sample.csv
 mode:
 - api
 - browser

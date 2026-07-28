@@ -1,6 +1,7 @@
 id: gen-m4-028
 name: 'M4 self-authoring #28 (extract_7z)'
 prompt: 我從舊硬碟翻出一包封存檔，想拿回裡面的東西，幫我做一個能解開 7z的功能。
+codegen_fixture: sample.7z
 mode:
 - api
 - browser

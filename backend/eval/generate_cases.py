@@ -214,6 +214,13 @@ def build_m2() -> list[dict[str, Any]]:
                             "steps_include": tools,
                             "required_skills": tools,
                             "nonempty_outputs": ["search", "list_items"],
+                            # We seeded this drive, so we know exactly what a
+                            # correct query must return — check the content, not
+                            # just that something came back.
+                            "output_contains": {
+                                "list_items": [topic, f"{topic}_v1.pdf"],
+                                "search": [topic],
+                            },
                             "write_skill": "get_info",
                             "write_ref_args": ["item_id"],
                         },
@@ -1004,6 +1011,55 @@ M4_CONTEXTS: dict[str, list[str]] = {
 }
 
 
+# Which fixture the codegen smoke test must feed each skill family. A skill
+# whose input has to be a specific format cannot produce anything from plain
+# text — see eval/fixtures/make_fixtures.py for why (and for how these are
+# generated deterministically).
+M4_FIXTURES: dict[str, str] = {
+    "hash": "sample.txt",
+    "encode": "sample.txt",
+    "text": "sample.txt",
+    "file": "sample.txt",
+    "archive_compress": "sample.txt",
+    "archive_extract": "sample.zip",  # overridden per format below
+    "data": "sample.csv",
+    "image": "sample.png",
+    "pdf": "sample.pdf",
+}
+
+# Decoders need the matching encoding of the same text; extractors need their
+# own archive format. Keyed by skill name because the category is too coarse.
+M4_FIXTURE_BY_SKILL: dict[str, str] = {
+    "base64_decode": "sample.base64.txt",
+    "base32_decode": "sample.base32.txt",
+    "hex_decode": "sample.hex.txt",
+    "ascii85_decode": "sample.ascii85.txt",
+    "extract_zip": "sample.zip",
+    "extract_tar": "sample.tar",
+    "extract_gzip": "sample.txt.gz",
+    "extract_bz2": "sample.txt.bz2",
+    "extract_xz": "sample.txt.xz",
+    "extract_7z": "sample.7z",
+    "json_to_csv": "sample.json",
+    "json_prettify": "sample.json",
+    "json_minify": "sample.json",
+    "flatten_json": "sample.json",
+    "json_keys": "sample.json",
+    "json_sort_keys": "sample.json",
+    "json_to_jsonl": "sample.json",
+    "csv_to_json": "sample.csv",
+    "csv_to_tsv": "sample.csv",
+    "csv_headers": "sample.csv",
+    "csv_row_count": "sample.csv",
+    "tsv_to_csv": "sample.csv",
+    "url_decode": "sample.txt",
+}
+
+
+def _m4_fixture(name: str, category: str) -> str:
+    return M4_FIXTURE_BY_SKILL.get(name, M4_FIXTURES.get(category, "sample.txt"))
+
+
 def _m4_prompt(index: int, desc: str, category: str) -> str:
     contexts = M4_CONTEXTS[category]
     return contexts[index % len(contexts)].format(desc=desc)
@@ -1019,6 +1075,7 @@ def build_m4() -> list[dict[str, Any]]:
                 "id": f"gen-m4-{n:03d}",
                 "name": f"M4 self-authoring #{n} ({name})",
                 "prompt": _m4_prompt(n, desc, category),
+                "codegen_fixture": _m4_fixture(name, category),
                 "mode": ["api", "browser"],
                 "tags": ["skill-generation", "generated", "m4"],
                 "expect": {"workflow": {"skill_generated": "*"}},

@@ -1,6 +1,7 @@
 id: gen-m4-020
 name: 'M4 self-authoring #20 (rot13_text)'
 prompt: 我要把一份檔案貼進只吃純文字的系統裡，直接丟二進位會壞掉，幫我做一個能做 ROT13 轉換的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

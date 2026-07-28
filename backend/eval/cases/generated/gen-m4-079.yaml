@@ -1,6 +1,7 @@
 id: gen-m4-079
 name: 'M4 self-authoring #79 (file_info)'
 prompt: 跨系統搬檔案常常出現看不見的格式問題，幫我做一個能讀出檔案大小與類型的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

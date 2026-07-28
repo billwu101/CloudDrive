@@ -40,6 +40,13 @@ class WorkflowExpect(BaseModel):
     # returns zero items means the model wrote/answered without ever finding
     # its target). Checked against the execution results, not the plan.
     nonempty_outputs: list[str] = Field(default_factory=list)
+    # Skill name -> substrings that must appear in that step's serialised
+    # output. Stronger than ``nonempty_outputs``: because the case seeds the
+    # drive itself, we know exactly what a correct query must come back with,
+    # so a read-only tier can be verified on *content* and not merely on "the
+    # model called something and got a non-empty page" (2026-07-28, alfred:
+    # "你給他一個環境是你能可以掌握情況的不就能去確認嗎").
+    output_contains: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class StateExpect(BaseModel):
@@ -166,6 +173,11 @@ class EvalCase(BaseModel):
     # have a deterministic expected result, instead of staying plan-level-only.
     seed_files: list[str | SeedFile] = Field(default_factory=list)
     context_turns: list[str] = Field(default_factory=list)
+    # Which fixture the M4 codegen smoke test should feed the generated skill.
+    # Format-specific skills (image/pdf/archive/decode/json/csv) cannot produce
+    # anything from a plain text file; before this, 48 of 99 M4 cases failed for
+    # that reason alone. None => the default text fixture.
+    codegen_fixture: str | None = None
 
 
 def load_cases(directory: str | Path) -> list[EvalCase]:

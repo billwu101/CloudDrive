@@ -1,6 +1,7 @@
 id: gen-m4-001
 name: 'M4 self-authoring #1 (md5_checksum)'
 prompt: 我要把檔案寄給同事，希望對方收到後能驗證內容沒被改過，幫我做一個能算 MD5 雜湊的功能，附在信裡一起給他。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

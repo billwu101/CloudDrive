@@ -1,6 +1,7 @@
 id: gen-m4-048
 name: 'M4 self-authoring #48 (tail_lines)'
 prompt: 我手上有一份從別的系統匯出的文字檔，格式亂七八糟不好讀，幫我做一個能取後 10 行的功能，之後整理這類檔案就能直接用。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser

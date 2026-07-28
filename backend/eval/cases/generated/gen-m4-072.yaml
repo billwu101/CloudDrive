@@ -1,6 +1,7 @@
 id: gen-m4-072
 name: 'M4 self-authoring #72 (image_sepia)'
 prompt: 這些照片要放到網頁上，原檔太大載入很慢，幫我做一個能把圖片轉復古色的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser
