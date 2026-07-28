@@ -73,6 +73,12 @@ _GENERATION_TARGETS = (
 class AssistantAuthoringResult:
     message: str
     skill_proposal: AssistantSkillResponse | None = None
+    # From CodegenResult when a codegen call happened (_generate_skill); stays
+    # None for authoring paths with no LLM call (e.g. _propose_inspect_details,
+    # which uses a hardcoded manifest).
+    done_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
 
 def _inspect_details_manifest() -> dict[str, Any]:
@@ -285,7 +291,12 @@ class AssistantSkillService:
         result = await self._codegen.author(request=message)
         if not result.ok or result.manifest is None:
             detail = f" ({'; '.join(result.problems)})" if result.problems else ""
-            return AssistantAuthoringResult(message=result.reply + detail)
+            return AssistantAuthoringResult(
+                message=result.reply + detail,
+                done_reason=result.done_reason,
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+            )
 
         # Persist as a pending proposal only — generation never auto-installs or
         # auto-executes. Install requires explicit approval; execution then runs
@@ -303,6 +314,9 @@ class AssistantSkillService:
                 "安裝後的執行會在受限沙箱中進行。"
             ),
             skill_proposal=_skill_response(skill),
+            done_reason=result.done_reason,
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
         )
 
     async def list_skills(

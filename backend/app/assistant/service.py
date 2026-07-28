@@ -175,6 +175,11 @@ class WorkflowService:
                     session_id=active_session_id,
                     message=authoring.message,
                     skill_proposal=authoring.skill_proposal,
+                    llm_meta=AssistantLlmMeta(
+                        done_reason=authoring.done_reason,
+                        prompt_tokens=authoring.prompt_tokens,
+                        completion_tokens=authoring.completion_tokens,
+                    ),
                 )
 
         selected_items = await self._resolve_selection(user_id, selected)

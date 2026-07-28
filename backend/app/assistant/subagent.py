@@ -114,6 +114,14 @@ class CodegenResult:
     code: str = ""
     problems: list[str] = field(default_factory=list)
     reply: str = ""
+    # Diagnostics from the codegen LLM call (see LLMResponse) — surfaced for
+    # eval/observability via AssistantChatResponse.llm_meta. Unlike PlanResult,
+    # CodegenResult isn't the schema constrained decoding is validated against
+    # (_CODEGEN_RESPONSE_FORMAT is a separate hand-written dict), so these are
+    # plain public fields, no PrivateAttr needed.
+    done_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
 
 def build_codegen_prompt(request: str) -> str:
@@ -234,6 +242,9 @@ class CodegenSubAgent:
                         manifest=validated,
                         code=code,
                         reply=f"I drafted a skill named {validated['name']}.",
+                        done_reason=response.done_reason,
+                        prompt_tokens=response.prompt_tokens,
+                        completion_tokens=response.completion_tokens,
                     )
             if attempt < self._max_repair:
                 messages.append(LLMMessage(role="assistant", content=response.content))
@@ -254,4 +265,7 @@ class CodegenSubAgent:
             ok=False,
             problems=problems,
             reply="I couldn't generate a safe, valid skill for that request.",
+            done_reason=response.done_reason,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
         )
