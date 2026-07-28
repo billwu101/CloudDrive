@@ -82,16 +82,30 @@ def aggregate_runs(case: EvalCase, run_scores: list[CaseScore]) -> AggregateScor
 
 
 def _failure_category(
-    *, passed: bool, done_reason: str | None, checks: list[CheckResult]
+    *,
+    passed: bool,
+    done_reason: str | None,
+    checks: list[CheckResult],
+    plan_is_none: bool = False,
 ) -> str | None:
     """Rule-based (zero LLM cost) classification of why a run failed — for
     post-hoc analysis, never used in the pass/fail decision itself. See
-    doc/detailed-design/10-assistant-eval.md §10.15."""
+    doc/detailed-design/10-assistant-eval.md §10.15.
+
+    ``plan_is_none`` (2026-07-28, alfred): the response had no plan object at
+    all — the model may have reasonably declined pending clarification, OR
+    failed to produce parseable output; ``AssistantChatResponse`` doesn't let
+    an eval caller tell these apart (both collapse to the same "plan.steps
+    empty" branch in service.py). Labelled "no_plan", not "wrong_plan" —
+    don't overclaim it was necessarily a bad guess.
+    """
 
     if passed:
         return None
     if done_reason == "length":
         return "truncated"
+    if plan_is_none:
+        return "no_plan"
     failed_dims = {check.dimension for check in checks if not check.ok}
     if "safety" in failed_dims:
         return "safety_violation"
@@ -109,11 +123,15 @@ def score_case(
     checks: list[CheckResult],
     *,
     llm_meta: Mapping[str, Any] | None = None,
+    plan_is_none: bool = False,
 ) -> CaseScore:
     """Per-dimension pass-rate, weighted into a single case score.
 
     ``llm_meta`` (the chat response's ``llm_meta`` field, when present) supplies
     the report-only efficiency fields; it never affects ``score``/``passed``.
+    ``plan_is_none`` (the raw response's ``plan`` key, when present) refines
+    ``failure_category`` to "no_plan" instead of "wrong_plan" — see
+    ``_failure_category``.
     """
 
     by_dimension: dict[str, list[float]] = {}
@@ -152,5 +170,7 @@ def score_case(
         done_reason=done_reason,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        failure_category=_failure_category(passed=passed, done_reason=done_reason, checks=checks),
+        failure_category=_failure_category(
+            passed=passed, done_reason=done_reason, checks=checks, plan_is_none=plan_is_none
+        ),
     )

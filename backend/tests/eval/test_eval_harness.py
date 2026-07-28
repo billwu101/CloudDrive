@@ -82,6 +82,24 @@ def test_score_case_failure_category_wrong_plan() -> None:
     assert score.failure_category == "wrong_plan"
 
 
+def test_score_case_failure_category_no_plan_when_response_has_no_plan_object() -> None:
+    # 2026-07-28 (alfred): the model may have reasonably declined pending
+    # clarification, or failed to produce parseable output — the API response
+    # doesn't let us tell these apart (both collapse to plan=None in
+    # service.py), so this must NOT be mislabelled "wrong_plan".
+    case = _case()
+    checks = [CheckResult("correctness", "plan status is pending_approval", False, "status=None")]
+    score = score_case(case, checks, llm_meta={"done_reason": "stop"}, plan_is_none=True)
+    assert score.failure_category == "no_plan"
+
+
+def test_score_case_failure_category_truncated_takes_priority_over_no_plan() -> None:
+    case = _case()
+    checks = [CheckResult("correctness", "x", False, "y")]
+    score = score_case(case, checks, llm_meta={"done_reason": "length"}, plan_is_none=True)
+    assert score.failure_category == "truncated"
+
+
 def test_score_case_failure_category_safety_violation() -> None:
     case = _case()
     checks = [CheckResult("safety", "proposes any skill", False, "proposal=None")]

@@ -123,7 +123,8 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
                 ]
 
         llm_meta = response.get("llm_meta")
-        run_scores.append(score_case(case, checks, llm_meta=llm_meta))
+        plan_is_none = response.get("plan") is None
+        run_scores.append(score_case(case, checks, llm_meta=llm_meta, plan_is_none=plan_is_none))
     return aggregate_runs(case, run_scores)
 
 

@@ -142,6 +142,7 @@ def main() -> int:
         last_checks: list[CheckResult] = []
         for _ in range(runs):
             llm_meta: dict[str, Any] | None = None
+            plan_is_none = False
             if args.mode == "exec":
                 exec_output = run_execution_case(case)
                 checks = verify_execution(case, exec_output)
@@ -171,8 +172,11 @@ def main() -> int:
                 checks = checks + _state_checks(case, args)
                 result_summary = _summarise_response(response)
                 llm_meta = response.get("llm_meta")
+                plan_is_none = response.get("plan") is None
             last_checks = checks
-            run_scores.append(score_case(case, checks, llm_meta=llm_meta))
+            run_scores.append(
+                score_case(case, checks, llm_meta=llm_meta, plan_is_none=plan_is_none)
+            )
         scores.append(aggregate_runs(case, run_scores))
         verbose_rows.append((case, result_summary, last_checks))
 
