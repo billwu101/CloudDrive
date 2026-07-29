@@ -33,6 +33,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from eval.cleanup import delete_test_users
 from eval.report import (
     aggregates_to_json,
     aggregates_to_markdown,
@@ -62,6 +63,11 @@ from eval.verifier import (
     verify_step_results,
 )
 
+# Every account this process registered, so the run can delete exactly its own
+# (see eval/cleanup.py — a blanket "e9_%" wipe would take a concurrent batch's
+# users with it, and batches do run concurrently, one per model endpoint).
+_REGISTERED_EMAILS: list[str] = []
+
 
 def _register(base_url: str, stamp: str, *, timeout: float = 30.0) -> str:
     body = {
@@ -80,6 +86,7 @@ def _register(base_url: str, stamp: str, *, timeout: float = 30.0) -> str:
     token = data.get("access_token")
     if not isinstance(token, str) or not token:
         raise EvalRunnerError(f"register did not return access_token: {data!r}")
+    _REGISTERED_EMAILS.append(str(body["email"]))
     return token
 
 
@@ -215,6 +222,11 @@ def main() -> int:
     parser.add_argument("--tag", default=None, help="only cases with this tag (e.g. m2)")
     parser.add_argument("--limit", type=int, default=0, help="0 = no limit")
     parser.add_argument("--resume", action="store_true", help="skip case_ids already in --out")
+    parser.add_argument(
+        "--keep-accounts",
+        action="store_true",
+        help="do not delete the throwaway accounts this run registered (for post-mortem)",
+    )
     args = parser.parse_args()
 
     cases = load_cases(args.cases)
@@ -263,6 +275,16 @@ def main() -> int:
         print()
         print(warning)
     Path(str(out_path) + ".json").write_text(aggregates_to_json(all_scores))
+
+    if args.keep_accounts:
+        print(f"\n（保留 {len(_REGISTERED_EMAILS)} 個測試帳號,未清除）")
+    else:
+        try:
+            removed = delete_test_users(_REGISTERED_EMAILS)
+            print(f"\n清除本次跑批建立的測試帳號:{removed} 個")
+        except Exception as exc:  # results must survive a cleanup failure
+            print(f"\n測試帳號清除失敗（結果不受影響）:{exc}")
+            print(f"要手動清除的帳號數:{len(_REGISTERED_EMAILS)}")
     return 0
 
 

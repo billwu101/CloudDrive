@@ -15,6 +15,7 @@ from app.assistant.schemas import AssistantSkillExecuteResponse, AssistantSkillR
 from app.assistant.skills.codeguard import validate_skill_code
 from app.assistant.skills.manifest import validate_manifest
 from app.assistant.skills.sandbox import SkillSandbox
+from app.assistant.skills.smoke import smoke_test_generated_code
 from app.assistant.subagent import CodegenSubAgent
 from app.core.config import get_settings
 from app.core.error_codes import ErrorCode
@@ -289,7 +290,15 @@ class AssistantSkillService:
         message: str,
     ) -> AssistantAuthoringResult:
         assert self._codegen is not None
-        result = await self._codegen.author(request=message)
+        # Run the generated code once before proposing it (see skills/smoke.py):
+        # a token-garbled identifier passes every static check and then dies on
+        # the user's first click. Skipped when no sandbox is configured.
+        smoke = (
+            (lambda code, item_types: smoke_test_generated_code(sandbox, code, item_types))
+            if (sandbox := self._sandbox) is not None
+            else None
+        )
+        result = await self._codegen.author(request=message, smoke=smoke)
         if not result.ok or result.manifest is None:
             detail = f" ({'; '.join(result.problems)})" if result.problems else ""
             return AssistantAuthoringResult(

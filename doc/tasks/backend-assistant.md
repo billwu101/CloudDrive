@@ -330,3 +330,15 @@ a folder`）。目前 `validate_plan` 只檢查「引用必須指向更早的步
 ## 整合測試連線字串（2026-07-29）
 
 - [x] `tests/conftest.py` 改為從 `.env` 推導測試資料庫位址（只換資料庫名為 `clouddrive_test`，主機／埠沿用開發環境），顯式的 `DATABASE_URL` 仍優先（CI 用）。開發機的 Postgres 在 5434 而預設值寫死 5432，導致整合測試 51 個全部 error——症狀看起來像測試壞了，其實是連線字串指向不存在的服務。
+
+
+## 生成技能先試跑再提出（2026-07-29）
+
+- [x] `app/assistant/skills/smoke.py`：在正式環境同一個沙箱裡跑一次生成的程式碼，每個宣告的 item_type 各一次；只有「程式碼壞了」（NameError／SyntaxError／AttributeError／TypeError／re.error…）才算失敗，輸入格式不合不算。
+- [x] `CodegenSubAgent.author(request, smoke=...)`：試跑失敗轉成 repair problem，走既有修補迴圈；`AssistantSkillService` 在有沙箱時自動接上，沒有沙箱時行為不變。
+- [x] 單元測試 5 案：壞程式碼觸發重寫且修補訊息帶真實 traceback、正常程式碼不多花一次呼叫、輸入格式不合不觸發重寫、沒有沙箱時完全不變、FILE+FOLDER 都要試。
+- 依據：全量評測 100 個生成技能有 18 個第一次呼叫就丟例外，靜態掃描全數放行。設計見 detailed-design §8.95.9。
+
+## 已知問題：模型把數字寫壞（未修，2026-07-29）
+
+- [ ] `報告_2026` 被寫成 `報告_20<0xA0>26` 或 `報告_2006`。三臂實測確認主因是 gemma4:26b 本身（本機與遠端兩台不同機器同樣發生，排除硬體），12B 零發生。設計與數據見 detailed-design §8.95.10。**alfred 指示先記錄不修。**

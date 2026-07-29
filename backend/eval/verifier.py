@@ -19,6 +19,14 @@ class CheckResult:
     # Optional continuous 0..1 score (e.g. an LLM judge rubric). When None the
     # check is treated as a boolean (1.0 if ok else 0.0) by scoring.
     score: float | None = None
+    # False = recorded but never scored. For observations that describe HOW the
+    # model got there rather than whether it was right: 16 cases in the
+    # 2026-07-29 full run failed only because the plan skipped a canonical
+    # lookup, while every state assertion passed — the files really were
+    # classified, just via one composite skill instead of list-then-move
+    # (alfred: "若沒按照標準步驟完成也算完成,但是可以記錄下來"). Gating those
+    # forces the model down our preferred path instead of measuring the outcome.
+    gating: bool = True
 
 
 def verify(
@@ -359,16 +367,20 @@ def verify_state(case: EvalCase, items: Sequence[str | Mapping[str, Any]]) -> li
 
 
 def verify_required_skills(case: EvalCase, response: dict[str, Any]) -> list[CheckResult]:
-    """Hard gate (every mode): the plan must contain these skills.
+    """Recorded, NOT gating (2026-07-29): the canonical lookups this case expects.
 
-    ``steps_include`` is deliberately loosened to "produced a non-empty plan"
-    for real/browser, because a non-deterministic model won't reproduce an
-    exact sequence. That loosening left read-only tiers with almost nothing
-    verified — the 2026-07-28 review found `gen-m2-001` passing while silently
-    dropping one of its five required tools (the drive was empty, so there was
-    nothing to call `get_info` on). Cases that seed real data therefore declare
-    ``required_skills``: with the data actually present, skipping one of these
-    is a modelling failure, not sequence non-determinism.
+    Why it exists: ``steps_include`` is loosened to "produced a non-empty plan"
+    for real/browser, because a non-deterministic model won't reproduce an exact
+    sequence. That loosening left read-only tiers with almost nothing verified —
+    the 2026-07-28 review found `gen-m2-001` passing while silently dropping one
+    of its five required tools.
+
+    Why it no longer gates: with state assertions in place, "which lookups did
+    it use" describes the route, not the destination. In the 2026-07-29 full run
+    16 cases failed on this alone while every state check passed — the model had
+    done the whole job with one composite skill (``organize_by_type``) instead of
+    list-then-move. The observation stays (it is how path habits get measured);
+    the pass/fail decision belongs to the outcome.
     """
 
     workflow = case.expect.workflow
@@ -383,6 +395,7 @@ def verify_required_skills(case: EvalCase, response: dict[str, Any]) -> list[Che
             f"plan calls {skill} (required)",
             skill in skills,
             f"plan skills={skills}",
+            gating=False,
         )
         for skill in workflow.required_skills
     ]
@@ -451,7 +464,16 @@ def verify_step_results(case: EvalCase, results: Sequence[Mapping[str, Any]]) ->
         else:
             detail = f"{skill} did not run"
         checks.append(
-            CheckResult("execution", f"{skill} returned a non-empty result", found, detail[:300])
+            CheckResult(
+                "execution",
+                f"{skill} returned a non-empty result",
+                found,
+                detail[:300],
+                # A skill that ran and returned nothing is a real failure (a
+                # later write acted on a guess). A skill that never ran is a
+                # route difference — see verify_required_skills.
+                gating=bool(matching),
+            )
         )
     return checks
 

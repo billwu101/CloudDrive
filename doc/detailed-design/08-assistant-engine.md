@@ -348,6 +348,32 @@ AgentFolder_23f4b9ba'}}]}<tool_call|>> {
 
 **未涵蓋**：codegen 產生的程式碼字串走的是另一條路徑（`subagent.py`），本次未處理；若在生成的程式碼裡看到同類殘骸要另外補。
 
+### 8.95.9 生成的技能要先跑過再提出（2026-07-29）
+
+`author()` 只做靜態驗證（AST 安全掃描＋manifest schema），從不執行程式碼。2026-07-29 全量評測量到**100 個生成技能有 18 個第一次呼叫就丟例外**——`NameError: name 'outputode_dir' is not defined`（識別字被 token 化弄壞）、正則的 `bad escape`、把 `str` 當 `Path` 用。全部語法合法、全部逃過靜態掃描，而使用者是在**核可安裝之後點下去**才發現。
+
+做法：`CodegenSubAgent.author(request, smoke=...)` 多一個可選的試跑鉤子。驗證通過後，把程式碼丟進**正式環境同一個沙箱**跑一次（每個宣告的 item_type 各一次），失敗就把錯誤當成 repair problem 丟回既有的修補迴圈——與 manifest 錯誤走同一條路，不新增流程。`AssistantSkillService` 在有沙箱時自動接上；沒有沙箱時行為完全不變。
+
+**只有「程式碼壞了」才觸發重寫**（`skills/smoke.py` 的 `_CODE_DEFECT_MARKERS`：NameError／SyntaxError／AttributeError／TypeError／re.error…）。輸入格式不合（PNG 技能拿到純文字 fixture）**不算**——評測 harness 正是在這裡摔過：99 個 M4 失敗有 48 個其實是 fixture 不匹配，對著幻覺問題修只會更糟。試跑用的 fixture 刻意是最小的純文字檔／資料夾，不從技能名稱猜格式。
+
+**已知限制**：純文字 fixture 對影像／PDF／壓縮類技能只能驗到「程式碼跑得起來」，驗不到「做對了」。要更進一步得讓使用者選一個真實檔案當試跑輸入，或依 manifest 推斷格式——後者就是評測那邊踩過的坑，暫不做。
+
+### 8.95.10 模型把數字寫壞（已知問題，未修，2026-07-29）
+
+除了 §8.95.8 的結構殘骸之外，還有一種**字元層級**的損壞：要求把檔案改名為 `報告_2026`，實際建出 `報告_20<0xA0>26`（byte-fallback token 以字面形式外洩）或 `報告_2006`（數字直接寫錯）。
+
+三臂實測（同 20 案、同程式碼、只換端點與模型）：
+
+| 端點 / 模型 | 通過 | 名稱損壞 |
+|---|---|---|
+| 遠端 gateway，gemma4:26b | 4/20 | 10 |
+| 本機 Ollama，gemma4:26b | 10/20 | 4 |
+| 本機 Ollama，gemma4:12b | 20/20（兩輪 40/40） | 0 |
+
+結論：**主因是 26B 這個模型**（兩台完全不同的機器出現同一種故障，排除硬體），遠端 gateway 讓它更嚴重。§8.95.8 的截斷救不了這一類——`報告_20<0xA0>26` 截掉只會變成更錯的 `報告_20`。
+
+可行的修法是把 `<0xNN>` 這種不可能出現在使用者資料裡的標記視為無效計畫、走修補迴圈重規劃；`報告_2006` 這種純寫錯則只能靠換模型。**本次刻意不修，先記錄**（alfred 指示）。
+
 ### 8.9 資料模型（新增表，Alembic migration）
 
 - `assistant_sessions(id, user_id, title, created_at, updated_at)`

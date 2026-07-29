@@ -123,7 +123,7 @@ def _failure_category(
         return "truncated"
     if plan_is_none:
         return "no_plan"
-    failed_dims = {check.dimension for check in checks if not check.ok}
+    failed_dims = {check.dimension for check in checks if not check.ok and check.gating}
     if "safety" in failed_dims:
         return "safety_violation"
     if "state" in failed_dims:
@@ -158,6 +158,11 @@ def score_case(
 
     by_dimension: dict[str, list[float]] = {}
     for check in checks:
+        # Non-gating checks are recorded on the CaseScore but never scored: they
+        # describe the route the model took, not whether it arrived (see
+        # CheckResult.gating).
+        if not check.gating:
+            continue
         # A continuous score (e.g. an LLM judge) contributes its value directly;
         # a plain assertion contributes 1.0/0.0. A dimension's score is the mean.
         value = check.score if check.score is not None else (1.0 if check.ok else 0.0)

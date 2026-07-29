@@ -11,7 +11,9 @@ sandbox run before install.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,6 +22,7 @@ from app.assistant.llm.client import LLMMessage
 from app.assistant.llm.router import ModelRouter
 from app.assistant.skills.codeguard import validate_skill_code
 from app.assistant.skills.manifest import validate_manifest
+from app.assistant.skills.smoke import SmokeOutcome
 from app.core.exceptions import AppError
 
 _CODEGEN_SYSTEM = (
@@ -124,6 +127,20 @@ class CodegenResult:
     completion_tokens: int | None = None
 
 
+def _declared_item_types(manifest: dict[str, Any]) -> list[str]:
+    """Item types the manifest's context-menu actions declare (default FILE)."""
+
+    ui = manifest.get("ui")
+    actions = ui.get("context_menu", []) if isinstance(ui, dict) else []
+    types: list[str] = []
+    for action in actions:
+        if isinstance(action, dict):
+            for item_type in action.get("item_types") or []:
+                if isinstance(item_type, str) and item_type not in types:
+                    types.append(item_type)
+    return types or ["FILE"]
+
+
 def build_codegen_prompt(request: str) -> str:
     return f"{_CODEGEN_SYSTEM}\nUser request: {request}"
 
@@ -207,7 +224,23 @@ class CodegenSubAgent:
         # gemma4:26b (2026-07-22 A/B). Mirrors the planner (DEC-033).
         self._disable_thinking = disable_thinking
 
-    async def author(self, *, request: str) -> CodegenResult:
+    async def author(
+        self,
+        *,
+        request: str,
+        smoke: Callable[[str, list[str]], SmokeOutcome] | None = None,
+    ) -> CodegenResult:
+        """``smoke``: optionally run the generated code once before accepting it.
+
+        Static validation cannot see a token-garbled identifier — 18 of 100
+        generated skills in the 2026-07-29 eval raised on their first call
+        (``NameError: name 'outputode_dir' is not defined`` and friends), and the
+        user only found out after approving and installing. A failing smoke run
+        becomes a repair problem, so the model fixes it in the same loop that
+        already fixes manifest errors. See ``skills/smoke.py`` for why only code
+        defects (never input mismatches) count.
+        """
+
         messages = [
             LLMMessage(role="system", content=build_codegen_prompt(request)),
             LLMMessage(role="user", content=request),
@@ -234,6 +267,10 @@ class CodegenSubAgent:
             else:
                 manifest_raw, code = parsed
                 validated, problems = _validate(manifest_raw, code)
+                if not problems and validated is not None and smoke is not None:
+                    outcome = await asyncio.to_thread(smoke, code, _declared_item_types(validated))
+                    if not outcome.ok and outcome.is_code_defect:
+                        problems = [outcome.error]
                 if not problems and validated is not None:
                     return CodegenResult(
                         ok=True,
