@@ -300,7 +300,9 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 `mode: [api, browser]` 標了很久，從沒實際執行過。真跑之後兩個問題立刻現形：
 
 1. **payload 序列化直接炸掉**：`seed_files` 支援「同一個 fixture 上傳成不同檔名」（`SeedFile`）後，browser payload 仍原封不動塞進 `json.dumps` → `TypeError: Object of type SeedFile is not JSON serializable`，Playwright 連啟動都沒到。已改為統一輸出 `{fixture, name}`，Playwright spec 的型別與 `seedFiles()` 同步，並補進既有的 API/browser 對等測試。
-2. **CORS 來源要對得上前端埠**：後端 `CORS_ORIGINS` 預設只有 `http://localhost:5173`，evel 用的前端跑在別的埠時，登入會停在 `waitForURL('**/drive')` 逾時 30 秒——症狀看起來像 UI 壞了，其實是瀏覽器擋掉了 API 呼叫。跑瀏覽器模式時要把前端埠加進 `CORS_ORIGINS`。
+2. **CORS 來源要對得上前端埠**：後端 `CORS_ORIGINS` 預設只有 `http://localhost:5173`，eval 用的前端跑在別的埠時，登入會停在 `waitForURL('**/drive')` 逾時 30 秒——症狀看起來像 UI 壞了，其實是瀏覽器擋掉了 API 呼叫。跑瀏覽器模式時要把前端埠加進 `CORS_ORIGINS`。
+
+   **這個逾時也是「瀏覽器模式很慢」這個誤判的來源**：120 案的第一次嘗試撞到 1200 秒上限，當下寫成「案例太多跑不完」，實際上是**每一案都在空等 30 秒**一個永遠不會發生的跳轉（120 × 30 = 3600 秒）。修好 CORS 後量到的真實速度是 **120 案 338 秒（約 2.8 秒/案）**。診斷逾時時要先問「它在等什麼」，不要直接歸因於量。
 
 跑法（實測通過，8/8）：
 
@@ -314,4 +316,4 @@ uv run python -m eval.run --mode browser --llm real --cases <dir> \
     --frontend-url http://localhost:5199 --base-url http://localhost:8002/api/v1
 ```
 
-結果：M2 2 案 + M3 6 案（含 organize_by_type 需要 seed 檔的兩案）**8/8 通過**，工具呼叫數與 API 模式同級（m2 5.0、m3 4.0）。這是「同一批案例經真實 UI 走一遍會不會不一樣」第一次有答案：不會，但要先修好上面兩件事才跑得到。
+結果：**M3 全部 120 案跑完，112/120 通過，總耗時 338 秒**（平均輸入 1498 詞元、輸出 208、工具呼叫 4.4、路徑偏離 33/120、失敗全數為 `wrong_plan`）。這是「同一批案例經真實 UI 走一遍會不會不一樣」第一次有答案：**不會**——同批案例在 API 模式的通過率同級，走真實瀏覽器沒有引入額外落差。

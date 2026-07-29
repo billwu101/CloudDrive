@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
+from typing import Any
 
 from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
@@ -15,6 +18,8 @@ from app.assistant.workflow import (
     ref_source,
 )
 from app.core.config import get_settings
+
+_LOG = logging.getLogger(__name__)
 
 
 # Structured-output schema for the plan, sent as ``response_format`` on external
@@ -209,10 +214,66 @@ def _extract_json(content: str) -> str:
     return text
 
 
+# Debris that must never reach a user-visible value. Two signatures, both from
+# the model resuming *inside* a JSON string while constrained decoding keeps the
+# surrounding structure legal:
+#   1. a chat-template token ("<tool_call|>", "<end_of_turn>", …);
+#   2. a quote followed by a run of closing brackets ("'}}]}") — the model
+#      finished the object, then carried on writing (prose, a second plan, …).
+# Signature 2 matters on its own: one observed value was
+# ``AgentFolder_90e16c4f'}}]}of course! Here is your plan:{`` with no template
+# token in sight.
+_DECODING_ARTIFACTS = ("<tool_call", "<|", "<end_of_turn>", "<start_of_turn>")
+_JSON_CLOSURE_DEBRIS = re.compile(r"['\"]\s*[}\]][}\]\s]*")
+# Punctuation left over from the interrupted JSON, immediately before the debris.
+_ARTIFACT_TAIL = "'\"`}]{[ \t\r\n"
+
+
+def _strip_decoding_artifacts(value: str) -> str:
+    """Cut a string at the point the model stopped writing the value.
+
+    Observed against the OpenAI-compatible gateway (gemma4:26b, 2026-07-29): a
+    request to create the folder ``AgentFolder_23f4b9ba`` produced the argument
+    ``AgentFolder_23f4b9ba'}}]}<tool_call|>> {`` — and the folder was created
+    under that name, because the surrounding JSON parsed cleanly. Reproduced
+    2/3 to 4/5 of the time, in English and Chinese prompts alike; the same
+    prompts against local Ollama (gemma4:12b) never did it, so this is the
+    gateway's decoding path, not the model family.
+
+    Trimming rather than rejecting: the intended value is intact and everything
+    after the cut is debris, so the user gets the folder they asked for instead
+    of "I couldn't do that" on a request that was perfectly clear. Only strings
+    that actually carry one of the two signatures are touched.
+    """
+
+    cuts = [value.find(token) for token in _DECODING_ARTIFACTS if token in value]
+    closure = _JSON_CLOSURE_DEBRIS.search(value)
+    if closure is not None:
+        cuts.append(closure.start())
+    if not cuts:
+        return value
+    return value[: min(cuts)].rstrip(_ARTIFACT_TAIL)
+
+
+def _clean_artifacts(node: Any) -> Any:
+    """Apply :func:`_strip_decoding_artifacts` to every string in a parsed plan."""
+
+    if isinstance(node, str):
+        return _strip_decoding_artifacts(node)
+    if isinstance(node, list):
+        return [_clean_artifacts(item) for item in node]
+    if isinstance(node, dict):
+        return {key: _clean_artifacts(item) for key, item in node.items()}
+    return node
+
+
 def _parse(content: str) -> PlanResult | None:
     try:
         data = json.loads(_extract_json(content))
-        return PlanResult.model_validate(data)
+        cleaned = _clean_artifacts(data)
+        if cleaned != data:
+            _LOG.warning("stripped chat-template artifacts from a plan: %r", content[:300])
+        return PlanResult.model_validate(cleaned)
     except (json.JSONDecodeError, ValidationError, TypeError):
         return None
 

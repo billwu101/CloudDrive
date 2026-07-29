@@ -10,6 +10,7 @@ from app.assistant.planner import (
     _PLAN_RESPONSE_FORMAT,
     PlanResult,
     WorkflowPlanner,
+    _parse,
     build_plan_response_format,
     build_planner_prompt,
     validate_plan,
@@ -613,3 +614,75 @@ def test_prompt_output_shapes_match_what_the_skills_declare() -> None:
         assert skill.name in expected_line[skill.output], (
             f"{skill.name} declares {skill.output} but the prompt does not list it there"
         )
+
+
+def test_chat_template_debris_is_stripped_from_plan_arguments() -> None:
+    """Reproduced 4/5 against the OpenAI-compatible gateway (gemma4:26b): asking
+    for a folder named AgentFolder_23f4b9ba planned
+    ``AgentFolder_23f4b9ba'}}]}<tool_call|>> {`` — and the folder was CREATED
+    under that name, because the surrounding JSON parsed cleanly. The same
+    prompts against local Ollama never did it, so this is the gateway's decoding
+    path leaking chat-template tokens into a string value.
+    """
+
+    raw = (
+        '{"reply": "ok", "needs_followup": false, "steps": [{"skill": "create_folder", '
+        '"arguments": {"name": "AgentFolder_23f4b9ba\'}}]}<tool_call|>> {"}, '
+        '"depends_on": []}]}'
+    )
+
+    result = _parse(raw)
+
+    assert result is not None
+    assert result.steps[0].arguments == {"name": "AgentFolder_23f4b9ba"}
+
+
+def test_a_clean_plan_is_left_exactly_as_it_is() -> None:
+    raw = (
+        '{"reply": "ok", "needs_followup": false, "steps": [{"skill": "create_folder", '
+        '"arguments": {"name": "Reports <2026> [final]"}, "depends_on": []}]}'
+    )
+
+    result = _parse(raw)
+
+    assert result is not None
+    # Angle brackets and braces are legal in a name; only template tokens count.
+    assert result.steps[0].arguments == {"name": "Reports <2026> [final]"}
+
+
+def test_debris_in_the_reply_text_is_stripped_too() -> None:
+    raw = '{"reply": "已建立資料夾。<end_of_turn>", "needs_followup": false, "steps": []}'
+
+    result = _parse(raw)
+
+    assert result is not None
+    assert result.reply == "已建立資料夾。"
+
+
+def test_debris_without_a_template_token_is_stripped_too() -> None:
+    """A second observed shape: the model closed the JSON inside the string and
+    then simply carried on talking. No template token to key on — the signature
+    is the quote-plus-closing-brackets run."""
+
+    raw = (
+        '{"reply": "ok", "needs_followup": false, "steps": [{"skill": "create_folder", '
+        '"arguments": {"name": "AgentFolder_90e16c4f\'}}]}of course! Here is your plan:{"}, '
+        '"depends_on": []}]}'
+    )
+
+    result = _parse(raw)
+
+    assert result is not None
+    assert result.steps[0].arguments == {"name": "AgentFolder_90e16c4f"}
+
+
+def test_a_name_with_ordinary_brackets_survives() -> None:
+    raw = (
+        '{"reply": "ok", "needs_followup": false, "steps": [{"skill": "create_folder", '
+        '"arguments": {"name": "report [2026] {final}"}, "depends_on": []}]}'
+    )
+
+    result = _parse(raw)
+
+    assert result is not None
+    assert result.steps[0].arguments == {"name": "report [2026] {final}"}

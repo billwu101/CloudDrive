@@ -323,6 +323,31 @@ app/assistant/
 
 **沒有勾選檔案時要明說**（同批實測逼出來）：規劃提示只在**有**勾選時才附上選取清單，沒勾選時什麼都不說，模型於是假設有選取、規劃 `{"from": "selection"}` 引用，服務層只能回「請先勾選」。現在無選取時明確告知「目前沒有選取，selection 引用不可用，請改用 search/list_items 找出項目」。同理，兩段式規劃的 selection 早退條件也改為**只有真的有選取時**才成立——沒有選取的 selection 引用本來就跑不了，那正是最需要偵察的情況。
 
+### 8.95.8 模型輸出殘骸不得進到使用者資料（2026-07-29）
+
+真實症狀：請助理建一個叫 `AgentFolder_23f4b9ba` 的資料夾，**資料夾真的被建出來，名字卻是**
+
+```
+AgentFolder_23f4b9ba'}}]}<tool_call|>> {
+```
+
+成因：模型在**字串值內部**開始輸出聊天模板 token（或乾脆把 JSON 收掉改講白話），而受限解碼只保證**結構**合法——外層 JSON 解析得乾乾淨淨，髒東西全在字串裡面。整合測試 `test_chat_create_folder_pending_confirm_creates_real_item` 抓到，重現率 4/5。
+
+範圍已量測：同樣的提示（中英文、有無引號皆試）對**遠端 OpenAI 相容 gateway** 2/3～4/5 會發生，對**本機 Ollama（gemma4:12b）0/3**。所以這是該 gateway 的解碼路徑，不是模型家族的問題——但產品不能假設對接的端點乾淨。
+
+**做法（`planner._strip_decoding_artifacts`）**：解析成功後，把每個字串值在下列任一特徵處截斷，並清掉緊鄰的 JSON 標點：
+
+| 特徵 | 例子 |
+|---|---|
+| 聊天模板 token | `<tool_call`、`<\|`、`<end_of_turn>`、`<start_of_turn>` |
+| 引號後接連續收括號 | `'}}]}` — 模型收完物件又繼續寫（`…'}}]}of course! Here is your plan:{`，這個變體完全沒有模板 token） |
+
+**截斷而非退回重規劃**：截斷點之前就是使用者要的值，之後全是殘骸。退回重規劃會讓一個講得清清楚楚的請求得到「我做不到」，而且同一個 gateway 很可能再吐一次同樣的東西。截斷會寫 WARNING log 留痕。只有真的帶上述特徵的字串會被動到——`report [2026] {final}` 這種正常名稱不受影響（有測試釘住）。
+
+**驗證**：同一請求對 gateway 連跑 10 次，**10/10 名稱乾淨**；整合測試 51/51 通過（原本 50/51）。
+
+**未涵蓋**：codegen 產生的程式碼字串走的是另一條路徑（`subagent.py`），本次未處理；若在生成的程式碼裡看到同類殘骸要另外補。
+
 ### 8.9 資料模型（新增表，Alembic migration）
 
 - `assistant_sessions(id, user_id, title, created_at, updated_at)`
