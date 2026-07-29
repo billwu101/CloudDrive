@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from app.drive.schemas import ItemType
+from app.models.drive_item import DriveItem
 from app.models.snapshot import Snapshot, SnapshotEntry, SnapshotSettings
 from app.snapshot.repository import AbstractSnapshotRepository
 from app.storage.base import StorageProvider
@@ -23,6 +24,49 @@ _PRUNE_EXEMPT = frozenset({TRIGGER_PRE_RESTORE})
 # Settings defaults (used when a user has never customised them).
 DEFAULT_RETENTION_N = 50
 DEFAULT_SCHEDULE_INTERVAL_MINUTES = 60
+
+# One item's identity for change detection: (id, parent, name, type, checksum).
+# Captures add/delete (the id set), rename/move (parent+name), and content
+# change (checksum). Folders have no checksum.
+_ItemSig = tuple[str, str, str, str, str]
+
+
+def _period_start(now: datetime, interval_minutes: int) -> datetime:
+    """Start of the current schedule period, aligned to the clock from midnight.
+
+    With a 60-minute interval this is the top of the current hour, so scheduled
+    snapshots land on the hour rather than drifting off the first snapshot.
+    """
+    interval = max(1, interval_minutes)
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elapsed = int((now - midnight).total_seconds() // 60)
+    return midnight + timedelta(minutes=(elapsed // interval) * interval)
+
+
+def _items_signature(items: list[DriveItem]) -> frozenset[_ItemSig]:
+    return frozenset(
+        (
+            str(item.id),
+            str(item.parent_id) if item.parent_id else "",
+            item.name,
+            str(item.item_type),
+            item.checksum_sha256 or "",
+        )
+        for item in items
+    )
+
+
+def _entries_signature(entries: list[SnapshotEntry]) -> frozenset[_ItemSig]:
+    return frozenset(
+        (
+            str(entry.item_id),
+            str(entry.parent_item_id) if entry.parent_item_id else "",
+            entry.name,
+            str(entry.item_type),
+            entry.checksum_sha256 or "",
+        )
+        for entry in entries
+    )
 
 
 @dataclass(frozen=True)
@@ -72,14 +116,21 @@ class SnapshotService:
         """
 
         items = await self._repo.list_owner_items(user_id)
+        # Soft delete is shallow: trashing a folder marks only the folder, so a
+        # capture (which skips deleted items) keeps the children but drops the
+        # parent. Recording that dangling parent_id would make the snapshot
+        # unrestorable (self-FK violation), so such orphans are captured at the
+        # root — where restore would place them anyway.
+        captured_ids = {item.id for item in items}
         entries: list[dict[str, Any]] = []
         total_bytes = 0
         for item in items:
             is_file = item.item_type == ItemType.FILE
+            parent_id = item.parent_id if item.parent_id in captured_ids else None
             entries.append(
                 {
                     "item_id": item.id,
-                    "parent_item_id": item.parent_id,
+                    "parent_item_id": parent_id,
                     "name": item.name,
                     "item_type": item.item_type,
                     "storage_key": item.storage_key if is_file else None,
@@ -106,6 +157,10 @@ class SnapshotService:
 
     async def used_bytes(self, *, user_id: UUID) -> int:
         return await self._repo.used_snapshot_bytes(user_id)
+
+    async def reclaimable_bytes(self, *, user_id: UUID) -> dict[UUID, int]:
+        """Per snapshot: how much deleting it would actually free."""
+        return await self._repo.reclaimable_bytes_by_snapshot(user_id)
 
     # ----- settings -------------------------------------------------------
 
@@ -206,9 +261,16 @@ class SnapshotService:
     ) -> Snapshot | None:
         """Create a `scheduled` snapshot if one is due.
 
-        Due means: schedule enabled, the interval has elapsed since the last
-        snapshot of any kind, and the drive currently has at least one item
-        (so empty/idle drives don't accumulate identical empty snapshots).
+        Due means all of:
+        1. the schedule is enabled;
+        2. we're in a new **clock-aligned** period with no snapshot yet — the
+           interval buckets the day from midnight, so the default 60-minute
+           interval fires on the hour (00:00, 01:00, …), not at a drifting
+           offset like 07:51, 08:51;
+        3. the drive currently has at least one item; and
+        4. the drive has **changed** since the last snapshot — an unchanged
+           drive produces no new snapshot, so identical hourly rows don't pile
+           up (content is deduped anyway, but the timeline stays meaningful).
         Returns the snapshot if created, else None.
         """
 
@@ -218,16 +280,26 @@ class SnapshotService:
 
         now = now or datetime.now(UTC)
         snaps = await self._repo.list_snapshots(user_id)  # newest first
+
+        # 2. On-the-hour gate: skip if a snapshot already exists in this period.
+        period_start = _period_start(now, settings.schedule_interval_minutes)
         if snaps:
             last = snaps[0].created_at
             if last.tzinfo is None:
                 last = last.replace(tzinfo=UTC)
-            if now - last < timedelta(minutes=settings.schedule_interval_minutes):
+            if last >= period_start:
                 return None
 
+        # 3. Nothing to snapshot on an empty drive.
         items = await self._repo.list_owner_items(user_id)
         if not items:
             return None
+
+        # 4. Change detection: skip if the drive is identical to the last snapshot.
+        if snaps:
+            last_entries = await self._repo.list_all_entries(snaps[0].id)
+            if _items_signature(items) == _entries_signature(last_entries):
+                return None
 
         return await self.create(user_id=user_id, trigger=TRIGGER_SCHEDULED, label="Scheduled")
 
@@ -304,11 +376,13 @@ class SnapshotService:
         if snapshot is None:
             return None
 
-        # 1. Safety snapshot before any mutation.
+        # 1. Safety snapshot before any mutation. Label it with the target
+        #    snapshot's time (human-readable) rather than a raw id, so the
+        #    timeline explains what this backup was protecting against.
         pre = await self.create(
             user_id=user_id,
             trigger=TRIGGER_PRE_RESTORE,
-            label=f"Before restore of snapshot {snapshot_id}",
+            label=f"Before restoring the {snapshot.created_at:%b %d, %H:%M} snapshot",
         )
 
         # 2. Which entries to restore.
@@ -319,8 +393,17 @@ class SnapshotService:
             target = _expand_with_descendants(all_entries, set(item_ids or []))
 
         # 3. Upsert parents before children (drive_items.parent_id is a self-FK).
+        #    An entry whose parent exists neither in this restore set nor in the
+        #    drive would insert a dangling parent_id and fail the self-FK, taking
+        #    the whole restore down with it (older snapshots can contain such
+        #    orphans — see _capture_entries). Re-home those at the root instead.
+        restorable_ids = {e.item_id for e in target}
+        live_ids = {i.id for i in await self._repo.list_all_items(user_id)}
         restored = 0
         for entry in _parents_first(target):
+            parent = entry.parent_item_id
+            if parent is not None and parent not in restorable_ids and parent not in live_ids:
+                entry = _rehomed_to_root(entry)
             await self._repo.upsert_item(owner_id=user_id, entry=entry)
             restored += 1
 
@@ -369,6 +452,21 @@ def _expand_with_descendants(
         result[entry.item_id] = entry
         stack.extend(by_parent.get(entry.item_id, []))
     return list(result.values())
+
+
+def _rehomed_to_root(entry: SnapshotEntry) -> SnapshotEntry:
+    """A copy of the entry placed at the drive root (its parent is gone)."""
+    return SnapshotEntry(
+        id=entry.id,
+        snapshot_id=entry.snapshot_id,
+        item_id=entry.item_id,
+        parent_item_id=None,
+        name=entry.name,
+        item_type=entry.item_type,
+        storage_key=entry.storage_key,
+        checksum_sha256=entry.checksum_sha256,
+        size_bytes=entry.size_bytes,
+    )
 
 
 def _parents_first(entries: list[SnapshotEntry]) -> list[SnapshotEntry]:

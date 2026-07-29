@@ -29,6 +29,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     from sqlalchemy.dialects import postgresql
+
     op.alter_column(
         "activity_logs",
         "ip_address",

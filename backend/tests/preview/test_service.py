@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,6 +16,8 @@ from app.preview.service import (
     PreviewService,
     PreviewType,
     _resolve_preview_type,
+    resolve_item_mime,
+    resolve_preview_type,
 )
 from tests.drive.test_service import MemDriveItemRepo, _item
 from tests.permission.test_service import MemItemRepo, MemShareRepo
@@ -237,3 +240,57 @@ async def test_office_content_unsupported_without_libreoffice(
     with pytest.raises(AppError) as exc_info:
         await svc.get_content(user, f.id)
     assert exc_info.value.code == ErrorCode.INVALID_OPERATION
+
+
+# ── falling back when the stored type is missing ─────────────────────────────
+
+
+def _bare(name: str, *, mime: str | None = None, ext: str | None = None) -> DriveItem:
+    """An item as several upload paths actually leave it: type columns blank."""
+    now = datetime.now(UTC)
+    return DriveItem(
+        id=uuid4(),
+        owner_id=uuid4(),
+        parent_id=None,
+        item_type=ItemType.FILE,
+        name=name,
+        mime_type=mime,
+        extension=ext,
+        size_bytes=10,
+        storage_key="blob/x",
+        checksum_sha256=None,
+        is_starred=False,
+        is_deleted=False,
+        deleted_at=None,
+        created_by=uuid4(),
+        updated_by=None,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_a_pdf_with_no_stored_type_is_still_a_pdf() -> None:
+    """Regression: an obvious .pdf showed "Preview not available" because both
+    the mime and extension columns happened to be blank."""
+    assert resolve_preview_type(_bare("115-health-qa.pdf")) == PreviewType.PDF
+
+
+def test_the_extension_column_is_used_when_only_the_mime_is_missing() -> None:
+    assert resolve_preview_type(_bare("notes.txt", ext="txt")) == PreviewType.TEXT
+
+
+def test_the_name_wins_over_a_stale_extension_column_being_empty() -> None:
+    assert resolve_preview_type(_bare("clip.mp4")) == PreviewType.VIDEO
+    assert resolve_preview_type(_bare("shot.png")) == PreviewType.IMAGE
+
+
+def test_an_unknown_extension_is_still_unsupported() -> None:
+    assert resolve_preview_type(_bare("archive.xyz")) == PreviewType.UNSUPPORTED
+
+
+def test_the_served_mime_is_filled_in_from_the_name() -> None:
+    # Without this a recognised PDF still streams as octet-stream, which
+    # browsers download rather than render.
+    assert resolve_item_mime(_bare("115-health-qa.pdf")) == "application/pdf"
+    assert resolve_item_mime(_bare("report.pdf", mime="application/pdf")) == "application/pdf"
+    assert resolve_item_mime(_bare("mystery.bin")) is None

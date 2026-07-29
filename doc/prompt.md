@@ -163,6 +163,22 @@
 4. eval 考官可選 Gemma/Codex（預設 Gemma），考官憑證走開發者 env，考官與被考者分離。
 5. 檔案所有權：新增 `app/external_model/`（或併入 `app/assistant/llm/`）、`user_external_credentials` model/migration、profile 端點、`eval/judge.py` 擴充、前端 profile 憑證 UI；實作時避免與既有 `assistant/llm` 共享檔案衝突，必要時順序執行。
 
+### 擴充範圍：公開分享連結存取 + Shared by me（外部模型之後新增）
+
+補齊分享功能的另一半：讓收到公開連結的人真的打得開，並讓分享者看得到自己分享出去了什麼（需求見 proposal §28／§29，設計見 `doc/detailed-design/ §6.12.8–§6.12.12`／§5.9.5–§5.9.6，決策 DEC-037/038）。以下列任務文件為範圍（**設計完成、尚未實作**）：
+
+- `doc/tasks/backend-share.md`（「階段 2 追加」兩節）
+- `doc/tasks/frontend-share.md`（「階段 2 追加」兩節）
+
+擴充原則：
+1. `/api/v1/public/*` 是系統中**唯一免認證**的對外路徑，獨立成 `app/public_share/` 套件，router **不得**依賴 `CurrentUserId`。
+2. 訪客先換 `type="share_access"` 的短效 JWT 憑證（15 分鐘、可續發至 240 分鐘），之後不再重送密碼；憑證**不取代**每次請求的 DB 有效性檢查（停用須即時生效）。
+3. token 不存在／密碼錯誤／已停用／已過期一律回同一則 `404 SHARE_LINK_INVALID`，且 token 查無時仍做 dummy 密碼比對以消除時間差。
+4. 權限只取自連結的 `prm`，**絕不**因分享者是 owner 而提升；每個帶 id 的請求都要驗證該項目在憑證授權的子樹內。
+5. 速率限制（每連結每分鐘 5 次、鎖 5 分鐘）狀態存 `share_links` 資料列，不放行程記憶體（多 worker 會放大限制）。
+6. Shared by me 一項目一列；`DriveItemResponse` 兩個標記布林由 `list_items` 一次批次查詢填入，不做 N+1；不提供批次收回。
+7. 檔案所有權：新增 `app/public_share/`、`alembic/versions/0020_*`、前端 `PublicSharePage`／`SharedByMePage`／`ShareBadges`；與既有 `app/share`、`app/drive/service.py`、`DriveItemRow` 有交集，**不可與其他 agent 同時修改這三處**。
+
 ## 自主決策規則
 
 全程不得等待人工回答。

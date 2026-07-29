@@ -13,7 +13,7 @@ const DEFAULT_API_BASE_URL =
     ? 'http://localhost:8000/api/v1'
     : `${window.location.protocol}//${window.location.hostname}:8000/api/v1`
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL
 
 // The fetch adapter is the app-wide default — it plays nicely with MSW's blob
 // responses in the test/CI environment (the XHR adapter drives MSW down a path
@@ -54,7 +54,7 @@ export function isApiError(err: unknown): err is ApiError {
   )
 }
 
-function toApiError(error: unknown): ApiError {
+export function toApiError(error: unknown): ApiError {
   if (axios.isAxiosError(error)) {
     if (error.code === 'ERR_CANCELED') {
       return { code: 'CANCELED', message: 'Request canceled', status: 0 }

@@ -62,3 +62,27 @@
 - [ ] 測試 `GET /drive/starred` 回傳**子資料夾內**的星號項目（回歸本次 bug）。
 - [ ] 測試星號清單濾掉已刪除項目與非本人擁有者。
 
+
+---
+
+## 修正（2026-07-27）：型別欄位為空時預覽誤判為「不支援」
+
+**症狀**：使用者回報一個 PDF 顯示「Preview not available for this file type」，但同資料夾的其他 10 個 PDF 都正常。
+
+**根因**：`_resolve_preview_type` 只看 `mime_type`（markdown 與 Office 才會參考 `extension`）。該檔案的 `mime_type` 與 `extension` 兩欄皆空，於是落到 UNSUPPORTED。實測全庫 95 個檔案中 38 個沒有 mime，其中 31 個有副檔名——這 31 個一律無法預覽。
+
+- [x] `app/preview/service.py`：新增 `_EXT_MIME` 對照表；判定改為 `mime_type` → `extension` → 從 `name` 解析副檔名（`_effective_extension`）。以檔名為最終依據也順帶蓋掉「改名換副檔名但欄位沒更新」的情況。
+- [x] `app/preview/service.py`：新增 `resolve_mime()`，`get_info` 與 `content_for_item` 一併改用——否則型別判對了、Content-Type 仍是 `octet-stream`，瀏覽器只會下載。
+- [x] 測試 5 項：兩欄皆空的 .pdf、只缺 mime、mp4/png 以檔名判定、未知副檔名仍為 unsupported、輸出 mime 由檔名補上。
+- [x] Chrome 實機驗證：該檔案現在開得出 PDF 檢視器，不再顯示「Preview not available」。
+
+### 追加修正（同日）：Download 端點也要套同一組 fallback
+
+第一版只改了 Preview，使用者回報仍然不能預覽。實測發現前端對非轉檔型別（圖片／PDF／文字／影音）是打 `GET /download/{id}`，而 `DownloadService` 仍回 `item.mime_type or "application/octet-stream"`——內容確實是 PDF（`%PDF-1.7`、228305 bytes），但 blob type 是 octet-stream，瀏覽器拒絕 inline 顯示，iframe 一片白。
+
+- [x] 新增 `app/core/mime.py`：`EXT_MIME` / `effective_extension` / `resolve_mime`，供 Preview、Download、PublicShare 三條路徑共用（放 core 而非任一模組內，避免模組互相 import）。
+- [x] `app/download/service.py`、`app/public_share/service.py`：`download()` 改用 `resolve_mime`。
+- [x] 測試：`tests/download/test_service.py` 補「mime 欄位為空的 .pdf 應以 application/pdf 送出」。
+- [x] Chrome 實機驗證（這次驗到底）：blob type 為 `application/pdf`，PDF 內容實際渲染出來（截圖確認可讀）。
+
+**流程教訓**：上一輪我只確認「iframe 存在且沒有錯誤字樣」就宣稱修好了，實際上內容根本沒畫出來。驗證要驗到使用者真正看得到的那一層。

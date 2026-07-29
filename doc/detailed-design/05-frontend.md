@@ -27,6 +27,8 @@
 | 登入／註冊（`/login`,`/register`） | 置中表單、含驗證；無 Shell |
 | 我的硬碟（`/`,`/folder/:id`） | 上述 Shell：麵包屑 + Toolbar + 檔案區（列表/格狀）+ 右鍵選單 + 拖曳上傳 |
 | 與我分享（`/shared`） | Sidebar + 分享項目清單 |
+| 我分享出去的（`/shared-by-me`） | Sidebar + 可展開的分享一覽（對象／連結）+ 就地移除／停用 |
+| 公開連結（`/s/:shareToken`） | **無 Shell、免登入**：密碼表單（有設密碼時）→ 檔案資訊／資料夾唯讀瀏覽 + 預覽／下載 |
 | 最近／星號／垃圾桶 | 同硬碟版面，資料來源不同；垃圾桶含還原/永久刪除 |
 | 預覽（Dialog） | 圖片/PDF/文字/影片/音訊、Office 文書（Word／Excel／PPT 由伺服器轉 PDF）、Markdown（渲染）；不支援時顯示下載 |
 | 分享（Dialog） | 搜尋使用者 email、設權限、建公開連結（密碼/到期） |
@@ -62,13 +64,14 @@
 /drive
 /drive/folders/:folderId
 /shared
+/shared-by-me
 /recent
 /starred
 /trash
 /s/:shareToken
 ```
 
-受保護頁面需透過 `RequireAuth` 包裝。
+受保護頁面需透過 `RequireAuth` 包裝；**`/s/:shareToken` 例外**——它是訪客免登入路徑（§5.9.6），不可包 `RequireAuth`。
 
 ### 5.2.1 AuthInitializer
 
@@ -198,7 +201,7 @@ Sidebar
 TopBar
 TopSearchBar
 UserMenu
-StorageUsageBar
+StorageUsageBar      — 兩條獨立量表：檔案（滿 90% 轉紅）與快照（滿 80% 轉紅）
 ```
 
 ### 5.5.3 uiStore
@@ -245,6 +248,7 @@ FileTable            — header checkbox (indeterminate) + onSelectAll
 FileGrid
 FileRow              — checkbox overlays icon on hover; always visible when selected
 FileCard             — absolute-positioned checkbox top-left
+                       兩者皆 draggable，並在資料夾上接受放置（見下方「拖曳移動到資料夾」）
 FileIcon
 FileContextMenu      — single-item right-click menu
 MultiFileContextMenu — multi-item right-click menu (count label + trash only)
@@ -267,6 +271,18 @@ ConfirmTrashDialog   — supports itemNames: string[] for bulk confirmation
 - `uiStore.selectAll(ids)` 提供 header checkbox 全選功能。
 - 批次移至垃圾桶後自動 `clearSelection()`。
 
+**拖曳移動到資料夾（proposal §30）：**
+- 以 **HTML5 Drag and Drop** 實作（`draggable` + `dragstart`/`dragover`/`drop`），不是 pointer events。`dataTransfer` 帶自訂 MIME `application/x-clouddrive-items`，內容為要移動的 id 陣列。
+- **這個自訂 MIME 就是三種拖曳彼此隔離的依據**：
+  - `UploadDropzone` 只在 `dataTransfer.types` 含 `Files` 時才反應，內部拖曳不會叫出上傳覆蓋層；
+  - `useDragSelect` 的 `pointerdown` 已排除 `[data-item-id]`，從項目上開始拖曳不會啟動框選；
+  - 反過來，放到資料夾上的處理只認自訂 MIME，外部檔案拖進來不會被誤判成移動。
+- **要移動哪些**：被拖曳項目在目前選取範圍內 → 整批；不在 → 只有它，且**不改動既有選取**（proposal §30.5 決策 2）。
+- **可放置判定**（`dragover` 時）：目標須是 `FOLDER`，且不在被拖曳的 id 之中。是否為自身子孫由後端把關（前端沒有完整樹）；不可放置時不呼叫 `preventDefault()`，瀏覽器自然顯示「禁止」游標。
+- **拖曳影像**：以 `dataTransfer.setDragImage()` 換掉瀏覽器預設（預設是起始元素的截圖，多選時只看得到一個）。`makeDragGhost()` 依當前列表順序組出「N items + 前 3 個名稱 + `+N more`」的節點；瀏覽器必須能對節點做點陣化，故先掛到 `document.body` 的畫面外位置，`setTimeout(0)` 後移除。單選時只顯示該項目名稱。
+- **執行**：無批次移動端點，故逐一呼叫 `PATCH /drive/items/{id}/parent`；**部分失敗不回滾**（proposal §30.5 決策 3），成功的保留，失敗的收集成訊息顯示。
+- 全部結束後 invalidate `drive.items`，並清掉拖曳狀態。
+
 ### 5.6.3 Hooks
 
 ```ts
@@ -280,6 +296,7 @@ useSetStarred()
 useMoveToTrash()
 useRecentItems()
 useDragSelect(containerRef, onSelectIds, onClear)
+useDragMove({ selectedIds, onMove })   // 拖曳移動到資料夾（proposal §30）
 ```
 
 `useFolderItem` + `useFolderAncestors` 一起驅動 DrivePage 的 Breadcrumbs 元件，並提供 ArrowLeft 返回按鈕所需的 `parent_id`。
@@ -437,7 +454,9 @@ UnsupportedPreview
 3. 選擇 permission。
 4. 建立指定使用者分享。
 5. 顯示與移除既有分享。
-6. 第二階段支援公開連結、密碼、到期時間。
+6. 公開連結、密碼、到期時間。
+7. **「Shared by me」頁面**：一覽並就地管理自己分享出去的項目（§5.9.5，proposal §29）。
+8. **`/s/:shareToken` 訪客頁**：免登入開啟公開連結（§5.9.6，proposal §28）。
 
 ### 5.9.2 元件
 
@@ -446,7 +465,13 @@ ShareDialog
 UserShareForm
 PermissionSelect
 ShareMemberList
-ShareLinkPanel
+ShareLinkPanel       — 到期日預設 7 天後（`DEFAULT_EXPIRY_DAYS`），可改可清空；
+                       連結建立後只提供「Copy link」，停用一律走 Shared by me
+SharedByMeRow           # §5.9.5，可展開，展開後列出對象與連結
+ShareBadges             # My Drive 列表上的兩種標記（FileRow 與 FileCard 共用）
+ShareTokenPage          # §5.9.6，/s/:shareToken（沿用既有檔名，非另開 PublicSharePage）
+PublicPasswordForm
+PublicFolderBrowser
 ```
 
 ### 5.9.3 Hooks
@@ -456,7 +481,11 @@ useShareWithUser()
 useUpdateUserShare()
 useRemoveUserShare()
 useSharedWithMe()
+useSharedByMe()          // GET /share/shared-by-me
 useCreateShareLink()
+useDeleteShareLinkRecord()   // 移除連結（即撤銷）
+usePublicSession()       // POST /public/links/{token}/session
+usePublicChildren()
 ```
 
 ### 5.9.4 可獨立測試項
@@ -466,6 +495,49 @@ useCreateShareLink()
 3. 分享成功後顯示成功狀態。
 4. 移除分享後列表更新。
 5. 建立公開連結後可複製 URL。
+
+### 5.9.5 Shared by me 頁面（`/shared-by-me`）
+
+Sidebar 於「Shared with me」下方新增入口。
+
+1. **一列一項目**（proposal §29.5 決策 1）：列上顯示項目名稱／型別與摘要（「分享給 2 人 · 1 個公開連結」），展開後才列出每位對象（email／權限／時間）與每條連結（權限／是否設密碼／到期／是否有效）。
+2. **就地管理**：每筆對象與連結各自一個移除／停用按鈕，成功後 invalidate `sharedByMe` 與 `drive.items` 兩組 query key（後者讓 My Drive 的標記同步消失）。
+3. **不提供「收回全部」**（proposal §29.5 決策 3）。
+4. 已停用或已過期的連結以灰階呈現並標「已失效」，不隱藏。
+5. **每列連結只有一顆「Remove」**：不分有效與否，直接移除該連結（proposal §29.5 決策 4，2026-07-27 翻案）。移除即撤銷，無二次確認、無復原。
+
+**My Drive 標記**：`DriveItemRow` 依後端新增的兩個布林欄位（§6.12.12）顯示 `ShareBadges`——`is_shared_with_users` → 人物圖示、`has_active_public_link` → 連結圖示，兩者皆真則並列兩個。兩種圖示必須可分辨（proposal §29.5 決策 2），不可合併為單一「已分享」圖示。圖示需帶 `aria-label`（「已分享給其他使用者」／「已建立公開連結」）。
+
+### 5.9.6 公開連結訪客頁（`/s/:shareToken`）
+
+**此路由不得包在 `RequireAuth` 內**，且 `AuthInitializer` 的 silent refresh 失敗不可導向 `/login`——訪客本來就沒有帳號。
+
+流程（對應 proposal §28.4）：
+
+```text
+掛載 → POST /public/links/{token}/session（不帶密碼）
+  ├─ 200 → 直接顯示內容（未設密碼的連結，不出現密碼欄）
+  ├─ 需要密碼 → 顯示 PublicPasswordForm → 帶密碼重送
+  └─ 404      → 顯示統一的「連結無效或已失效」
+```
+
+1. **憑證只放記憶體**（`publicShareApi` 的 module 變數），比照 access token 不寫 localStorage／sessionStorage。頁面重整即重新驗證。
+2. **密碼不留存**：驗證成功後即丟棄，續期改呼叫 `session/refresh`（§6.12.8）。
+3. **錯誤訊息統一**：token 不存在、密碼錯誤、已停用、已過期共用同一則文案，前端不得依後端細節再細分（否則抵銷 §6.12.11 第 1 點的不可區分性）。
+4. `viewer` 連結不渲染下載與 zip 按鈕；資料夾連結在 `downloader` 以上顯示「下載整個資料夾」。
+5. 內容請求以獨立 axios 實例送出（帶 share access token，不掛使用者 token 的 401→refresh 攔截器）。此處的 401 意義是「這個連結需要密碼」，不是「你的登入過期了」——若沿用主 client 的攔截器會誤觸 refresh。實例共用 `client.ts` 匯出的 `BASE_URL` 與 `toApiError`。
+6. **session 狀態走 TanStack Query**（`['public-share','session',token]`）而非 `useState` + effect：初次探測是一個 query、輸入密碼是一個 mutation，成功後以 `setQueryData` 覆寫同一把 key。這樣不需要在 effect 內同步 state（專案的 `react-hooks/set-state-in-effect` 規則會擋）。
+7. **`ShareBadges` 同時用在 `FileRow`（清單）與 `FileCard`（格狀）**，兩種檢視都要標，否則切換檢視就看不到分享狀態。
+
+#### 可獨立測試項
+
+1. 未設密碼的連結掛載後直接顯示項目，無密碼欄。
+2. 需要密碼時顯示表單；密碼錯誤顯示統一錯誤文案。
+3. token 無效與密碼錯誤的畫面完全相同。
+4. `viewer` 連結不出現下載按鈕。
+5. 訪客頁不會因未登入而被導向 `/login`。
+6. `SharedByMeRow` 展開後列出全部對象與連結；停用連結後該列更新。
+7. `DriveItemRow` 在兩個標記欄位為真時各自渲染對應圖示。
 
 ### 5.10 Trash 前端模組
 

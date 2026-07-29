@@ -7,6 +7,7 @@ from app.drive.router import router as drive_router
 from app.external_model.router import router as external_model_router
 from app.file_version.router import router as file_version_router
 from app.preview.router import router as preview_router
+from app.public_share.router import router as public_share_router
 from app.search.router import router as search_router
 from app.share.router import router as share_router
 from app.snapshot.router import router as snapshot_router
@@ -26,6 +27,7 @@ api_router.include_router(preview_router)
 api_router.include_router(trash_router)
 api_router.include_router(search_router)
 api_router.include_router(share_router)
+api_router.include_router(public_share_router)
 api_router.include_router(snapshot_router)
 api_router.include_router(assistant_router)
 api_router.include_router(external_model_router)

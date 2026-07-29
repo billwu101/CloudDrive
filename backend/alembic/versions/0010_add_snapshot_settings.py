@@ -28,9 +28,7 @@ def upgrade() -> None:
         ),
         sa.Column("retention_n", sa.Integer(), nullable=False, server_default="50"),
         sa.Column("schedule_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column(
-            "schedule_interval_minutes", sa.Integer(), nullable=False, server_default="60"
-        ),
+        sa.Column("schedule_interval_minutes", sa.Integer(), nullable=False, server_default="60"),
         sa.Column("quota_bytes", sa.BigInteger(), nullable=True),
     )
 

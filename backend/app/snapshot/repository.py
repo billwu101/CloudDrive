@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.drive_item import DriveItem
@@ -82,6 +82,17 @@ class AbstractSnapshotRepository(ABC):
     @abstractmethod
     async def used_snapshot_bytes(self, user_id: UUID) -> int:
         """Space the user's snapshots occupy, deduped by content checksum."""
+
+    @abstractmethod
+    async def reclaimable_bytes_by_snapshot(self, user_id: UUID) -> dict[UUID, int]:
+        """How much deleting each snapshot would actually free.
+
+        Snapshots share blobs, so a snapshot that "covers" gigabytes usually
+        costs nothing on its own: only the blobs it alone still holds — no
+        other snapshot, no live item, no file version — are freed by deleting
+        it. Reporting coverage instead would tell the user to delete the
+        biggest snapshot when that frees nothing at all.
+        """
 
     @abstractmethod
     async def referenced_storage_keys(self) -> set[str]:
@@ -247,6 +258,45 @@ class SQLSnapshotRepository(AbstractSnapshotRepository):  # pragma: no cover
     async def get_user_quota_bytes(self, user_id: UUID) -> int:
         result = await self._session.execute(select(User.quota_bytes).where(User.id == user_id))
         return int(result.scalar_one_or_none() or 0)
+
+    async def reclaimable_bytes_by_snapshot(self, user_id: UUID) -> dict[UUID, int]:
+        # Dedup is by storage_key: 10k+ snapshot entries can point at a few
+        # hundred blobs, so per-snapshot cost has to be computed on the keys
+        # this snapshot is the sole remaining holder of.
+        keys = (
+            select(
+                SnapshotEntry.snapshot_id.label("snapshot_id"),
+                SnapshotEntry.storage_key.label("storage_key"),
+                func.max(SnapshotEntry.size_bytes).label("sz"),
+            )
+            .join(Snapshot, SnapshotEntry.snapshot_id == Snapshot.id)
+            .where(Snapshot.user_id == user_id, SnapshotEntry.storage_key.is_not(None))
+            .group_by(SnapshotEntry.snapshot_id, SnapshotEntry.storage_key)
+            .cte("keys")
+        )
+        holders = (
+            select(
+                keys.c.storage_key,
+                func.count(func.distinct(keys.c.snapshot_id)).label("n"),
+            )
+            .group_by(keys.c.storage_key)
+            .cte("holders")
+        )
+        rows = await self._session.execute(
+            select(keys.c.snapshot_id, func.sum(keys.c.sz))
+            .join(holders, holders.c.storage_key == keys.c.storage_key)
+            .where(
+                holders.c.n == 1,
+                # A trashed item still holds its blob until it is purged, so
+                # any drive_items row counts as a reference.
+                ~exists(select(DriveItem.id).where(DriveItem.storage_key == keys.c.storage_key)),
+                ~exists(
+                    select(FileVersion.id).where(FileVersion.storage_key == keys.c.storage_key)
+                ),
+            )
+            .group_by(keys.c.snapshot_id)
+        )
+        return {row[0]: int(row[1] or 0) for row in rows.all()}
 
     async def used_snapshot_bytes(self, user_id: UUID) -> int:
         # One row per distinct content checksum across the user's snapshots.

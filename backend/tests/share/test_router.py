@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -14,7 +14,6 @@ from httpx import ASGITransport, AsyncClient
 from app.core.dependencies import get_db
 from app.core.exceptions import AppError, ForbiddenError, NotFoundError
 from app.core.security import create_access_token
-from app.models.share_link import ShareLink
 from app.permission.permissions import Permission
 from app.schemas.common import Page
 from app.share.router import _link_service, _share_service
@@ -240,39 +239,6 @@ async def test_create_link_non_owner_returns_403(user_id: UUID, headers: dict[st
             headers=headers,
         )
     assert resp.status_code == 403
-
-
-# ── POST /share/links/validate ────────────────────────────────────────────────
-
-
-async def test_validate_link_returns_200(user_id: UUID) -> None:
-    item_id = uuid4()
-    raw_link = MagicMock(spec=ShareLink)
-    raw_link.id = uuid4()
-    raw_link.item_id = item_id
-    raw_link.permission = Permission.VIEWER
-    raw_link.expires_at = None
-    raw_link.is_active = True
-    raw_link.created_by = user_id
-    raw_link.created_at = datetime.now(UTC)
-    share_svc = AsyncMock(spec=ShareService)
-    link_svc = AsyncMock(spec=ShareLinkService)
-    link_svc.validate_access.return_value = raw_link
-    app = _make_app(share_svc, link_svc, user_id)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post("/share/links/validate", params={"token": "public-tok-abc"})
-    assert resp.status_code == 200
-    assert resp.json()["is_active"] is True
-
-
-async def test_validate_link_invalid_token_returns_404() -> None:
-    share_svc = AsyncMock(spec=ShareService)
-    link_svc = AsyncMock(spec=ShareLinkService)
-    link_svc.validate_access.side_effect = NotFoundError("Link not found or inactive")
-    app = _make_app(share_svc, link_svc, uuid4())
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post("/share/links/validate", params={"token": "bad-token"})
-    assert resp.status_code == 404
 
 
 # ── DELETE /share/links/{link_id} ────────────────────────────────────────────

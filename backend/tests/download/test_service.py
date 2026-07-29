@@ -235,3 +235,24 @@ async def test_archive_multi_select_names_zip_after_first_and_count() -> None:
 
     result = await svc.archive(user, [folder.id, other.id])
     assert result.filename == "docs 等 2 項.zip"  # first item's name + item count
+
+
+async def test_download_names_the_type_from_the_filename_when_the_column_is_blank() -> None:
+    """The preview dialog streams non-converted types through download.
+
+    With a blank mime column a real PDF used to arrive as octet-stream, and
+    browsers will not render that inline — the preview pane just sat blank.
+    """
+    owner = uuid4()
+    storage = MemStorage()
+    storage._data["k/pdf"] = b"%PDF-1.7"
+    pdf = _file(owner)
+    pdf.name = "handbook.pdf"
+    pdf.storage_key = "k/pdf"
+    pdf.mime_type = None
+    pdf.extension = None
+    svc = _make_svc([pdf], storage=storage)
+
+    result = await svc.download(owner, pdf.id)
+
+    assert result.mime_type == "application/pdf"

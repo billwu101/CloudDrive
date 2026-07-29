@@ -1,4 +1,4 @@
-import type { Page, ShareLinkResponse, ShareResponse } from './types'
+import type { Page, ShareLinkResponse, ShareResponse, SharedByMeEntry } from './types'
 import { api } from './client'
 
 export type Permission = 'viewer' | 'downloader' | 'editor' | 'owner'
@@ -16,6 +16,12 @@ export const shareApi = {
       signal,
     }),
 
+  sharedByMe: (page = 1, page_size = 20, signal?: AbortSignal) =>
+    api.get<Page<SharedByMeEntry>>('/share/shared-by-me', {
+      params: { page, page_size },
+      signal,
+    }),
+
   createLink: (
     item_id: string,
     permission: Permission,
@@ -23,11 +29,12 @@ export const shareApi = {
   ) =>
     api.post<ShareLinkResponse>(`/share/items/${item_id}/links`, { permission, ...opts }),
 
-  validateLink: (token: string, password?: string) =>
-    api.post<ShareLinkResponse>('/share/links/validate', null, {
-      params: { token, password },
-    }),
-
   deactivateLink: (link_id: string) =>
     api.delete<void>(`/share/links/${link_id}`),
+
+  // Removes the record itself. Only accepted once the link is already dead —
+  // the backend refuses while it still works, so this can never silently cut
+  // off someone who is using the URL.
+  deleteLinkRecord: (link_id: string) =>
+    api.delete<void>(`/share/links/${link_id}/record`),
 }

@@ -424,3 +424,66 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
 - 理由：分片大小 8 MB 使對外入口（nginx）只需容納單一分片（約 `10m`），**不必**把 `client_max_body_size` 放寬到 5 GB——避免為了大檔而打開超大請求的風險面。序列送分片讓進度計算、重試與續傳最單純，且真正的瓶頸是「檔案之間搶連線」而非單檔頻寬。
 - 已知取捨：單一大檔無法靠多連線加速（GB 級檔案上傳時間較長）；若日後成為痛點，改分片並行時**必須**改用全域請求並行預算（不分檔案內外統一計數），否則「檔案並行 × 分片並行」會重演連線耗盡。前端 `File` 物件無法持久化，故關閉瀏覽器後續傳需使用者重新選取同一檔案（工作階段與已傳分片仍在伺服器）。
 - 影響範圍：新增 `upload_sessions`／`upload_chunks` 表與 migration（0017–0019）、`StorageProvider.concat` 與 `save_stream`／`open_read` 串流化、`app/upload/`（service/router/schemas/repository/scheduler）、背景清理任務、前端 `uploadStore`／`useUpload`／`UploadQueue`／`chunkedUpload`／`uploadPersistence` 與相關測試。
+
+## DEC-037：公開分享連結以「短效存取憑證」開放免認證存取
+
+- 日期：2026-07-26
+- 狀態：Accepted，**待實作**（需求見 proposal §28、設計見 §6.12.8–§6.12.11／§7.6／§13）
+- 背景：分享功能只完成一半——分享彈窗建得出公開連結，但 `/s/<token>` 是佔位頁，後端也沒有任何可用 token 取得內容的端點（`/download/{id}`、`/preview/{id}` 一律要求登入）。亦即連結複製得走，收到的人永遠打不開，**所有已發出的連結全部無效**。
+- 決策：
+  1. 新增 `app/public_share/` 掛在 `/api/v1/public`，與需登入的 `app/share` **分開套件**，避免免認證 router 誤加 `CurrentUserId` 依賴。
+  2. 訪客以 token（必要時加密碼）換一張 `type="share_access"` 的 **JWT 短效憑證**（預設 15 分鐘），之後的預覽／下載帶憑證；可 `refresh` 續發，總時長上限 240 分鐘。
+  3. 密碼為選填：未設密碼者不出現密碼輸入步驟，仍走同一套憑證機制。
+  4. 每個連結每分鐘 5 次驗證嘗試，超過鎖定 5 分鐘；計數狀態存 `share_links` 資料列。
+  5. `downloader` 以上的資料夾連結可整包 zip 下載，重用 §6.8.1 既有打包能力。
+  6. 取代原 `POST /share/links/validate`。
+- 理由：
+  - 憑證而非「每次重送密碼」——轉傳網址或瀏覽器歷史不會挾帶密碼（proposal §28.3 第 3 點）；而憑證做長效等同把密碼降級為一次性關卡，故短效 + 續發。續發只延長「已驗證」狀態，不重新授權。
+  - `type` claim 已由既有 `_decode_token` 強制檢查，故 share 憑證天生無法冒充使用者權杖，反之亦然——這是本設計免於權限提升的機制性保證，不靠呼叫端自律。
+  - 速率限制存 DB 而非行程記憶體：正式部署多 worker，行程內計數會讓「每分鐘 5 次」實際變成「5 × worker 數」。
+  - 憑證**不取代** DB 檢查：每次內容請求仍重查連結是否停用／過期，否則分享者按下停用後憑證仍能存取，違反 proposal §28.3 第 5 點。
+- 已知取捨：憑證有效期內若分享者改了密碼，既有憑證仍可用到期滿（停用連結才是即時的）；zip 打包大子樹的成本與 §6.8.1 相同，未針對公開路徑另設上限（列為後續觀察項）。
+- 影響範圍：新增 `app/public_share/`（router/service/schemas）、`app/core/security.py` 新增 share 憑證簽發/解碼、`share_links` migration `0020`、`core/config.py` 四個設定項、前端 `PublicSharePage` 取代佔位頁 + 獨立 axios 實例、`/s/:shareToken` 路由脫離 `RequireAuth`。
+
+## DEC-038：Shared by me 以「一項目一列」呈現，兩種分享用不同圖示標記
+
+- 日期：2026-07-26
+- 狀態：Accepted，**待實作**（需求見 proposal §29、設計見 §6.12.12／§5.9.5）
+- 背景：側邊欄只有「Shared with me」，沒有反向一覽。使用者無法知道自己分享出去了什麼，要確認只能逐一右鍵開分享彈窗；分享一多即失去掌控，可能有早已忘記卻仍有效的公開連結——屬隱私與安全缺口，不只是缺個清單。
+- 決策：
+  1. `GET /share/shared-by-me` 以 `item_id` 聚合，**一項目一列**，展開後才看到全部對象與連結。
+  2. `DriveItemResponse` 新增 `is_shared_with_users` 與 `has_active_public_link` **兩個布林欄位**，前端以兩種圖示分別標記。
+  3. **不提供「一鍵收回此項目的所有分享」**，只做逐筆就地移除／停用。
+  4. 已停用／過期的連結仍列出並標為失效，不隱藏。
+- 理由：
+  - 兩個布林而非單一 `is_shared`：公開連結是唯一對外、不需登入的路徑（DEC-037），風險等級與「分享給某個帳號」不同，必須一眼分辨。
+  - 不做批次收回：收回不可逆，一次砍光全部分享的誤按代價過高；proposal §29.4 已把批次管理列為不在範圍。
+  - 標記欄位由 `list_items` 以**一次批次查詢**填入（對當頁 item id 做 `IN`），避免每列一查的 N+1。
+- 已知取捨：標記欄位讓 `list_items` 多一次查詢（固定成本，不隨列數增加）；非 owner 檢視他人分享來的項目時兩欄一律 `false`，因為那是分享者自己的狀態，不對被分享者揭露。
+- 影響範圍：`app/share`（service/repository/schemas/router）、`app/drive/service.py` 與 `schemas/`（兩個新欄位）、前端 `SharedByMePage`／`SharedByMeRow`／`ShareBadges`／`Sidebar`／`DriveItemRow` 與相關測試。
+
+## DEC-039：代號命名規範——評測分層改用 EC1–EC4，不另立對照表
+
+- 日期：2026-07-27
+- 狀態：Accepted，**已實作**（需求見 proposal §32）
+- 背景：專案有 9 套彼此獨立的代號體系（`DEC-nnn`、`M`、`E`、`EM`、`S`、`HARNESS`、`Stage`、migration revision、以及本則新增的 `EC`），其中 **`M` 被兩件不同的事共用**：`tasks/backend-assistant.md` 的 M1–M4 是助理引擎的**開發里程碑**，`eval/generate_cases.py` 的 M2–M5 是評測的**案例分層**。兩者相關但性質不同——一個是「做了什麼」，一個是「測什麼」——讀文件得先判斷語境。這已是同類問題第二次發生：外部模型接入原本要用 E1–E3，因為會撞到 eval harness 的 E1–E4，才改成 EM1–EM3（`tasks/external-model.md` 開頭有明文註記）。
+- 決策：
+  1. **評測案例分層改用 `EC`（Eval Case）前綴並重編為 EC1–EC4**，各層定義不變。400 個生成案例由產生器重跑產出，不手改。
+  2. **新增代號一律用兩字母前綴**。單字母 `M`／`E`／`S` 已佔用，不再新增單字母體系。
+  3. **不另立獨立的代號對照表文件**。各代號的定義由其權威檔案負責；唯一需要集中記錄的是「跨體系的關係」，即本則。
+- `M` 與 `EC` 的對應（每層 EC 案例測的正是對應里程碑交付的能力）：
+
+  | 里程碑（做了什麼） | 案例層（測什麼） |
+  | --- | --- |
+  | M1 引擎骨架（AgentLoop + 唯讀內建技能） | — 無生成分層 |
+  | M2 planner / workflow | **EC1** 唯讀多工具，自動執行 |
+  | M3 持久化 + 寫入型技能 | **EC2** 查詢脈絡 + 寫入，需確認 |
+  | M4 自我撰寫沙箱 | **EC3** 生成技能（100 種） |
+  | — 無對應里程碑 | **EC4** 多步驟 + 跨步引用 + 寫入 |
+
+  兩處不對稱是刻意的：**M1 沒有 EC 層**（引擎骨架的唯讀行為由手寫案例 `eval/cases/*.yaml` 覆蓋，標籤維持 `read-only` 等語意標籤）；**EC4 沒有里程碑**（跨步驟引用是評測額外加壓的一層）。
+- 理由：
+  - 重編為 1–4 而非沿用 2–5：代號自身完整，不會讓人問「為什麼從 2 開始」；與里程碑的對應改由本表明寫，不靠編號暗示。
+  - **不做對照表文件**：曾經做了一份 `doc/glossary.md`，隨即發現它把最脆弱的東西（DEC 則數、Stage 範圍、migration 編號）抄成第二份，而沒有任何機制保證它跟得上——同一輪對話裡就新增了 DEC-037/038 與 migration 0020，那張表當場過期。文件先行的價值來自單一事實來源，再抄一份只是多一個會說謊的地方。故該檔已刪除，僅保留此處的「跨體系關係」。
+- 已知取捨：沒有單一入口可以一眼看完 9 套代號，遇到陌生代號仍需知道去哪個 tasks／design 檔查。取捨的理由是「會過期的索引比沒有索引更糟」；若日後真的需要索引，應以腳本從權威來源生成，而非手抄。
+- 影響範圍：`eval/generate_cases.py`（常數／builder／case id／tags／顯示名稱）、`eval/run.py`（`--tag` 說明）、`eval/cases/generated/` 400 檔重建、`detailed-design/10-assistant-eval.md`、`tasks/assistant-eval.md`、`eval-prompt-log.md`、`roadmap.md`。`tasks/backend-assistant.md`／`prompt.md`／`tasks/progress.md` 的里程碑 M1–M4 **不動**。

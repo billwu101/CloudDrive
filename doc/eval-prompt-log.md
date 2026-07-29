@@ -40,38 +40,38 @@
 - **問題 B（spec 寫死選單標籤）**：已改從 manifest `ui.context_menu[0].label` 取實際標籤（commit `3937949`）。
 - **現況**：browser **exec-hash-report PASS**。
 
-### 2.3 M2–M5 量產批次（每級 100，共 400）— Mock 全過；Browser 大幅改善
-- 對應 `backend/eval/cases/generated/gen-m{2..5}-*.yaml`。M4=100 種自我撰寫技能；M2/M3/M5=3+ 查詢工具組合（M3/M5 接寫入）。
+### 2.3 EC1–EC4 量產批次（每級 100，共 400）— Mock 全過；Browser 大幅改善
+- 對應 `backend/eval/cases/generated/gen-ec{1..4}-*.yaml`。EC3=100 種自我撰寫技能；EC1/EC2/EC4=3+ 查詢工具組合（EC2/EC4 接寫入）。
 - **Mock（決定性）**：全 **400/400 恆過**（連同手寫共 411/411）。回歸守門。
 - **Browser（真實模型，優化後）**：
-  - **M2（唯讀）/ M4（生成）**：可靠。
-  - **M3**：原 0.50 FAIL → **寫入優先 prompt** 後 `gen-m3-001` **PASS**（可靠產出 pending 層級）。
-  - **M5**：單跑仍偶爾 FAIL（模型波動），但 **`--runs 3` 下 `gen-m5-001` 3/3 PASS**——靠**多次執行通過率門檻**（`min_pass_rate=0.6`）正確評估，而非放寬斷言。
+  - **EC1（唯讀）/ EC3（生成）**：可靠。
+  - **EC2**：原 0.50 FAIL → **寫入優先 prompt** 後 `gen-ec2-001` **PASS**（可靠產出 pending 層級）。
+  - **EC4**：單跑仍偶爾 FAIL（模型波動），但 **`--runs 3` 下 `gen-ec4-001` 3/3 PASS**——靠**多次執行通過率門檻**（`min_pass_rate=0.6`）正確評估，而非放寬斷言。
 - 全 400 標 `mode: [api, browser]`；整批 browser 一輪是數小時，平時 `--cases` 取樣 + 對 flaky 案例用 `--runs N`。
 
 ### 2.4 harness 優化摘要（2026-06-18，commit `86b53c0`）
-讓測試「為對的理由變綠」的四項：①codegen 告知沙箱可用庫（Pillow/pypdf/…）②codegen 非法 JSON 重試 + max_repair↑ ③M3/M5 改寫入優先自然 prompt ④`min_pass_rate=0.6` 多次執行通過率門檻。效果：browser exec 2/4→4/4、M3 修好、M5 多跑穩定。**原則：絕不為了變綠而放寬內容/安全斷言**——真實模型品質問題該以「換更好的庫提示／重試／多跑取通過率」解，不是降標準。
+讓測試「為對的理由變綠」的四項：①codegen 告知沙箱可用庫（Pillow/pypdf/…）②codegen 非法 JSON 重試 + max_repair↑ ③EC2/EC4 改寫入優先自然 prompt ④`min_pass_rate=0.6` 多次執行通過率門檻。效果：browser exec 2/4→4/4、EC2 修好、EC4 多跑穩定。**原則：絕不為了變綠而放寬內容/安全斷言**——真實模型品質問題該以「換更好的庫提示／重試／多跑取通過率」解，不是降標準。
 
-### 2.5 M2 全量 browser 實測（2026-06-19）
+### 2.5 EC1 全量 browser 實測（2026-06-19）
 
 - 環境：docker stack（frontend `:8088` / backend `:8001` / `pgvector`）+ Ollama `gemma4-26b`。
-- 指令：`python -m eval.run --cases <100 個 M2> --mode browser --frontend-url http://localhost:8088 --base-url http://localhost:8001/api/v1`（真 assistant 規劃 + Playwright 驅動前端，逐 case 抓 `/assistant/chat` 回應交同一 verifier）。
-- 結果：**單次全量 99/100 PASS**。唯一 FAIL = `gen-m2-007`。
+- 指令：`python -m eval.run --cases <100 個 EC1> --mode browser --frontend-url http://localhost:8088 --base-url http://localhost:8001/api/v1`（真 assistant 規劃 + Playwright 驅動前端，逐 case 抓 `/assistant/chat` 回應交同一 verifier）。
+- 結果：**單次全量 99/100 PASS**。唯一 FAIL = `gen-ec1-007`。
 - **問題 prompt**：「幫我搜尋檔案、列出根目錄檔案、查看某個項目的詳情」（`expect.steps_include: search / list_items / get_info`）。
 - 現象：單次 run 真 LLM 偶爾未規劃出 `get_info`。
 - 原因：**模型限制**——「某個項目」是模糊指代、無 item_id，gemma4 偶爾跳過該步；非 harness/斷言問題。
-- 判定 + 下次驗證：重跑即過；`--runs 3` 下 `gen-m2-007` **3/3 PASS**，遠超 case 既有 `min_pass_rate=0.6`。**未放寬任何斷言**，純靠多次執行通過率門檻評估。flaky 案例平時用 `--runs N`。
+- 判定 + 下次驗證：重跑即過；`--runs 3` 下 `gen-ec1-007` **3/3 PASS**，遠超 case 既有 `min_pass_rate=0.6`。**未放寬任何斷言**，純靠多次執行通過率門檻評估。flaky 案例平時用 `--runs N`。
 
-### 2.6 M2 重設計為真實 5-工具情境（2026-06-19）
+### 2.6 EC1 重設計為真實 5-工具情境（2026-06-19）
 
-- 動機：原 M2 是把工具名串成短語（「搜尋檔案、列出根目錄、查看詳情…」），是工具清單而非任務，缺乏參考價值。重設計成 **5 個真實任務情境 × 20 主題 = 100**，每個情境本身就需要全部 5 個唯讀工具，且工具順序反映真實思考流程；每個 case 帶 `rationale` 欄位（EvalCase 忽略額外鍵，純人類可讀）。
+- 動機：原 EC1 是把工具名串成短語（「搜尋檔案、列出根目錄、查看詳情…」），是工具清單而非任務，缺乏參考價值。重設計成 **5 個真實任務情境 × 20 主題 = 100**，每個情境本身就需要全部 5 個唯讀工具，且工具順序反映真實思考流程；每個 case 帶 `rationale` 欄位（EvalCase 忽略額外鍵，純人類可讀）。
   - `cleanup_space` 清理空間：storage_quota → list_items → search → recent → get_info
   - `resume_work` 接續工作：recent → list_items → search → get_info → storage_quota
   - `handover_project` 交接專案：list_items → search → get_info → recent → storage_quota
   - `find_lost_file` 找回舊檔：search → recent → list_items → get_info → storage_quota
   - `monthly_audit` 月底盤點：storage_quota → list_items → recent → search → get_info
 - 結果：**Mock 411/411**（決定性）；**Browser 全 100/100 PASS**（真 gemma4-26b 能從敘事 prompt 規劃出全 5 工具，比舊版工具清單 99/100 更穩——敘事任務反而語意更明確）。
-- 注意：敘事 prompt 較長、模型規劃較久，全 100 browser 一輪超過 runner 預設 1800s；已給 `eval/run.py` 加 `--browser-timeout`（本次用 5400s）。M3-M5 全量 browser 同理需放大此值。
+- 注意：敘事 prompt 較長、模型規劃較久，全 100 browser 一輪超過 runner 預設 1800s；已給 `eval/run.py` 加 `--browser-timeout`（本次用 5400s）。EC2-EC4 全量 browser 同理需放大此值。
 
 ---
 

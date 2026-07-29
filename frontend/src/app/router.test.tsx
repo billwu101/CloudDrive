@@ -72,9 +72,12 @@ describe('RedirectIfAuth', () => {
 })
 
 describe('Public routes', () => {
-  it('renders share-token page without login', () => {
+  it('renders the share-token page for a visitor with no session', () => {
     renderAt('/s/abc123')
-    expect(screen.getByText(/shared file/i)).toBeInTheDocument()
+    // It starts opening the link straight away rather than bouncing the
+    // visitor to /login — they have no account to log in to.
+    expect(screen.getByLabelText('Opening link')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
   })
 
   it('renders 404 for unknown path', () => {

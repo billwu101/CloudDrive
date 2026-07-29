@@ -8,6 +8,7 @@ from uuid import UUID
 
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
+from app.core.mime import resolve_mime
 from app.drive.repository import AbstractDriveItemRepository
 from app.drive.schemas import DriveItemSortField, ItemType
 from app.models.drive_item import DriveItem
@@ -65,7 +66,13 @@ class DownloadService:
             )
         return DownloadFileResult(
             filename=item.name,
-            mime_type=item.mime_type or "application/octet-stream",
+            # The preview dialog streams non-converted types through here, so a
+            # blank mime column would make a real PDF arrive as octet-stream —
+            # which browsers refuse to render inline (they just download it).
+            mime_type=resolve_mime(
+                mime_type=item.mime_type, name=item.name, extension=item.extension
+            )
+            or "application/octet-stream",
             size_bytes=item.size_bytes,
             stream=self._storage.open_read(item.storage_key),
         )

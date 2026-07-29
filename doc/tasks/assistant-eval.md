@@ -45,9 +45,9 @@
 
 - [x] 案例涵蓋 tag：`read-only`(list)、`daily-ops`(create/rename/trash)、`skill-generation`(7zip→pending proposal)、`safety`(破壞性需確認)、`workflow-reuse`(可組合 search→rename 步驟引用)、`context`(雜訊長 prompt→乾淨計畫)、`model-escalation`。10/10 mock 全過。inproc runner 已接 `skill_authoring`(CodegenSubAgent) 使生成案例可產出 pending proposal。
 - [x] `model-escalation` 案例：`MockLLM` 新增 `external`/`local_failures`,inproc 建可升級 router;本地回不合法輸出 → 升級(mock)外部 → 計畫成功。隱私敏感**不**外送/外部停用不升級已於 `tests/assistant/test_model_router.py` 單元層覆蓋。
-- [x] M2–M5 量產案例套件（`eval/generate_cases.py`，輸出 `eval/cases/generated/`，**每級 100 共 400** 個案例）：M2=讀取多工具（3+ 查詢工具,auto-exec）、M3=查詢情境+寫入/批次（需確認）、M4=自我撰寫生成（**100 種**技能:hash/編碼/壓縮/文字/資料/影像/PDF…,`skill_generated:"*"`）、M5=多步驟+步驟引用+寫入（需確認）。全標 `mode:[api,browser]`。`load_cases` 遞迴納入。
+- [x] EC1–EC4 量產案例套件（`eval/generate_cases.py`，輸出 `eval/cases/generated/`，**每級 100 共 400** 個案例）：EC1=讀取多工具（3+ 查詢工具,auto-exec）、EC2=查詢情境+寫入/批次（需確認）、EC3=自我撰寫生成（**100 種**技能:hash/編碼/壓縮/文字/資料/影像/PDF…,`skill_generated:"*"`）、EC4=多步驟+步驟引用+寫入（需確認）。全標 `mode:[api,browser]`。`load_cases` 遞迴納入。
   - **Mock（決定性）**：**411/411 恆過**（400 產生 + 11 手寫）。回歸守門。
-  - **Browser（真實 Gemma）**：`verify` 對 browser 放寬（`strict_steps=False`:只看「有產出計畫 + 確認層級」,不比精確步驟）。**M2(唯讀)/M4(生成) 可靠**;**M3/M5 不可靠**——真實模型對合成的多工具+寫入 prompt 不一定產出寫入步驟/標對確認層級（sample 實測 gen-m3-001/gen-m5-001 0.50 FAIL）。不為了過而再放寬;Mock 為事實來源。詳見 [eval-prompt-log.md](../eval-prompt-log.md) §2.3。
+  - **Browser（真實 Gemma）**：`verify` 對 browser 放寬（`strict_steps=False`:只看「有產出計畫 + 確認層級」,不比精確步驟）。**EC1(唯讀)/EC3(生成) 可靠**;**EC2/EC4 不可靠**——真實模型對合成的多工具+寫入 prompt 不一定產出寫入步驟/標對確認層級（sample 實測 gen-ec2-001/gen-ec4-001 0.50 FAIL）。不為了過而再放寬;Mock 為事實來源。詳見 [eval-prompt-log.md](../eval-prompt-log.md) §2.3。
 
 ## E5：執行驗證模式（實際跑 skill、驗產出內容）
 
@@ -91,8 +91,8 @@ Codex 考官的憑證模型與 EM3（使用者功能）刻意不同——因為�
 - [x] **judge verdict = score + strengths + weaknesses**：`JudgeVerdict` 改帶優點/缺點（原單句 reasoning），prompt 要求三者，`_run_judge` 在 detail 呈現「優點: … | 缺點: …」。
 - [x] **judge 可評所有案例**：`_default_rubric` + `fallback_rubric`——無自訂 rubric 的案例套用預設「是否正確、完整、實用達成 prompt 意圖」（含該案 prompt）；`run.py` 三個 judge 呼叫皆 `fallback_rubric=True`。
 - [x] **report 分數為主軸**：`report.aggregates_to_markdown` 在有 judge 時主秀 judge 分數 + ✓/✗ 守門 + 「評分理由（優點/缺點）」；JSON 加頂層 `judge_score`/`judge_detail`。**`passed` 仍由確定性斷言決定**（judge 不 gate）；無 judge 維度時維持原 pass-rate 報告。
-- [x] **`--tag` / `--verbose`**：`--tag mX` 篩 tag（m2–m5/safety/…）；`--verbose` 逐案印**輸入 prompt + 輸出結果 + 評分 + 優點/缺點 + 守門**（`report.verbose_markdown` + run.py `_summarise_response`/`_summarise_exec`）。
-- [x] **M 分級事實**：無 `m1`（m2–m5）；m2–m5 是 `api`/`browser`（chat），**不是 `exec`**；`--mode exec` 只有 4 個 `m4`。跑某級用 `--mode api --tag mX`。
+- [x] **`--tag` / `--verbose`**：`--tag ecX` 篩 tag（ec1–ec4/safety/…）；`--verbose` 逐案印**輸入 prompt + 輸出結果 + 評分 + 優點/缺點 + 守門**（`report.verbose_markdown` + run.py `_summarise_response`/`_summarise_exec`）。
+- [x] **EC 分層事實**：分層為 `ec1`–`ec4`（代號說明見 proposal §32；與引擎里程碑 M1–M4 無關）；這些是 `api`/`browser`（chat），**不是 `exec`**；`--mode exec` 只有 4 個 `ec3`。跑某層用 `--mode api --tag ecX`。
 - [x] 測試：`tests/eval/test_report.py`（分數主軸/優缺點呈現/verbose）、`test_judge.py`（strengths/weaknesses 解析、fallback rubric）。
 
 ## E7：溫度掃描工具（temp_sweep，DEC-031 後續實驗）
@@ -148,7 +148,7 @@ uv run python -m eval.temp_sweep --temps 0.2,0.8 --runs 3
 
 **結論**：
 1. 溫度在 0.2–0.8 間**不是決定性變數**——好案例哪裡都好、爛案例哪裡都爛；**維持 0.2**（變異最小，且 20 樣本的解析度撐不起 0.6 的表面優勢）。
-2. 真正的發現：**destructive 規劃是模型重災區**（可靠度 0–40%，跳針與幻覺技能並存），與 E4 的 M3/M5 觀察吻合、首次量化。後續方向：planner 對 destructive 意圖的 prompt 工程／schema 級技能名約束。
+2. 真正的發現：**destructive 規劃是模型重災區**（可靠度 0–40%，跳針與幻覺技能並存），與 E4 的 EC2/EC4 觀察吻合、首次量化。後續方向：planner 對 destructive 意圖的 prompt 工程／schema 級技能名約束。
 3. DEC-031 的「有界失敗」在 80 樣本規模驗證成立：零卡死、幻覺計畫全被權限層攔截、重試多次實際救回慢樣本。
 
 ## E8：待跑實驗與遠端模型可行性探測（2026-07-07）
@@ -164,8 +164,8 @@ uv run python -m eval.temp_sweep --temps 0.2,0.8 --runs 3
    codegen 第一版退化就是「沒量就上」）。前置已完成：本地 Ollama 實測 `think:false`
    可用（回應無 thinking 欄位、內容正常）。設計：sweep 對 loop 高危案例
    （storage-quota、safety-destructive）A/B，各 5 runs，~15 分鐘。
-2. **M3/M5 重測**（更新 E4 結論）：DEC-032 修的兩個病因（幻覺技能、壞相依）正是 E4
-   判 M3/M5「不可靠」的失敗型態，分數大概率已被動提升但無新數據。設計：generated
+2. **EC2/EC4 重測**（更新 E4 結論）：DEC-032 修的兩個病因（幻覺技能、壞相依）正是 E4
+   判 EC2/EC4「不可靠」的失敗型態，分數大概率已被動提升但無新數據。設計：generated
    案例各抽 5 個，`temp_sweep --case-ids`，~20–30 分鐘。報告價值：補齊
    「修正前 X% → 修正後 Y%」的敘事線。
 
@@ -181,17 +181,17 @@ uv run python -m eval.temp_sweep --temps 0.2,0.8 --runs 3
 **think:false 壓倒性勝出**：跳針歸零、全數通過（含 destructive 確認層級全對）、
 規劃延遲快 **10 倍**。在這批案例上規劃品質零代價。
 
-**實驗二：M3/M5 重測**（各 5 案 × 2 runs）
+**實驗二：EC2/EC4 重測**（各 5 案 × 2 runs）
 
-| 配置 | M3 | M5 | 失敗組成 |
+| 配置 | EC2 | EC4 | 失敗組成 |
 |---|---|---|---|
 | thinking 開 | 20% | 10% | 一半 503（跳針磨死）+ 一半驗證失敗（計畫品質） |
 | think:false（追加） | 40% | 0% | **零 503、零跳針**（平均 3.3s），失敗全為驗證失敗 |
 
-**判讀**：think:false 把 M3/M5 的「跳針」病根完全消滅（503 歸零、快 30 倍）；
+**判讀**：think:false 把 EC2/EC4 的「跳針」病根完全消滅（503 歸零、快 30 倍）；
 剩餘失敗全部是 **E4 已知的模型規劃能力弱點**（合成的多工具+寫入 prompt 不可靠地
-產出寫入步驟/正確確認層級——m3-002 期望含 rename_item 卻常規劃成唯讀）。M3 40%
-vs 0%（m5）與 thinking 開的 20%/10% 差異在 n=10 的解析度內互有勝負——結論：
+產出寫入步驟/正確確認層級——gen-ec2-002 期望含 rename_item 卻常規劃成唯讀）。EC2 40%
+vs 0%（EC4）與 thinking 開的 20%/10% 差異在 n=10 的解析度內互有勝負——結論：
 **thinking 對困難規劃的品質沒有可量測的幫助，卻是跳針與延遲的全部來源**。
 
 **綜合（今日全部 30+30 樣本）**：thinking 開 9/30（30%）、think:false 14/30（47%），
@@ -199,7 +199,7 @@ vs 0%（m5）與 thinking 開的 20%/10% 差異在 n=10 的解析度內互有勝
 
 **建議（已採納 → DEC-033 已實作）**：planner 路徑預設關 thinking（實作為 per-call 參數，如
 temperature 前例；codegen 不受影響——其 2/2 驗證是在 thinking 開時取得，不連動）。DEC-031 的
-num_predict/低溫防線保留（縱深）。M3/M5 剩餘弱點屬 planner prompt 工程範疇，另議。
+num_predict/低溫防線保留（縱深）。EC2/EC4 剩餘弱點屬 planner prompt 工程範疇，另議。
 
 **DEC-033 落地後現況（2026-07-07，真模型複驗）**
 
@@ -211,8 +211,8 @@ num_predict/低溫防線保留（縱深）。M3/M5 剩餘弱點屬 planner promp
   **注意**：同請求在 num_ctx=8192 下產出被截斷壞碼——codegen 對 context 大小敏感、高變異，
   驗證務必用生產配置；目前無 codegen 系統化 pass-rate，只有零星 spot-check（次要待辦）。
 - **下一個瓶頸（＝跳針治好後真正的大問題）**：planner 對「多工具＋寫入」請求的**規劃品質**。
-  困難集 think:false 後仍只有 M3 40% / M5 0%（綜合 47%），失敗全為「使用者要求寫入卻規劃成
-  唯讀」（如 m3-002 期望 rename_item 卻只列表）。屬**模型規劃能力弱點**，非測試/跳針問題 →
+  困難集 think:false 後仍只有 EC2 40% / EC4 0%（綜合 47%），失敗全為「使用者要求寫入卻規劃成
+  唯讀」（如 gen-ec2-002 期望 rename_item 卻只列表）。屬**模型規劃能力弱點**，非測試/跳針問題 →
   對策為 planner prompt 工程（強化「使用者要求的操作必須出現在步驟中」），用 sweep 快速迭代。
 
 ### 遠端模型可行性探測（結論：現狀不可行）
@@ -228,7 +228,7 @@ Bearer key 驗證）。探測結果（2026-07-07）：
 
 **為何兩個實驗都不能用它跑**：
 - think:false 的 `think` 參數只存在於 Ollama 原生協定，OpenAI 協定無此欄位。
-- M3/M5 重測若走此端點，約束解碼（DEC-031/032 全套機制）失效 → 量到的是「無保護
+- EC2/EC4 重測若走此端點，約束解碼（DEC-031/032 全套機制）失效 → 量到的是「無保護
   的系統」，而實驗目的恰是「DEC-032 改善多少」——參照系錯誤，數字無意義。
 - 通則：**本專案的可靠性機制（grammar/num_predict/temperature/think）全部住在
   Ollama 原生協定層**；同一顆模型經不同協定的門，可控性完全不同。
@@ -248,3 +248,24 @@ non_sensitive（內容會實際外送），使用時需有意識。
 - [x] harness 自身單元測試（schema 載入、scoring 計算、verifier 斷言）以 mock 資料驗證 + property-based 不變量（`tests/eval/`）。
 - [x] API 模式 mock-LLM 案例可整進 CI（`eval/inproc.py` + `run.py --llm mock`,決定性、免後端/Gemma）。
 - [x] `ruff format/check`、`mypy`、`pytest` 全綠（eval 切片）。
+
+---
+
+## 代號變更（2026-07-27）：M2–M5 → EC1–EC4
+
+評測案例分層原本用 `M2`–`M5`，與 `doc/tasks/backend-assistant.md` 的助理引擎開發里程碑 `M1`–`M4` 共用字母，讀文件時得先判斷語境。改用 `EC`（Eval Case）並重編為 1–4。需求與理由見 [proposal §32](../proposal.md#32-代號命名規範)，M／EC 對應與規則見 [DEC-039](../detailed-design/appendix-a-decisions.md)。
+
+| 舊 | 新 | 內容 |
+| --- | --- | --- |
+| M2 | **EC1** | 唯讀多工具（3+ 查詢工具），自動執行 |
+| M3 | **EC2** | 查詢脈絡 + 寫入／批次，需確認 |
+| M4 | **EC3** | 自我撰寫生成（100 種技能） |
+| M5 | **EC4** | 多步驟 + 跨步驟引用 + 寫入，需確認 |
+
+- [x] `eval/generate_cases.py`：常數／builder／case id／tags／顯示名稱全數更名；docstring 註明與里程碑無關。
+- [x] 重跑產生器：400 個案例檔重建（`gen-ec1-001` … `gen-ec4-100`），每層 100。
+- [x] `eval/run.py`：`--tag` 說明字串範例改 `ec1`/`ec3`。
+- [x] 文件：`detailed-design/10-assistant-eval.md`、本檔、`eval-prompt-log.md`、`roadmap.md` 一併更名；`backend-assistant.md`／`prompt.md`／`progress.md` 的里程碑 M1–M4 **維持不動**。
+- [x] 新增 DEC-039：記錄 M／EC 對應、兩處刻意的不對稱、以及「新增代號用兩字母前綴」的規則。（原本做過一份 `doc/glossary.md` 對照表，因會抄錄易變的 DEC／Stage／migration 編號而無同步機制，已刪除。）
+
+**驗證**：mock 模式四層各 100/100 通過，與更名前一致。

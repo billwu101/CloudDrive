@@ -30,7 +30,7 @@ describe('FileContextMenu', () => {
         onRename={vi.fn()}
         onMove={vi.fn()}
         onShare={vi.fn()}
-        onCopyLink={vi.fn()}
+        onCopyName={vi.fn()}
         onToggleStar={vi.fn()}
         onTrash={vi.fn()}
         onAssistantAction={onAssistantAction}
@@ -40,6 +40,58 @@ describe('FileContextMenu', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: /inspect details/i }))
 
     expect(onAssistantAction).toHaveBeenCalledWith(action, MOCK_FILE)
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('copies the file name via the Copy name item', async () => {
+    const onCopyName = vi.fn()
+    const onClose = vi.fn()
+
+    render(
+      <FileContextMenu
+        item={MOCK_FILE}
+        position={{ x: 0, y: 0 }}
+        onClose={onClose}
+        onPreview={vi.fn()}
+        onRename={vi.fn()}
+        onMove={vi.fn()}
+        onShare={vi.fn()}
+        onCopyName={onCopyName}
+        onToggleStar={vi.fn()}
+        onTrash={vi.fn()}
+      />,
+    )
+
+    // The old "Copy link" was a dead no-op; the menu now offers the name.
+    expect(screen.queryByRole('menuitem', { name: /copy link/i })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('menuitem', { name: /copy name/i }))
+
+    expect(onCopyName).toHaveBeenCalledWith(MOCK_FILE)
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('opens sharing via the Share item', async () => {
+    const onShare = vi.fn()
+    const onClose = vi.fn()
+
+    render(
+      <FileContextMenu
+        item={MOCK_FILE}
+        position={{ x: 0, y: 0 }}
+        onClose={onClose}
+        onPreview={vi.fn()}
+        onRename={vi.fn()}
+        onMove={vi.fn()}
+        onShare={onShare}
+        onCopyName={vi.fn()}
+        onToggleStar={vi.fn()}
+        onTrash={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /share/i }))
+
+    expect(onShare).toHaveBeenCalledWith(MOCK_FILE)
     expect(onClose).toHaveBeenCalled()
   })
 })

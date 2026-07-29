@@ -129,6 +129,18 @@ class Settings(BaseSettings):
     # migration 0012 (default nomic-embed-text = 768).
     embedding_dim: int = 768
 
+    # Public share links (proposal §28, DEC-037). Guests trade the link token
+    # (+ password) for a short-lived access credential; content requests carry
+    # that credential instead of resending the password. The credential never
+    # replaces the per-request DB check that the link is still active.
+    share_access_token_expire_minutes: int = 15
+    share_access_token_max_lifetime_minutes: int = 240  # cap across refreshes
+    # Attempt throttling is stored on the share_links row, not in process
+    # memory: with several workers an in-process counter would multiply the
+    # limit by the worker count.
+    share_link_attempt_limit: int = 5  # per minute, per link
+    share_link_lockout_minutes: int = 5
+
 
 @lru_cache
 def get_settings() -> Settings:

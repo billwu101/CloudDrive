@@ -52,6 +52,10 @@ export interface DriveItemResponse {
   updated_by: string | null
   created_at: string
   updated_at: string
+  /** Shared with at least one account. */
+  is_shared_with_users: boolean
+  /** Has a public link that is still live — no account needed to open it. */
+  has_active_public_link: boolean
 }
 
 export interface Page<T> {
@@ -255,7 +259,10 @@ export interface SnapshotResponse {
   trigger: 'scheduled' | 'manual' | 'assistant' | 'pre_restore' | string
   label: string
   item_count: number
+  /** How much content this snapshot covers — NOT what deleting it frees. */
   total_bytes: number
+  /** What deleting it actually frees: blobs it alone still holds. Often 0. */
+  reclaimable_bytes: number
   pinned: boolean
   created_at: string
 }
@@ -334,4 +341,61 @@ export interface ConnectionUpdate {
   base_url?: string
   model?: string
   secret?: string
+}
+
+// ── Public share links (proposal §28) ────────────────────────────────────────
+
+export type PreviewKind =
+  | 'image'
+  | 'pdf'
+  | 'document'
+  | 'text'
+  | 'markdown'
+  | 'video'
+  | 'audio'
+  | 'unsupported'
+
+/** What a guest is allowed to see about a shared item — no owner, no flags. */
+export interface PublicItem {
+  id: string
+  name: string
+  item_type: 'FILE' | 'FOLDER'
+  mime_type: string | null
+  size_bytes: number
+  extension: string | null
+  preview_type: PreviewKind
+  updated_at: string
+}
+
+export interface PublicSession {
+  access_token: string
+  expires_in: number
+  permission: 'viewer' | 'downloader'
+  item: PublicItem
+}
+
+// ── Shared by me (proposal §29) ──────────────────────────────────────────────
+
+export interface SharedByMeUserShare {
+  target_user_id: string
+  email: string
+  username: string | null
+  permission: string
+  created_at: string
+}
+
+export interface SharedByMeLink {
+  link_id: string
+  permission: string
+  has_password: boolean
+  expires_at: string | null
+  is_active: boolean
+  created_at: string
+}
+
+/** One shared item with everything shared about it — one row, expandable. */
+export interface SharedByMeEntry {
+  item: DriveItemResponse
+  user_shares: SharedByMeUserShare[]
+  links: SharedByMeLink[]
 }

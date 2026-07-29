@@ -7,11 +7,17 @@ import pytest
 
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, ForbiddenError, NotFoundError
+from app.models.drive_item import DriveItem
 from app.models.share import Share
 from app.models.share_link import ShareLink
 from app.models.user import User
 from app.permission.permissions import Permission
-from app.share.repository import AbstractShareLinkRepository, AbstractShareManagementRepository
+from app.share.repository import (
+    AbstractShareLinkRepository,
+    AbstractShareManagementRepository,
+    ShareBadges,
+    SharedByMeRow,
+)
 from app.share.service import ShareLinkService, ShareService, _hash_token
 from app.users.service import UserService
 from tests.drive.test_service import MemDriveItemRepo, _item
@@ -21,8 +27,20 @@ from tests.users.test_service import MockUserRepo
 
 
 class MemShareManagementRepo(AbstractShareManagementRepository):
-    def __init__(self, shares: list[Share] | None = None) -> None:
+    def __init__(
+        self,
+        shares: list[Share] | None = None,
+        *,
+        items: list[DriveItem] | None = None,
+        links: list[ShareLink] | None = None,
+        users: dict[UUID, User] | None = None,
+    ) -> None:
         self._shares: list[Share] = shares or []
+        # Only the "shared by me" view needs to resolve items/links/users;
+        # the older tests construct this repo with shares alone.
+        self.items = items or []
+        self.links = links or []
+        self.users = users or {}
 
     async def create(
         self, *, item_id: UUID, owner_id: UUID, target_user_id: UUID, permission: str
@@ -63,6 +81,50 @@ class MemShareManagementRepo(AbstractShareManagementRepository):
         matched = [s for s in self._shares if s.target_user_id == user_id]
         return matched[offset : offset + limit], len(matched)
 
+    async def list_shared_by_me(
+        self, owner_id: UUID, *, offset: int, limit: int
+    ) -> tuple[list[SharedByMeRow], int]:
+        items = {i.id: i for i in (self.items or [])}
+        by_item: dict[UUID, SharedByMeRow] = {}
+        for share in self._shares:
+            if share.owner_id != owner_id:
+                continue
+            item = items.get(share.item_id)
+            if item is None or item.is_deleted:
+                continue
+            row = by_item.setdefault(item.id, SharedByMeRow(item=item, shares=[], links=[]))
+            row.shares.append((share, self.users.get(share.target_user_id) or _make_user()))
+        for link in self.links:
+            if link.created_by != owner_id:
+                continue
+            item = items.get(link.item_id)
+            if item is None or item.is_deleted:
+                continue
+            row = by_item.setdefault(item.id, SharedByMeRow(item=item, shares=[], links=[]))
+            row.links.append(link)
+        rows = list(by_item.values())
+        return rows[offset : offset + limit], len(rows)
+
+    async def get_share_badges(
+        self, owner_id: UUID, item_ids: list[UUID]
+    ) -> dict[UUID, ShareBadges]:
+        now = datetime.now(UTC)
+        shared = {s.item_id for s in self._shares if s.owner_id == owner_id}
+        linked = {
+            lnk.item_id
+            for lnk in self.links
+            if lnk.created_by == owner_id
+            and lnk.is_active
+            and (lnk.expires_at is None or lnk.expires_at > now)
+        }
+        return {
+            item_id: ShareBadges(
+                shared_with_users=item_id in shared,
+                has_active_public_link=item_id in linked,
+            )
+            for item_id in item_ids
+        }
+
 
 class MemShareLinkRepo(AbstractShareLinkRepository):
     def __init__(self) -> None:
@@ -88,6 +150,11 @@ class MemShareLinkRepo(AbstractShareLinkRepository):
             is_active=True,
             created_by=created_by,
             created_at=datetime.now(UTC),
+            # Column defaults are applied on flush, which never happens here —
+            # set them explicitly so the fake matches a persisted row.
+            attempt_window_start=None,
+            attempt_count=0,
+            locked_until=None,
         )
         self._links.append(link)
         return link
@@ -95,10 +162,30 @@ class MemShareLinkRepo(AbstractShareLinkRepository):
     async def get_by_token_hash(self, token_hash: str) -> ShareLink | None:
         return next((lnk for lnk in self._links if lnk.token_hash == token_hash), None)
 
+    async def get_by_id(self, link_id: UUID) -> ShareLink | None:
+        return next((lnk for lnk in self._links if lnk.id == link_id), None)
+
+    async def update_attempt_state(
+        self,
+        link_id: UUID,
+        *,
+        window_start: datetime | None,
+        count: int,
+        locked_until: datetime | None,
+    ) -> None:
+        for lnk in self._links:
+            if lnk.id == link_id:
+                lnk.attempt_window_start = window_start
+                lnk.attempt_count = count
+                lnk.locked_until = locked_until
+
     async def deactivate(self, link_id: UUID) -> None:
         for lnk in self._links:
             if lnk.id == link_id:
                 lnk.is_active = False
+
+    async def delete(self, link_id: UUID) -> None:
+        self._links = [lnk for lnk in self._links if lnk.id != link_id]
 
 
 def _make_user(user_id: UUID | None = None, email: str = "target@test.com") -> User:
@@ -319,3 +406,230 @@ async def test_validate_deactivated_link_raises() -> None:
     with pytest.raises(AppError) as exc_info:
         await svc.validate_access(token)
     assert exc_info.value.code == ErrorCode.INVALID_OPERATION
+
+
+async def test_deactivate_link_rejects_a_stranger() -> None:
+    """Regression: any signed-in user could disable any link they knew the id of."""
+    owner_id, other_id = uuid4(), uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+
+    with pytest.raises(ForbiddenError):
+        await svc.deactivate_link(other_id, created.id)
+
+    stored = await links.get_by_id(created.id)
+    assert stored is not None and stored.is_active is True
+
+    await svc.deactivate_link(owner_id, created.id)
+    stored = await links.get_by_id(created.id)
+    assert stored is not None and stored.is_active is False
+
+
+# ── Shared by me (proposal §29) ──────────────────────────────────────────────
+
+
+def _shared_by_me_svc(
+    owner_id: UUID,
+    items: list[DriveItem],
+    shares: list[Share],
+    links: list[ShareLink],
+    users: dict[UUID, User] | None = None,
+) -> ShareService:
+    item_repo = MemDriveItemRepo(items)
+    return ShareService(
+        item_repo=item_repo,
+        share_repo=MemShareManagementRepo(shares, items=items, links=links, users=users),
+        user_svc=UserService(repo=MockUserRepo(_make_user())),
+    )
+
+
+def _share_row(item_id: UUID, owner_id: UUID, target_id: UUID, permission: str) -> Share:
+    now = datetime.now(UTC)
+    return Share(
+        id=uuid4(),
+        item_id=item_id,
+        owner_id=owner_id,
+        target_user_id=target_id,
+        permission=permission,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _link_row(
+    item_id: UUID,
+    created_by: UUID,
+    *,
+    password_hash: str | None = None,
+    expires_at: datetime | None = None,
+    is_active: bool = True,
+) -> ShareLink:
+    return ShareLink(
+        id=uuid4(),
+        item_id=item_id,
+        token_hash=uuid4().hex,
+        permission="viewer",
+        password_hash=password_hash,
+        expires_at=expires_at,
+        is_active=is_active,
+        created_by=created_by,
+        created_at=datetime.now(UTC),
+        attempt_window_start=None,
+        attempt_count=0,
+        locked_until=None,
+    )
+
+
+async def test_shared_by_me_groups_every_share_of_an_item_into_one_entry() -> None:
+    """§29.3 criterion 4 — three people plus a link is one row, not four."""
+    owner = uuid4()
+    item = _item(owner_id=owner, name="Deck")
+    people = [_make_user(email=f"p{i}@test.com") for i in range(3)]
+    shares = [_share_row(item.id, owner, p.id, "viewer") for p in people]
+    links = [_link_row(item.id, owner)]
+    svc = _shared_by_me_svc(owner, [item], shares, links, {p.id: p for p in people})
+
+    page = await svc.list_shared_by_me(owner)
+
+    assert page.total == 1
+    entry = page.items[0]
+    assert entry.item.name == "Deck"
+    assert len(entry.user_shares) == 3
+    assert len(entry.links) == 1
+    assert {u.email for u in entry.user_shares} == {"p0@test.com", "p1@test.com", "p2@test.com"}
+
+
+async def test_shared_by_me_reports_password_as_a_flag_not_a_hash() -> None:
+    owner = uuid4()
+    item = _item(owner_id=owner)
+    links = [_link_row(item.id, owner, password_hash="$argon2id$super-secret")]
+    svc = _shared_by_me_svc(owner, [item], [], links)
+
+    entry = (await svc.list_shared_by_me(owner)).items[0]
+
+    assert entry.links[0].has_password is True
+    assert "argon2" not in entry.links[0].model_dump_json()
+
+
+async def test_shared_by_me_keeps_dead_links_but_marks_them_inactive() -> None:
+    """An expired link still tells the owner it once existed (§29.2 rule 2)."""
+    owner = uuid4()
+    item = _item(owner_id=owner)
+    links = [
+        _link_row(item.id, owner, is_active=False),
+        _link_row(item.id, owner, expires_at=datetime.now(UTC) - timedelta(hours=1)),
+    ]
+    svc = _shared_by_me_svc(owner, [item], [], links)
+
+    entry = (await svc.list_shared_by_me(owner)).items[0]
+
+    assert len(entry.links) == 2
+    assert all(lnk.is_active is False for lnk in entry.links)
+    assert entry.item.has_active_public_link is False
+
+
+async def test_shared_by_me_excludes_trashed_items() -> None:
+    owner = uuid4()
+    live = _item(owner_id=owner, name="Live")
+    trashed = _item(owner_id=owner, name="Trashed", is_deleted=True)
+    shares = [
+        _share_row(live.id, owner, uuid4(), "viewer"),
+        _share_row(trashed.id, owner, uuid4(), "viewer"),
+    ]
+    svc = _shared_by_me_svc(owner, [live, trashed], shares, [])
+
+    page = await svc.list_shared_by_me(owner)
+
+    assert [e.item.name for e in page.items] == ["Live"]
+
+
+async def test_shared_by_me_ignores_other_owners_shares() -> None:
+    owner, stranger = uuid4(), uuid4()
+    mine = _item(owner_id=owner, name="Mine")
+    theirs = _item(owner_id=stranger, name="Theirs")
+    shares = [
+        _share_row(mine.id, owner, uuid4(), "viewer"),
+        _share_row(theirs.id, stranger, uuid4(), "viewer"),
+    ]
+    svc = _shared_by_me_svc(owner, [mine, theirs], shares, [])
+
+    page = await svc.list_shared_by_me(owner)
+
+    assert [e.item.name for e in page.items] == ["Mine"]
+
+
+async def test_shared_by_me_is_empty_when_nothing_is_shared() -> None:
+    owner = uuid4()
+    item = _item(owner_id=owner)
+    svc = _shared_by_me_svc(owner, [item], [], [])
+
+    page = await svc.list_shared_by_me(owner)
+
+    assert page.total == 0
+    assert page.items == []
+
+
+# ── deleting a dead link's record (proposal §29.2 rule 4.1) ──────────────────
+
+
+async def test_a_disabled_link_record_can_be_deleted() -> None:
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    await svc.deactivate_link(owner_id, created.id)
+
+    await svc.delete_link_record(owner_id, created.id)
+
+    assert await links.get_by_id(created.id) is None
+
+
+async def test_an_expired_link_record_can_be_deleted() -> None:
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(
+        owner_id,
+        item.id,
+        Permission.VIEWER,
+        expires_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+
+    await svc.delete_link_record(owner_id, created.id)
+
+    assert await links.get_by_id(created.id) is None
+
+
+async def test_removing_a_live_link_revokes_it_outright() -> None:
+    """One action, no disable step first (proposal §29.5 decision 4, revised).
+
+    Deleting the row *is* the revocation: guest access resolves through it, so
+    the link stops working the moment it is gone. There is no undo.
+    """
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+
+    await svc.delete_link_record(owner_id, created.id)
+
+    assert await links.get_by_id(created.id) is None
+
+
+async def test_a_stranger_cannot_delete_a_link_record() -> None:
+    owner_id, other_id = uuid4(), uuid4()
+    item = _item(owner_id=owner_id)
+    items = MemDriveItemRepo([item])
+    svc, links = _make_link_svc(items)
+    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    await svc.deactivate_link(owner_id, created.id)
+
+    with pytest.raises(ForbiddenError):
+        await svc.delete_link_record(other_id, created.id)
+
+    assert await links.get_by_id(created.id) is not None

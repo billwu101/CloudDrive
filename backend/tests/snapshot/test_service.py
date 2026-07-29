@@ -161,6 +161,28 @@ class MemSnapshotRepo(AbstractSnapshotRepository):
                     sizes[e.checksum_sha256] = max(sizes.get(e.checksum_sha256, 0), e.size_bytes)
         return sum(sizes.values())
 
+    async def reclaimable_bytes_by_snapshot(self, user_id: UUID) -> dict[UUID, int]:
+        # Sole-holder accounting, mirroring the SQL: a blob counts only when no
+        # other snapshot, no drive item and no file version still points at it.
+        holders: dict[str, set[UUID]] = {}
+        sizes: dict[str, int] = {}
+        for snap in self.snapshots.values():
+            if snap.user_id != user_id:
+                continue
+            for e in self.entries.get(snap.id, []):
+                if e.storage_key is None:
+                    continue
+                holders.setdefault(e.storage_key, set()).add(snap.id)
+                sizes[e.storage_key] = max(sizes.get(e.storage_key, 0), e.size_bytes)
+        elsewhere = {i.storage_key for i in self.items.values() if i.storage_key}
+        out: dict[UUID, int] = {}
+        for key, snap_ids in holders.items():
+            if len(snap_ids) != 1 or key in elsewhere:
+                continue
+            only = next(iter(snap_ids))
+            out[only] = out.get(only, 0) + sizes[key]
+        return out
+
     async def referenced_storage_keys(self) -> set[str]:
         keys: set[str] = set()
         for item in self.items.values():
@@ -417,20 +439,38 @@ async def test_update_settings_persists_and_resolves_auto_quota() -> None:
     assert await svc.resolve_quota_bytes(user_id=user) == 500
 
 
-async def test_run_scheduled_snapshot_respects_interval_and_state() -> None:
+async def test_run_scheduled_snapshot_on_the_hour_and_change_detection() -> None:
     user = uuid4()
-    repo = MemSnapshotRepo([_item(user)])
+    repo = MemSnapshotRepo([_item(user, name="a.txt")])
     svc = SnapshotService(repo=repo)
 
     first = await svc.run_scheduled_snapshot(user_id=user)
     assert first is not None and first.trigger == TRIGGER_SCHEDULED
 
-    # Just created — interval (60m) not elapsed yet.
+    # Same clock period → no second snapshot (on-the-hour gate).
     assert await svc.run_scheduled_snapshot(user_id=user) is None
 
-    # Two hours later it's due again.
+    # A later hour but the drive is UNCHANGED → still nothing (change detection).
     future = datetime.now(UTC) + timedelta(hours=2)
+    assert await svc.run_scheduled_snapshot(user_id=user, now=future) is None
+
+    # A later hour AND the drive changed → a new scheduled snapshot is created.
+    added = _item(user, name="b.txt")
+    repo.items[added.id] = added
     assert await svc.run_scheduled_snapshot(user_id=user, now=future) is not None
+
+
+def test_period_start_aligns_to_the_clock() -> None:
+    from app.snapshot.service import _period_start
+
+    t = datetime(2026, 7, 25, 8, 51, 57, tzinfo=UTC)
+    # 60-minute interval → top of the hour.
+    assert _period_start(t, 60) == datetime(2026, 7, 25, 8, 0, 0, tzinfo=UTC)
+    # 30-minute interval → :30 bucket.
+    assert _period_start(t, 30) == datetime(2026, 7, 25, 8, 30, 0, tzinfo=UTC)
+    assert _period_start(datetime(2026, 7, 25, 8, 20, tzinfo=UTC), 30) == datetime(
+        2026, 7, 25, 8, 0, tzinfo=UTC
+    )
 
 
 async def test_run_scheduled_snapshot_skips_when_disabled_or_empty() -> None:

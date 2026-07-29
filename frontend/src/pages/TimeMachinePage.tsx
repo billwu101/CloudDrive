@@ -15,12 +15,14 @@ import { Fragment, useMemo, useState } from 'react'
 import { isApiError } from '@/api/client'
 import type { RestoreRequest, SnapshotResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { SnapshotUsagePanel } from '@/components/snapshot/SnapshotUsagePanel'
 import { SnapshotSettingsDialog } from '@/components/timemachine/SnapshotSettingsDialog'
 import {
   useCreateSnapshot,
   useRestoreSnapshot,
   useSnapshotItems,
   useSnapshots,
+  useSnapshotSettings,
 } from '@/hooks/useSnapshots'
 
 function formatBytes(n: number): string {
@@ -35,6 +37,15 @@ const TRIGGER_LABEL: Record<string, string> = {
   manual: 'Manual',
   assistant: 'Before assistant action',
   pre_restore: 'Before restore',
+}
+
+/** The reason this snapshot was taken. The server records a specific `label`
+ *  (the user's note, the operation about to run, the restore it protected);
+ *  fall back to the trigger category only when there's no specific reason. */
+function snapshotReason(snapshot: SnapshotResponse): string {
+  const label = snapshot.label.trim()
+  if (label) return label
+  return TRIGGER_LABEL[snapshot.trigger] ?? snapshot.trigger
 }
 
 function dayLabel(iso: string): string {
@@ -81,10 +92,18 @@ function SnapshotRow({
       <div className="min-w-0">
         <div className="flex items-center gap-1.5 text-sm font-medium">
           {snapshot.pinned && <Pin className="size-3 text-amber-600" aria-hidden="true" />}
-          {new Date(snapshot.created_at).toLocaleTimeString()}
+          {new Date(snapshot.created_at).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          })}{' '}
+          · {new Date(snapshot.created_at).toLocaleTimeString()}
         </div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {TRIGGER_LABEL[snapshot.trigger] ?? snapshot.trigger} · {snapshot.item_count} items ·{' '}
+        <div
+          className="mt-0.5 truncate text-xs text-muted-foreground"
+          title={snapshotReason(snapshot)}
+        >
+          {snapshotReason(snapshot)} · {snapshot.item_count} items ·{' '}
           {formatBytes(snapshot.total_bytes)}
         </div>
       </div>
@@ -94,6 +113,7 @@ function SnapshotRow({
 
 export function TimeMachinePage() {
   const { data: snapshots, isLoading } = useSnapshots()
+  const { data: settings } = useSnapshotSettings()
   const createSnapshot = useCreateSnapshot()
   const restore = useRestoreSnapshot()
 
@@ -193,6 +213,8 @@ export function TimeMachinePage() {
           {result}
         </p>
       )}
+
+      <SnapshotUsagePanel settings={settings} snapshots={snapshots} />
 
       <div className="grid gap-6 md:grid-cols-[20rem_1fr]">
         {/* Timeline */}

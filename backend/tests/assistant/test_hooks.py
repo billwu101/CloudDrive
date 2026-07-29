@@ -139,6 +139,45 @@ async def test_snapshot_hook_fires_only_when_workflow_has_write_step() -> None:
     assert len(snap.created) == 1
     assert snap.created[0]["trigger"] == "assistant"
     assert snap.created[0]["user_id"] == uid
+    # The label names the write operation so the timeline says *why*.
+    assert snap.created[0]["label"] == "Before assistant action: trash_item"
+
+
+async def test_snapshot_label_lists_write_operations_deduped_and_capped() -> None:
+    registry = _registry()
+
+    async def write_handler(context: SkillContext, args: Mapping[str, Any]) -> dict[str, Any]:
+        return {"ok": True}
+
+    for name in ("rename_item", "move_item", "star_item"):
+        registry.register(
+            RegisteredSkill(
+                name=name,
+                description=name,
+                parameters={"type": "object", "properties": {}, "additionalProperties": True},
+                permission_tier="destructive",
+                handler=write_handler,
+            )
+        )
+
+    snap = _RecordingSnapshotService()
+    hook = snapshot_before_write_hook(snap)
+
+    steps = classify_steps(
+        [
+            PlannedStep(skill="list_items", arguments={}),  # read-only, excluded
+            PlannedStep(skill="rename_item", arguments={}),
+            PlannedStep(skill="trash_item", arguments={}),
+            PlannedStep(skill="trash_item", arguments={}),  # duplicate, deduped
+            PlannedStep(skill="move_item", arguments={}),
+            PlannedStep(skill="star_item", arguments={}),
+        ],
+        registry,
+    )
+    await hook(HookContext(user_id=uuid4(), steps=steps))
+    label = snap.created[0]["label"]
+    # First three distinct write skills, then a "+N more" for the rest.
+    assert label == "Before assistant action: rename_item, trash_item, move_item, +1 more"
 
 
 async def test_snapshot_hook_swallows_snapshot_failure() -> None:
