@@ -24,14 +24,14 @@
 | 跳針卡死(temp=0 貪婪迴圈) | DEC-031 num_predict + 非零溫度 | ✅ 有界失敗 |
 | 幻覺技能名 | DEC-032 schema enum(grammar 級不可生成) | ✅ 根治 |
 | 殘餘跳針(thinking 段) | DEC-033 planner think:false | ✅ 歸零,快 ~10 倍 |
-| **規劃品質(寫入意圖遺漏)** | — | ❌ 困難集 EC2/EC4 仍 47%,現任瓶頸 |
+| **規劃品質(寫入意圖遺漏)** | EC2/EC4 grounding 重新設計（真實 seed_folders／ref_search 取代模糊指代） | ⚠️ E8 的 47% 已被 E9 全量實測取代（400×3，逐 run 全過：EC1/EC3/EC4 各 100/100、EC2 99/100，且在「寫入順序硬性驗證」這道更嚴的 gate 下）——但**數據在未合併分支 `eval/e9-objective-metrics`**，合併前本表以 E8 為準 |
 | **多輪失憶** | 對話記憶 v1(planner 回讀最近 N 則 + 工具結果摘要) | ✅ 2026-07-07 完成(`c951525`);真模型多輪指涉 10/10 |
 
 ### 技術債清單(誠實盤點)
 
 | 債 | 嚴重度 | 出處 |
 |---|---|---|
-| planner 寫入類規劃 47% | 高(功能可靠性) | E8 |
+| planner 寫入類規劃 47%（E8，30 樣本） | ⚠️ 待重新評估 | E8；新數據見未合併分支 `eval/e9-objective-metrics` |
 | codegen 無系統化 pass-rate(僅 spot-check)、對 context 大小敏感 | 中 | E8 後記 |
 | Ollama 單併發級聯(忙碌時體驗未定義,需產品決策) | 中 | — |
 | 生成/儲存 schema 分家(version/handler 程式注入) | 低(乾淨化) | proposal-planner-skill-enum |
@@ -59,8 +59,11 @@
    設計見 detailed-design §8.14。後續 v2(舊對話摘要壓縮、語意檢索、跨 session 畫像)尚未動工。
 4. **eval 升級為多輪 + 記憶落地後重跑 sweep**:E8 數據全是單輪量的,加 6 輪歷史後 prompt
    分佈改變,必須重驗單輪不退化 + 新增多輪指涉案例(第四個驗證循環,亦為記憶 before/after 素材)。
-5. **planner 寫入意圖 prompt 工程**:排記憶之後——記憶可能免費救掉部分多輪 case,先落地再量,
-   避免白做工。目標把困難集 47% 往上推,用 sweep 快速迭代。
+5. **合併 `eval/e9-objective-metrics`(19 個 commit)**——它含 E9 全量 400×3 實測、寫入順序硬性
+   驗證、失敗分類與生成程式碼真實執行驗證。**合併前需注意**:該分支仍用改名前的 `M2`–`M5` 代號
+   (EC 改名在本分支 `fix/core-stability`),合併時要一併套用 EC1–EC4。
+6. **planner 寫入意圖 prompt 工程**:E9 數據若成立,此項可能已不再是瓶頸——**先合併 E9 再決定要不要做**,
+   不要照 E8 的 47% 盲目投入。
 
 ### 遠期(視報告時程取捨)
 

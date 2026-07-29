@@ -86,7 +86,7 @@
 | 時光機還原時的硬配額檢查待補強（還原已寫 activity log） | 低 | [time-machine.md](./time-machine.md) |
 | 語意搜尋舊檔 embedding backfill 尚未背景自動化（目前手動觸發） | 低 | [backend-search.md](./backend-search.md) |
 | 評測結論綁定單一模型與硬體（gemma4:26b + 本機 GPU），換模型需重跑 sweep | — 前提而非缺陷 | [assistant-eval.md](./assistant-eval.md) |
-| planner 寫入意圖規劃在困難集（EC2/EC4）約 47% | 高（功能可靠性） | [roadmap.md](../roadmap.md) |
+| planner 寫入意圖規劃在困難集約 47%（E8，30 樣本） | ⚠️ **待重新評估** | E9 全量 400×3 實測顯示已大幅改善（EC2 99/100、其餘 100/100），但數據在未合併分支 `eval/e9-objective-metrics`；合併前不宣稱已解決 |
 
 > 已作廢：「量化未納入瀏覽器端與生成技能執行測試」——E2（browser runner）與 E5（執行驗證模式）皆已完成，browser 實測 3/3 PASS、`--mode exec` 有 4 個 EC3 案例。該敘述屬某一輪評測的附註，非現況缺口。
 
