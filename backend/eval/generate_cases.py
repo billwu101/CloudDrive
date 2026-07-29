@@ -1053,6 +1053,10 @@ M4_FIXTURE_BY_SKILL: dict[str, str] = {
     "csv_row_count": "sample.csv",
     "tsv_to_csv": "sample.csv",
     "url_decode": "sample.txt",
+    # These two live in the misc block and were bulk-tagged "text" — they are
+    # image skills and were still being fed sample.txt after the first fix.
+    "image_posterize": "sample.png",
+    "image_autocontrast": "sample.png",
 }
 
 

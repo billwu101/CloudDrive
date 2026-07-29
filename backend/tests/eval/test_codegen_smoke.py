@@ -85,6 +85,43 @@ _DUAL_TYPE_CODE = (
 )
 
 
+def test_folder_fixture_is_built_from_the_skills_own_file_fixture() -> None:
+    """A skill declaring [FILE, FOLDER] must get a folder it can work on too.
+
+    2026-07-28 second pass: the folder fixture was always a.txt + sub/b.txt, so
+    an image skill got sample.png for FILE and a folder of text for FOLDER —
+    10 of the remaining 29 M4 failures were FOLDER-only for exactly this reason.
+    """
+
+    outcome = smoke_test_skill(
+        code=_FOLDER_AWARE_IMAGE_CODE, item_types=["FILE", "FOLDER"], file_fixture="sample.png"
+    )
+
+    assert outcome["results"]["FILE"]["ok"] is True
+    assert outcome["results"]["FOLDER"]["ok"] is True
+    # Two copies of the fixture (one nested) => two outputs.
+    assert len(outcome["results"]["FOLDER"]["produced_files"]) == 2
+
+
+_FOLDER_AWARE_IMAGE_CODE = (
+    "import os\n"
+    "from PIL import Image\n"
+    "def run(input_path, output_dir, params):\n"
+    "    paths = []\n"
+    "    if os.path.isdir(input_path):\n"
+    "        for root, _dirs, files in os.walk(input_path):\n"
+    "            paths += [os.path.join(root, f) for f in files]\n"
+    "    else:\n"
+    "        paths = [input_path]\n"
+    "    made = []\n"
+    "    for i, p in enumerate(sorted(paths)):\n"
+    "        out = os.path.join(output_dir, f'gray_{i}.png')\n"
+    "        Image.open(p).convert('L').save(out)\n"
+    "        made.append(out)\n"
+    "    return {'produced': len(made)}\n"
+)
+
+
 def test_smoke_test_skill_passes_both_types_when_code_branches_correctly() -> None:
     outcome = smoke_test_skill(code=_DUAL_TYPE_CODE, item_types=["FILE", "FOLDER"])
     assert outcome["ok"] is True

@@ -54,14 +54,23 @@ def _resolve_fixture(name: str | None) -> Path:
     return path
 
 
-def _folder_fixture() -> Path:
-    """Minimal FOLDER input: 1-2 files + a subfolder, per the smoke-test spec
-    in memory clouddrive-codegen-smoke-test-dec. Caller must delete it."""
+def _folder_fixture(source: Path) -> Path:
+    """Minimal FOLDER input: two copies of the skill's own file fixture, one of
+    them nested (per the smoke-test spec in memory
+    clouddrive-codegen-smoke-test-dec). Caller must delete it.
+
+    2026-07-28 second pass: this used to always create a.txt + sub/b.txt, so a
+    skill declaring [FILE, FOLDER] got a matching file for its FILE run and a
+    folder of plain text for its FOLDER run — the same fixture mismatch that
+    invalidated the FILE results, one level down (10 of the 29 remaining M4
+    failures were FOLDER-only). Building the folder from ``source`` keeps both
+    item types on inputs the skill can actually work on."""
+
     root = Path(tempfile.mkdtemp(prefix="codegen_smoke_folder_"))
-    (root / "a.txt").write_text("hello\n", encoding="utf-8")
+    shutil.copy(source, root / source.name)
     sub = root / "sub"
     sub.mkdir()
-    (sub / "b.txt").write_text("world\n", encoding="utf-8")
+    shutil.copy(source, sub / source.name)
     return root
 
 
@@ -84,10 +93,11 @@ def smoke_test_skill(
     all_ok = True
     for item_type in types:
         folder_fixture: Path | None = None
+        resolved = _resolve_fixture(file_fixture)
         if item_type == "FILE":
-            fixture = _resolve_fixture(file_fixture)
+            fixture = resolved
         else:
-            folder_fixture = _folder_fixture()
+            folder_fixture = _folder_fixture(resolved)
             fixture = folder_fixture
         sandbox = SkillSandbox(timeout_sec=timeout_sec)
         try:

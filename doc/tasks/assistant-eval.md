@@ -380,4 +380,15 @@ non_sensitive（內容會實際外送），使用時需有意識。
 - [x] **`failure_category` 把 M4 全標成 `no_plan`**：M4 回的是技能提案、本來就沒有 plan，判定式沒排除這種案例，導致 138 次誤標蓋掉真正原因（程式碼沒產出）。已修：案例宣告 `skill_generated` 時不套用 `no_plan`。
 - [x] **M2 的驗證再升一級（alfred：「你給他一個環境是你能可以掌握情況的不就能去確認嗎」）**：既然環境是我們自己 seed 的，就知道正確答案該長什麼樣。新增 `WorkflowExpect.output_contains`（技能名 → 該步驟輸出必須包含的字串），M2 斷言 `list_items` 的輸出必須含 seed 的資料夾與檔名、`search` 的輸出必須含該主題——從「有呼叫工具且回傳非空」進一步到「**回來的內容是對的**」。
 - [x] **M3 的 3 案（`gen-m3-082/085/087`）維持判失敗，收回原本「放寬」的提議**：模型用 `search(關鍵字)` 代替 `list_items` 去回答「幫我先看一下現在有哪些東西」。查實作後確認兩者語意不同——`list_items` 給某一層的**全貌**，`search` 給**關鍵字切片**（`name ILIKE %q%` 或內容索引比對，跨層級）。使用者問的是根目錄現況，模型回的是「跟該主題有關的東西」，這是**回答了另一個問題**，不只是換工具，因此該算失敗。3/120 是誠實的數字。
-- [ ] 依新 fixture 重跑 M4 的 99 案（M2/M5 的 100% 不受影響，不需重跑；M3 的分類 20 案為已知能力邊界）。
+- [x] 依新 fixture 重跑 M4 的 99 案（M2/M5 的 100% 不受影響，不需重跑；M3 的分類 20 案為已知能力邊界）。
+
+
+### 重跑（M4/M2/語意，runs=3）的結果與第二層 fixture 缺口（2026-07-28）
+
+- **M4 51/99 → 71/100**：fixture 修正救回 20 案。剩下 29 案拆解：**只有 FOLDER 型別失敗 10 案**（我的 FOLDER fixture 也錯配——同一個 bug 的第二層：`_folder_fixture()` 永遠建 `a.txt + sub/b.txt`，影像/JSON/CSV 技能的 FOLDER 分支照樣拿到純文字）、FILE 也失敗 15 案（含 2 案是我把 `image_posterize`/`image_autocontrast` 批次標成 text 類，fixture 還是 sample.txt）、**有真實錯誤訊息 4 案**。
+  - **真正抓到的模型程式碼缺陷**：`image_rotate_90` → `NameError("name 'files_to' is not defined")`（把 `files_to_process` 寫成 `files_to`，語法合法、靜態掃描抓不到，**只有真的執行才會現形**，且 3 次只壞 1 次——單跑一次的測試會漏掉）；`ascii85_encode` → 把 str 當 Path 用；`image_info` → `ValueError("invalid mode: 'n'")`；`uppercase_text` → FILE 分支拿到目錄。
+  - 另觀察到**模型不穩定性**：`image_resize_half` 同一題 3 次中 2 次產出正確、1 次什麼都不寫。
+  - 已修：`_folder_fixture(source)` 改成用該技能自己的 fixture 複製兩份（一份放子目錄）；補上兩個標錯的類別。
+- **M2 98/100（加上 `output_contains` 之後）**：兩案失敗都是**模型 3 次裡 2 次漏掉 `get_info`**（`gen-m2-074`/`090`，prompt 明確要求「給我它的大小與修改時間」）。同案 run0 做對、run1/2 漏掉，且 execution/state 維度皆 1.0 → 排除環境因素，是模型不穩定。這證明第一輪的 M2 100/100 是較鬆標準下的數字。
+- **語意分類 0/5，但失敗原因不是語意判斷**：五案模式完全一致——`correctness` 1.0、`execution` 1.0、`state` 0.5。實際計畫：`list_items` → `create_folder`×2 → `move_item`×2，**兩個 move_item 的 `item_id` 都是 `{"from": 0, "path": "items.*.id"}`**，也就是對同一份未經篩選的完整清單各做一次全量 fan-out。結果所有檔案（含兩個 canary）都躺進第二個資料夾。
+  - **判讀**：模型卡在「要不要分組」這一關，根本沒進到語意判斷。與 `classify_by_name`（檔名前綴、字面比對即可）的失敗模式一模一樣 → **不是語意難度問題，是任務分解問題**。原本想測的「懂不懂台積電是發票」尚未被測到。
