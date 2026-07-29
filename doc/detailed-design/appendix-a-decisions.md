@@ -461,3 +461,29 @@ replan 的本質是「在使用者視線外執行一份新計畫」，因此只�
   - 標記欄位由 `list_items` 以**一次批次查詢**填入（對當頁 item id 做 `IN`），避免每列一查的 N+1。
 - 已知取捨：標記欄位讓 `list_items` 多一次查詢（固定成本，不隨列數增加）；非 owner 檢視他人分享來的項目時兩欄一律 `false`，因為那是分享者自己的狀態，不對被分享者揭露。
 - 影響範圍：`app/share`（service/repository/schemas/router）、`app/drive/service.py` 與 `schemas/`（兩個新欄位）、前端 `SharedByMePage`／`SharedByMeRow`／`ShareBadges`／`Sidebar`／`DriveItemRow` 與相關測試。
+
+## DEC-039：代號命名規範——評測分層改用 EC1–EC4，不另立對照表
+
+- 日期：2026-07-27
+- 狀態：Accepted，**已實作**（需求見 proposal §32）
+- 背景：專案有 9 套彼此獨立的代號體系（`DEC-nnn`、`M`、`E`、`EM`、`S`、`HARNESS`、`Stage`、migration revision、以及本則新增的 `EC`），其中 **`M` 被兩件不同的事共用**：`tasks/backend-assistant.md` 的 M1–M4 是助理引擎的**開發里程碑**，`eval/generate_cases.py` 的 M2–M5 是評測的**案例分層**。兩者相關但性質不同——一個是「做了什麼」，一個是「測什麼」——讀文件得先判斷語境。這已是同類問題第二次發生：外部模型接入原本要用 E1–E3，因為會撞到 eval harness 的 E1–E4，才改成 EM1–EM3（`tasks/external-model.md` 開頭有明文註記）。
+- 決策：
+  1. **評測案例分層改用 `EC`（Eval Case）前綴並重編為 EC1–EC4**，各層定義不變。400 個生成案例由產生器重跑產出，不手改。
+  2. **新增代號一律用兩字母前綴**。單字母 `M`／`E`／`S` 已佔用，不再新增單字母體系。
+  3. **不另立獨立的代號對照表文件**。各代號的定義由其權威檔案負責；唯一需要集中記錄的是「跨體系的關係」，即本則。
+- `M` 與 `EC` 的對應（每層 EC 案例測的正是對應里程碑交付的能力）：
+
+  | 里程碑（做了什麼） | 案例層（測什麼） |
+  | --- | --- |
+  | M1 引擎骨架（AgentLoop + 唯讀內建技能） | — 無生成分層 |
+  | M2 planner / workflow | **EC1** 唯讀多工具，自動執行 |
+  | M3 持久化 + 寫入型技能 | **EC2** 查詢脈絡 + 寫入，需確認 |
+  | M4 自我撰寫沙箱 | **EC3** 生成技能（100 種） |
+  | — 無對應里程碑 | **EC4** 多步驟 + 跨步引用 + 寫入 |
+
+  兩處不對稱是刻意的：**M1 沒有 EC 層**（引擎骨架的唯讀行為由手寫案例 `eval/cases/*.yaml` 覆蓋，標籤維持 `read-only` 等語意標籤）；**EC4 沒有里程碑**（跨步驟引用是評測額外加壓的一層）。
+- 理由：
+  - 重編為 1–4 而非沿用 2–5：代號自身完整，不會讓人問「為什麼從 2 開始」；與里程碑的對應改由本表明寫，不靠編號暗示。
+  - **不做對照表文件**：曾經做了一份 `doc/glossary.md`，隨即發現它把最脆弱的東西（DEC 則數、Stage 範圍、migration 編號）抄成第二份，而沒有任何機制保證它跟得上——同一輪對話裡就新增了 DEC-037/038 與 migration 0020，那張表當場過期。文件先行的價值來自單一事實來源，再抄一份只是多一個會說謊的地方。故該檔已刪除，僅保留此處的「跨體系關係」。
+- 已知取捨：沒有單一入口可以一眼看完 9 套代號，遇到陌生代號仍需知道去哪個 tasks／design 檔查。取捨的理由是「會過期的索引比沒有索引更糟」；若日後真的需要索引，應以腳本從權威來源生成，而非手抄。
+- 影響範圍：`eval/generate_cases.py`（常數／builder／case id／tags／顯示名稱）、`eval/run.py`（`--tag` 說明）、`eval/cases/generated/` 400 檔重建、`detailed-design/10-assistant-eval.md`、`tasks/assistant-eval.md`、`eval-prompt-log.md`、`roadmap.md`。`tasks/backend-assistant.md`／`prompt.md`／`tasks/progress.md` 的里程碑 M1–M4 **不動**。

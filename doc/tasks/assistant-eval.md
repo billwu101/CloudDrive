@@ -253,7 +253,7 @@ non_sensitive（內容會實際外送），使用時需有意識。
 
 ## 代號變更（2026-07-27）：M2–M5 → EC1–EC4
 
-評測案例分層原本用 `M2`–`M5`，與 `doc/tasks/backend-assistant.md` 的助理引擎開發里程碑 `M1`–`M4` 共用字母，讀文件時得先判斷語境。改用 `EC`（Eval Case）並重編為 1–4。需求與理由見 [proposal §32](../proposal.md#32-代號命名規範)，對照表見 [glossary.md](../glossary.md)。
+評測案例分層原本用 `M2`–`M5`，與 `doc/tasks/backend-assistant.md` 的助理引擎開發里程碑 `M1`–`M4` 共用字母，讀文件時得先判斷語境。改用 `EC`（Eval Case）並重編為 1–4。需求與理由見 [proposal §32](../proposal.md#32-代號命名規範)，M／EC 對應與規則見 [DEC-039](../detailed-design/appendix-a-decisions.md)。
 
 | 舊 | 新 | 內容 |
 | --- | --- | --- |
@@ -266,6 +266,6 @@ non_sensitive（內容會實際外送），使用時需有意識。
 - [x] 重跑產生器：400 個案例檔重建（`gen-ec1-001` … `gen-ec4-100`），每層 100。
 - [x] `eval/run.py`：`--tag` 說明字串範例改 `ec1`/`ec3`。
 - [x] 文件：`detailed-design/10-assistant-eval.md`、本檔、`eval-prompt-log.md`、`roadmap.md` 一併更名；`backend-assistant.md`／`prompt.md`／`progress.md` 的里程碑 M1–M4 **維持不動**。
-- [x] 新增 `doc/glossary.md` 代號對照表（9 套），並登記進 `CLAUDE.md` 的設計文件索引。
+- [x] 新增 DEC-039：記錄 M／EC 對應、兩處刻意的不對稱、以及「新增代號用兩字母前綴」的規則。（原本做過一份 `doc/glossary.md` 對照表，因會抄錄易變的 DEC／Stage／migration 編號而無同步機制，已刪除。）
 
 **驗證**：mock 模式四層各 100/100 通過，與更名前一致。
