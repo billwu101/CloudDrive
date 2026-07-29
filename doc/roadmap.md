@@ -1,6 +1,7 @@
 # CloudDrive 現況分析與未來規劃
 
-> 2026-07-07。本文件是專案的現況盤點與路線圖,供報告/答辯與後續開發定向。
+> 2026-07-07 初版;2026-07-29 校正(對話記憶已於 2026-07-07 完成,原表列為待實作屬過期)。
+> 本文件是專案的現況盤點與路線圖,供報告/答辯與後續開發定向。
 > 資料來源:progress.md、DEC-001~033、E7/E8 實驗數據、各任務文件。
 
 ## 一、現況分析
@@ -24,13 +25,12 @@
 | 幻覺技能名 | DEC-032 schema enum(grammar 級不可生成) | ✅ 根治 |
 | 殘餘跳針(thinking 段) | DEC-033 planner think:false | ✅ 歸零,快 ~10 倍 |
 | **規劃品質(寫入意圖遺漏)** | — | ❌ 困難集 EC2/EC4 仍 47%,現任瓶頸 |
-| **多輪失憶** | proposal-assistant-memory(待實作) | ❌ 使用者實測痛點 |
+| **多輪失憶** | 對話記憶 v1(planner 回讀最近 N 則 + 工具結果摘要) | ✅ 2026-07-07 完成(`c951525`);真模型多輪指涉 10/10 |
 
 ### 技術債清單(誠實盤點)
 
 | 債 | 嚴重度 | 出處 |
 |---|---|---|
-| 助理無對話記憶(有存沒回讀) | 高(使用者體感) | proposal-assistant-memory |
 | planner 寫入類規劃 47% | 高(功能可靠性) | E8 |
 | codegen 無系統化 pass-rate(僅 spot-check)、對 context 大小敏感 | 中 | E8 後記 |
 | Ollama 單併發級聯(忙碌時體驗未定義,需產品決策) | 中 | — |
@@ -54,8 +54,9 @@
 
 2. **記憶 v1 前置驗證**:真模型 sanity check `tool` 角色訊息 gemma4 是否正常消化
    (proposal 裡唯一未驗證的假設,先驗再定 detailed-design,避免返工)。
-3. **記憶 v1 實作**(新分支):照 proposal-assistant-memory——planner 加 history →
-   service 透傳 → router 載入 + 寫 tool 摘要訊息 → `assistant_history_max_messages=12`。
+3. ~~**記憶 v1 實作**~~ — **已完成**(2026-07-07,`c951525`):`memory.py` + planner `history` 參數 +
+   service 透傳 + router 載入 + `/confirm` 寫回 session;`assistant_history_max_messages=12`。
+   設計見 detailed-design §8.14。後續 v2(舊對話摘要壓縮、語意檢索、跨 session 畫像)尚未動工。
 4. **eval 升級為多輪 + 記憶落地後重跑 sweep**:E8 數據全是單輪量的,加 6 輪歷史後 prompt
    分佈改變,必須重驗單輪不退化 + 新增多輪指涉案例(第四個驗證循環,亦為記憶 before/after 素材)。
 5. **planner 寫入意圖 prompt 工程**:排記憶之後——記憶可能免費救掉部分多輪 case,先落地再量,

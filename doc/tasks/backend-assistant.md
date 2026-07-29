@@ -100,7 +100,8 @@ M4 實作備註（2026-06-17）：完成自我撰寫技能管線——`subagent.
 
 ## 對話記憶（多輪 context 回讀，2026-07-07）
 
-規格見 [proposal-assistant-memory.md](../proposal-assistant-memory.md)、設計見 detailed-design §9.31。
+規格見 [proposal.md](../proposal.md)「對話記憶（多輪 context 回讀）」、設計見 [detailed-design/ §8.14](../detailed-design/08-assistant-engine.md)。
+（原連結指向 `proposal-assistant-memory.md`，該檔已併入 proposal 與 detailed-design，連結失效。）
 
 - [x] `app/assistant/memory.py`（新）：`summarise_results`（StepResults→精簡文字,每步截斷 200 字）、
   `append_result_summary`、`history_to_messages`（最近 N 則 user/assistant → LLMMessage）。
