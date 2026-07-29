@@ -14,6 +14,7 @@ from app.assistant.workflow import (
     is_step_ref,
     ref_source,
 )
+from app.core.config import get_settings
 
 
 # Structured-output schema for the plan, sent as ``response_format`` on external
@@ -32,6 +33,7 @@ def _plan_response_format(skill_names: list[str] | None = None) -> dict[str, obj
                 "type": "object",
                 "properties": {
                     "reply": {"type": "string"},
+                    "needs_followup": {"type": "boolean"},
                     "steps": {
                         "type": "array",
                         "items": {
@@ -45,7 +47,7 @@ def _plan_response_format(skill_names: list[str] | None = None) -> dict[str, obj
                         },
                     },
                 },
-                "required": ["reply", "steps"],
+                "required": ["reply", "steps", "needs_followup"],
             },
         },
     }
@@ -70,6 +72,12 @@ def build_plan_response_format(registry: SkillRegistry) -> dict[str, object]:
 class PlanResult(BaseModel):
     reply: str = ""
     steps: list[PlannedStep] = Field(default_factory=list)
+    # Set by the model when it cannot decide which items to act on until it has
+    # seen a query's result: it plans only the read steps and asks to be called
+    # again with the actual output. A PUBLIC field, unlike the llm_meta
+    # diagnostics below — the model genuinely produces this one, so it belongs
+    # in the constrained-decoding schema.
+    needs_followup: bool = False
     # Diagnostics from the planning LLM call that produced this result (see
     # LLMResponse) — surfaced for eval/observability by the service layer
     # (AssistantChatResponse.llm_meta). Deliberately PrivateAttr, not a public
@@ -93,22 +101,54 @@ class PlanResult(BaseModel):
     def completion_tokens(self) -> int | None:
         return self._completion_tokens
 
+    def _copy_llm_meta(self, other: PlanResult) -> None:
+        """Carry diagnostics across when one PlanResult supersedes another (the
+        two-phase planner combines two passes into one plan)."""
+        self._done_reason = other._done_reason
+        self._prompt_tokens = other._prompt_tokens
+        self._completion_tokens = other._completion_tokens
+
     def _set_llm_meta(self, response: LLMResponse) -> None:
         self._done_reason = response.done_reason
         self._prompt_tokens = response.prompt_tokens
         self._completion_tokens = response.completion_tokens
 
 
-def build_planner_prompt(registry: SkillRegistry) -> str:
+def build_planner_prompt(registry: SkillRegistry, *, two_phase: bool = False) -> str:
+    """``two_phase``: whether the caller will actually run a second planning pass.
+
+    The needs_followup instruction MUST NOT be taught when it will not be
+    honoured. Teaching it unconditionally regressed the default configuration
+    hard: the model split the work, returned only the read-only lookups, and —
+    with no second pass to append the writes — the request silently completed
+    as a plain listing. Measured on 20 M3 cases against the real model: 7/20
+    passed with two-phase on, 0/20 with it off but the instruction still in the
+    prompt (every failure ``state_mismatch``, the write step simply missing).
+    """
+
     skills = "\n".join(
         f"- {skill.name} ({skill.permission_tier}): {skill.description}"
         for skill in registry.list_skills()
     )
+    followup_rule = (
+        "- needs_followup: set it to true ONLY when you cannot tell which items to act "
+        "on until you have seen a query's result — e.g. the user wants files sorted by "
+        "what they are, and you must read their names first. When you set it to true, "
+        "the steps you return must be READ-ONLY lookups (search, list_items, get_info, "
+        "recent, storage_quota, list_trash) and NOTHING else: no creating, renaming, "
+        "moving, starring or deleting, not even preparation like creating the "
+        "destination folder. Those come afterwards — you will be asked again with the "
+        "actual results and can then plan every remaining step, referencing the lookups "
+        "by index. Otherwise set needs_followup to false and plan the whole request now.\n"
+        if two_phase
+        else "- needs_followup: always false. Plan the COMPLETE request now, including "
+        "every write step; you will not be called again.\n"
+    )
     return (
         "You are CloudDrive's planner. Convert the user's request into a JSON plan "
         "that uses ONLY the available skills.\n"
-        'Respond with a single JSON object: {"reply": string, "steps": '
-        '[{"skill": string, "arguments": object, "depends_on": [int]}]}.\n'
+        'Respond with a single JSON object: {"reply": string, "needs_followup": bool, '
+        '"steps": [{"skill": string, "arguments": object, "depends_on": [int]}]}.\n'
         "- reply: a short natural-language answer or summary for the user.\n"
         "- steps: ordered skill calls. depends_on lists indices of earlier steps.\n"
         "- If the request needs no drive action, return an empty steps array and answer in reply.\n"
@@ -147,6 +187,7 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         '[{"skill": "search", "arguments": {"q": "test"}}, {"skill": "list_items", "arguments": '
         '{"parent_id": {"from": 0, "path": "items.0.id"}}}, {"skill": "trash_item", "arguments": '
         '{"item_id": {"from": 1, "path": "items.*.id"}}}].\n'
+        f"{followup_rule}"
         "- Output JSON only, no prose, no code fences.\n\n"
         "Available skills:\n"
         f"{skills}"
@@ -175,17 +216,24 @@ def _parse(content: str) -> PlanResult | None:
         return None
 
 
-def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str]:
+def validate_plan(
+    steps: list[PlannedStep], registry: SkillRegistry, *, index_offset: int = 0
+) -> list[str]:
     """Semantic validation of a planned workflow against the skill catalog.
 
     Catches the classes of failure a JSON-parse check misses: a hallucinated
     skill, or a step that omits a required argument (e.g. ``search`` without
     ``q``). Returns a list of human-readable problems ([] means the plan is
     executable).
+
+    ``index_offset`` is how many steps already exist ahead of these ones — the
+    second pass of two-phase planning continues an existing plan, so its first
+    step is at that index and it may legitimately reference anything before it.
     """
 
     problems: list[str] = []
-    for index, step in enumerate(steps):
+    for position, step in enumerate(steps):
+        index = position + index_offset
         skill = registry.get(step.skill)
         if skill is None:
             problems.append(f"step {index}: unknown skill '{step.skill}'")
@@ -231,12 +279,21 @@ class WorkflowPlanner:
         num_ctx: int,
         max_repair: int = 2,
         disable_thinking: bool | None = None,
+        two_phase_planning: bool | None = None,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._context = context
         self._num_ctx = num_ctx
         self._max_repair = max(0, max_repair)
+        # Must match WorkflowService's flag: the prompt may only teach the
+        # split-plan rule when a second pass will actually run (see
+        # build_planner_prompt). Injectable so tests skip global settings.
+        self._two_phase_planning = (
+            get_settings().assistant_two_phase_planning
+            if two_phase_planning is None
+            else two_phase_planning
+        )
         # DEC-033: planning runs with Ollama's thinking phase disabled by default
         # (E8 — cured repetition loops, ~10x faster, no plan-quality loss). Passed
         # through to every plan() chat call; None defers to the client default.
@@ -249,10 +306,18 @@ class WorkflowPlanner:
         target: str | None = None,
         selected_items: list[dict[str, object]] | None = None,
         history: list[LLMMessage] | None = None,
+        index_offset: int = 0,
     ) -> PlanResult:
+        """``index_offset``: how many steps already exist when this call
+        continues an existing plan (two-phase planning). Validation then treats
+        references to those earlier steps as legitimate."""
+
         selected = selected_items or []
         messages = [
-            LLMMessage(role="system", content=build_planner_prompt(self._registry)),
+            LLMMessage(
+                role="system",
+                content=build_planner_prompt(self._registry, two_phase=self._two_phase_planning),
+            ),
         ]
         # Tell the planner about the user's current file selection so it can
         # reference selected files directly (never guessing a UUID). Files are
@@ -302,7 +367,7 @@ class WorkflowPlanner:
                 failed._set_llm_meta(response)
                 return failed
             last_reply = result.reply or last_reply
-            problems = validate_plan(result.steps, self._registry)
+            problems = validate_plan(result.steps, self._registry, index_offset=index_offset)
             if not problems:
                 result._set_llm_meta(response)
                 return result

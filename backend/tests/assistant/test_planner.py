@@ -365,3 +365,33 @@ def test_planner_prompt_documents_each_step_output_shape() -> None:
     assert "return the ITEM ITSELF" in prompt
     # And the concrete correction for the observed failure.
     assert '{"parent_id": {"from": 1, "path": "id"}}' in prompt
+
+
+def test_split_plan_rule_is_only_taught_when_a_second_pass_will_run() -> None:
+    """Teaching needs_followup with two-phase planning off makes the model return
+    read-only lookups and stop — the writes it deferred never get planned. On 20
+    M3 cases against the real model that was 0/20 (every failure: the write step
+    missing) versus 7/20 with the second pass actually running.
+    """
+
+    async def handler(context: object, args: object) -> object:  # pragma: no cover
+        return None
+
+    registry = SkillRegistry()
+    registry.register(
+        RegisteredSkill(
+            name="create_folder",
+            description="Create a folder.",
+            parameters={"type": "object", "properties": {}},
+            permission_tier="write",
+            handler=handler,
+        )
+    )
+
+    on = build_planner_prompt(registry, two_phase=True)
+    off = build_planner_prompt(registry, two_phase=False)
+
+    assert "set it to true ONLY when you cannot tell which items" in on
+    assert "set it to true ONLY when you cannot tell which items" not in off
+    assert "needs_followup: always false" in off
+    assert "including every write step" in off

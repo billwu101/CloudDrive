@@ -80,6 +80,13 @@ class Settings(BaseSettings):
     # repetition loops (per-call 0/6; M4 skill-generation 0% → 100% with think:false).
     # Supersedes the earlier "codegen validated with thinking on" assumption.
     llm_codegen_disable_thinking: bool = True
+    # 2026-07-29 experiment: two-phase planning. When the planner cannot know
+    # which items to act on until it has seen a query's result, it plans only
+    # the read steps and sets needs_followup; the service executes those, feeds
+    # the real results back, and the second pass appends its steps to the SAME
+    # plan (so step references, the confirm gate and the executor are unchanged).
+    # Off by default — the 425-case eval baseline was measured without it.
+    assistant_two_phase_planning: bool = False
     assistant_max_tool_iterations: int = 8
     assistant_sandbox_timeout_sec: int = 30
     # DEC-035: caps on materializing a folder subtree into the sandbox input when a
