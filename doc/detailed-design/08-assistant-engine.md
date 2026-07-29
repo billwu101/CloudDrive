@@ -339,7 +339,7 @@ AgentFolder_23f4b9ba'}}]}<tool_call|>> {
 
 | 特徵 | 例子 |
 |---|---|
-| 聊天模板 token | `<tool_call`、`<\|`、`<end_of_turn>`、`<start_of_turn>` |
+| 聊天模板 token | `<tool_call`、`<end_of_turn>`、`<start_of_turn>`，以及小於號接豎線的前綴 |
 | 引號後接連續收括號 | `'}}]}` — 模型收完物件又繼續寫（`…'}}]}of course! Here is your plan:{`，這個變體完全沒有模板 token） |
 
 **截斷而非退回重規劃**：截斷點之前就是使用者要的值，之後全是殘骸。退回重規劃會讓一個講得清清楚楚的請求得到「我做不到」，而且同一個 gateway 很可能再吐一次同樣的東西。截斷會寫 WARNING log 留痕。只有真的帶上述特徵的字串會被動到——`report [2026] {final}` 這種正常名稱不受影響（有測試釘住）。
