@@ -28,6 +28,7 @@ from eval.report import (
     aggregates_to_json,
     aggregates_to_markdown,
     efficiency_summary_to_markdown,
+    unweighted_dimension_warning,
     verbose_markdown,
 )
 from eval.runner import (
@@ -235,6 +236,10 @@ def main() -> int:
         print()
         print("### 效率指標 / 失敗分類（依 tag 彙總，report-only）")
         print(efficiency_summary_to_markdown(cases, scores))
+        warning = unweighted_dimension_warning(scores)
+        if warning:
+            print()
+            print(warning)
 
     if args.save_baseline:
         save_baseline(args.save_baseline, scores)

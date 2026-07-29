@@ -33,7 +33,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from eval.report import aggregates_to_json, aggregates_to_markdown, efficiency_summary_to_markdown
+from eval.report import (
+    aggregates_to_json,
+    aggregates_to_markdown,
+    efficiency_summary_to_markdown,
+    unweighted_dimension_warning,
+)
 from eval.runner import (
     EvalRunnerError,
     confirm_workflow_http,
@@ -253,6 +258,10 @@ def main() -> int:
     print()
     print("### 效率指標 / 失敗分類（依 tag 彙總，report-only）")
     print(efficiency_summary_to_markdown(cases, all_scores))
+    warning = unweighted_dimension_warning(all_scores)
+    if warning:
+        print()
+        print(warning)
     Path(str(out_path) + ".json").write_text(aggregates_to_json(all_scores))
     return 0
 

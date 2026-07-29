@@ -8,6 +8,9 @@ from typing import Any, Protocol
 from eval.schema import EvalCase
 from eval.verifier import CheckResult
 
+# Weight applied to a dimension the case did not declare (see score_case).
+_DEFAULT_DIMENSION_WEIGHT = 1.0
+
 
 class Scored(Protocol):
     """Minimal shape the report/baseline layers need — satisfied by both
@@ -49,6 +52,10 @@ class CaseScore:
     # mock-script "standard path" (a different-but-valid path still passes;
     # this is purely descriptive for analysing the model's habits).
     path_deviation: str | None = None
+    # Dimensions that produced checks but carry no weight in the case file.
+    # They are scored at full weight (see score_case); this records the gap so
+    # the report can name it and the case file can be fixed.
+    unweighted_dimensions: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -161,15 +168,23 @@ def score_case(
         for dimension, values in by_dimension.items()
     }
 
+    # A check that ran must be able to fail the case. Weighting an observed
+    # dimension at 0 because the case forgot to declare it made every state /
+    # execution / safety check decorative: gen-m3-081 scored 1.00 PASS with its
+    # execution dimension at 0.67, and the M4 codegen smoke-test checks had been
+    # silently ignored since Stage A. An undeclared dimension therefore carries
+    # FULL weight (never zero), and the case records that it happened so the
+    # report can name it — silence is exactly the failure mode being fixed.
     weights = case.scoring.weights
-    total_weight = sum(weights.get(dimension, 0.0) for dimension in dimension_scores)
+    unweighted = sorted(d for d in dimension_scores if d not in weights)
+    effective = {d: weights.get(d, _DEFAULT_DIMENSION_WEIGHT) for d in dimension_scores}
+    total_weight = sum(effective.values())
     if total_weight <= 0:
-        # No configured weight matched the observed dimensions — average them.
+        # Every observed dimension was explicitly weighted 0 — an intentional
+        # "report only" configuration, not an oversight. Average them.
         score = sum(dimension_scores.values()) / len(dimension_scores) if dimension_scores else 0.0
     else:
-        score = (
-            sum(dimension_scores[d] * weights.get(d, 0.0) for d in dimension_scores) / total_weight
-        )
+        score = sum(dimension_scores[d] * effective[d] for d in dimension_scores) / total_weight
 
     passed = score >= case.scoring.pass_threshold
     # A skill-generation case (M4) answers with a proposal and never a plan, so
@@ -196,4 +211,5 @@ def score_case(
             passed=passed, done_reason=done_reason, checks=checks, plan_is_none=plan_is_none
         ),
         path_deviation=path_deviation,
+        unweighted_dimensions=unweighted,
     )

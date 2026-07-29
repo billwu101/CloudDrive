@@ -30,7 +30,7 @@ interface BrowserCase {
   auto_confirm: boolean
   execute?: ExecuteMeta
   seed_folders?: string[]
-  seed_files?: string[]
+  seed_files?: { fixture: string; name: string }[]
 }
 
 const CASES_FILE = process.env.EVAL_CASES_FILE
@@ -80,9 +80,12 @@ async function seedFolders(request: APIRequestContext, names: string[]): Promise
 // mirroring runner.py's `_seed_files` for API mode. The name matters: cases
 // like organize_by_type assert on where `sample.pdf` ended up, so unlike the
 // execution-case upload below this must NOT prefix a per-case unique name.
-async function seedFiles(request: APIRequestContext, names: string[]): Promise<void> {
-  for (const name of names) {
-    const buffer = readFileSync(join(FIXTURES_DIR, name))
+async function seedFiles(
+  request: APIRequestContext,
+  entries: { fixture: string; name: string }[],
+): Promise<void> {
+  for (const { fixture, name } of entries) {
+    const buffer = readFileSync(join(FIXTURES_DIR, fixture))
     const res = await request.post(`${API_BASE}/upload/simple`, {
       headers: authHeaders(),
       multipart: { file: { name, mimeType: mimeFor(name), buffer } },

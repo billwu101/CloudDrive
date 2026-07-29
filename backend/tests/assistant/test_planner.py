@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse, LLMToolDefinition
@@ -13,8 +14,13 @@ from app.assistant.planner import (
     build_planner_prompt,
     validate_plan,
 )
-from app.assistant.skills.registry import RegisteredSkill, SkillRegistry
+from app.assistant.skills.builtin import build_read_only_registry, register_write_skills
+from app.assistant.skills.registry import RegisteredSkill, SkillOutput, SkillRegistry
 from app.assistant.workflow import PlannedStep
+from app.drive.service import DriveService
+from app.search.service import SearchService
+from app.trash.service import TrashService
+from app.users.service import QuotaService
 
 
 class ScriptedLLM:
@@ -395,3 +401,215 @@ def test_split_plan_rule_is_only_taught_when_a_second_pass_will_run() -> None:
     assert "set it to true ONLY when you cannot tell which items" not in off
     assert "needs_followup: always false" in off
     assert "including every write step" in off
+
+
+def _shape_registry() -> SkillRegistry:
+    """A registry mirroring the real skills' declared output shapes."""
+
+    async def handler(context: object, args: object) -> object:  # pragma: no cover
+        return None
+
+    registry = SkillRegistry()
+    for name, tier, output in (
+        ("search", "read", SkillOutput.PAGED_ITEMS),
+        ("recent", "read", SkillOutput.ITEM_LIST),
+        ("get_info", "read", SkillOutput.ITEM),
+        ("create_folder", "write", SkillOutput.NEW_FOLDER),
+        ("move_item", "write", SkillOutput.MUTATED_ITEM),
+        ("my_own_skill", "write", SkillOutput.OPAQUE),
+    ):
+        registry.register(
+            RegisteredSkill(
+                name=name,
+                description=name,
+                parameters={"type": "object", "properties": {}},
+                permission_tier=tier,
+                handler=handler,
+                output=output,
+            )
+        )
+    return registry
+
+
+def test_paged_path_against_a_step_that_returns_the_item_itself_is_rejected() -> None:
+    """The exact failure `cannot resolve path 'items.0.id' from step 0` — until
+    now only observable at execution time, i.e. after step 0 had already run."""
+
+    steps = [
+        PlannedStep(skill="create_folder", arguments={"name": "Reports"}, depends_on=[]),
+        PlannedStep(
+            skill="move_item",
+            arguments={"item_id": {"from": 0, "path": "items.0.id"}},
+            depends_on=[0],
+        ),
+    ]
+
+    problems = validate_plan(steps, _shape_registry())
+
+    assert len(problems) == 1
+    assert "returns the item itself" in problems[0]
+    assert 'use "id"' in problems[0]
+
+
+def test_item_path_against_a_paged_step_is_rejected() -> None:
+    steps = [
+        PlannedStep(skill="search", arguments={"q": "報告"}, depends_on=[]),
+        PlannedStep(
+            skill="move_item", arguments={"item_id": {"from": 0, "path": "id"}}, depends_on=[0]
+        ),
+    ]
+
+    problems = validate_plan(steps, _shape_registry())
+
+    assert len(problems) == 1
+    assert 'use "items.0.id"' in problems[0]
+
+
+def test_recent_needs_a_bare_index_not_an_items_prefix() -> None:
+    steps = [
+        PlannedStep(skill="recent", arguments={}, depends_on=[]),
+        PlannedStep(
+            skill="move_item",
+            arguments={"item_id": {"from": 0, "path": "items.0.id"}},
+            depends_on=[0],
+        ),
+    ]
+
+    problems = validate_plan(steps, _shape_registry())
+
+    assert len(problems) == 1
+    assert 'use "0.id"' in problems[0]
+
+
+def test_correct_paths_for_each_shape_pass() -> None:
+    steps = [
+        PlannedStep(skill="search", arguments={"q": "報告"}, depends_on=[]),
+        PlannedStep(skill="recent", arguments={}, depends_on=[]),
+        PlannedStep(skill="create_folder", arguments={"name": "Reports"}, depends_on=[]),
+        PlannedStep(
+            skill="move_item",
+            arguments={
+                "item_id": {"from": 0, "path": "items.*.id"},
+                "parent_id": {"from": 2, "path": "id"},
+            },
+            depends_on=[0, 2],
+        ),
+        PlannedStep(
+            skill="move_item",
+            arguments={
+                "item_id": {"from": 1, "path": "0.id"},
+                "parent_id": {"from": 2, "path": "id"},
+            },
+            depends_on=[1, 2],
+        ),
+    ]
+
+    assert validate_plan(steps, _shape_registry()) == []
+
+
+def test_a_destination_may_not_be_the_item_another_step_just_moved() -> None:
+    """Observed on a real run: the model lost track of its own numbering and
+    pointed parent_id at a move_item, so the destination became the file that
+    step had moved. It failed at execution with "Destination must be a folder"
+    — after two of the four moves had already happened."""
+
+    steps = [
+        PlannedStep(skill="search", arguments={"q": "發票"}, depends_on=[]),
+        PlannedStep(skill="create_folder", arguments={"name": "發票"}, depends_on=[]),
+        PlannedStep(
+            skill="move_item",
+            arguments={
+                "item_id": {"from": 0, "path": "items.0.id"},
+                "parent_id": {"from": 1, "path": "id"},
+            },
+            depends_on=[0, 1],
+        ),
+        PlannedStep(
+            skill="move_item",
+            arguments={
+                "item_id": {"from": 0, "path": "items.1.id"},
+                "parent_id": {"from": 2, "path": "id"},  # step 2 is a move, not the folder
+            },
+            depends_on=[0, 2],
+        ),
+    ]
+
+    problems = validate_plan(steps, _shape_registry())
+
+    assert len(problems) == 1
+    assert "must be a folder" in problems[0]
+    assert "created or found the destination folder" in problems[0]
+
+
+def test_self_built_skills_declare_no_shape_and_are_not_second_guessed() -> None:
+    steps = [
+        PlannedStep(skill="my_own_skill", arguments={}, depends_on=[]),
+        PlannedStep(
+            skill="move_item",
+            arguments={"item_id": {"from": 0, "path": "items.0.id"}},
+            depends_on=[0],
+        ),
+    ]
+
+    assert validate_plan(steps, _shape_registry()) == []
+
+
+def test_references_into_the_first_pass_are_shape_checked_too() -> None:
+    """Two-phase planning validates the second pass alone. Passing the earlier
+    steps (not just how many there are) is what lets a reference back into them
+    be checked against what they actually return."""
+
+    preceding = [PlannedStep(skill="create_folder", arguments={"name": "發票"}, depends_on=[])]
+    second_pass = [
+        PlannedStep(
+            skill="move_item",
+            arguments={"item_id": {"from": 0, "path": "items.0.id"}},
+            depends_on=[0],
+        )
+    ]
+
+    problems = validate_plan(second_pass, _shape_registry(), preceding=preceding)
+
+    assert len(problems) == 1
+    assert "returns the item itself" in problems[0]
+    # The step numbering still accounts for the first pass.
+    assert problems[0].startswith("step 1:")
+
+
+def test_prompt_output_shapes_match_what_the_skills_declare() -> None:
+    """The prompt names the shapes in prose; ``validate_plan`` enforces them from
+    ``RegisteredSkill.output``. Two sources of truth for one fact — this test is
+    what keeps them from drifting apart (a skill whose declared shape contradicts
+    the prompt would have the model taught one thing and validated against
+    another).
+    """
+
+    registry = build_read_only_registry(
+        drive_service=AsyncMock(spec=DriveService),
+        search_service=AsyncMock(spec=SearchService),
+        quota_service=AsyncMock(spec=QuotaService),
+        trash_service=AsyncMock(spec=TrashService),
+    )
+    register_write_skills(
+        registry,
+        drive_service=AsyncMock(spec=DriveService),
+        trash_service=AsyncMock(spec=TrashService),
+    )
+    prompt = build_planner_prompt(registry)
+    paged_line, list_line, item_line = (
+        next(line for line in prompt.splitlines() if marker in line)
+        for marker in ('"total": N', "plain list of items", "return the ITEM ITSELF")
+    )
+    expected_line = {
+        SkillOutput.PAGED_ITEMS: paged_line,
+        SkillOutput.ITEM_LIST: list_line,
+        SkillOutput.ITEM: item_line,
+        SkillOutput.NEW_FOLDER: item_line,
+        SkillOutput.MUTATED_ITEM: item_line,
+    }
+    for skill in registry.list_skills():
+        if skill.output is SkillOutput.OPAQUE:
+            continue  # not usable as a reference source; the prompt says nothing
+        assert skill.name in expected_line[skill.output], (
+            f"{skill.name} declares {skill.output} but the prompt does not list it there"
+        )

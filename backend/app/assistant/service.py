@@ -429,7 +429,13 @@ class WorkflowService:
         if not plan.needs_followup:
             return plan
         classified = classify_steps(plan.steps, self._registry)
-        if has_selection_reference(classified, self._registry):
+        if selected_items and has_selection_reference(classified, self._registry):
+            # A plan built on the user's ticked files is already grounded in real
+            # items — there is nothing to reconnoitre. With NO selection those
+            # same references are unusable, and bailing out here handed the user
+            # "please tick the files first" for a request that named the files
+            # perfectly well (five of five real multi-turn runs). Reconnaissance
+            # is exactly what that plan needs, so fall through.
             return plan
         # Execute ONLY the read-only steps for reconnaissance. In practice the
         # model keeps folding preparation writes (create the destination folder)
@@ -461,7 +467,7 @@ class WorkflowService:
             target=target,
             selected_items=selected_items,
             history=history,
-            index_offset=len(kept),
+            preceding_steps=kept,
         )
         if not followup.steps:
             return plan

@@ -19,9 +19,15 @@ per type. This is the already-agreed scope from
 memory clouddrive-codegen-smoke-test-dec (alfred, 2026-07-24, deferred at the
 time to "another DEC, don't merge into the folder-skill PR"): run() is
 callable without error, output_dir gets at least one file, the return value
-is JSON-serialisable. It does NOT check the output's semantic correctness
-(e.g. that an md5_checksum skill's hash is actually correct) — that would
-need a reference implementation per skill type, out of scope here.
+is JSON-serialisable.
+
+2026-07-29: extended one tier further, to what the output *is* — see
+``eval/output_checks.py``. Non-empty, parseable as whatever its extension
+claims, and (for hash skills) carrying the input's real digest. Full per-skill
+correctness still needs a reference implementation per skill type and remains
+out of scope; these three need no expected value, so they cost nothing to add
+and catch the "ran fine, wrote garbage" class the file-exists check waved
+through.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from app.assistant.skills.sandbox import SkillSandbox
+from eval.output_checks import OutputReport, check_outputs
 
 _FILE_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "sample.txt"
 
@@ -84,7 +91,7 @@ def smoke_test_skill(
     """Run ``code`` against a minimal fixture for each declared item_type.
 
     Returns ``{"ok": bool, "results": {item_type: {ok, error, produced_files,
-    json_serializable}}}``. ``ok`` is True only if every declared item_type
+    json_serializable, output_problems}}}``. ``ok`` is True only if every declared item_type
     ran cleanly (a skill declaring both FILE and FOLDER must handle both —
     per the memory spec, "FILE+FOLDER 兩種都要試,不能只測一種").
     """
@@ -109,12 +116,23 @@ def smoke_test_skill(
                 except (TypeError, ValueError):
                     json_serializable = False
             produced = outcome.produced_files
-            ok = outcome.ok and len(produced) >= 1 and json_serializable
+            # Beyond "a file exists": is what it wrote usable? Non-empty, and
+            # parseable as whatever its extension claims, and — for the hash
+            # skills the model generates most often — actually the input's
+            # digest. See eval/output_checks.py for why these three and not more.
+            output_dir = sandbox.last_output_dir
+            content: OutputReport = (
+                check_outputs(output_dir, fixture)
+                if outcome.ok and produced and output_dir is not None
+                else {"ok": True, "problems": [], "checked_files": 0}
+            )
+            ok = outcome.ok and len(produced) >= 1 and json_serializable and content["ok"]
             results[item_type] = {
                 "ok": ok,
                 "error": outcome.error,
                 "produced_files": produced,
                 "json_serializable": json_serializable,
+                "output_problems": content["problems"],
             }
             all_ok = all_ok and ok
         finally:

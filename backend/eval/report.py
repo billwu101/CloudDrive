@@ -92,6 +92,35 @@ def aggregates_to_markdown(scores: list[AggregateScore]) -> str:
     return "\n".join(lines)
 
 
+def unweighted_dimension_warning(scores: list[AggregateScore]) -> str:
+    """Name the cases whose checks ran in a dimension the case never weighted.
+
+    Those dimensions are scored at full weight (see ``scoring.score_case``), so
+    nothing is silently dropped any more — but the case file is still wrong, and
+    an undeclared dimension is how the whole class of "decorative check" bugs
+    started. Empty string when there is nothing to report.
+    """
+
+    offenders: dict[str, set[str]] = {}
+    for score in scores:
+        for run in score.run_scores:
+            if run.unweighted_dimensions:
+                offenders.setdefault(score.case_id, set()).update(run.unweighted_dimensions)
+    if not offenders:
+        return ""
+    lines = [
+        "### ⚠ 案例未宣告權重的維度（已以滿權重計分，但案例檔應補上）",
+        "",
+        "| Case | 未宣告的維度 |",
+        "|---|---|",
+    ]
+    lines += [
+        f"| {case_id} | {', '.join(sorted(dimensions))} |"
+        for case_id, dimensions in sorted(offenders.items())
+    ]
+    return "\n".join(lines)
+
+
 def aggregates_to_json(scores: list[AggregateScore]) -> str:
     payload = [
         {
@@ -116,6 +145,7 @@ def aggregates_to_json(scores: list[AggregateScore]) -> str:
                     "completion_tokens": run.completion_tokens,
                     "tool_call_count": run.tool_call_count,
                     "failure_category": run.failure_category,
+                    "unweighted_dimensions": run.unweighted_dimensions,
                     "path_deviation": run.path_deviation,
                     "checks": [
                         {

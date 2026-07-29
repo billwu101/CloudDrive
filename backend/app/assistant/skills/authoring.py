@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import tempfile
 from collections.abc import AsyncGenerator
@@ -464,6 +465,21 @@ class AssistantSkillService:
                 detail = result.error or "unknown error"
                 raise AppError(ErrorCode.INVALID_OPERATION, f"Skill execution failed: {detail}")
             ingested = await self._ingest(user_id, item, self._sandbox.last_output_dir)
+            if not ingested:
+                # The sandbox said ok, but the user got nothing. The codegen
+                # contract is explicit ("ALWAYS write the result as a file under
+                # output_dir — that written file is what the user receives"), so
+                # zero files means the skill did not do its job, however cleanly
+                # it exited. Reporting success here is worse than failing: the
+                # user sees "produced 0 file(s)" phrased as an accomplishment and
+                # has no idea anything went wrong.
+                summary = json.dumps(result.output, ensure_ascii=False, default=str)[:200]
+                raise AppError(
+                    ErrorCode.INVALID_OPERATION,
+                    f"Skill '{skill.name}' ran without error but wrote no output file "
+                    f"for {item.name}, so there is nothing to save. "
+                    f"The skill reported: {summary}",
+                )
         finally:
             self._sandbox.cleanup()
             shutil.rmtree(run_root, ignore_errors=True)

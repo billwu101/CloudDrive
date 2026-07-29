@@ -38,7 +38,18 @@ def build_payload(cases: list[EvalCase]) -> list[dict[str, Any]]:
         if case.seed_folders:
             item["seed_folders"] = case.seed_folders
         if case.seed_files:
-            item["seed_files"] = case.seed_files
+            # Normalised to {fixture, name} pairs: a plain string is a fixture
+            # uploaded under its own name, a SeedFile renames it (the
+            # filename-classification cases upload one fixture as 發票A.pdf,
+            # 考卷B.pdf …). Passing the SeedFile objects through unconverted
+            # made json.dumps raise before Playwright even started — found the
+            # first time browser mode was actually run, 2026-07-29.
+            item["seed_files"] = [
+                {"fixture": entry, "name": entry}
+                if isinstance(entry, str)
+                else {"fixture": entry.fixture, "name": entry.name}
+                for entry in case.seed_files
+            ]
         # Execution cases also drive approve → run-on-fixture → assert output.
         if case.expect.execute is not None:
             ex = case.expect.execute

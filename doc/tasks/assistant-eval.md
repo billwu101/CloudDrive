@@ -431,3 +431,19 @@ M2 有三分之一的執行走了非標準路徑但仍全數答對；M5 幾乎�
 - **M3／M4／語意 → 繼續**：各自有明確的真缺口。
 
 **測試帳號已清理**：4002 個 `e9_*` 帳號、13160 個 drive_items 全數刪除（precise-scoped 交易），users 回到 47（非本輪產生的既有帳號）。
+
+## 三項驗證缺口補齊（2026-07-29）
+
+延續上面「不完整的測試環境會低估受測對象」，這批處理的是反向的問題——**測試宣稱在驗、實際上沒在驗**。設計面見 detailed-design §10.17。
+
+- [x] **評分引擎：未宣告權重的維度不得靜默忽略**（`eval/scoring.py`）。改為滿權重＋`CaseScore.unweighted_dimensions` 記錄＋報告尾端點名（`eval/report.py: unweighted_dimension_warning`）。明確寫 `0.0` 仍視為刻意的 report-only。
+  - 影響量測：已跑過的 157 個 run 用新規則重算，分數與判定**零變化**（產生的案例已宣告四維）——此修法保護的是手寫案例與未來新增的案例，不是追認舊結果。
+  - 單元測試：`tests/eval/test_scoring_weights.py`（5 案，含「明確 0 權重仍是 0」與報告點名）。
+- [x] **生成技能的產出驗到內容**（新檔 `eval/output_checks.py`，接進 `eval/codegen_smoke.py`）。非空／格式可解析／雜湊正確三層，皆不需逐技能參考實作。
+  - 踩過的坑：按 hex 長度假設演算法會誤判——`gen-m4-008` 算的是正確的 blake2s（64 hex，與 sha256 同長）。改為「該長度的所有標準演算法都不符才算錯」。同批 15 案 12/15 → **14/15**，剩 1 案是生成程式在 FOLDER 輸入上真的丟 `TypeError`。
+  - 單元測試：`tests/eval/test_output_checks.py`（11 案，含同長度不同演算法不得誤判、folder fixture 取任一成員摘要、strip 後再雜湊不算錯）。
+- [x] **瀏覽器模式第一次真的跑起來**。抓到兩個問題：`SeedFile` 進 payload 沒轉成可序列化形狀（Playwright 連啟動都沒到）、`CORS_ORIGINS` 沒放行 eval 前端埠（症狀是登入卡在 `waitForURL` 逾時，看起來像 UI 壞了）。修完 M2 2 案＋M3 6 案 **8/8 通過**，工具呼叫數與 API 模式同級。跑法與逾時建議見 detailed-design §10.17.3。
+  - 單元測試：`tests/eval/test_runner_browser_payload.py` 補「改名 seed 檔的 payload 可序列化」。
+  - 未做：全量 420 案跑瀏覽器模式（120 案在 1200 秒逾時內跑不完，一次一批較實際）。
+
+**仍未做的**：LLM 評審（judge）與 pgvector 語意搜尋接成技能——alfred 明確指定這兩項本輪不動。

@@ -305,6 +305,24 @@ app/assistant/
 
 **已知缺口**：`validate_plan` 只檢查「引用必須指向更早的步驟」，不檢查**被引用步驟的輸出型別是否合用**。多輪語意分類殘餘的失敗即是模型把 `parent_id` 指向一個 `move_item` 的輸出，規劃期驗證放行、執行期才報 `Destination must be a folder`。加上型別感知的引用檢查可讓它落進既有的修補迴圈，記為待辦。
 
+### 8.95.7 計畫驗證：引用要對得上被引用步驟的輸出（2026-07-29）
+
+`validate_plan` 原本只檢查「引用指向更早的步驟」，不檢查**那一步吐出來的東西合不合用**。兩類錯誤因此逃過規劃期、留到執行期才爆——而那時計畫裡更早的寫入步驟已經生效了：
+
+| 錯誤 | 執行期症狀 |
+|---|---|
+| 路徑形狀不符（對 `create_folder` 用 `items.0.id`） | `cannot resolve path 'items.0.id' from step 0` |
+| 拿「剛被改動的項目」當目的地（`parent_id` 指向某個 `move_item`） | `Destination must be a folder`，且前面幾步已經搬完 |
+
+做法：`RegisteredSkill` 新增 `output: SkillOutput` 欄位宣告回傳形狀（`paged_items` / `item_list` / `item` / `new_folder` / `mutated_item` / `opaque`），內建技能逐一標註，**自建技能維持 `opaque` 不猜**。驗證據此判斷路徑前綴是否可能解得開，並禁止把 `mutated_item` 當 `parent_id`。
+
+- 系統提示原本用散文列出同一份對照表，等於同一事實有兩個真相來源。提示文字**不動**（改提示的風險已經吃過一次虧），改以測試釘住兩者一致（`test_prompt_output_shapes_match_what_the_skills_declare`）。
+- 代價：會擋掉一種罕見但合法的計畫（「把資料夾 A 搬進 B，再把檔案放進 A」）。修補迴圈的訊息會指名改引用「建立或找到目的地資料夾的那一步」，模型可以自行修正。
+
+**修補迴圈的訊息措辭是有後果的（實測）**：原本的訊息結尾一律附上「如果做不到，就回傳空的 steps 並簡短說明」。加上新驗證後，模型在真實多輪測試裡 5/5 選擇了這條退路的變形——回「請先在硬碟勾選要操作的檔案」——而不是修掉一個步驟編號。改成「照這些修正改，其餘不要動；不要叫使用者去勾檔案，也不要對可修的步驟放棄」，並且**只有在它想用的技能根本不存在時**才提供退路，同一任務 0/5 → 3/5。
+
+**沒有勾選檔案時要明說**（同批實測逼出來）：規劃提示只在**有**勾選時才附上選取清單，沒勾選時什麼都不說，模型於是假設有選取、規劃 `{"from": "selection"}` 引用，服務層只能回「請先勾選」。現在無選取時明確告知「目前沒有選取，selection 引用不可用，請改用 search/list_items 找出項目」。同理，兩段式規劃的 selection 早退條件也改為**只有真的有選取時**才成立——沒有選取的 selection 引用本來就跑不了，那正是最需要偵察的情況。
+
 ### 8.9 資料模型（新增表，Alembic migration）
 
 - `assistant_sessions(id, user_id, title, created_at, updated_at)`

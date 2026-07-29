@@ -269,3 +269,49 @@ EVAL_BASELINE=                # baseline.json 路徑（可選）
 - **模式一致性（硬性要求）**：任何新增的 seeding 機制必須同時接上 API 與 browser 兩條路徑——`runner_browser.build_payload()`（已抽成獨立函式以便單元測試）帶出 `seed_folders`/`seed_files`，`frontend/e2e/assistant/assistant-eval.spec.ts` 的 `seedFolders()`/`seedFiles()` 負責建立。`seed_folders`（2026-07-27）與 `seed_files`（2026-07-28）都曾經只接了 API 端，造成 browser 模式對著空硬碟跑出與模型無關的假失敗，因此以 `tests/eval/test_runner_browser_payload.py` 釘住這條對等關係。
 
 **判讀時的重要限制**：`eval/out/e9_stage_a.jsonl` 那份「400/400 全過」是 2026-07-28 04:09 產出的，而 E（06:36）與 A–D（08:16–08:41）都在其後才進 code——該批數字反映的是**強化前**的驗證標準（檢查該檔內容可證：不含 `path_deviation`、不含 reference-grounding 檢查）。引用這個數字時必須連同量測基準一起講，或以新標準重跑。
+
+### 10.17 檢查跑了就要能讓案例失敗；產出要驗到內容；瀏覽器模式要真的跑過（2026-07-29）
+
+三件事同批處理，共同的形狀是「harness 宣稱在驗，實際上沒有」。
+
+#### 10.17.1 未宣告權重的維度不得靜默忽略（評分引擎）
+
+`score_case` 原本用 `weights.get(dimension, 0.0)`：案例檔沒宣告的維度，分子分母同時加 0，等於**該維度的所有檢查都是裝飾**。實際後果已量到——`gen-m3-081` 的 `execution` 維度 0.67 卻拿 1.00 PASS；M4 的 codegen smoke 檢查從階段 A 起就沒進過分數。案例檔那邊 2026-07-28 已補齊四維權重，但引擎層的漏洞還在，下一個忘記宣告的人會再中一次。
+
+- 未宣告的維度改為**滿權重**（`_DEFAULT_DIMENSION_WEIGHT = 1.0`）——跑了的檢查一定要能讓案例失敗。
+- 明確寫 `0.0` 仍然是 0（那是刻意的 report-only 設定，與「忘了寫」可由「維度有沒有出現在 weights」區分）。
+- `CaseScore.unweighted_dimensions` 記錄發生過這件事，報告尾端以 `unweighted_dimension_warning()` 點名案例與維度——**案例檔還是該補**，只是不再靜默。
+- 對現有案例的實際影響：把已跑過的 157 個 run（M3 旗標開/關各 20 + qwen 117）用新規則重算，**分數與判定零變化**（產生的案例已宣告四維）。這個修法保護的是手寫案例與未來新增的案例。
+
+#### 10.17.2 生成技能的產出要驗到內容（`eval/output_checks.py`）
+
+`codegen_smoke` 驗到「跑得動、有寫出檔案、回傳值可序列化」為止。寫出 0 位元組的壓縮檔、壞掉的 PNG、算錯的雜湊，全都算通過。新增三層**不需要逐技能參考實作**的檢查：
+
+| 層 | 判準 | 為何不需要期望值 |
+|---|---|---|
+| 非空 | 0 位元組即失敗 | 空檔不可能是結果 |
+| 格式可解析 | `.zip`/`.7z`/影像/`.pdf`/`.json` 用對應函式庫實際打開 | 格式本身就是 oracle |
+| 雜湊正確 | 輸出裡的 hex token 必須是輸入在**某個**該長度演算法下的摘要 | 摘要可由輸入直接算出 |
+
+雜湊那條踩過一次：一開始按長度假設演算法（64 hex → sha256），`gen-m4-008` 因此被誤判——它算的是正確的 blake2s，同樣 64 hex。改成「該長度的所有標準演算法都不符才算錯」後，同批 15 案 12/15 → 14/15，剩下的 1 案是生成程式在 FOLDER 輸入上真的丟 `TypeError`。缺函式庫或讀不出來一律降級為「未檢查」，不製造無法佐證的失敗。
+
+#### 10.17.3 瀏覽器模式：第一次真的對這批案例跑起來
+
+`mode: [api, browser]` 標了很久，從沒實際執行過。真跑之後兩個問題立刻現形：
+
+1. **payload 序列化直接炸掉**：`seed_files` 支援「同一個 fixture 上傳成不同檔名」（`SeedFile`）後，browser payload 仍原封不動塞進 `json.dumps` → `TypeError: Object of type SeedFile is not JSON serializable`，Playwright 連啟動都沒到。已改為統一輸出 `{fixture, name}`，Playwright spec 的型別與 `seedFiles()` 同步，並補進既有的 API/browser 對等測試。
+2. **CORS 來源要對得上前端埠**：後端 `CORS_ORIGINS` 預設只有 `http://localhost:5173`，evel 用的前端跑在別的埠時，登入會停在 `waitForURL('**/drive')` 逾時 30 秒——症狀看起來像 UI 壞了，其實是瀏覽器擋掉了 API 呼叫。跑瀏覽器模式時要把前端埠加進 `CORS_ORIGINS`。
+
+跑法（實測通過，8/8）：
+
+```bash
+# 1. 後端（LLM 指向要測的模型），CORS 放行 eval 前端埠
+CORS_ORIGINS='["http://localhost:5199"]' uv run uvicorn app.main:app --port 8002
+# 2. 前端指向該後端
+VITE_API_BASE_URL=http://localhost:8002/api/v1 npm run dev -- --port 5199 --strictPort
+# 3. 跑 eval（案例量大時 --browser-timeout 要加大：120 案在 1200 秒內跑不完）
+uv run python -m eval.run --mode browser --llm real --cases <dir> \
+    --frontend-url http://localhost:5199 --base-url http://localhost:8002/api/v1
+```
+
+結果：M2 2 案 + M3 6 案（含 organize_by_type 需要 seed 檔的兩案）**8/8 通過**，工具呼叫數與 API 模式同級（m2 5.0、m3 4.0）。這是「同一批案例經真實 UI 走一遍會不會不一樣」第一次有答案：不會，但要先修好上面兩件事才跑得到。
