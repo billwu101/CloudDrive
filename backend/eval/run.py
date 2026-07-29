@@ -87,7 +87,7 @@ def main() -> int:
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a Markdown table")
     parser.add_argument(
-        "--tag", default="", help="Only run cases carrying this tag (e.g. m2, m4, safety)"
+        "--tag", default="", help="Only run cases carrying this tag (e.g. ec1, ec3, safety)"
     )
     parser.add_argument(
         "--verbose",

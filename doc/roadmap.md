@@ -23,7 +23,7 @@
 | 跳針卡死(temp=0 貪婪迴圈) | DEC-031 num_predict + 非零溫度 | ✅ 有界失敗 |
 | 幻覺技能名 | DEC-032 schema enum(grammar 級不可生成) | ✅ 根治 |
 | 殘餘跳針(thinking 段) | DEC-033 planner think:false | ✅ 歸零,快 ~10 倍 |
-| **規劃品質(寫入意圖遺漏)** | — | ❌ 困難集 M3/M5 仍 47%,現任瓶頸 |
+| **規劃品質(寫入意圖遺漏)** | — | ❌ 困難集 EC2/EC4 仍 47%,現任瓶頸 |
 | **多輪失憶** | proposal-assistant-memory(待實作) | ❌ 使用者實測痛點 |
 
 ### 技術債清單(誠實盤點)

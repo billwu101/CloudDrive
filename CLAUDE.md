@@ -220,6 +220,7 @@ Use Vitest + MSW. Per-test MSW overrides: `server.use(http.get(...))` inside the
 
 | File | Purpose |
 |---|---|
+| `doc/glossary.md` | 代號對照表（DEC / M / EC / E / EM / S / HARNESS / Stage / migration）——遇到看不懂的代號先查這裡 |
 | `doc/prompt.md` | Codex multi-agent orchestration prompt + confirmed technical decisions |
 | `doc/detailed-design/` | Module-level architecture, service interfaces, API contracts |
 | `doc/proposal.md` | Product requirements and feature design |

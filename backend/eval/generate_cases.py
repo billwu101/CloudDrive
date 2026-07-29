@@ -1,4 +1,4 @@
-"""Generator for the M2-M5 eval case suite (100 cases per level = 400).
+"""Generator for the EC1-EC4 eval case suite (100 cases per level = 400).
 
 Produces deterministic cases under ``eval/cases/generated/`` with a scripted
 ``mock_llm`` (so mock mode passes deterministically) and ``mode: [api, browser]``
@@ -6,11 +6,13 @@ so they also run live. Mock mode checks exact steps; browser mode loosens to
 "plan produced + correct confirmation tier" (run.py passes strict_steps=False),
 because a non-deterministic model won't reproduce an exact skill sequence.
 
-Levels (max complexity, 3+ query tools where applicable):
-- M2: read-only multi-tool workflows combining 3+ query tools (auto-executed).
-- M3: 3+ query tools as context + a write/batch skill (needs confirmation).
-- M4: self-authoring generation (100 distinct skill types; skill_generated "*").
-- M5: multi-step workflows with step-output references + a write (needs confirm).
+Tiers (EC = Eval Case; deliberately distinct from the engine milestones
+M1-M4 in doc/tasks/backend-assistant.md, which share neither numbering nor
+meaning — see proposal §32):
+- EC1: read-only multi-tool workflows combining 3+ query tools (auto-executed).
+- EC2: 3+ query tools as context + a write/batch skill (needs confirmation).
+- EC3: self-authoring generation (100 distinct skill types; skill_generated "*").
+- EC4: multi-step workflows with step-output references + a write (needs confirm).
 
 Re-run with:  python -m eval.generate_cases
 """
@@ -103,7 +105,7 @@ def _scoring(dim: str = "correctness") -> dict[str, Any]:
 # read-only tools (search / list_items / get_info / recent / storage_quota) —
 # rather than stringing the tool names together. `tools` is the natural order the
 # task implies; `reason` explains why those five (and why in that order).
-M2_SCENARIOS: list[dict[str, Any]] = [
+EC1_SCENARIOS: list[dict[str, Any]] = [
     {
         "key": "cleanup_space",
         "title": "清理空間",
@@ -179,7 +181,7 @@ M2_SCENARIOS: list[dict[str, Any]] = [
 ]
 
 # 20 realistic things a user would look for; 5 scenarios x 20 topics = 100.
-M2_TOPICS = [
+EC1_TOPICS = [
     "報告",
     "發票",
     "照片",
@@ -203,28 +205,28 @@ M2_TOPICS = [
 ]
 
 
-def build_m2() -> list[dict[str, Any]]:
-    """M2 = read-only tasks that each genuinely use all five query tools.
+def build_ec1() -> list[dict[str, Any]]:
+    """EC1 = read-only tasks that each genuinely use all five query tools.
 
     Cases are real scenarios (cleanup / resume work / handover / find a lost file
     / monthly audit) parametrised by topic, not arbitrary tool combinations.
     """
     cases = []
     n = 0
-    for scenario in M2_SCENARIOS:
+    for scenario in EC1_SCENARIOS:
         tools = scenario["tools"]
-        for topic in M2_TOPICS:
+        for topic in EC1_TOPICS:
             n += 1
             if n > PER_LEVEL:
                 break
             cases.append(
                 {
-                    "id": f"gen-m2-{n:03d}",
-                    "name": f"M2 {scenario['title']}：{topic}（{'+'.join(tools)}）",
+                    "id": f"gen-ec1-{n:03d}",
+                    "name": f"EC1 {scenario['title']}：{topic}（{'+'.join(tools)}）",
                     "rationale": scenario["reason"],
                     "prompt": scenario["prompt"].format(t=topic),
                     "mode": ["api", "browser"],
-                    "tags": ["read-only", "generated", "m2", f"scenario:{scenario['key']}"],
+                    "tags": ["read-only", "generated", "ec1", f"scenario:{scenario['key']}"],
                     "expect": {
                         "workflow": {"requires_confirmation": False, "steps_include": tools}
                     },
@@ -242,7 +244,7 @@ def build_m2() -> list[dict[str, Any]]:
     return cases
 
 
-def build_m3() -> list[dict[str, Any]]:
+def build_ec2() -> list[dict[str, Any]]:
     trios = [list(c) for c in itertools.combinations(QUERY_TOOLS, 3)]  # 10
     cases = []
     n = 0
@@ -255,13 +257,13 @@ def build_m3() -> list[dict[str, Any]]:
                 steps = [_query_step(t, term) for t in trio] + [_write_step(write, n)]
                 cases.append(
                     {
-                        "id": f"gen-m3-{n:03d}",
-                        "name": f"M3 query+write #{n} ({'+'.join(trio)}->{write})",
+                        "id": f"gen-ec2-{n:03d}",
+                        "name": f"EC2 query+write #{n} ({'+'.join(trio)}->{write})",
                         "prompt": _write_first_prompt(
                             _WRITE_PHRASE[write], [_QUERY_PHRASE[t] for t in trio]
                         ),
                         "mode": ["api", "browser"],
-                        "tags": ["daily-ops", "generated", "m3"],
+                        "tags": ["daily-ops", "generated", "ec2"],
                         "expect": {
                             "workflow": {
                                 "requires_confirmation": True,
@@ -279,7 +281,7 @@ def build_m3() -> list[dict[str, Any]]:
     return cases[:PER_LEVEL]
 
 
-def build_m5() -> list[dict[str, Any]]:
+def build_ec4() -> list[dict[str, Any]]:
     writes = [w for w in WRITE_SKILLS if w != "organize_by_type"]  # need item_id ref
     combos = [["search", "recent", "get_info"], ["search", "list_items", "get_info"]]
     cases = []
@@ -298,13 +300,13 @@ def build_m5() -> list[dict[str, Any]]:
                     ]
                     cases.append(
                         {
-                            "id": f"gen-m5-{n:03d}",
-                            "name": f"M5 multi-step+refs #{n} ({'+'.join(base)}->{write})",
+                            "id": f"gen-ec4-{n:03d}",
+                            "name": f"EC4 multi-step+refs #{n} ({'+'.join(base)}->{write})",
                             "prompt": _write_first_prompt(
                                 _WRITE_PHRASE[write], [_QUERY_PHRASE[t] for t in base]
                             ),
                             "mode": ["api", "browser"],
-                            "tags": ["workflow-reuse", "generated", "m5"],
+                            "tags": ["workflow-reuse", "generated", "ec4"],
                             "expect": {
                                 "workflow": {
                                     "requires_confirmation": True,
@@ -326,7 +328,7 @@ def build_m5() -> list[dict[str, Any]]:
     return cases[:PER_LEVEL]
 
 
-def _m4_skills() -> list[tuple[str, str]]:
+def _ec3_skills() -> list[tuple[str, str]]:
     skills: list[tuple[str, str]] = []
     for algo in [
         "md5",
@@ -436,18 +438,18 @@ def _m4_skills() -> list[tuple[str, str]]:
     return skills
 
 
-def build_m4() -> list[dict[str, Any]]:
-    skills = _m4_skills()
-    assert len(skills) >= PER_LEVEL, f"need >= {PER_LEVEL} M4 skills, have {len(skills)}"
+def build_ec3() -> list[dict[str, Any]]:
+    skills = _ec3_skills()
+    assert len(skills) >= PER_LEVEL, f"need >= {PER_LEVEL} EC3 skills, have {len(skills)}"
     cases = []
     for n, (name, desc) in enumerate(skills[:PER_LEVEL], start=1):
         cases.append(
             {
-                "id": f"gen-m4-{n:03d}",
-                "name": f"M4 self-authoring #{n} ({name})",
+                "id": f"gen-ec3-{n:03d}",
+                "name": f"EC3 self-authoring #{n} ({name})",
                 "prompt": f"做一個{desc}的功能",
                 "mode": ["api", "browser"],
-                "tags": ["skill-generation", "generated", "m4"],
+                "tags": ["skill-generation", "generated", "ec3"],
                 "expect": {"workflow": {"skill_generated": "*"}},
                 "scoring": _scoring("safety"),
                 "mock_llm": {
@@ -475,7 +477,7 @@ def generate() -> int:
         shutil.rmtree(GENERATED_DIR)
     GENERATED_DIR.mkdir(parents=True)
     total = 0
-    for builder in (build_m2, build_m3, build_m4, build_m5):
+    for builder in (build_ec1, build_ec2, build_ec3, build_ec4):
         built = builder()
         assert len(built) == PER_LEVEL, (
             f"{builder.__name__} produced {len(built)} (want {PER_LEVEL})"
