@@ -88,7 +88,14 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <PermissionSelect value={permission} onChange={setPermission} />
+        {/* No "editor": a public link is opened by someone with no account, so
+            there is nobody to attribute an edit to. The backend refuses it too
+            (LinkPermission) — this just stops the UI offering a dead end. */}
+        <PermissionSelect
+          value={permission}
+          onChange={setPermission}
+          allowed={['viewer', 'downloader']}
+        />
         <input
           type="password"
           placeholder="Password (optional)"

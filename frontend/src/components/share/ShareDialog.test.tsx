@@ -96,6 +96,27 @@ describe('ShareDialog', () => {
   })
 })
 
+describe('link permission tiers', () => {
+  it('does not offer Editor for a public link', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+
+    const select = screen.getByRole('combobox', { name: /permission level/i })
+    const tiers = Array.from(select.querySelectorAll('option')).map((o) => o.value)
+    // A public link is opened by someone with no account — there is nobody to
+    // attribute an edit to. The backend refuses "editor" (422); offering it
+    // here would just be a dead end that used to surface as a 500.
+    expect(tiers).toEqual(['viewer', 'downloader'])
+  })
+
+  it('still offers Editor when sharing with a person', async () => {
+    renderDialog()
+    const select = screen.getByRole('combobox', { name: /permission level/i })
+    const tiers = Array.from(select.querySelectorAll('option')).map((o) => o.value)
+    expect(tiers).toContain('editor')
+  })
+})
+
 describe('link actions', () => {
   it('offers copy but not deactivate', async () => {
     renderDialog()

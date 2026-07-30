@@ -14,7 +14,7 @@ from app.drive.repository import AbstractDriveItemRepository
 from app.models.drive_item import DriveItem
 from app.models.share import Share
 from app.models.share_link import ShareLink
-from app.permission.permissions import Permission
+from app.permission.permissions import LinkPermission, Permission
 from app.schemas.common import DriveItemResponse, Page
 from app.share.repository import AbstractShareLinkRepository, AbstractShareManagementRepository
 from app.share.schemas import (
@@ -220,7 +220,7 @@ class ShareLinkService:
         self,
         actor_id: UUID,
         item_id: UUID,
-        permission: Permission,
+        permission: LinkPermission,
         *,
         password: str | None = None,
         expires_at: datetime | None = None,

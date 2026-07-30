@@ -155,3 +155,16 @@ proposal §29.3 全部 5 項通過（第 5 項需搭配前端）；三項品質�
 - [x] `app/share/service.py`：`delete_link_record()`——驗證擁有權；連結仍有效時回 422 要求先停用。抽出 `_owned_link()` 供停用與刪除共用。
 - [x] `app/share/router.py`：`DELETE /share/links/{link_id}/record`（路由順序須在 `/links/{link_id}` 之前）。
 - [x] 測試：已停用可刪、已過期可刪、仍有效回 422、非 owner 回 403、integration 一輪完整流程。
+
+### 修正（2026-07-29，使用者回報）：公開連結選 Editor 會 500
+
+**症狀**：分享彈窗 Link 分頁把權限設為 Editor 後按「Create link」失敗。
+
+**根因鏈**：`PermissionSelect` 是 People／Link 兩個分頁共用的元件，提供 viewer/downloader/editor 三級；`ShareLinkRequest.permission` 用通用的 `Permission`（四級全收）；資料庫 `ck_share_links_permission` 只允許 viewer/downloader → IntegrityError → 500。設計 §6.12.4 原本就寫 `create_link(permission: LinkPermission)`，屬實作與設計脫節。
+
+- [x] `app/permission/permissions.py`：新增 `LinkPermission`（viewer/downloader）。
+- [x] `app/share/schemas.py`：`ShareLinkRequest.permission` 改用 `LinkPermission` → 越界值在邊界回 422。
+- [x] `app/share/service.py`：`create_link` 簽章同步。
+- [x] `app/assistant/skills/builtin/write.py`：助理的 `share_item` 技能同為呼叫端（mypy 抓到），一併改用 `LinkPermission.VIEWER`。
+- [x] `PermissionSelect` 新增 `allowed` prop；`ShareLinkPanel` 限制為 viewer/downloader。
+- [x] 測試：後端「editor 回 422 且不呼叫 service」「viewer/downloader 仍為 201」；前端「Link 分頁只有兩級」「People 分頁仍有 editor」。

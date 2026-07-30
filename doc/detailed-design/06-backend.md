@@ -1059,6 +1059,7 @@ class ShareLinkService:
 4. 重複分享會更新權限。
 5. 移除分享後對方不可再存取。
 6. 分享資料夾後子項目可被檢視。
+6.2 **公開連結不可設為 editor**：`ShareLinkRequest.permission` 用 `LinkPermission`（僅 `viewer`/`downloader`），越界值在 API 邊界回 `422`。設計 §6.12.4 本就寫明 `create_link(permission: LinkPermission)`，先前實作誤用通用的 `Permission`，於是 `editor` 一路穿到 DB check constraint 才炸成 500。
 6.1 **非 owner 不可停用他人的公開連結**（`deactivate_link` 必須自行驗證擁有權——舊註解宣稱由 router 把關，實際上沒有）。
 7. 建立公開連結時資料庫不保存明文 token。
 8. 到期連結不可使用。

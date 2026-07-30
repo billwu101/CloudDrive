@@ -273,3 +273,40 @@ async def test_deactivate_link_non_owner_returns_403(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.delete(f"/share/links/{uuid4()}", headers=headers)
     assert resp.status_code == 403
+
+
+async def test_create_link_rejects_editor_with_422_not_500(
+    user_id: UUID, headers: dict[str, str]
+) -> None:
+    """Regression: the UI offered Editor, the schema accepted it, and the value
+    only failed at the DB check constraint — surfacing as a 500.
+
+    A public link is opened by someone with no account, so "editor" would hand
+    write access to anyone the URL reaches. It has to be refused at the edge.
+    """
+    share_svc = AsyncMock(spec=ShareService)
+    link_svc = AsyncMock(spec=ShareLinkService)
+    app = _make_app(share_svc, link_svc, user_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post(
+            f"/share/items/{uuid4()}/links", json={"permission": "editor"}, headers=headers
+        )
+
+    assert resp.status_code == 422
+    link_svc.create_link.assert_not_awaited()
+
+
+async def test_create_link_still_accepts_viewer_and_downloader(
+    user_id: UUID, headers: dict[str, str]
+) -> None:
+    item_id = uuid4()
+    for tier in ("viewer", "downloader"):
+        share_svc = AsyncMock(spec=ShareService)
+        link_svc = AsyncMock(spec=ShareLinkService)
+        link_svc.create_link.return_value = _link_resp(item_id, user_id)
+        app = _make_app(share_svc, link_svc, user_id)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                f"/share/items/{item_id}/links", json={"permission": tier}, headers=headers
+            )
+        assert resp.status_code == 201, tier
