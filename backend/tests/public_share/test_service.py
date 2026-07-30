@@ -24,7 +24,7 @@ from app.core.security import (
     decode_share_access_token,
 )
 from app.drive.schemas import ItemType
-from app.permission.permissions import Permission
+from app.permission.permissions import LinkPermission, Permission
 from app.public_share.service import PublicShareService
 from app.share.service import ShareLinkService
 from tests.drive.test_service import MemDriveItemRepo, _item
@@ -64,7 +64,7 @@ async def _link_for(
     item_id: UUID,
     owner_id: UUID,
     *,
-    permission: Permission = Permission.DOWNLOADER,
+    permission: LinkPermission = LinkPermission.DOWNLOADER,
     password: str | None = None,
     expires_at: datetime | None = None,
 ) -> str:
@@ -315,7 +315,7 @@ async def test_viewer_link_cannot_download_even_though_creator_owns_the_file() -
     """Permission comes from the link, never from 'the creator is the owner'."""
     owner, items, doc = await _drive_with_file()
     links = MemShareLinkRepo()
-    token = await _link_for(items, links, doc.id, owner, permission=Permission.VIEWER)
+    token = await _link_for(items, links, doc.id, owner, permission=LinkPermission.VIEWER)
     svc = _svc(items, links)
     credential = (await svc.open_session(token, None)).access_token
 
@@ -328,7 +328,7 @@ async def test_viewer_link_cannot_download_even_though_creator_owns_the_file() -
 async def test_downloader_link_can_download() -> None:
     owner, items, doc = await _drive_with_file()
     links = MemShareLinkRepo()
-    token = await _link_for(items, links, doc.id, owner, permission=Permission.DOWNLOADER)
+    token = await _link_for(items, links, doc.id, owner, permission=LinkPermission.DOWNLOADER)
     svc = _svc(items, links)
     credential = (await svc.open_session(token, None)).access_token
 
