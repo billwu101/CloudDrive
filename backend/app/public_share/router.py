@@ -8,17 +8,23 @@ without an account. Authorisation comes from the share access credential
 from __future__ import annotations
 
 import urllib.parse
+from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
+from app.activity_log.actions import ActivityAction
+from app.activity_log.repository import SQLActivityLogRepository
+from app.activity_log.service import ActivityLogService
 from app.core.dependencies import DbSession
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.download.service import DownloadService
-from app.drive.repository import SQLDriveItemRepository
+from app.drive.repository import SQLDriveItemRepository, SQLUserItemPreferenceRepository
+from app.drive.service import DriveService
 from app.permission.repository import SQLShareRepository
 from app.permission.service import PermissionService
 from app.preview.service import PreviewService
@@ -28,9 +34,12 @@ from app.public_share.schemas import (
     PublicSessionResponse,
 )
 from app.public_share.service import PublicShareService
+from app.public_share.service import _to_public_item as _to_public
 from app.schemas.common import Page
 from app.share.repository import SQLShareLinkRepository
 from app.storage.factory import get_storage_provider
+from app.trash.router import _trash_service
+from app.upload.router import _upload_service
 
 router = APIRouter(prefix="/public", tags=["public-share"])
 
@@ -41,6 +50,7 @@ def _public_share_service(session: DbSession) -> PublicShareService:
     settings = get_settings()
     storage = get_storage_provider(settings)
     items = SQLDriveItemRepository(session)
+    activity_svc = ActivityLogService(SQLActivityLogRepository(session))
     permission_svc = PermissionService(
         share_repo=SQLShareRepository(session),
         item_repo=SQLDriveItemRepository(session),
@@ -53,6 +63,17 @@ def _public_share_service(session: DbSession) -> PublicShareService:
         download_svc=DownloadService(
             item_repo=items, storage=storage, permission_svc=permission_svc
         ),
+        # Write paths (proposal §33). These run as the item's owner — the guard
+        # that keeps a guest to editor's abilities lives in PublicShareService,
+        # not here.
+        drive_svc=DriveService(
+            item_repo=items,
+            pref_repo=SQLUserItemPreferenceRepository(session),
+            activity_svc=activity_svc,
+            permission_svc=permission_svc,
+        ),
+        upload_svc=_upload_service(session),
+        trash_svc=_trash_service(session),
     )
 
 
@@ -158,6 +179,142 @@ async def archive(credential: ShareToken, service: ServiceDep) -> StreamingRespo
         media_type="application/zip",
         headers=_attachment_headers(result.filename, None),
     )
+
+
+class CreateFolderBody(BaseModel):
+    parent_id: UUID
+    name: str
+
+
+class RenameBody(BaseModel):
+    name: str
+
+
+class MoveBody(BaseModel):
+    parent_id: UUID
+
+
+async def _audit_guest_write(
+    service: PublicShareService,
+    session: DbSession,
+    credential: str,
+    request: Request,
+    *,
+    action: str,
+    item_id: UUID,
+) -> None:
+    """Record a guest write truthfully.
+
+    `actor_id` is the link's creator because the data lands in their drive and
+    counts against their quota — that part is fact. What stops the row from
+    reading as "the owner did this" is `via_share_link_id`, plus the visitor's
+    address (design §6.12.11b).
+    """
+    who = await service.audit_context(credential)
+    await ActivityLogService(SQLActivityLogRepository(session)).log(
+        actor_id=who.owner_id,
+        action=action,
+        item_id=item_id,
+        metadata={"via_share_link_id": str(who.link_id)},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+
+@router.post("/folders", response_model=PublicItemResponse, summary="Create a folder")
+async def create_folder(
+    body: CreateFolderBody,
+    credential: ShareToken,
+    service: ServiceDep,
+    session: DbSession,
+    request: Request,
+) -> PublicItemResponse:
+    item = await service.create_folder(credential, body.parent_id, body.name)
+    await _audit_guest_write(
+        service, session, credential, request, action=ActivityAction.CREATE, item_id=item.id
+    )
+    await session.commit()
+    return _to_public(item)
+
+
+@router.post(
+    "/items/{item_id}/upload", response_model=PublicItemResponse, summary="Upload into a folder"
+)
+async def upload(
+    item_id: UUID,
+    credential: ShareToken,
+    service: ServiceDep,
+    session: DbSession,
+    request: Request,
+    file: Annotated[UploadFile, File()],
+) -> PublicItemResponse:
+    created = await service.upload(
+        credential,
+        item_id,
+        filename=file.filename or "upload",
+        stream=_stream(file),
+        size_bytes=file.size or 0,
+        mime_type=file.content_type,
+    )
+    await _audit_guest_write(
+        service, session, credential, request, action=ActivityAction.UPLOAD, item_id=created.id
+    )
+    await session.commit()
+    return _to_public(created)
+
+
+@router.patch("/items/{item_id}/name", response_model=PublicItemResponse, summary="Rename")
+async def rename(
+    item_id: UUID,
+    body: RenameBody,
+    credential: ShareToken,
+    service: ServiceDep,
+    session: DbSession,
+    request: Request,
+) -> PublicItemResponse:
+    item = await service.rename(credential, item_id, body.name)
+    await _audit_guest_write(
+        service, session, credential, request, action=ActivityAction.RENAME, item_id=item.id
+    )
+    await session.commit()
+    return _to_public(item)
+
+
+@router.patch("/items/{item_id}/parent", response_model=PublicItemResponse, summary="Move")
+async def move(
+    item_id: UUID,
+    body: MoveBody,
+    credential: ShareToken,
+    service: ServiceDep,
+    session: DbSession,
+    request: Request,
+) -> PublicItemResponse:
+    item = await service.move(credential, item_id, body.parent_id)
+    await _audit_guest_write(
+        service, session, credential, request, action=ActivityAction.MOVE, item_id=item.id
+    )
+    await session.commit()
+    return _to_public(item)
+
+
+@router.post("/items/{item_id}/trash", status_code=204, summary="Move to trash")
+async def trash(
+    item_id: UUID,
+    credential: ShareToken,
+    service: ServiceDep,
+    session: DbSession,
+    request: Request,
+) -> None:
+    await service.trash(credential, item_id)
+    await _audit_guest_write(
+        service, session, credential, request, action=ActivityAction.TRASH, item_id=item_id
+    )
+    await session.commit()
+
+
+async def _stream(file: UploadFile) -> AsyncGenerator[bytes, None]:
+    while chunk := await file.read(1024 * 1024):
+        yield chunk
 
 
 def _attachment_headers(filename: str, size: int | None) -> dict[str, str]:

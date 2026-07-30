@@ -97,16 +97,32 @@ describe('ShareDialog', () => {
 })
 
 describe('link permission tiers', () => {
-  it('does not offer Editor for a public link', async () => {
+  it('offers editor but never owner for a public link', async () => {
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
 
     const select = screen.getByRole('combobox', { name: /permission level/i })
     const tiers = Array.from(select.querySelectorAll('option')).map((o) => o.value)
-    // A public link is opened by someone with no account — there is nobody to
-    // attribute an edit to. The backend refuses "editor" (422); offering it
-    // here would just be a dead end that used to surface as a 500.
-    expect(tiers).toEqual(['viewer', 'downloader'])
+    // Editor is deliberate (proposal §33). Owner never is — a URL cannot hand
+    // over ownership, and the backend refuses it with a 422.
+    expect(tiers).toEqual(['viewer', 'downloader', 'editor'])
+  })
+
+  it('makes the expiry required once the link can write', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+
+    expect(screen.getByLabelText('Link expiry')).not.toBeRequired()
+
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /permission level/i }),
+      'editor',
+    )
+
+    // A link that lets strangers write and never dies should not be creatable
+    // by leaving a field alone.
+    expect(screen.getByLabelText('Link expiry (required)')).toBeRequired()
+    expect(screen.getByText(/without signing in/)).toBeInTheDocument()
   })
 
   it('still offers Editor when sharing with a person', async () => {

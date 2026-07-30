@@ -179,29 +179,33 @@ proposal §29.3 全部 5 項通過（第 5 項需搭配前端）；三項品質�
 
 ### 子任務
 
-- [ ] `alembic/versions/0021_share_link_editor.py`：`ck_share_links_permission` 放寬納入 `editor`（drop + recreate constraint）。
-- [ ] `app/permission/permissions.py`：`LinkPermission` 加 `EDITOR`。
-- [ ] `app/share/service.py`：`create_link` 於 `permission == editor` 且 `expires_at is None` 時回 422。
-- [ ] `app/public_share/service.py`：新增 `_assert_can_edit`（驗 `prm == editor`）；`create_folder` / `upload` / `rename` / `move` / `trash` 五個方法，一律先驗權限＋子樹再以 `root.owner_id` 呼叫下游。
-- [ ] `app/public_share/router.py`：對應五個端點；`Request` 取 `ip_address` / `user_agent` 傳入稽核。
-- [ ] 稽核：每筆寫入以 `ActivityLogService.log(actor_id=<連結建立者>, metadata={"via_share_link_id": ...}, ip_address=..., user_agent=...)`。
-- [ ] 前端 `PermissionSelect` 的 `allowed` 於 Link 分頁改為三級；選 editor 時到期欄位變必填並提示。
+- [x] `alembic/versions/0021_share_link_editor.py`：`ck_share_links_permission` 放寬納入 `editor`（drop + recreate constraint）。
+- [x] `app/permission/permissions.py`：`LinkPermission` 加 `EDITOR`。
+- [x] `app/share/service.py`：`create_link` 於 `permission == editor` 且 `expires_at is None` 時回 422。
+- [x] `app/public_share/service.py`：新增 `_assert_can_edit`（驗 `prm == editor`）；`create_folder` / `upload` / `rename` / `move` / `trash` 五個方法，一律先驗權限＋子樹再以 `root.owner_id` 呼叫下游。
+- [x] `app/public_share/router.py`：對應五個端點；`Request` 取 `ip_address` / `user_agent` 傳入稽核。
+- [x] 稽核：每筆寫入以 `ActivityLogService.log(actor_id=<連結建立者>, metadata={"via_share_link_id": ...}, ip_address=..., user_agent=...)`。
+- [x] 前端 `PermissionSelect` 的 `allowed` 於 Link 分頁改為三級；選 editor 時到期欄位變必填並提示。
 
 ### 測試任務
 
-- [ ] editor 連結未帶到期時間 → 422；viewer/downloader 不受影響。
-- [ ] viewer / downloader 憑證呼叫寫入端點 → 403。
-- [ ] editor 憑證可上傳、覆寫（`file_versions` +1）、改名、移動、移到垃圾桶。
-- [ ] 子樹外的 item 寫入 → 404（非 403，避免確認 id 存在）。
-- [ ] 無法永久刪除、無法建立新連結。
-- [ ] 匿名上傳計入擁有者配額；不足時 413。
-- [ ] `activity_logs` 帶 `via_share_link_id`，`actor_id` 為連結建立者。
-- [ ] 連結被移除後既有憑證的寫入立即失敗。
-- [ ] integration：真 Postgres 跑一輪「建 editor 連結 → 訪客上傳 → 擁有者容量增加 → 稽核可追溯」。
+- [x] editor 連結未帶到期時間 → 422；viewer/downloader 不受影響。
+- [x] viewer / downloader 憑證呼叫寫入端點 → 403。
+- [x] editor 憑證可上傳、覆寫（`file_versions` +1）、改名、移動、移到垃圾桶。
+- [x] 子樹外的 item 寫入 → 404（非 403，避免確認 id 存在）。
+- [x] 無法永久刪除、無法建立新連結。
+- [x] 匿名上傳計入擁有者配額；不足時 413。
+- [x] `activity_logs` 帶 `via_share_link_id`，`actor_id` 為連結建立者。
+- [x] 連結被移除後既有憑證的寫入立即失敗。
+- [x] integration：真 Postgres 跑一輪「建 editor 連結 → 訪客上傳 → 擁有者容量增加 → 稽核可追溯」。
 
 ### 驗收條件
 
 proposal §33.4 全部 7 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
+
+**驗證結果（2026-07-31）**：後端 **941 passed** + integration **62 passed**；前端 **338 passed**；四項檢查全綠。migration 0021 於全新 DB 跑完整條鏈，upgrade 後約束納入 editor、downgrade 後回到兩級（downgrade 會先清掉既有 editor 連結，否則舊約束會擋）。integration 實測「建 editor 連結 → 訪客上傳 → 檔案出現在擁有者資料夾 → 擁有者 used_bytes 增加」。
+
+**實作時被守衛擋下的一次**：`PublicShareService` 對未接上的下游 service 會丟 `RuntimeError`，integration 第一次跑就抓到 router 工廠漏接 `upload_svc`/`trash_svc`/`drive_svc`——若當初讓它靜默為 None，這個漏洞會等到有人用才炸。
 
 ### 風險
 

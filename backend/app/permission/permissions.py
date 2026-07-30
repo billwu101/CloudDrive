@@ -13,15 +13,17 @@ class Permission(StrEnum):
 class LinkPermission(StrEnum):
     """What a *public* link may grant (design §6.12.4).
 
-    Deliberately narrower than `Permission`: a public link is opened by someone
-    with no account, so "editor" would mean handing write access to anyone the
-    URL reaches. The database enforces the same pair — and without this type the
-    API accepted `editor`, letting the value travel all the way to the insert
-    and fail there as a 500.
+    Narrower than `Permission`: a link never grants `owner`. `EDITOR` is
+    deliberately included (proposal §33) — handing write access to whoever holds
+    the URL is the point of that feature — but it is bounded by the shared
+    subtree and requires an expiry. The database enforces the same three values;
+    without this type an out-of-range value travelled all the way to the insert
+    and failed there as a 500.
     """
 
     VIEWER = "viewer"
     DOWNLOADER = "downloader"
+    EDITOR = "editor"
 
 
 _LEVELS: dict[Permission, int] = {

@@ -231,6 +231,15 @@ class ShareLinkService:
         if item.owner_id != actor_id:
             raise ForbiddenError("Only the owner can create share links")
 
+        if permission == LinkPermission.EDITOR and expires_at is None:
+            # The only time bound an editor link has. A link that lets strangers
+            # write and never dies is not something to create by omission.
+            raise AppError(
+                ErrorCode.INVALID_OPERATION,
+                "An editor link must have an expiry date",
+                status_code=422,
+            )
+
         token = secrets.token_urlsafe(32)
         token_hash = _hash_token(token)
         # A share password is a user-chosen secret, so it gets a real password
