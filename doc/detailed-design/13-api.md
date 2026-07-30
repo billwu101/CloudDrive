@@ -150,6 +150,11 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | GET | `/public/items/{id}/preview` | 線上預覽 | 🎫 |
 | GET | `/public/items/{id}/download` | 下載原檔 | 🎫 downloader |
 | GET | `/public/archive` | 子樹整包 zip | 🎫 downloader |
+| POST | `/public/folders` | 子樹內建立資料夾 | 🎫 editor |
+| POST | `/public/items/{id}/upload` | 上傳新檔／覆寫為新版本 | 🎫 editor |
+| PATCH | `/public/items/{id}/name` | 重新命名 | 🎫 editor |
+| PATCH | `/public/items/{id}/parent` | 子樹內移動 | 🎫 editor |
+| POST | `/public/items/{id}/trash` | 移到垃圾桶（軟刪除） | 🎫 editor |
 
 > 原 `POST /share/links/validate` 由 `POST /public/links/{token}/session` 取代——前者只回「有效與否」，無法承載短效憑證，且掛在需登入的 `/share` 命名空間下容易誤加認證依賴。
 

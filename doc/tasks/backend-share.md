@@ -168,3 +168,42 @@ proposal §29.3 全部 5 項通過（第 5 項需搭配前端）；三項品質�
 - [x] `app/assistant/skills/builtin/write.py`：助理的 `share_item` 技能同為呼叫端（mypy 抓到），一併改用 `LinkPermission.VIEWER`。
 - [x] `PermissionSelect` 新增 `allowed` prop；`ShareLinkPanel` 限制為 viewer/downloader。
 - [x] 測試：後端「editor 回 422 且不呼叫 service」「viewer/downloader 仍為 201」；前端「Link 分頁只有兩級」「People 分頁仍有 editor」。
+
+---
+
+## 階段 2 追加：公開連結的臨時編輯權（proposal §33 / 設計 §6.12.11b）
+
+**目標**：讓沒有帳號的外部人員憑連結修改被分享的內容，能力與登入 editor 相同，並有時效與稽核。
+**不含範圍**：匿名者身分識別、即時協作、永久刪除、再分享（proposal §33.5）。
+**前置依賴**：§28 公開連結存取（已完成）。
+
+### 子任務
+
+- [ ] `alembic/versions/0021_share_link_editor.py`：`ck_share_links_permission` 放寬納入 `editor`（drop + recreate constraint）。
+- [ ] `app/permission/permissions.py`：`LinkPermission` 加 `EDITOR`。
+- [ ] `app/share/service.py`：`create_link` 於 `permission == editor` 且 `expires_at is None` 時回 422。
+- [ ] `app/public_share/service.py`：新增 `_assert_can_edit`（驗 `prm == editor`）；`create_folder` / `upload` / `rename` / `move` / `trash` 五個方法，一律先驗權限＋子樹再以 `root.owner_id` 呼叫下游。
+- [ ] `app/public_share/router.py`：對應五個端點；`Request` 取 `ip_address` / `user_agent` 傳入稽核。
+- [ ] 稽核：每筆寫入以 `ActivityLogService.log(actor_id=<連結建立者>, metadata={"via_share_link_id": ...}, ip_address=..., user_agent=...)`。
+- [ ] 前端 `PermissionSelect` 的 `allowed` 於 Link 分頁改為三級；選 editor 時到期欄位變必填並提示。
+
+### 測試任務
+
+- [ ] editor 連結未帶到期時間 → 422；viewer/downloader 不受影響。
+- [ ] viewer / downloader 憑證呼叫寫入端點 → 403。
+- [ ] editor 憑證可上傳、覆寫（`file_versions` +1）、改名、移動、移到垃圾桶。
+- [ ] 子樹外的 item 寫入 → 404（非 403，避免確認 id 存在）。
+- [ ] 無法永久刪除、無法建立新連結。
+- [ ] 匿名上傳計入擁有者配額；不足時 413。
+- [ ] `activity_logs` 帶 `via_share_link_id`，`actor_id` 為連結建立者。
+- [ ] 連結被移除後既有憑證的寫入立即失敗。
+- [ ] integration：真 Postgres 跑一輪「建 editor 連結 → 訪客上傳 → 擁有者容量增加 → 稽核可追溯」。
+
+### 驗收條件
+
+proposal §33.4 全部 7 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
+
+### 風險
+
+- **下游以 owner 身分執行**：邊界完全靠 `PublicShareService` 自己擋，下游的權限檢查在此情境是 no-op。任何新增的訪客寫入端點都必須自行呼叫 `_assert_can_edit` + `_resolve_in_subtree`，漏掉即等於把 owner 權限交給匿名者。
+- **無上傳上限**（proposal §33.6 決策 4）：外洩的連結可填滿擁有者配額並使其自身無法上傳。

@@ -1059,7 +1059,7 @@ class ShareLinkService:
 4. 重複分享會更新權限。
 5. 移除分享後對方不可再存取。
 6. 分享資料夾後子項目可被檢視。
-6.2 **公開連結不可設為 editor**：`ShareLinkRequest.permission` 用 `LinkPermission`（僅 `viewer`/`downloader`），越界值在 API 邊界回 `422`。設計 §6.12.4 本就寫明 `create_link(permission: LinkPermission)`，先前實作誤用通用的 `Permission`，於是 `editor` 一路穿到 DB check constraint 才炸成 500。
+6.2 **公開連結的權限以 `LinkPermission` 收窄**（`viewer`/`downloader`/`editor`），越界值（如 `owner`）在 API 邊界回 `422`。設計 §6.12.4 本就寫明 `create_link(permission: LinkPermission)`；先前實作誤用通用的 `Permission`，越界值於是一路穿到 DB check constraint 才炸成 500。`editor` 於 proposal §33 加入，行為見 §6.12.11b。
 6.1 **非 owner 不可停用他人的公開連結**（`deactivate_link` 必須自行驗證擁有權——舊註解宣稱由 router 把關，實際上沒有）。
 7. 建立公開連結時資料庫不保存明文 token。
 8. 到期連結不可使用。
@@ -1160,6 +1160,67 @@ class PublicShareService:
 8. 第 6 次驗證嘗試被鎖定；鎖定期滿後恢復。
 9. 續發不能突破總時長上限。
 10. `downloader` 的資料夾連結可取得 zip，且 zip 內不含子樹以外項目。
+
+#### 6.12.11b 訪客寫入（editor 連結，proposal §33）
+
+`LinkPermission` 由兩級擴為三級（`viewer` / `downloader` / `editor`），DB 的
+`ck_share_links_permission` 同步放寬（**migration 0021**）。以下只描述 editor 額外帶來的部分——
+憑證、子樹邊界、每次請求重查連結等規則完全沿用 §6.12.8–§6.12.11。
+
+**端點**（皆需 🎫 憑證且 `prm == editor`）：
+
+| Method | Path | 說明 |
+| --- | --- | --- |
+| POST | `/api/v1/public/folders` | 在子樹內建立資料夾 |
+| POST | `/api/v1/public/items/{item_id}/upload` | 上傳新檔到該資料夾，或覆寫該檔案（產生新版本） |
+| PATCH | `/api/v1/public/items/{item_id}/name` | 重新命名 |
+| PATCH | `/api/v1/public/items/{item_id}/parent` | 在子樹內移動 |
+| POST | `/api/v1/public/items/{item_id}/trash` | 移到垃圾桶（軟刪除） |
+
+不提供永久刪除與再分享：前者本就 owner-only，後者會讓連結自我複製、逸出擁有者的掌控。
+
+**以擁有者身分執行，但邊界由本模組把關**
+
+底層的 `DriveService` / `UploadService` 都以 `user_id` 判權限，而訪客沒有 user。做法是帶
+`root.owner_id` 呼叫——那是唯一能讓既有 service 正常運作的身分。
+
+代價必須明講：**該身分是 owner，權限比 editor 大**。所以「editor 能做什麼」不能交給下游判斷，
+必須在 `PublicShareService` 這一層擋掉——先驗 `prm == editor`，再驗目標在子樹內
+（`_resolve_in_subtree`，與讀取共用），才往下呼叫。下游的權限檢查在此情境等同 no-op，
+**不是第二道防線**。
+
+**稽核**
+
+每筆訪客寫入都寫 `activity_logs`。欄位既有，無需 migration：
+
+- `actor_id` = 連結建立者（`share_links.created_by`）——資料算在他帳上，這是事實
+- `log_metadata.via_share_link_id` = 連結 id——「不是本人做的」由這裡表明
+- `ip_address` / `user_agent` = 訪客來源
+
+三者合起來才誠實：只寫 `actor_id` 會被讀成「擁有者自己做的」。`ActivityLogService.log()` 已
+接受 `metadata` / `ip_address` / `user_agent` 三個參數，不需擴充。
+
+**配額**
+
+上傳走既有 `UploadService`，以 `root.owner_id` 計費，配額檢查與扣減自然落在擁有者身上。
+不另設匿名上傳上限（proposal §33.6 決策 4）——已知代價是配額被填滿時擁有者自己也無法上傳，
+緩解僅靠「必填到期」與「隨時可移除」。
+
+**必填到期**
+
+`create_link` 在 `permission == editor` 且 `expires_at is None` 時回 `422`。這是本功能唯一的
+時間邊界，不能省。
+
+**可獨立測試項**
+
+1. 建立 editor 連結未帶 `expires_at` 回 422；viewer/downloader 不受影響。
+2. viewer / downloader 憑證呼叫任一寫入端點回 403。
+3. editor 憑證可上傳、覆寫（版本 +1）、改名、移動、移到垃圾桶。
+4. editor 憑證對子樹外的 item 執行寫入回 404（非 403）。
+5. editor 憑證無法永久刪除、無法建立新的分享連結。
+6. 匿名上傳計入擁有者配額；配額不足時回 413。
+7. 每筆寫入的 `activity_logs` 帶 `via_share_link_id`，且 `actor_id` 為連結建立者。
+8. 連結被移除後，既有 editor 憑證的寫入立即失敗。
 
 ### 6.12.12 Shared by me（我分享出去的項目）
 
