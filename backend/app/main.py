@@ -2,7 +2,6 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
+from app.email.diagnostics import check_mail_on_startup, describe_delivery
 
 logger = logging.getLogger("app.main")
 
@@ -18,6 +18,9 @@ logger = logging.getLogger("app.main")
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    # Say at boot whether password-reset mail can actually reach anyone — the
+    # endpoint itself can't tell you, by design (it must stay non-enumerable).
+    check_mail_on_startup(settings)
     stop = asyncio.Event()
     tasks: list[asyncio.Task[None]] = []
     if settings.snapshot_scheduler_enabled:
@@ -77,8 +80,15 @@ def create_app() -> FastAPI:
         )
 
     @application.get("/health", tags=["system"])
-    async def health() -> dict[str, Literal["ok"]]:
-        return {"status": "ok"}
+    async def health() -> dict[str, str | bool]:
+        # `mail_delivers` is the one thing about this service you cannot learn
+        # by using it: the reset endpoint answers identically either way.
+        delivery = describe_delivery(get_settings())
+        return {
+            "status": "ok",
+            "mail_provider": delivery.effective,
+            "mail_delivers": delivery.delivers,
+        }
 
     application.include_router(api_router)
 

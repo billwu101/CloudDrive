@@ -13,8 +13,10 @@ class ConsoleEmailProvider:
     """
 
     async def send(self, *, to: str, subject: str, body: str) -> None:
-        logger.info(
-            "[email:console] to=%s subject=%s\n%s",
+        # WARNING, not INFO: an INFO line reads like "sent". Nothing was sent —
+        # the message is printed here and discarded.
+        logger.warning(
+            "[email:NOT-DELIVERED] no mailer configured; message discarded. to=%s subject=%s\n%s",
             to,
             subject,
             body,
