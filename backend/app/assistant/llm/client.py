@@ -30,6 +30,13 @@ class LLMResponse:
     content: str
     tool_calls: list[LLMToolCall] = field(default_factory=list)
     model: str | None = None
+    # Provider diagnostics (Ollama-specific; other providers leave these None).
+    # ``done_reason`` distinguishes a natural stop from one cut off by
+    # ``num_predict`` ("length") — see doc/detailed-design/10-assistant-eval.md
+    # §10.14. Token counts are per this single call, not cumulative.
+    done_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
 
 class LLMClientError(Exception):

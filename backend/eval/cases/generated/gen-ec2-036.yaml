@@ -1,6 +1,7 @@
 id: gen-ec2-036
-name: 'EC2 query+write #36 (list_items+get_info+storage_quota->create_folder)'
-prompt: 幫我建立一個資料夾（過程中可先列出根目錄檔案、查看某個項目的詳情、查目前容量用量）
+name: EC2 常用資料夾加星號：設計稿
+rationale: 先從最近開過的檔案回想（recent），用關鍵字搜尋確認（search），看詳情確保沒找錯（get_info），才加星號，避免標錯項目。
+prompt: 我最近常常用到「設計稿」這個資料夾，幫我從最近開過的檔案裡找一下、再搜尋確認，看一下詳情確定是它，然後幫我加上星號方便之後快速找到。
 mode:
 - api
 - browser
@@ -8,30 +9,60 @@ tags:
 - daily-ops
 - generated
 - ec2
+- scenario:star_frequent
+seed_folders:
+- 設計稿
+- 勿動-舊備份
+- 勿動-個人資料
+seed_files: []
 expect:
   workflow:
     requires_confirmation: true
     steps_include:
-    - list_items
+    - recent
+    - search
     - get_info
-    - storage_quota
-    - create_folder
+    - star_item
+    required_skills:
+    - recent
+    - search
+    - get_info
+    nonempty_outputs:
+    - search
+    write_skill: star_item
+    write_ref_args:
+    - item_id
+  state:
+    item_starred:
+    - 設計稿
+    unchanged:
+    - 勿動-舊備份
+    - 勿動-個人資料
 scoring:
   weights:
     correctness: 1.0
+    state: 1.0
+    execution: 1.0
+    safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6
 mock_llm:
   responses:
-  - reply: 計畫如下,請確認。
+  - reply: 計畫如下，請確認。
     steps:
-    - skill: list_items
+    - skill: recent
       arguments: {}
+    - skill: search
+      arguments:
+        q: 設計稿
     - skill: get_info
       arguments:
-        item_id: 11111111-1111-1111-1111-111111111111
-    - skill: storage_quota
-      arguments: {}
-    - skill: create_folder
+        item_id:
+          from_step: 1
+          path: items.0.id
+    - skill: star_item
       arguments:
-        name: Folder36
+        item_id:
+          from_step: 2
+          path: id
+        starred: true

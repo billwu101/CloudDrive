@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import statistics
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from eval.schema import EvalCase
 from eval.verifier import CheckResult
+
+# Weight applied to a dimension the case did not declare (see score_case).
+_DEFAULT_DIMENSION_WEIGHT = 1.0
 
 
 class Scored(Protocol):
@@ -28,6 +32,30 @@ class CaseScore:
     passed: bool
     dimension_scores: dict[str, float] = field(default_factory=dict)
     checks: list[CheckResult] = field(default_factory=list)
+    # Efficiency/diagnostic fields (report-only, never weighted into `score` or
+    # `passed`) — see doc/detailed-design/10-assistant-eval.md §10.13/§10.15.
+    # Populated from the chat response's `llm_meta` when available (API mode
+    # against a real model); None for mock/exec/browser or when absent.
+    done_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    # The 07-24 review asked for two objective metrics: token usage (above) and
+    # tool-call count (here). Planned skill steps — see
+    # ``verifier.count_tool_calls`` for why planned rather than executed, and
+    # why None (not 0) when there is no plan.
+    tool_call_count: int | None = None
+    # Rule-based (zero LLM cost) classification of why a run failed, for
+    # post-hoc analysis; None when passed.
+    failure_category: str | None = None
+    # 2026-07-28 (alfred): non-gating — never affects score/passed. Records
+    # when the model's actual skill sequence differs from the case's own
+    # mock-script "standard path" (a different-but-valid path still passes;
+    # this is purely descriptive for analysing the model's habits).
+    path_deviation: str | None = None
+    # Dimensions that produced checks but carry no weight in the case file.
+    # They are scored at full weight (see score_case); this records the gap so
+    # the report can name it and the case file can be fixed.
+    unweighted_dimensions: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -70,11 +98,71 @@ def aggregate_runs(case: EvalCase, run_scores: list[CaseScore]) -> AggregateScor
     )
 
 
-def score_case(case: EvalCase, checks: list[CheckResult]) -> CaseScore:
-    """Per-dimension pass-rate, weighted into a single case score."""
+def _failure_category(
+    *,
+    passed: bool,
+    done_reason: str | None,
+    checks: list[CheckResult],
+    plan_is_none: bool = False,
+) -> str | None:
+    """Rule-based (zero LLM cost) classification of why a run failed — for
+    post-hoc analysis, never used in the pass/fail decision itself. See
+    doc/detailed-design/10-assistant-eval.md §10.15.
+
+    ``plan_is_none`` (2026-07-28, alfred): the response had no plan object at
+    all — the model may have reasonably declined pending clarification, OR
+    failed to produce parseable output; ``AssistantChatResponse`` doesn't let
+    an eval caller tell these apart (both collapse to the same "plan.steps
+    empty" branch in service.py). Labelled "no_plan", not "wrong_plan" —
+    don't overclaim it was necessarily a bad guess.
+    """
+
+    if passed:
+        return None
+    if done_reason == "length":
+        return "truncated"
+    if plan_is_none:
+        return "no_plan"
+    failed_dims = {check.dimension for check in checks if not check.ok and check.gating}
+    if "safety" in failed_dims:
+        return "safety_violation"
+    if "state" in failed_dims:
+        return "state_mismatch"
+    if "correctness" in failed_dims:
+        return "wrong_plan"
+    if failed_dims:
+        return "other"
+    return "partial"  # every check passed but the weighted score missed pass_threshold
+
+
+def score_case(
+    case: EvalCase,
+    checks: list[CheckResult],
+    *,
+    llm_meta: Mapping[str, Any] | None = None,
+    plan_is_none: bool = False,
+    path_deviation: str | None = None,
+    tool_call_count: int | None = None,
+) -> CaseScore:
+    """Per-dimension pass-rate, weighted into a single case score.
+
+    ``llm_meta`` (the chat response's ``llm_meta`` field, when present) supplies
+    the report-only efficiency fields; it never affects ``score``/``passed``.
+    ``plan_is_none`` (the raw response's ``plan`` key, when present) refines
+    ``failure_category`` to "no_plan" instead of "wrong_plan" — see
+    ``_failure_category``. ``path_deviation`` (see
+    ``verifier.compute_path_deviation``) is purely descriptive and never
+    affects ``score``/``passed`` either, and so is ``tool_call_count`` (see
+    ``verifier.count_tool_calls``).
+    """
 
     by_dimension: dict[str, list[float]] = {}
     for check in checks:
+        # Non-gating checks are recorded on the CaseScore but never scored: they
+        # describe the route the model took, not whether it arrived (see
+        # CheckResult.gating).
+        if not check.gating:
+            continue
         # A continuous score (e.g. an LLM judge) contributes its value directly;
         # a plain assertion contributes 1.0/0.0. A dimension's score is the mean.
         value = check.score if check.score is not None else (1.0 if check.ok else 0.0)
@@ -85,20 +173,48 @@ def score_case(case: EvalCase, checks: list[CheckResult]) -> CaseScore:
         for dimension, values in by_dimension.items()
     }
 
+    # A check that ran must be able to fail the case. Weighting an observed
+    # dimension at 0 because the case forgot to declare it made every state /
+    # execution / safety check decorative: gen-ec2-081 scored 1.00 PASS with its
+    # execution dimension at 0.67, and the EC3 codegen smoke-test checks had been
+    # silently ignored since Stage A. An undeclared dimension therefore carries
+    # FULL weight (never zero), and the case records that it happened so the
+    # report can name it — silence is exactly the failure mode being fixed.
     weights = case.scoring.weights
-    total_weight = sum(weights.get(dimension, 0.0) for dimension in dimension_scores)
+    unweighted = sorted(d for d in dimension_scores if d not in weights)
+    effective = {d: weights.get(d, _DEFAULT_DIMENSION_WEIGHT) for d in dimension_scores}
+    total_weight = sum(effective.values())
     if total_weight <= 0:
-        # No configured weight matched the observed dimensions — average them.
+        # Every observed dimension was explicitly weighted 0 — an intentional
+        # "report only" configuration, not an oversight. Average them.
         score = sum(dimension_scores.values()) / len(dimension_scores) if dimension_scores else 0.0
     else:
-        score = (
-            sum(dimension_scores[d] * weights.get(d, 0.0) for d in dimension_scores) / total_weight
-        )
+        score = sum(dimension_scores[d] * effective[d] for d in dimension_scores) / total_weight
+
+    passed = score >= case.scoring.pass_threshold
+    # A skill-generation case (EC3) answers with a proposal and never a plan, so
+    # "no plan" is its normal shape — labelling every EC3 failure "no_plan" hid
+    # the real cause (the generated code produced nothing). 2026-07-28.
+    workflow = case.expect.workflow
+    if workflow is not None and workflow.skill_generated is not None:
+        plan_is_none = False
+    done_reason = llm_meta.get("done_reason") if llm_meta else None
+    prompt_tokens = llm_meta.get("prompt_tokens") if llm_meta else None
+    completion_tokens = llm_meta.get("completion_tokens") if llm_meta else None
 
     return CaseScore(
         case_id=case.id,
         score=round(score, 3),
-        passed=score >= case.scoring.pass_threshold,
+        passed=passed,
         dimension_scores=dimension_scores,
         checks=checks,
+        done_reason=done_reason,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        tool_call_count=tool_call_count,
+        failure_category=_failure_category(
+            passed=passed, done_reason=done_reason, checks=checks, plan_is_none=plan_is_none
+        ),
+        path_deviation=path_deviation,
+        unweighted_dimensions=unweighted,
     )

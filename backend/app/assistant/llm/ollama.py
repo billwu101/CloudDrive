@@ -201,4 +201,14 @@ def _parse_ollama_response(data: object, model: str) -> LLMResponse:
         if isinstance(name, str) and isinstance(arguments, dict):
             calls.append(LLMToolCall(name=name, arguments=arguments))
 
-    return LLMResponse(content=content, tool_calls=calls, model=model)
+    done_reason = data.get("done_reason")
+    prompt_tokens = data.get("prompt_eval_count")
+    completion_tokens = data.get("eval_count")
+    return LLMResponse(
+        content=content,
+        tool_calls=calls,
+        model=model,
+        done_reason=done_reason if isinstance(done_reason, str) else None,
+        prompt_tokens=prompt_tokens if isinstance(prompt_tokens, int) else None,
+        completion_tokens=completion_tokens if isinstance(completion_tokens, int) else None,
+    )

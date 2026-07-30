@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
+from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 from app.assistant.context import ContextManager
 from app.assistant.llm.client import LLMMessage, LLMResponse
 from app.assistant.llm.router import ModelRouter
-from app.assistant.skills.registry import SkillRegistry
+from app.assistant.skills.registry import RegisteredSkill, SkillOutput, SkillRegistry
 from app.assistant.workflow import (
     PlannedStep,
     is_reference,
     is_step_ref,
     ref_source,
 )
+from app.core.config import get_settings
+
+_LOG = logging.getLogger(__name__)
 
 
 # Structured-output schema for the plan, sent as ``response_format`` on external
@@ -32,6 +38,7 @@ def _plan_response_format(skill_names: list[str] | None = None) -> dict[str, obj
                 "type": "object",
                 "properties": {
                     "reply": {"type": "string"},
+                    "needs_followup": {"type": "boolean"},
                     "steps": {
                         "type": "array",
                         "items": {
@@ -45,7 +52,7 @@ def _plan_response_format(skill_names: list[str] | None = None) -> dict[str, obj
                         },
                     },
                 },
-                "required": ["reply", "steps"],
+                "required": ["reply", "steps", "needs_followup"],
             },
         },
     }
@@ -70,18 +77,83 @@ def build_plan_response_format(registry: SkillRegistry) -> dict[str, object]:
 class PlanResult(BaseModel):
     reply: str = ""
     steps: list[PlannedStep] = Field(default_factory=list)
+    # Set by the model when it cannot decide which items to act on until it has
+    # seen a query's result: it plans only the read steps and asks to be called
+    # again with the actual output. A PUBLIC field, unlike the llm_meta
+    # diagnostics below — the model genuinely produces this one, so it belongs
+    # in the constrained-decoding schema.
+    needs_followup: bool = False
+    # Diagnostics from the planning LLM call that produced this result (see
+    # LLMResponse) — surfaced for eval/observability by the service layer
+    # (AssistantChatResponse.llm_meta). Deliberately PrivateAttr, not a public
+    # field: PlanResult doubles as the model's own JSON output schema for
+    # constrained decoding (_PLAN_RESPONSE_FORMAT, kept in sync by
+    # test_plan_response_format_stays_in_sync_with_models) — the model neither
+    # produces nor should be asked to produce these values.
+    _done_reason: str | None = PrivateAttr(default=None)
+    _prompt_tokens: int | None = PrivateAttr(default=None)
+    _completion_tokens: int | None = PrivateAttr(default=None)
+
+    @property
+    def done_reason(self) -> str | None:
+        return self._done_reason
+
+    @property
+    def prompt_tokens(self) -> int | None:
+        return self._prompt_tokens
+
+    @property
+    def completion_tokens(self) -> int | None:
+        return self._completion_tokens
+
+    def _copy_llm_meta(self, other: PlanResult) -> None:
+        """Carry diagnostics across when one PlanResult supersedes another (the
+        two-phase planner combines two passes into one plan)."""
+        self._done_reason = other._done_reason
+        self._prompt_tokens = other._prompt_tokens
+        self._completion_tokens = other._completion_tokens
+
+    def _set_llm_meta(self, response: LLMResponse) -> None:
+        self._done_reason = response.done_reason
+        self._prompt_tokens = response.prompt_tokens
+        self._completion_tokens = response.completion_tokens
 
 
-def build_planner_prompt(registry: SkillRegistry) -> str:
+def build_planner_prompt(registry: SkillRegistry, *, two_phase: bool = False) -> str:
+    """``two_phase``: whether the caller will actually run a second planning pass.
+
+    The needs_followup instruction MUST NOT be taught when it will not be
+    honoured. Teaching it unconditionally regressed the default configuration
+    hard: the model split the work, returned only the read-only lookups, and —
+    with no second pass to append the writes — the request silently completed
+    as a plain listing. Measured on 20 EC2 cases against the real model: 7/20
+    passed with two-phase on, 0/20 with it off but the instruction still in the
+    prompt (every failure ``state_mismatch``, the write step simply missing).
+    """
+
     skills = "\n".join(
         f"- {skill.name} ({skill.permission_tier}): {skill.description}"
         for skill in registry.list_skills()
     )
+    followup_rule = (
+        "- needs_followup: set it to true ONLY when you cannot tell which items to act "
+        "on until you have seen a query's result — e.g. the user wants files sorted by "
+        "what they are, and you must read their names first. When you set it to true, "
+        "the steps you return must be READ-ONLY lookups (search, list_items, get_info, "
+        "recent, storage_quota, list_trash) and NOTHING else: no creating, renaming, "
+        "moving, starring or deleting, not even preparation like creating the "
+        "destination folder. Those come afterwards — you will be asked again with the "
+        "actual results and can then plan every remaining step, referencing the lookups "
+        "by index. Otherwise set needs_followup to false and plan the whole request now.\n"
+        if two_phase
+        else "- needs_followup: always false. Plan the COMPLETE request now, including "
+        "every write step; you will not be called again.\n"
+    )
     return (
         "You are CloudDrive's planner. Convert the user's request into a JSON plan "
         "that uses ONLY the available skills.\n"
-        'Respond with a single JSON object: {"reply": string, "steps": '
-        '[{"skill": string, "arguments": object, "depends_on": [int]}]}.\n'
+        'Respond with a single JSON object: {"reply": string, "needs_followup": bool, '
+        '"steps": [{"skill": string, "arguments": object, "depends_on": [int]}]}.\n'
         "- reply: a short natural-language answer or summary for the user.\n"
         "- steps: ordered skill calls. depends_on lists indices of earlier steps.\n"
         "- If the request needs no drive action, return an empty steps array and answer in reply.\n"
@@ -89,9 +161,16 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         "- Skills are composable. Any argument value may be a literal OR a reference. "
         "Two kinds of reference:\n"
         '  (a) an earlier step\'s output: {"from": <earlier index>, "path": "items.0.id"}. '
-        'search and list_items return {"items": [{"id", "name", "item_type", ...}], "total": N}. '
         'To act on EVERY item a step returned, put "*" where the list index goes: '
         '{"from": <index>, "path": "items.*.id"} — the step then runs once per item.\n'
+        "  The path depends on what that step returns — pick the matching shape:\n"
+        '  - search, list_items, list_trash return {"items": [{"id", "name", "item_type", ...}], '
+        '"total": N} → use "items.0.id" (or "items.*.id").\n'
+        '  - recent returns a plain list of items → use "0.id" (or "*.id").\n'
+        "  - get_info, create_folder, rename_item, move_item, star_item, trash_item, "
+        "restore_item return the ITEM ITSELF, "
+        'not a list → use "id". For example, to put files into a folder you just created at '
+        'step 1: {"parent_id": {"from": 1, "path": "id"}} — "items.0.id" would fail there.\n'
         '  (b) the user\'s current file selection: {"from": "selection", "item": <i>} for one '
         'selected file, or {"from": "selection", "each": true} to act on EVERY selected file '
         "(the step runs once per file; the other arguments are copied to each).\n"
@@ -114,6 +193,7 @@ def build_planner_prompt(registry: SkillRegistry) -> str:
         '[{"skill": "search", "arguments": {"q": "test"}}, {"skill": "list_items", "arguments": '
         '{"parent_id": {"from": 0, "path": "items.0.id"}}}, {"skill": "trash_item", "arguments": '
         '{"item_id": {"from": 1, "path": "items.*.id"}}}].\n'
+        f"{followup_rule}"
         "- Output JSON only, no prose, no code fences.\n\n"
         "Available skills:\n"
         f"{skills}"
@@ -134,25 +214,217 @@ def _extract_json(content: str) -> str:
     return text
 
 
+# Debris that must never reach a user-visible value. Two signatures, both from
+# the model resuming *inside* a JSON string while constrained decoding keeps the
+# surrounding structure legal:
+#   1. a chat-template token ("<tool_call|>", "<end_of_turn>", …);
+#   2. a quote followed by a run of closing brackets ("'}}]}") — the model
+#      finished the object, then carried on writing (prose, a second plan, …).
+# Signature 2 matters on its own: one observed value was
+# ``AgentFolder_90e16c4f'}}]}of course! Here is your plan:{`` with no template
+# token in sight.
+_DECODING_ARTIFACTS = ("<tool_call", "<|", "<end_of_turn>", "<start_of_turn>")
+_JSON_CLOSURE_DEBRIS = re.compile(r"['\"]\s*[}\]][}\]\s]*")
+# Punctuation left over from the interrupted JSON, immediately before the debris.
+_ARTIFACT_TAIL = "'\"`}]{[ \t\r\n"
+# A byte-fallback token rendered as literal text: the model emitted the bytes of
+# a character it could not spell, and the serving stack never merged them back.
+# Observed inside otherwise-clean values — 報告_2026 came out as 報告_20<0xA0>26.
+_BYTE_TOKEN = re.compile(r"<0x[0-9A-Fa-f]{2}>")
+
+
+def _has_byte_tokens(value: object) -> bool:
+    return isinstance(value, str) and _BYTE_TOKEN.search(value) is not None
+
+
+def _strip_byte_tokens(value: str) -> str:
+    """Drop byte-fallback markers from text shown to the user.
+
+    Only ever applied to ``reply`` — prose with ``<0xA0>`` in it is merely ugly.
+    NEVER to arguments: dropping the marker guesses at what the model meant, and
+    it guesses wrong half the time (``報告_20<0xA0>26`` → ``報告_2026`` is right,
+    but ``預算_20<0xA0>6`` → ``預算_206`` is a different year). Corrupted
+    arguments are rejected in ``validate_plan`` so the model writes them again.
+    """
+
+    return _BYTE_TOKEN.sub("", value)
+
+
+def _strip_decoding_artifacts(value: str) -> str:
+    """Cut a string at the point the model stopped writing the value.
+
+    Observed against the OpenAI-compatible gateway (gemma4:26b, 2026-07-29): a
+    request to create the folder ``AgentFolder_23f4b9ba`` produced the argument
+    ``AgentFolder_23f4b9ba'}}]}<tool_call|>> {`` — and the folder was created
+    under that name, because the surrounding JSON parsed cleanly. Reproduced
+    2/3 to 4/5 of the time, in English and Chinese prompts alike; the same
+    prompts against local Ollama (gemma4:12b) never did it, so this is the
+    gateway's decoding path, not the model family.
+
+    Trimming rather than rejecting: the intended value is intact and everything
+    after the cut is debris, so the user gets the folder they asked for instead
+    of "I couldn't do that" on a request that was perfectly clear. Only strings
+    that actually carry one of the two signatures are touched.
+    """
+
+    cuts = [value.find(token) for token in _DECODING_ARTIFACTS if token in value]
+    closure = _JSON_CLOSURE_DEBRIS.search(value)
+    if closure is not None:
+        cuts.append(closure.start())
+    if not cuts:
+        return value
+    return value[: min(cuts)].rstrip(_ARTIFACT_TAIL)
+
+
+def _clean_artifacts(node: Any) -> Any:
+    """Apply :func:`_strip_decoding_artifacts` to every string in a parsed plan."""
+
+    if isinstance(node, str):
+        return _strip_decoding_artifacts(node)
+    if isinstance(node, list):
+        return [_clean_artifacts(item) for item in node]
+    if isinstance(node, dict):
+        return {key: _clean_artifacts(item) for key, item in node.items()}
+    return node
+
+
 def _parse(content: str) -> PlanResult | None:
     try:
         data = json.loads(_extract_json(content))
-        return PlanResult.model_validate(data)
+        cleaned = _clean_artifacts(data)
+        if cleaned != data:
+            _LOG.warning("stripped chat-template artifacts from a plan: %r", content[:300])
+        result = PlanResult.model_validate(cleaned)
+        if _has_byte_tokens(result.reply):
+            result.reply = _strip_byte_tokens(result.reply)
+        return result
     except (json.JSONDecodeError, ValidationError, TypeError):
         return None
 
 
-def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str]:
+# Arguments that must name a folder to put something *into*. Referencing a step
+# that returns "the item I just changed" here is the mis-numbering signature
+# described in _reference_problems.
+_DESTINATION_ARGS = frozenset({"parent_id"})
+
+
+def _path_head(path: str) -> str:
+    """First segment of a reference path (``"items.0.id"`` → ``"items"``)."""
+
+    return next(iter(part for part in path.split(".") if part), "")
+
+
+def _reference_problems(
+    *,
+    index: int,
+    arg_name: str,
+    path: str,
+    source: RegisteredSkill | None,
+    from_step: int,
+) -> list[str]:
+    """Check a step reference against what the referenced skill actually returns.
+
+    Two failures this catches, both observed on real runs and both previously
+    only detectable at execution time — i.e. after any earlier write steps in
+    the same plan had already taken effect:
+
+    1. **Wrong path for the shape.** ``items.0.id`` against ``create_folder``
+       (which returns the item itself) raises ``cannot resolve path`` mid-run.
+    2. **A mutated item used as a destination.** ``{"parent_id": {"from": 3}}``
+       where step 3 is a ``move_item`` — the destination becomes whatever that
+       step moved, so the run dies on "Destination must be a folder". This is
+       what a model that has lost track of its own step numbering produces.
+
+    Both are reported as plan problems so the repair loop can fix them while
+    nothing has run yet. Rule 2 does reject one legitimate-but-unusual plan
+    ("move folder A into B, then move files into A"): the recovery is to
+    reference the lookup that found A instead, which the repair message names.
+    """
+
+    if source is None or source.output is SkillOutput.OPAQUE:
+        return []  # self-built skills declare no shape; do not guess one
+    head = _path_head(path)
+    field = path.rsplit(".", 1)[-1] or "id"
+    problems: list[str] = []
+    if source.output is SkillOutput.PAGED_ITEMS:
+        if head != "items":
+            problems.append(
+                f"step {index}: argument '{arg_name}' references step {from_step} "
+                f"('{source.name}') with path '{path}', but that step returns "
+                f'{{"items": [...], "total": N}} — use "items.0.{field}"'
+            )
+    elif source.output is SkillOutput.ITEM_LIST:
+        if not head.isdigit() and head != "*":
+            problems.append(
+                f"step {index}: argument '{arg_name}' references step {from_step} "
+                f"('{source.name}') with path '{path}', but that step returns a plain "
+                f'list — use "0.{field}"'
+            )
+    elif head in {"items", "*"} or head.isdigit():
+        problems.append(
+            f"step {index}: argument '{arg_name}' references step {from_step} "
+            f"('{source.name}') with path '{path}', but that step returns the item "
+            f'itself — use "{field}"'
+        )
+    if arg_name in _DESTINATION_ARGS and source.output is SkillOutput.MUTATED_ITEM:
+        problems.append(
+            f"step {index}: argument '{arg_name}' must be a folder, but it references "
+            f"step {from_step} ('{source.name}'), which returns the item that step "
+            "changed. Reference the step that created or found the destination folder."
+        )
+    return problems
+
+
+def _repair_message(problems: list[str]) -> str:
+    """What the planner is told after an invalid plan.
+
+    Most problems name their own fix ('use "items.0.id"'), so the instruction is
+    to apply exactly those and change nothing else. The escape hatch — "return
+    an empty steps list" — is offered ONLY when a skill it wanted does not
+    exist, because that is the one case where the request may genuinely be
+    unsatisfiable. Offering it unconditionally taught the model to give up on a
+    fixable reference: on a real multi-turn run it answered "please tick the
+    files first" instead of correcting one step index.
+    """
+
+    unsatisfiable = any("unknown skill" in problem for problem in problems)
+    tail = (
+        " If a skill you need does not exist, return an empty steps list and explain "
+        "briefly in reply."
+        if unsatisfiable
+        else " Apply exactly these corrections and keep the rest of the plan as it is. "
+        "Do not ask the user to select files, and do not give up on a fixable step."
+    )
+    return "Your previous plan was invalid: " + "; ".join(problems) + "." + tail
+
+
+def validate_plan(
+    steps: list[PlannedStep],
+    registry: SkillRegistry,
+    *,
+    preceding: list[PlannedStep] | None = None,
+) -> list[str]:
     """Semantic validation of a planned workflow against the skill catalog.
 
     Catches the classes of failure a JSON-parse check misses: a hallucinated
-    skill, or a step that omits a required argument (e.g. ``search`` without
-    ``q``). Returns a list of human-readable problems ([] means the plan is
-    executable).
+    skill, a step that omits a required argument (e.g. ``search`` without
+    ``q``), or a reference whose path cannot possibly resolve against what the
+    referenced step returns. Returns a list of human-readable problems ([]
+    means the plan is executable).
+
+    ``preceding`` is the steps that already exist ahead of these ones — the
+    second pass of two-phase planning continues an existing plan, so its first
+    step is at index ``len(preceding)`` and it may legitimately reference any
+    of them. They are passed (rather than just a count) so a reference into
+    them is checked against their real output shape too.
     """
 
+    earlier = list(preceding or [])
+    index_offset = len(earlier)
+    all_steps = [*earlier, *steps]
     problems: list[str] = []
-    for index, step in enumerate(steps):
+    for position, step in enumerate(steps):
+        index = position + index_offset
         skill = registry.get(step.skill)
         if skill is None:
             problems.append(f"step {index}: unknown skill '{step.skill}'")
@@ -165,7 +437,20 @@ def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str
                 problems.append(
                     f"step {index}: depends_on must point to an earlier step, got {dependency}"
                 )
-        for arg_value in step.arguments.values():
+        for arg_name, arg_value in step.arguments.items():
+            # A literal carrying byte-fallback markers is corrupted text, not a
+            # value: 報告_2026 arrived as 報告_20<0xA0>26 and the folder was
+            # created under that name. Rejecting sends it back through the repair
+            # loop, which is the only honest option — the marker cannot be
+            # removed safely (see _strip_byte_tokens) and the corruption is
+            # stochastic, so re-planning usually produces a clean value.
+            if _has_byte_tokens(arg_value):
+                problems.append(
+                    f"step {index}: argument {arg_name!r} contains raw byte tokens "
+                    f"({arg_value!r}) — that text is corrupted. Write the value again "
+                    "as plain characters."
+                )
+                continue
             # Step-output references must point at an earlier step. Selection
             # references are always resolvable (the selection exists independently
             # of step order), so they are exempt from the earlier-step rule.
@@ -175,6 +460,16 @@ def validate_plan(steps: list[PlannedStep], registry: SkillRegistry) -> list[str
                     problems.append(
                         f"step {index}: reference must point to an earlier step, got {from_step}"
                     )
+                    continue
+                problems.extend(
+                    _reference_problems(
+                        index=index,
+                        arg_name=arg_name,
+                        path=str(arg_value.get("path", "")),
+                        source=registry.get(all_steps[from_step].skill),
+                        from_step=from_step,
+                    )
+                )
         required = skill.parameters.get("required", [])
         if isinstance(required, list):
             for arg in required:
@@ -198,12 +493,21 @@ class WorkflowPlanner:
         num_ctx: int,
         max_repair: int = 2,
         disable_thinking: bool | None = None,
+        two_phase_planning: bool | None = None,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._context = context
         self._num_ctx = num_ctx
         self._max_repair = max(0, max_repair)
+        # Must match WorkflowService's flag: the prompt may only teach the
+        # split-plan rule when a second pass will actually run (see
+        # build_planner_prompt). Injectable so tests skip global settings.
+        self._two_phase_planning = (
+            get_settings().assistant_two_phase_planning
+            if two_phase_planning is None
+            else two_phase_planning
+        )
         # DEC-033: planning runs with Ollama's thinking phase disabled by default
         # (E8 — cured repetition loops, ~10x faster, no plan-quality loss). Passed
         # through to every plan() chat call; None defers to the client default.
@@ -216,10 +520,20 @@ class WorkflowPlanner:
         target: str | None = None,
         selected_items: list[dict[str, object]] | None = None,
         history: list[LLMMessage] | None = None,
+        preceding_steps: list[PlannedStep] | None = None,
     ) -> PlanResult:
+        """``preceding_steps``: the steps that already exist when this call
+        continues an existing plan (two-phase planning). The new steps start at
+        index ``len(preceding_steps)``, and validation treats references back
+        into them as legitimate — checking them against their real output shape
+        rather than just their index."""
+
         selected = selected_items or []
         messages = [
-            LLMMessage(role="system", content=build_planner_prompt(self._registry)),
+            LLMMessage(
+                role="system",
+                content=build_planner_prompt(self._registry, two_phase=self._two_phase_planning),
+            ),
         ]
         # Tell the planner about the user's current file selection so it can
         # reference selected files directly (never guessing a UUID). Files are
@@ -234,6 +548,23 @@ class WorkflowPlanner:
                         'Reference a specific one as {"from": "selection", "item": i} or all of '
                         'them as {"from": "selection", "each": true}. Do NOT ask which file, and '
                         "never write their UUIDs."
+                    ),
+                )
+            )
+        else:
+            # Saying nothing let the model assume a selection existed and plan
+            # {"from": "selection"} references, which the service can only answer
+            # with "please tick the files first" — a dead end for a request that
+            # named the files perfectly well. Observed on real multi-turn runs:
+            # five of five ended there instead of searching for the files.
+            messages.append(
+                LLMMessage(
+                    role="system",
+                    content=(
+                        "The user has NO files selected right now, so selection references "
+                        '({"from": "selection", ...}) are unavailable — a plan using one '
+                        "cannot run. Find the items you need with search or list_items and "
+                        "reference those steps' output instead."
                     ),
                 )
             )
@@ -265,28 +596,20 @@ class WorkflowPlanner:
             )
             result = _parse(response.content)
             if result is None:
-                return PlanResult(reply=response.content.strip() or last_reply)
+                failed = PlanResult(reply=response.content.strip() or last_reply)
+                failed._set_llm_meta(response)
+                return failed
             last_reply = result.reply or last_reply
-            problems = validate_plan(result.steps, self._registry)
+            problems = validate_plan(result.steps, self._registry, preceding=preceding_steps)
             if not problems:
+                result._set_llm_meta(response)
                 return result
             if attempt < self._max_repair:
                 messages.append(LLMMessage(role="assistant", content=response.content))
-                messages.append(
-                    LLMMessage(
-                        role="user",
-                        content=(
-                            "Your previous plan was invalid: "
-                            + "; ".join(problems)
-                            + ". Re-plan using only the listed skills and include every required "
-                            "argument. If you cannot satisfy the request with the available "
-                            "skills, return an empty steps list and explain briefly in reply."
-                        ),
-                    )
-                )
+                messages.append(LLMMessage(role="user", content=_repair_message(problems)))
 
         # Repairs exhausted — never execute an invalid plan; answer conversationally.
-        return PlanResult(
+        exhausted = PlanResult(
             reply=(
                 last_reply
                 if last_reply != "I could not plan that request."
@@ -295,3 +618,5 @@ class WorkflowPlanner:
             ),
             steps=[],
         )
+        exhausted._set_llm_meta(response)
+        return exhausted

@@ -1,6 +1,7 @@
 id: gen-ec3-059
 name: 'EC3 self-authoring #59 (image_thumbnail)'
-prompt: 做一個產生圖片縮圖的功能
+prompt: 投影片裡的圖片規格不一，看起來很雜亂，幫我做一個能產生圖片縮圖的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser
@@ -13,6 +14,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

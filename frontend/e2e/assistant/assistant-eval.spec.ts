@@ -29,6 +29,8 @@ interface BrowserCase {
   prompt: string
   auto_confirm: boolean
   execute?: ExecuteMeta
+  seed_folders?: string[]
+  seed_files?: { fixture: string; name: string }[]
 }
 
 const CASES_FILE = process.env.EVAL_CASES_FILE
@@ -57,6 +59,41 @@ function mimeFor(name: string): string {
 
 function authHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${token}` }
+}
+
+// Create each folder at the drive root so a case's prompt can reference a real,
+// existing item instead of a vague placeholder. Idempotent: an already-existing
+// name (409) is reused, mirroring runner.py's `_seed_folders` for API mode.
+async function seedFolders(request: APIRequestContext, names: string[]): Promise<void> {
+  for (const name of names) {
+    const res = await request.post(`${API_BASE}/drive/folders`, {
+      headers: authHeaders(),
+      data: { name, parent_id: null },
+    })
+    if (!res.ok() && res.status() !== 409) {
+      throw new Error(`seed folder "${name}" failed: ${res.status()} ${await res.text()}`)
+    }
+  }
+}
+
+// Upload each named fixture to the drive root, keeping its original filename —
+// mirroring runner.py's `_seed_files` for API mode. The name matters: cases
+// like organize_by_type assert on where `sample.pdf` ended up, so unlike the
+// execution-case upload below this must NOT prefix a per-case unique name.
+async function seedFiles(
+  request: APIRequestContext,
+  entries: { fixture: string; name: string }[],
+): Promise<void> {
+  for (const { fixture, name } of entries) {
+    const buffer = readFileSync(join(FIXTURES_DIR, fixture))
+    const res = await request.post(`${API_BASE}/upload/simple`, {
+      headers: authHeaders(),
+      multipart: { file: { name, mimeType: mimeFor(name), buffer } },
+    })
+    if (!res.ok()) {
+      throw new Error(`seed file "${name}" failed: ${res.status()} ${await res.text()}`)
+    }
+  }
 }
 
 async function login(page: Page): Promise<void> {
@@ -161,14 +198,24 @@ test.describe('assistant eval (browser)', () => {
       if (evalCase.execute) {
         await runExecutionCase(page, request, evalCase, evalCase.execute)
       } else {
-        await runChatCase(page, evalCase)
+        await runChatCase(page, request, evalCase)
       }
     })
   }
 })
 
-async function runChatCase(page: Page, evalCase: BrowserCase): Promise<void> {
+async function runChatCase(
+  page: Page,
+  request: APIRequestContext,
+  evalCase: BrowserCase,
+): Promise<void> {
   await login(page)
+  if (evalCase.seed_folders?.length) {
+    await seedFolders(request, evalCase.seed_folders)
+  }
+  if (evalCase.seed_files?.length) {
+    await seedFiles(request, evalCase.seed_files)
+  }
   await openAssistant(page)
   const body = await sendPrompt(page, evalCase.prompt)
   results[evalCase.id] = body

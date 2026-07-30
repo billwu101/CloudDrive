@@ -233,6 +233,62 @@ async def test_read_only_plan_auto_executes() -> None:
     assert not repo.workflows  # fast-path does not persist a pending workflow
 
 
+async def test_chat_response_surfaces_llm_diagnostics() -> None:
+    # done_reason/token counts from the planning LLM call flow into
+    # AssistantChatResponse.llm_meta (additive/observability-only field, see
+    # doc/detailed-design/10-assistant-eval.md §10.13) — both for auto-executed
+    # fast-path plans and for pending-approval ones.
+    user_id = uuid4()
+    executed: list[str] = []
+    registry = _registry(user_id, executed)
+
+    def _make_service(plan_json: dict[str, Any], done_reason: str, tokens: int) -> WorkflowService:
+        router = ModelRouter(
+            local_client=ScriptedLLM(
+                [
+                    LLMResponse(
+                        content=json.dumps(plan_json),
+                        done_reason=done_reason,
+                        prompt_tokens=tokens,
+                        completion_tokens=tokens * 2,
+                    )
+                ]
+            ),
+            external_client=None,
+            external_enabled=False,
+            max_local_attempts=1,
+            privacy_default="non_sensitive",
+        )
+        context = ContextManager(num_ctx=2048)
+        planner = WorkflowPlanner(llm=router, registry=registry, context=context, num_ctx=2048)
+        return WorkflowService(
+            planner=planner,
+            executor=WorkflowExecutor(registry=registry),
+            registry=registry,
+            workflow_repo=FakeWorkflowRepo(),
+            drive_service=_FakeDriveService(),
+        )
+
+    auto_service = _make_service(
+        {"reply": "Listing.", "steps": [{"skill": "list_items", "arguments": {}}]}, "stop", 11
+    )
+    auto_response = await auto_service.chat(user_id=user_id, message="show files")
+    assert auto_response.llm_meta is not None
+    assert auto_response.llm_meta.done_reason == "stop"
+    assert auto_response.llm_meta.prompt_tokens == 11
+    assert auto_response.llm_meta.completion_tokens == 22
+
+    pending_service = _make_service(
+        {"reply": "Deleting.", "steps": [{"skill": "delete_item", "arguments": {"item_id": "x"}}]},
+        "length",
+        5,
+    )
+    pending_response = await pending_service.chat(user_id=user_id, message="delete it")
+    assert pending_response.llm_meta is not None
+    assert pending_response.llm_meta.done_reason == "length"
+    assert pending_response.llm_meta.prompt_tokens == 5
+
+
 async def test_destructive_plan_is_pending_not_executed() -> None:
     user_id = uuid4()
     repo = FakeWorkflowRepo()

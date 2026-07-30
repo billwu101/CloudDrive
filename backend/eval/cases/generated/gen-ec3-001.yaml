@@ -1,6 +1,7 @@
 id: gen-ec3-001
 name: 'EC3 self-authoring #1 (md5_checksum)'
-prompt: 做一個算 MD5 雜湊的功能
+prompt: 我要把檔案寄給同事，希望對方收到後能驗證內容沒被改過，幫我做一個能算 MD5 雜湊的功能，附在信裡一起給他。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser
@@ -13,6 +14,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6
