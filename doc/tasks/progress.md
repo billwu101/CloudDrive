@@ -53,7 +53,7 @@
 
 - [x] [Backend Assistant](./backend-assistant.md) — In-App AI Assistant（HARNESS 引擎 + Workflow 管線、本地 Gemma）。M1–M4 全部完成：模型策略、planner/workflow、技能框架與持久化、自我撰寫 sandbox（codegen→codeguard→sandbox→approve→execute→ingest）、skill 管理（`PATCH`/`DELETE /skills/{id}`）。設計見 [detailed-design/ §9](../detailed-design/01-overview.md)
 - [x] [Frontend Assistant](./frontend-assistant.md) — 聊天面板、計畫確認、技能核可/code review、動態右鍵選單、已存 workflow 重跑、側欄 Skills 管理頁（列表/編輯/刪除）。
-- [x] [Assistant 驗證與評分 Harness](./assistant-eval.md) — E1 API/in-process mock runner + verifier/scoring/report + state/safety 斷言 + 多次執行通過率/變異、E2 Playwright browser runner、E3 LLM judge + `--llm real` + baseline 回歸、E4 案例覆蓋。全部完成。設計見 [detailed-design/ §11](../detailed-design/01-overview.md)。
+- [x] [Assistant 驗證與評分 Harness](./assistant-eval.md) — E1 API/in-process mock runner + verifier/scoring/report + state/safety 斷言 + 多次執行通過率/變異、E2 Playwright browser runner、E3 LLM judge + `--llm real` + baseline 回歸、E4 案例覆蓋。全部完成。E9（客觀指標）另加：四維度計分、canary 防誤傷、路徑偏離、生成技能真實執行與產出內容檢查、跑批自清帳號；**現行基準 387/420（gemma4:26b，runs=3）與 12B 對照見 [detailed-design §10.19](../detailed-design/10-assistant-eval.md)**。設計見 [detailed-design/ §11](../detailed-design/01-overview.md)。
 
 ## 擴充模組：時光機（Snapshots）（S1–S5 完成）
 
@@ -85,9 +85,9 @@
 | --- | --- | --- |
 | 時光機還原時的硬配額檢查待補強（還原已寫 activity log） | 低 | [time-machine.md](./time-machine.md) |
 | 語意搜尋舊檔 embedding backfill 尚未背景自動化（目前手動觸發） | 低 | [backend-search.md](./backend-search.md) |
-| 評測結論綁定單一模型與硬體（gemma4:26b + 本機 GPU），換模型需重跑 sweep | — 前提而非缺陷 | [assistant-eval.md](./assistant-eval.md) |
-| planner 寫入意圖規劃在困難集（EC2/EC4）約 47% | 高（功能可靠性） | [roadmap.md](../roadmap.md) |
-| 助理無對話記憶（有存沒回讀） | 高（使用者體感） | [roadmap.md](../roadmap.md) |
+| 評測結論綁定單一模型與硬體，換模型需重跑 sweep | — 前提而非缺陷 | [assistant-eval.md](./assistant-eval.md) |
+| ~~planner 寫入意圖規劃在困難集（EC2/EC4）約 47%~~ **已改善**：現行基準 EC2 95/120、EC4 100/100（`runs=3`，判分語意見 §10.18）。殘餘失敗集中在批次分類誤搬 canary | 中（功能可靠性） | [detailed-design §10.19](../detailed-design/10-assistant-eval.md) |
+| ~~助理無對話記憶（有存沒回讀）~~ **已落地**：對話記憶 v1（`assistant/memory.py` + `router.py` 回讀歷史）。**但評測案例仍全為單輪**，多輪指涉的可靠性尚未量化 | 中（驗證覆蓋） | [roadmap.md](../roadmap.md) |
 
 > 已作廢：「量化未納入瀏覽器端與生成技能執行測試」——E2（browser runner）與 E5（執行驗證模式）皆已完成，browser 實測 3/3 PASS、`--mode exec` 有 4 個 EC3 案例。該敘述屬某一輪評測的附註，非現況缺口。
 
