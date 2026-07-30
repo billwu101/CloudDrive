@@ -11,7 +11,9 @@ sandbox run before install.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,6 +22,7 @@ from app.assistant.llm.client import LLMMessage
 from app.assistant.llm.router import ModelRouter
 from app.assistant.skills.codeguard import validate_skill_code
 from app.assistant.skills.manifest import validate_manifest
+from app.assistant.skills.smoke import SmokeOutcome
 from app.core.exceptions import AppError
 
 _CODEGEN_SYSTEM = (
@@ -114,6 +117,28 @@ class CodegenResult:
     code: str = ""
     problems: list[str] = field(default_factory=list)
     reply: str = ""
+    # Diagnostics from the codegen LLM call (see LLMResponse) — surfaced for
+    # eval/observability via AssistantChatResponse.llm_meta. Unlike PlanResult,
+    # CodegenResult isn't the schema constrained decoding is validated against
+    # (_CODEGEN_RESPONSE_FORMAT is a separate hand-written dict), so these are
+    # plain public fields, no PrivateAttr needed.
+    done_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+
+def _declared_item_types(manifest: dict[str, Any]) -> list[str]:
+    """Item types the manifest's context-menu actions declare (default FILE)."""
+
+    ui = manifest.get("ui")
+    actions = ui.get("context_menu", []) if isinstance(ui, dict) else []
+    types: list[str] = []
+    for action in actions:
+        if isinstance(action, dict):
+            for item_type in action.get("item_types") or []:
+                if isinstance(item_type, str) and item_type not in types:
+                    types.append(item_type)
+    return types or ["FILE"]
 
 
 def build_codegen_prompt(request: str) -> str:
@@ -199,7 +224,23 @@ class CodegenSubAgent:
         # gemma4:26b (2026-07-22 A/B). Mirrors the planner (DEC-033).
         self._disable_thinking = disable_thinking
 
-    async def author(self, *, request: str) -> CodegenResult:
+    async def author(
+        self,
+        *,
+        request: str,
+        smoke: Callable[[str, list[str]], SmokeOutcome] | None = None,
+    ) -> CodegenResult:
+        """``smoke``: optionally run the generated code once before accepting it.
+
+        Static validation cannot see a token-garbled identifier — 18 of 100
+        generated skills in the 2026-07-29 eval raised on their first call
+        (``NameError: name 'outputode_dir' is not defined`` and friends), and the
+        user only found out after approving and installing. A failing smoke run
+        becomes a repair problem, so the model fixes it in the same loop that
+        already fixes manifest errors. See ``skills/smoke.py`` for why only code
+        defects (never input mismatches) count.
+        """
+
         messages = [
             LLMMessage(role="system", content=build_codegen_prompt(request)),
             LLMMessage(role="user", content=request),
@@ -226,6 +267,10 @@ class CodegenSubAgent:
             else:
                 manifest_raw, code = parsed
                 validated, problems = _validate(manifest_raw, code)
+                if not problems and validated is not None and smoke is not None:
+                    outcome = await asyncio.to_thread(smoke, code, _declared_item_types(validated))
+                    if not outcome.ok and outcome.is_code_defect:
+                        problems = [outcome.error]
                 if not problems and validated is not None:
                     return CodegenResult(
                         ok=True,
@@ -234,6 +279,9 @@ class CodegenSubAgent:
                         manifest=validated,
                         code=code,
                         reply=f"I drafted a skill named {validated['name']}.",
+                        done_reason=response.done_reason,
+                        prompt_tokens=response.prompt_tokens,
+                        completion_tokens=response.completion_tokens,
                     )
             if attempt < self._max_repair:
                 messages.append(LLMMessage(role="assistant", content=response.content))
@@ -254,4 +302,7 @@ class CodegenSubAgent:
             ok=False,
             problems=problems,
             reply="I couldn't generate a safe, valid skill for that request.",
+            done_reason=response.done_reason,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
         )

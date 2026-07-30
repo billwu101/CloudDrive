@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import tempfile
 from collections.abc import AsyncGenerator
@@ -14,6 +15,7 @@ from app.assistant.schemas import AssistantSkillExecuteResponse, AssistantSkillR
 from app.assistant.skills.codeguard import validate_skill_code
 from app.assistant.skills.manifest import validate_manifest
 from app.assistant.skills.sandbox import SkillSandbox
+from app.assistant.skills.smoke import smoke_test_generated_code
 from app.assistant.subagent import CodegenSubAgent
 from app.core.config import get_settings
 from app.core.error_codes import ErrorCode
@@ -73,6 +75,12 @@ _GENERATION_TARGETS = (
 class AssistantAuthoringResult:
     message: str
     skill_proposal: AssistantSkillResponse | None = None
+    # From CodegenResult when a codegen call happened (_generate_skill); stays
+    # None for authoring paths with no LLM call (e.g. _propose_inspect_details,
+    # which uses a hardcoded manifest).
+    done_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
 
 def _inspect_details_manifest() -> dict[str, Any]:
@@ -282,10 +290,23 @@ class AssistantSkillService:
         message: str,
     ) -> AssistantAuthoringResult:
         assert self._codegen is not None
-        result = await self._codegen.author(request=message)
+        # Run the generated code once before proposing it (see skills/smoke.py):
+        # a token-garbled identifier passes every static check and then dies on
+        # the user's first click. Skipped when no sandbox is configured.
+        smoke = (
+            (lambda code, item_types: smoke_test_generated_code(sandbox, code, item_types))
+            if (sandbox := self._sandbox) is not None
+            else None
+        )
+        result = await self._codegen.author(request=message, smoke=smoke)
         if not result.ok or result.manifest is None:
             detail = f" ({'; '.join(result.problems)})" if result.problems else ""
-            return AssistantAuthoringResult(message=result.reply + detail)
+            return AssistantAuthoringResult(
+                message=result.reply + detail,
+                done_reason=result.done_reason,
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+            )
 
         # Persist as a pending proposal only — generation never auto-installs or
         # auto-executes. Install requires explicit approval; execution then runs
@@ -303,6 +324,9 @@ class AssistantSkillService:
                 "安裝後的執行會在受限沙箱中進行。"
             ),
             skill_proposal=_skill_response(skill),
+            done_reason=result.done_reason,
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
         )
 
     async def list_skills(
@@ -450,6 +474,21 @@ class AssistantSkillService:
                 detail = result.error or "unknown error"
                 raise AppError(ErrorCode.INVALID_OPERATION, f"Skill execution failed: {detail}")
             ingested = await self._ingest(user_id, item, self._sandbox.last_output_dir)
+            if not ingested:
+                # The sandbox said ok, but the user got nothing. The codegen
+                # contract is explicit ("ALWAYS write the result as a file under
+                # output_dir — that written file is what the user receives"), so
+                # zero files means the skill did not do its job, however cleanly
+                # it exited. Reporting success here is worse than failing: the
+                # user sees "produced 0 file(s)" phrased as an accomplishment and
+                # has no idea anything went wrong.
+                summary = json.dumps(result.output, ensure_ascii=False, default=str)[:200]
+                raise AppError(
+                    ErrorCode.INVALID_OPERATION,
+                    f"Skill '{skill.name}' ran without error but wrote no output file "
+                    f"for {item.name}, so there is nothing to save. "
+                    f"The skill reported: {summary}",
+                )
         finally:
             self._sandbox.cleanup()
             shutil.rmtree(run_root, ignore_errors=True)

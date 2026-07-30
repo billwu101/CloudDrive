@@ -27,10 +27,10 @@ from app.models import Base
 # Clear any previously cached settings so new LOCAL_STORAGE_PATH is used.
 get_settings.cache_clear()
 
-_TEST_DB_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/clouddrive_test",
-)
+
+# Set by tests/conftest.py (which derives it from .env when the developer runs
+# Postgres on a non-default port); an explicit DATABASE_URL still wins.
+_TEST_DB_URL = os.environ["DATABASE_URL"]
 
 _engine = create_async_engine(_TEST_DB_URL, echo=False, pool_pre_ping=True, poolclass=NullPool)
 _SessionFactory = async_sessionmaker(_engine, expire_on_commit=False)

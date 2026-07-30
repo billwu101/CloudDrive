@@ -6,7 +6,12 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.assistant.skills.registry import RegisteredSkill, SkillContext, SkillRegistry
+from app.assistant.skills.registry import (
+    RegisteredSkill,
+    SkillContext,
+    SkillOutput,
+    SkillRegistry,
+)
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.drive.service import DriveService
@@ -94,6 +99,7 @@ def register_write_skills(
             ),
             permission_tier=_WRITE,
             handler=create_folder,
+            output=SkillOutput.NEW_FOLDER,
         )
     )
     registry.register(
@@ -111,6 +117,7 @@ def register_write_skills(
             ),
             permission_tier=_WRITE,
             handler=rename_item,
+            output=SkillOutput.MUTATED_ITEM,
         )
     )
     registry.register(
@@ -129,6 +136,7 @@ def register_write_skills(
             ),
             permission_tier=_WRITE,
             handler=move_item,
+            output=SkillOutput.MUTATED_ITEM,
         )
     )
     registry.register(
@@ -144,6 +152,7 @@ def register_write_skills(
             ),
             permission_tier=_WRITE,
             handler=star_item,
+            output=SkillOutput.MUTATED_ITEM,
         )
     )
     registry.register(
@@ -209,6 +218,7 @@ def _register_trash_skills(registry: SkillRegistry, *, trash_service: TrashServi
             ),
             permission_tier=_DESTRUCTIVE,
             handler=trash_item,
+            output=SkillOutput.MUTATED_ITEM,
         )
     )
     registry.register(
@@ -221,6 +231,7 @@ def _register_trash_skills(registry: SkillRegistry, *, trash_service: TrashServi
             ),
             permission_tier=_WRITE,
             handler=restore_item,
+            output=SkillOutput.MUTATED_ITEM,
         )
     )
 

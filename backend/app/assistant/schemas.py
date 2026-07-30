@@ -105,6 +105,16 @@ class WorkflowPlanView(BaseModel):
     steps: list[WorkflowStep]
 
 
+class AssistantLlmMeta(BaseModel):
+    """Diagnostics from the planning LLM call (see LLMResponse/PlanResult) —
+    additive, observability-only fields; absent/None when unavailable (e.g. no
+    planning call happened, or an external provider that doesn't report them)."""
+
+    done_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+
 class AssistantChatResponse(BaseModel):
     session_id: UUID
     message: str
@@ -113,6 +123,7 @@ class AssistantChatResponse(BaseModel):
     plan: WorkflowPlanView | None = None
     results: list[StepResult] = Field(default_factory=list)
     skill_proposal: AssistantSkillResponse | None = None
+    llm_meta: AssistantLlmMeta | None = None
 
 
 class AssistantSessionResponse(BaseModel):

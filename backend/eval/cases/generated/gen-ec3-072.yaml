@@ -1,6 +1,7 @@
 id: gen-ec3-072
 name: 'EC3 self-authoring #72 (image_sepia)'
-prompt: 做一個把圖片轉復古色的功能
+prompt: 這些照片要放到網頁上，原檔太大載入很慢，幫我做一個能把圖片轉復古色的功能。
+codegen_fixture: sample.png
 mode:
 - api
 - browser
@@ -13,6 +14,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

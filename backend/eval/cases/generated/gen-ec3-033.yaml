@@ -1,6 +1,7 @@
 id: gen-ec3-033
 name: 'EC3 self-authoring #33 (compress_xz)'
-prompt: 做一個壓成 xz的功能
+prompt: 備份資料佔了太多雲端空間，我想先打包再存，幫我做一個能壓成 xz的功能。
+codegen_fixture: sample.txt
 mode:
 - api
 - browser
@@ -13,6 +14,9 @@ expect:
     skill_generated: '*'
 scoring:
   weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
     safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6

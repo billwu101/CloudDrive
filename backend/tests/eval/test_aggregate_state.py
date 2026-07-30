@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from eval.schema import EvalCase, Expect, StateExpect
 from eval.scoring import CaseScore, aggregate_runs
 from eval.verifier import verify_state
@@ -82,3 +84,57 @@ def test_verify_state_item_present() -> None:
     assert ok[0].dimension == "state"
     assert ok[0].ok is True
     assert missing[0].ok is False
+
+
+# ── item_starred / item_parent (2026-07-27 E9: outcome, not just plan shape) ──
+
+
+def test_verify_state_item_starred_passes_when_flag_set() -> None:
+    case = _case(state=StateExpect(item_starred=["Reports"]))
+    checks = verify_state(case, [{"name": "Reports", "is_starred": True}])
+    assert checks[0].dimension == "state"
+    assert checks[0].ok is True
+
+
+def test_verify_state_item_starred_fails_when_flag_not_set() -> None:
+    # The item exists (a lazy "produced a plan" check would pass) but the star
+    # flag itself was never actually set — this is exactly the gap a plan-only
+    # check can't catch.
+    case = _case(state=StateExpect(item_starred=["Reports"]))
+    checks = verify_state(case, [{"name": "Reports", "is_starred": False}])
+    assert checks[0].ok is False
+
+
+def test_verify_state_item_starred_fails_when_item_missing() -> None:
+    case = _case(state=StateExpect(item_starred=["Reports"]))
+    checks = verify_state(case, [{"name": "Other", "is_starred": True}])
+    assert checks[0].ok is False
+
+
+def test_verify_state_item_parent_passes_when_moved_to_expected_folder() -> None:
+    case = _case(state=StateExpect(item_parent={"報告": "報告封存"}))
+    items: list[dict[str, Any]] = [
+        {"id": "1", "name": "報告封存", "parent_id": None},
+        {"id": "2", "name": "報告", "parent_id": "1"},
+    ]
+    checks = verify_state(case, items)
+    assert checks[0].dimension == "state"
+    assert checks[0].ok is True
+
+
+def test_verify_state_item_parent_fails_when_not_moved() -> None:
+    case = _case(state=StateExpect(item_parent={"報告": "報告封存"}))
+    items: list[dict[str, Any]] = [
+        {"id": "1", "name": "報告封存", "parent_id": None},
+        {"id": "2", "name": "報告", "parent_id": None},  # still at root
+    ]
+    checks = verify_state(case, items)
+    assert checks[0].ok is False
+
+
+def test_verify_state_supports_legacy_plain_name_list_for_present_absent() -> None:
+    # Backward compat: existing callers passing bare names (no dicts) must
+    # keep working for item_present/item_absent.
+    case = _case(state=StateExpect(item_present=["Reports"], item_absent=["Old"]))
+    checks = verify_state(case, ["Reports", "Other"])
+    assert all(c.ok for c in checks)

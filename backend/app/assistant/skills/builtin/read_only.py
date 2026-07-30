@@ -6,7 +6,12 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.assistant.skills.registry import RegisteredSkill, SkillContext, SkillRegistry
+from app.assistant.skills.registry import (
+    RegisteredSkill,
+    SkillContext,
+    SkillOutput,
+    SkillRegistry,
+)
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.drive.schemas import DriveItemSortField
@@ -91,6 +96,7 @@ def build_read_only_registry(
             ),
             permission_tier="read",
             handler=list_items,
+            output=SkillOutput.PAGED_ITEMS,
         )
     )
     registry.register(
@@ -103,6 +109,7 @@ def build_read_only_registry(
             ),
             permission_tier="read",
             handler=get_info,
+            output=SkillOutput.ITEM,
         )
     )
     registry.register(
@@ -121,6 +128,7 @@ def build_read_only_registry(
             ),
             permission_tier="read",
             handler=search,
+            output=SkillOutput.PAGED_ITEMS,
         )
     )
     registry.register(
@@ -130,6 +138,7 @@ def build_read_only_registry(
             parameters=_object_schema({"limit": {"type": "integer", "minimum": 1, "maximum": 100}}),
             permission_tier="read",
             handler=recent,
+            output=SkillOutput.ITEM_LIST,
         )
     )
     registry.register(
@@ -160,6 +169,7 @@ def build_read_only_registry(
             ),
             permission_tier="read",
             handler=list_trash,
+            output=SkillOutput.PAGED_ITEMS,
         )
     )
     return registry

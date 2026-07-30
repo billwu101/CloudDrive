@@ -1,6 +1,8 @@
 id: gen-ec4-038
-name: 'EC4 multi-step+refs #38 (search+recent+get_info->move_item)'
-prompt: 幫我把某個項目移動到別的資料夾（過程中可先搜尋檔案、看最近開啟的檔案、查看某個項目的詳情）
+name: EC4 瀏覽清單與近況後才加星號：訂單
+rationale: 從最近開過的檔案回想（recent）、瀏覽根目錄清單找到它（list_items）、再搜尋確認關鍵字命中（search），最後加星號——item_id 引用的是list_items
+  那一步，而不是緊接在寫入之前的 search，考驗模型別誤引到最後一次查詢。
+prompt: 我最近常常翻我的最近開啟清單找「訂單」，幫我先看一下最近開過的檔案、列出根目錄看看它在不在、再搜尋確認一下，找到後幫我加上星號。
 mode:
 - api
 - browser
@@ -8,36 +10,57 @@ tags:
 - workflow-reuse
 - generated
 - ec4
+- scenario:star_after_browse
+seed_folders:
+- 訂單
+- 勿動-舊備份
+- 勿動-個人資料
 expect:
   workflow:
     requires_confirmation: true
     steps_include:
-    - search
     - recent
-    - get_info
-    - move_item
+    - list_items
+    - search
+    - star_item
+    required_skills:
+    - recent
+    - list_items
+    - search
+    nonempty_outputs:
+    - list_items
+    - search
+    write_skill: star_item
+    write_ref_args:
+    - item_id
+  state:
+    item_starred:
+    - 訂單
+    unchanged:
+    - 勿動-舊備份
+    - 勿動-個人資料
 scoring:
   weights:
     correctness: 1.0
+    state: 1.0
+    execution: 1.0
+    safety: 1.0
   pass_threshold: 1.0
   min_pass_rate: 0.6
 mock_llm:
   responses:
-  - reply: 多步驟計畫,請確認。
+  - reply: 多步驟計畫，請確認。
     steps:
-    - skill: search
-      arguments:
-        q: photo
     - skill: recent
       arguments: {}
-    - skill: get_info
+    - skill: list_items
+      arguments: {}
+    - skill: search
+      arguments:
+        q: 訂單
+    - skill: star_item
       arguments:
         item_id:
-          from_step: 0
+          from_step: 1
           path: items.0.id
-    - skill: move_item
-      arguments:
-        item_id:
-          from_step: 0
-          path: items.0.id
-        parent_id: 22222222-2222-2222-2222-222222222222
+        starred: true

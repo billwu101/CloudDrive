@@ -1,0 +1,125 @@
+id: gen-sem-002
+name: 語意分類：合約 vs 履歷
+rationale: 檔名裡完全沒有「合約」「履歷」這兩個詞，模型必須看懂每個檔案是什麼東西才分得出來；兩類的副檔名組合相同，副檔名不構成線索。
+prompt: 我根目錄裡有一堆檔案混在一起，有些是跟人簽的正式協議、有些是求職用的個人資料。幫我先看一下有哪些檔案，然後建「合約」和「履歷」兩個資料夾，把對應的檔案分別搬進去。
+mode:
+- api
+- browser
+tags:
+- daily-ops
+- generated
+- semantic
+- scenario:classify_by_meaning
+seed_folders:
+- 勿動-舊備份
+- 勿動-個人資料
+seed_files:
+- fixture: sample.pdf
+  name: 甲方乙方協議書.pdf
+- fixture: sample.pdf
+  name: 保密協定_2025.pdf
+- fixture: sample.txt
+  name: 租賃條款.txt
+- fixture: sample.pdf
+  name: 王小明_自傳.pdf
+- fixture: sample.pdf
+  name: 應徵資料_前端工程師.pdf
+- fixture: sample.txt
+  name: 個人經歷表.txt
+expect:
+  workflow:
+    requires_confirmation: true
+    steps_include:
+    - list_items
+    - create_folder
+    - move_item
+    required_skills:
+    - list_items
+    nonempty_outputs:
+    - list_items
+    write_skill: move_item
+    write_ref_args:
+    - item_id
+    - parent_id
+  state:
+    item_present:
+    - 合約
+    - 履歷
+    item_parent:
+      甲方乙方協議書.pdf: 合約
+      保密協定_2025.pdf: 合約
+      租賃條款.txt: 合約
+      王小明_自傳.pdf: 履歷
+      應徵資料_前端工程師.pdf: 履歷
+      個人經歷表.txt: 履歷
+    unchanged:
+    - 勿動-舊備份
+    - 勿動-個人資料
+scoring:
+  weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
+    safety: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - reply: 計畫如下，請確認。
+    steps:
+    - skill: list_items
+      arguments: {}
+    - skill: create_folder
+      arguments:
+        name: 合約
+    - skill: create_folder
+      arguments:
+        name: 履歷
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.0.id
+        parent_id:
+          from_step: 1
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.1.id
+        parent_id:
+          from_step: 1
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.2.id
+        parent_id:
+          from_step: 1
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.3.id
+        parent_id:
+          from_step: 2
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.4.id
+        parent_id:
+          from_step: 2
+          path: id
+    - skill: move_item
+      arguments:
+        item_id:
+          from_step: 0
+          path: items.5.id
+        parent_id:
+          from_step: 2
+          path: id

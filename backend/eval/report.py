@@ -92,6 +92,35 @@ def aggregates_to_markdown(scores: list[AggregateScore]) -> str:
     return "\n".join(lines)
 
 
+def unweighted_dimension_warning(scores: list[AggregateScore]) -> str:
+    """Name the cases whose checks ran in a dimension the case never weighted.
+
+    Those dimensions are scored at full weight (see ``scoring.score_case``), so
+    nothing is silently dropped any more — but the case file is still wrong, and
+    an undeclared dimension is how the whole class of "decorative check" bugs
+    started. Empty string when there is nothing to report.
+    """
+
+    offenders: dict[str, set[str]] = {}
+    for score in scores:
+        for run in score.run_scores:
+            if run.unweighted_dimensions:
+                offenders.setdefault(score.case_id, set()).update(run.unweighted_dimensions)
+    if not offenders:
+        return ""
+    lines = [
+        "### ⚠ 案例未宣告權重的維度（已以滿權重計分，但案例檔應補上）",
+        "",
+        "| Case | 未宣告的維度 |",
+        "|---|---|",
+    ]
+    lines += [
+        f"| {case_id} | {', '.join(sorted(dimensions))} |"
+        for case_id, dimensions in sorted(offenders.items())
+    ]
+    return "\n".join(lines)
+
+
 def aggregates_to_json(scores: list[AggregateScore]) -> str:
     payload = [
         {
@@ -111,6 +140,13 @@ def aggregates_to_json(scores: list[AggregateScore]) -> str:
                     "score": run.score,
                     "passed": run.passed,
                     "dimension_scores": run.dimension_scores,
+                    "done_reason": run.done_reason,
+                    "prompt_tokens": run.prompt_tokens,
+                    "completion_tokens": run.completion_tokens,
+                    "tool_call_count": run.tool_call_count,
+                    "failure_category": run.failure_category,
+                    "unweighted_dimensions": run.unweighted_dimensions,
+                    "path_deviation": run.path_deviation,
                     "checks": [
                         {
                             "dimension": c.dimension,
@@ -128,6 +164,75 @@ def aggregates_to_json(scores: list[AggregateScore]) -> str:
         for score in scores
     ]
     return json.dumps(payload, indent=2)
+
+
+def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[AggregateScore]) -> str:
+    """Per-tag rollup of token usage and failure-category distribution.
+
+    Report-only (never affects pass/fail) — lets EC1-EC4 tiers be compared on
+    cost/failure-mode, not just pass-rate. See
+    doc/detailed-design/10-assistant-eval.md §10.13/§10.15. Tags come from
+    each case's own `tags` (e.g. "ec1".."ec4"), matched by case_id; a case with
+    no matching tier tag or no llm_meta data is skipped.
+    """
+
+    by_id = {case.id: case for case in cases}
+    tiers = ("ec1", "ec2", "ec3", "ec4")
+    rows: list[str] = [
+        "| Tier | Cases w/ tokens | Avg prompt | Avg completion | Avg 工具呼叫 | 路徑偏離 "
+        "| Failure categories |"
+    ]
+    rows.append("|---|---|---|---|---|---|---|")
+    for tier in tiers:
+        prompt_tokens: list[int] = []
+        completion_tokens: list[int] = []
+        tool_calls: list[int] = []
+        categories: dict[str, int] = {}
+        total_runs = 0
+        deviated_runs = 0
+        for score in scores:
+            case = by_id.get(score.case_id)
+            if case is None or tier not in case.tags:
+                continue
+            for run in score.run_scores:
+                total_runs += 1
+                if run.prompt_tokens is not None:
+                    prompt_tokens.append(run.prompt_tokens)
+                if run.completion_tokens is not None:
+                    completion_tokens.append(run.completion_tokens)
+                if run.tool_call_count is not None:
+                    tool_calls.append(run.tool_call_count)
+                if run.failure_category is not None:
+                    categories[run.failure_category] = categories.get(run.failure_category, 0) + 1
+                if run.path_deviation is not None:
+                    deviated_runs += 1
+        if not prompt_tokens and not categories and total_runs == 0:
+            continue
+        avg_p = f"{sum(prompt_tokens) / len(prompt_tokens):.0f}" if prompt_tokens else "—"
+        avg_c = (
+            f"{sum(completion_tokens) / len(completion_tokens):.0f}" if completion_tokens else "—"
+        )
+        # The 07-24 review's second objective metric (token usage being the
+        # first): how many tool calls a tier's plans take on average.
+        avg_t = f"{sum(tool_calls) / len(tool_calls):.1f}" if tool_calls else "—"
+        cat_str = (
+            "、".join(f"{name}×{count}" for name, count in sorted(categories.items()))
+            if categories
+            else "（無失敗）"
+        )
+        # 2026-07-28 (alfred): non-gating — how often the model took a
+        # different-but-still-passing path than the case's mock-script
+        # "standard path", for analysing habitual behaviour, not scoring it.
+        dev_str = f"{deviated_runs}/{total_runs}" if total_runs else "—"
+        rows.append(
+            f"| {tier} | {len(prompt_tokens)} | {avg_p} | {avg_c} | {avg_t} | {dev_str} "
+            f"| {cat_str} |"
+        )
+    if len(rows) <= 2:
+        return (
+            "（本次無 token/failure_category 資料——需 `--mode api --llm real` 且回應含 llm_meta）"
+        )
+    return "\n".join(rows)
 
 
 def to_markdown(scores: list[CaseScore]) -> str:

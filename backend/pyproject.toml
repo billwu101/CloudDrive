@@ -76,12 +76,18 @@ known-first-party = ["app", "eval"]
 # is @lru_cache, so these imports are intentionally not at module top.
 "tests/integration/conftest.py" = ["E402"]
 # Eval cases are Chinese prompts; fullwidth punctuation （）「」 is intentional.
-"eval/generate_cases.py" = ["RUF001", "RUF002"]
+"eval/generate_cases.py" = ["RUF001", "RUF002", "RUF003"]
 # Judge rubrics / report headings / --verbose labels are Traditional Chinese
 # (fullwidth ，：／（）).
 "eval/judge.py" = ["RUF001", "RUF002"]
 "eval/report.py" = ["RUF001", "RUF002"]
 "eval/run.py" = ["RUF001", "RUF002"]
+"eval/run_isolated_e9.py" = ["RUF001", "RUF002"]
+"eval/codegen_smoke.py" = ["RUF001", "RUF002"]
+# Case-design rationale quotes alfred verbatim (fullwidth ？「」).
+"eval/schema.py" = ["RUF001", "RUF002", "RUF003"]
+"eval/verifier.py" = ["RUF001", "RUF002", "RUF003"]
+"tests/eval/test_verify_execution_depth.py" = ["RUF001", "RUF002"]
 
 [tool.ruff.format]
 quote-style = "double"

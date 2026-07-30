@@ -198,3 +198,41 @@ async def test_generated_skill_surfaces_sandbox_failure() -> None:
     with pytest.raises(AppError, match="Skill execution failed"):
         await service.execute_skill(user_id=user_id, skill_id=bad.id, item_id=source.id)
     assert uploads.uploaded == []  # nothing ingested on failure
+
+
+_SILENT_SKILL_CODE = (
+    "def run(input_path, output_dir, params):\n"
+    "    # Exits cleanly, writes nothing — the failure mode this test pins down.\n"
+    "    return {'ok': True, 'note': 'nothing to do'}\n"
+)
+
+
+async def test_a_skill_that_writes_no_file_is_an_error_not_a_success() -> None:
+    """A generated skill that produces nothing must not report success.
+
+    The codegen contract is explicit that the written file IS the result the
+    user receives, so zero files means the skill did not do its job. Before this
+    check the API answered 200 with "produced 0 file(s) from bundle.zip" —
+    phrased as an accomplishment, with nothing to show for it.
+    """
+
+    user_id = uuid4()
+    skill = _installed_zip_skill(user_id)
+    skill.code = _SILENT_SKILL_CODE
+    source = SimpleNamespace(
+        id=uuid4(),
+        name="bundle.zip",
+        item_type=ItemType.FILE,
+        storage_key="users/x/files/y/v1",
+        parent_id=None,
+    )
+    drive = _Drive(source)
+    uploads = _Uploads()
+    service = _service(skill, drive, uploads, _Storage(_zip_bytes()))
+
+    with pytest.raises(AppError) as excinfo:
+        await service.execute_skill(user_id=user_id, skill_id=skill.id, item_id=source.id)
+
+    assert "wrote no output file" in str(excinfo.value)
+    assert uploads.uploaded == []  # nothing was ingested
+    assert not [n for _, n in drive.created]  # and no empty destination folder left behind

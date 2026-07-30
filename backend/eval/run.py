@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import urllib.error
 from typing import Any
 
 from eval.baseline import (
@@ -23,13 +24,37 @@ from eval.judge import (
     judge_case,
     judge_execution,
 )
-from eval.report import aggregates_to_json, aggregates_to_markdown, verbose_markdown
-from eval.runner import run_case_http
+from eval.report import (
+    aggregates_to_json,
+    aggregates_to_markdown,
+    efficiency_summary_to_markdown,
+    unweighted_dimension_warning,
+    verbose_markdown,
+)
+from eval.runner import (
+    EvalRunnerError,
+    confirm_workflow_http,
+    pending_workflow_id,
+    run_case_http,
+)
 from eval.runner_browser import run_browser_suite
 from eval.schema import EvalCase, load_cases
 from eval.scoring import AggregateScore, aggregate_runs, score_case
-from eval.state import fetch_item_names_http
-from eval.verifier import CheckResult, verify, verify_execution, verify_state
+from eval.state import fetch_items_http
+from eval.verifier import (
+    CheckResult,
+    compute_path_deviation,
+    count_tool_calls,
+    step_results,
+    verify,
+    verify_codegen_execution,
+    verify_execution,
+    verify_reference_grounding,
+    verify_reply_honesty,
+    verify_required_skills,
+    verify_state,
+    verify_step_results,
+)
 
 
 def main() -> int:
@@ -136,6 +161,10 @@ def main() -> int:
         result_summary = ""
         last_checks: list[CheckResult] = []
         for _ in range(runs):
+            llm_meta: dict[str, Any] | None = None
+            plan_is_none = False
+            path_deviation: str | None = None
+            tool_call_count: int | None = None
             if args.mode == "exec":
                 exec_output = run_execution_case(case)
                 checks = verify_execution(case, exec_output)
@@ -160,12 +189,42 @@ def main() -> int:
                 # (--no-strict-steps extends the loose check to api+real too.)
                 strict = args.mode != "browser" and not args.no_strict_steps
                 checks = verify(case, response, strict_steps=strict)
+                checks = checks + verify_reference_grounding(case, response)
+                checks = checks + verify_required_skills(case, response)
+                checks = checks + verify_codegen_execution(case, response)
                 if judge is not None:
                     checks = checks + judge_case(case, response, judge, fallback_rubric=True)
-                checks = checks + _state_checks(case, args)
+                confirm_checks, confirmed_results = _execute_pending(case, args, response)
+                checks = checks + confirm_checks
+                # Auto-executed plans report their steps on the chat response
+                # itself; confirmed ones only on the confirm response. Live runs
+                # only: the in-process mock backend has no real drive, so its
+                # queries legitimately return nothing and its references cannot
+                # resolve — asserting on that would fail every case for a reason
+                # that has nothing to do with the model.
+                if _is_live(args):
+                    checks = checks + verify_step_results(
+                        case, confirmed_results or step_results(response)
+                    )
+                state_checks = _state_checks(case, args)
+                checks = checks + state_checks
+                checks = checks + verify_reply_honesty(case, response, state_checks)
                 result_summary = _summarise_response(response)
+                llm_meta = response.get("llm_meta")
+                plan_is_none = response.get("plan") is None
+                path_deviation = compute_path_deviation(case, response)
+                tool_call_count = count_tool_calls(response)
             last_checks = checks
-            run_scores.append(score_case(case, checks))
+            run_scores.append(
+                score_case(
+                    case,
+                    checks,
+                    llm_meta=llm_meta,
+                    plan_is_none=plan_is_none,
+                    path_deviation=path_deviation,
+                    tool_call_count=tool_call_count,
+                )
+            )
         scores.append(aggregate_runs(case, run_scores))
         verbose_rows.append((case, result_summary, last_checks))
 
@@ -173,6 +232,14 @@ def main() -> int:
         print(verbose_markdown(verbose_rows))
         print()
     print(aggregates_to_json(scores) if args.json else aggregates_to_markdown(scores))
+    if not args.json:
+        print()
+        print("### 效率指標 / 失敗分類（依 tag 彙總，report-only）")
+        print(efficiency_summary_to_markdown(cases, scores))
+        warning = unweighted_dimension_warning(scores)
+        if warning:
+            print()
+            print(warning)
 
     if args.save_baseline:
         save_baseline(args.save_baseline, scores)
@@ -223,17 +290,62 @@ def _summarise_exec(exec_output: dict[str, Any]) -> str:
     return f"產出檔: {files} | 內容: {'; '.join(snippets)}"
 
 
+def _is_live(args: argparse.Namespace) -> bool:
+    """Running against a real backend with a real model (so seeded data exists
+    and executed steps mean something)."""
+
+    return bool(args.mode == "api" and args.llm == "real" and args.token)
+
+
+def _wants_live_state(case: EvalCase, args: argparse.Namespace) -> bool:
+    """Whether this run both expects a post-execution state and can observe one.
+
+    ``_execute_pending`` and ``_state_checks`` share this gate on purpose: a
+    case whose plan we confirm but whose state we never read would perform real
+    writes for nothing, and a case whose state we read without confirming would
+    assert an outcome nobody executed (the 2026-07-28 audit found exactly that
+    second half — ``run.py`` asserted ``expect.state`` for 200 cases while only
+    ``run_isolated_e9.py`` ever confirmed)."""
+
+    if case.expect.state is None:
+        return False
+    return _is_live(args)
+
+
+def _execute_pending(
+    case: EvalCase, args: argparse.Namespace, response: dict[str, Any]
+) -> tuple[list[CheckResult], list[dict[str, Any]]]:
+    """Confirm a pending plan so ``expect.state`` describes something that
+    actually ran. No-op when the plan needs no approval (auto-executed), when
+    there is no plan at all, or when this run cannot observe state anyway.
+
+    ``auto_confirm=False`` means the case simulates a user who never approves —
+    its ``expect.state`` asserts the *opposite* (that nothing took effect before
+    approval, e.g. ``safety_no_side_effect.yaml``'s ``item_absent``). Confirming
+    those would invert exactly the safety property they exist to prove.
+    """
+
+    if not case.auto_confirm or not _wants_live_state(case, args):
+        return [], []
+    workflow_id = pending_workflow_id(response)
+    if workflow_id is None:
+        return [], []
+    try:
+        confirmed = confirm_workflow_http(args.base_url, args.token, workflow_id)
+    except (EvalRunnerError, urllib.error.URLError) as exc:
+        return [CheckResult("execution", "workflow confirm succeeded", False, str(exc))], []
+    return [], step_results(confirmed)
+
+
 def _state_checks(case: EvalCase, args: argparse.Namespace) -> list[CheckResult]:
     """Post-run state/safety assertions — only when a live snapshot is reachable
     (api mode against a real backend with a token). Skipped otherwise (the
     in-process mock runner has no real DB)."""
 
-    if case.expect.state is None:
+    if not _wants_live_state(case, args):
         return []
-    if args.mode != "api" or args.llm != "real" or not args.token:
-        return []
-    item_names = fetch_item_names_http(args.base_url, args.token)
-    return verify_state(case, item_names)
+    items = fetch_items_http(args.base_url, args.token)
+    return verify_state(case, items)
 
 
 def _build_judge(args: argparse.Namespace) -> JudgeModel | None:
