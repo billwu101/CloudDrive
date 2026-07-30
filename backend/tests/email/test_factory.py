@@ -11,7 +11,10 @@ from app.email.smtp import SMTPEmailProvider
 
 
 def _settings(**overrides: object) -> Settings:
-    return Settings(**overrides)  # type: ignore[arg-type]
+    # `_env_file=None` keeps these hermetic: Settings otherwise reads the
+    # developer's backend/.env, so "the default is console" would quietly become
+    # a statement about whoever ran the tests.
+    return Settings(_env_file=None, **overrides)  # type: ignore[arg-type]
 
 
 def test_default_provider_is_console() -> None:

@@ -191,7 +191,7 @@ locked_until timestamptz null
 ```sql
 ALTER TABLE share_links
 ADD CONSTRAINT ck_share_links_permission
-CHECK (permission IN ('viewer', 'downloader'));
+CHECK (permission IN ('viewer', 'downloader', 'editor'));
 ```
 
 速率限制計數存在資料列上而非行程記憶體：正式部署為多 worker，行程內計數會讓「每分鐘 5 次」實際變成「每分鐘 5 × worker 數」。三個欄位由 `PublicShareService.open_session` 在同一個交易內讀取並更新。
@@ -357,5 +357,6 @@ CREATE INDEX idx_file_embeddings_item_id ON file_embeddings(item_id);
 | 0018 | 永久刪除所需的 FK ON DELETE：`activity_logs.item_id` → SET NULL、`user_item_preferences.item_id` → CASCADE | §7.8、§6.10 |
 | 0019 | `upload_sessions.parent_id` / `drive_item_id` → SET NULL（同上，清空垃圾桶用） | §7.7 |
 | 0020 | `share_links` 加 `attempt_window_start` / `attempt_count` / `locked_until`（公開連結速率限制） | §7.6、§6.12.11 |
+| 0021 | `ck_share_links_permission` 放寬納入 `editor`（訪客寫入，proposal §33） | §7.6、§6.12.11b |
 
 > 部署時 `alembic upgrade head` 套用全鏈（見 §21）。**新增 migration 必須接在鏈尾並回填本表**，維持文件與 schema 同步。

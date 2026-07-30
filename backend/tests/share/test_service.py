@@ -11,7 +11,7 @@ from app.models.drive_item import DriveItem
 from app.models.share import Share
 from app.models.share_link import ShareLink
 from app.models.user import User
-from app.permission.permissions import Permission
+from app.permission.permissions import LinkPermission, Permission
 from app.share.repository import (
     AbstractShareLinkRepository,
     AbstractShareManagementRepository,
@@ -342,7 +342,7 @@ async def test_token_not_stored_in_plaintext() -> None:
     item_repo = MemDriveItemRepo([item])
     svc, link_repo = _make_link_svc(item_repo)
 
-    resp = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    resp = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER)
     token = resp.token
     assert token is not None
     # The stored hash must NOT equal the plaintext token
@@ -357,7 +357,7 @@ async def test_validate_link_with_correct_password() -> None:
     item_repo = MemDriveItemRepo([item])
     svc, _ = _make_link_svc(item_repo)
 
-    resp = await svc.create_link(owner_id, item.id, Permission.VIEWER, password="secret")
+    resp = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER, password="secret")
     token = resp.token
     assert token is not None
     link = await svc.validate_access(token, password="secret")
@@ -370,7 +370,7 @@ async def test_validate_link_wrong_password_raises() -> None:
     item_repo = MemDriveItemRepo([item])
     svc, _ = _make_link_svc(item_repo)
 
-    resp = await svc.create_link(owner_id, item.id, Permission.VIEWER, password="correct")
+    resp = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER, password="correct")
     token = resp.token
     assert token is not None
     with pytest.raises(ForbiddenError):
@@ -384,7 +384,7 @@ async def test_validate_expired_link_raises() -> None:
     svc, _ = _make_link_svc(item_repo)
 
     past = datetime.now(UTC) - timedelta(hours=1)
-    resp = await svc.create_link(owner_id, item.id, Permission.VIEWER, expires_at=past)
+    resp = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER, expires_at=past)
     token = resp.token
     assert token is not None
     with pytest.raises(AppError) as exc_info:
@@ -398,7 +398,7 @@ async def test_validate_deactivated_link_raises() -> None:
     item_repo = MemDriveItemRepo([item])
     svc, link_repo = _make_link_svc(item_repo)
 
-    resp = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    resp = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER)
     token = resp.token
     assert token is not None
     link = link_repo._links[0]
@@ -414,7 +414,7 @@ async def test_deactivate_link_rejects_a_stranger() -> None:
     item = _item(owner_id=owner_id)
     items = MemDriveItemRepo([item])
     svc, links = _make_link_svc(items)
-    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    created = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER)
 
     with pytest.raises(ForbiddenError):
         await svc.deactivate_link(other_id, created.id)
@@ -579,7 +579,7 @@ async def test_a_disabled_link_record_can_be_deleted() -> None:
     item = _item(owner_id=owner_id)
     items = MemDriveItemRepo([item])
     svc, links = _make_link_svc(items)
-    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    created = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER)
     await svc.deactivate_link(owner_id, created.id)
 
     await svc.delete_link_record(owner_id, created.id)
@@ -595,7 +595,7 @@ async def test_an_expired_link_record_can_be_deleted() -> None:
     created = await svc.create_link(
         owner_id,
         item.id,
-        Permission.VIEWER,
+        LinkPermission.VIEWER,
         expires_at=datetime.now(UTC) - timedelta(hours=1),
     )
 
@@ -614,7 +614,7 @@ async def test_removing_a_live_link_revokes_it_outright() -> None:
     item = _item(owner_id=owner_id)
     items = MemDriveItemRepo([item])
     svc, links = _make_link_svc(items)
-    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    created = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER)
 
     await svc.delete_link_record(owner_id, created.id)
 
@@ -626,7 +626,7 @@ async def test_a_stranger_cannot_delete_a_link_record() -> None:
     item = _item(owner_id=owner_id)
     items = MemDriveItemRepo([item])
     svc, links = _make_link_svc(items)
-    created = await svc.create_link(owner_id, item.id, Permission.VIEWER)
+    created = await svc.create_link(owner_id, item.id, LinkPermission.VIEWER)
     await svc.deactivate_link(owner_id, created.id)
 
     with pytest.raises(ForbiddenError):

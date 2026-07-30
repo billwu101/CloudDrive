@@ -15,7 +15,7 @@ from app.assistant.skills.registry import (
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.drive.service import DriveService
-from app.permission.permissions import Permission
+from app.permission.permissions import LinkPermission
 from app.share.service import ShareLinkService
 from app.trash.service import TrashService
 
@@ -172,7 +172,7 @@ def register_write_skills(
 
         async def share_item(context: SkillContext, args: Mapping[str, Any]) -> Any:
             link = await share_link_service.create_link(
-                context.user_id, _required_uuid(args, "item_id"), Permission.VIEWER
+                context.user_id, _required_uuid(args, "item_id"), LinkPermission.VIEWER
             )
             return _dump(link)
 

@@ -155,3 +155,59 @@ proposal §29.3 全部 5 項通過（第 5 項需搭配前端）；三項品質�
 - [x] `app/share/service.py`：`delete_link_record()`——驗證擁有權；連結仍有效時回 422 要求先停用。抽出 `_owned_link()` 供停用與刪除共用。
 - [x] `app/share/router.py`：`DELETE /share/links/{link_id}/record`（路由順序須在 `/links/{link_id}` 之前）。
 - [x] 測試：已停用可刪、已過期可刪、仍有效回 422、非 owner 回 403、integration 一輪完整流程。
+
+### 修正（2026-07-29，使用者回報）：公開連結選 Editor 會 500
+
+**症狀**：分享彈窗 Link 分頁把權限設為 Editor 後按「Create link」失敗。
+
+**根因鏈**：`PermissionSelect` 是 People／Link 兩個分頁共用的元件，提供 viewer/downloader/editor 三級；`ShareLinkRequest.permission` 用通用的 `Permission`（四級全收）；資料庫 `ck_share_links_permission` 只允許 viewer/downloader → IntegrityError → 500。設計 §6.12.4 原本就寫 `create_link(permission: LinkPermission)`，屬實作與設計脫節。
+
+- [x] `app/permission/permissions.py`：新增 `LinkPermission`（viewer/downloader）。
+- [x] `app/share/schemas.py`：`ShareLinkRequest.permission` 改用 `LinkPermission` → 越界值在邊界回 422。
+- [x] `app/share/service.py`：`create_link` 簽章同步。
+- [x] `app/assistant/skills/builtin/write.py`：助理的 `share_item` 技能同為呼叫端（mypy 抓到），一併改用 `LinkPermission.VIEWER`。
+- [x] `PermissionSelect` 新增 `allowed` prop；`ShareLinkPanel` 限制為 viewer/downloader。
+- [x] 測試：後端「editor 回 422 且不呼叫 service」「viewer/downloader 仍為 201」；前端「Link 分頁只有兩級」「People 分頁仍有 editor」。
+
+---
+
+## 階段 2 追加：公開連結的臨時編輯權（proposal §33 / 設計 §6.12.11b）
+
+**目標**：讓沒有帳號的外部人員憑連結修改被分享的內容，能力與登入 editor 相同，並有時效與稽核。
+**不含範圍**：匿名者身分識別、即時協作、永久刪除、再分享（proposal §33.5）。
+**前置依賴**：§28 公開連結存取（已完成）。
+
+### 子任務
+
+- [x] `alembic/versions/0021_share_link_editor.py`：`ck_share_links_permission` 放寬納入 `editor`（drop + recreate constraint）。
+- [x] `app/permission/permissions.py`：`LinkPermission` 加 `EDITOR`。
+- [x] `app/share/service.py`：`create_link` 於 `permission == editor` 且 `expires_at is None` 時回 422。
+- [x] `app/public_share/service.py`：新增 `_assert_can_edit`（驗 `prm == editor`）；`create_folder` / `upload` / `rename` / `move` / `trash` 五個方法，一律先驗權限＋子樹再以 `root.owner_id` 呼叫下游。
+- [x] `app/public_share/router.py`：對應五個端點；`Request` 取 `ip_address` / `user_agent` 傳入稽核。
+- [x] 稽核：每筆寫入以 `ActivityLogService.log(actor_id=<連結建立者>, metadata={"via_share_link_id": ...}, ip_address=..., user_agent=...)`。
+- [x] 前端 `PermissionSelect` 的 `allowed` 於 Link 分頁改為三級；選 editor 時到期欄位變必填並提示。
+
+### 測試任務
+
+- [x] editor 連結未帶到期時間 → 422；viewer/downloader 不受影響。
+- [x] viewer / downloader 憑證呼叫寫入端點 → 403。
+- [x] editor 憑證可上傳、覆寫（`file_versions` +1）、改名、移動、移到垃圾桶。
+- [x] 子樹外的 item 寫入 → 404（非 403，避免確認 id 存在）。
+- [x] 無法永久刪除、無法建立新連結。
+- [x] 匿名上傳計入擁有者配額；不足時 413。
+- [x] `activity_logs` 帶 `via_share_link_id`，`actor_id` 為連結建立者。
+- [x] 連結被移除後既有憑證的寫入立即失敗。
+- [x] integration：真 Postgres 跑一輪「建 editor 連結 → 訪客上傳 → 擁有者容量增加 → 稽核可追溯」。
+
+### 驗收條件
+
+proposal §33.4 全部 7 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
+
+**驗證結果（2026-07-31）**：後端 **941 passed** + integration **62 passed**；前端 **338 passed**；四項檢查全綠。migration 0021 於全新 DB 跑完整條鏈，upgrade 後約束納入 editor、downgrade 後回到兩級（downgrade 會先清掉既有 editor 連結，否則舊約束會擋）。integration 實測「建 editor 連結 → 訪客上傳 → 檔案出現在擁有者資料夾 → 擁有者 used_bytes 增加」。
+
+**實作時被守衛擋下的一次**：`PublicShareService` 對未接上的下游 service 會丟 `RuntimeError`，integration 第一次跑就抓到 router 工廠漏接 `upload_svc`/`trash_svc`/`drive_svc`——若當初讓它靜默為 None，這個漏洞會等到有人用才炸。
+
+### 風險
+
+- **下游以 owner 身分執行**：邊界完全靠 `PublicShareService` 自己擋，下游的權限檢查在此情境是 no-op。任何新增的訪客寫入端點都必須自行呼叫 `_assert_can_edit` + `_resolve_in_subtree`，漏掉即等於把 owner 權限交給匿名者。
+- **無上傳上限**（proposal §33.6 決策 4）：外洩的連結可填滿擁有者配額並使其自身無法上傳。

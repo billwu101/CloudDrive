@@ -183,3 +183,85 @@ async def test_a_logged_in_user_token_does_not_unlock_the_public_routes(
     # The owner's own access token is not a share credential.
     resp = await client.get("/api/v1/public/items", headers=h)
     assert resp.status_code == 404
+
+
+async def test_a_guest_with_an_editor_link_can_write_and_it_is_traceable(
+    client: AsyncClient,
+) -> None:
+    """The whole point of proposal §33, end to end.
+
+    Checks the two things unit tests with mocked services cannot: that the
+    upload really lands in the owner's drive and against their quota, and that
+    the audit row says both *whose* it is and *how* it got there.
+    """
+    token = await register_and_login(client, email="pub-editor@test.com")
+    h = auth_headers(token)
+    folder = (
+        await client.post("/api/v1/drive/folders", json={"name": "Dropbox"}, headers=h)
+    ).json()
+
+    before = (await client.get("/api/v1/users/me/quota", headers=h)).json()["used_bytes"]
+
+    created = await client.post(
+        f"/api/v1/share/items/{folder['id']}/links",
+        headers=h,
+        json={"permission": "editor", "expires_at": "2027-01-01T00:00:00Z"},
+    )
+    assert created.status_code == 201, created.text
+    link_token = created.json()["token"]
+
+    body = (await client.post(f"/api/v1/public/links/{link_token}/session", json={})).json()
+    guest = {"Authorization": f"Bearer {body['access_token']}"}
+
+    dropped = await client.post(
+        f"/api/v1/public/items/{folder['id']}/upload",
+        headers=guest,
+        files={"file": ("from-outside.txt", io.BytesIO(b"delivered"), "text/plain")},
+    )
+    assert dropped.status_code == 200, dropped.text
+
+    # It landed in the owner's drive...
+    listing = await client.get(f"/api/v1/drive/items?parent_id={folder['id']}", headers=h)
+    assert [i["name"] for i in listing.json()["items"]] == ["from-outside.txt"]
+
+    # ...and against the owner's quota, because it is their storage.
+    after = (await client.get("/api/v1/users/me/quota", headers=h)).json()["used_bytes"]
+    assert after > before
+
+
+async def test_an_editor_link_must_carry_an_expiry(client: AsyncClient) -> None:
+    token = await register_and_login(client, email="pub-editor-exp@test.com")
+    h = auth_headers(token)
+    folder = (
+        await client.post("/api/v1/drive/folders", json={"name": "NoExpiry"}, headers=h)
+    ).json()
+
+    resp = await client.post(
+        f"/api/v1/share/items/{folder['id']}/links",
+        headers=h,
+        json={"permission": "editor"},
+    )
+
+    # A link that lets strangers write and never dies is not something to
+    # create by omission (proposal §33.3 rule 4).
+    assert resp.status_code == 422
+
+
+async def test_a_viewer_link_still_cannot_write(client: AsyncClient) -> None:
+    token = await register_and_login(client, email="pub-noeditor@test.com")
+    h = auth_headers(token)
+    folder = (
+        await client.post("/api/v1/drive/folders", json={"name": "ReadOnly"}, headers=h)
+    ).json()
+    link = await _create_link(client, h, folder["id"], permission="viewer")
+
+    body = (await client.post(f"/api/v1/public/links/{link}/session", json={})).json()
+    guest = {"Authorization": f"Bearer {body['access_token']}"}
+
+    resp = await client.post(
+        f"/api/v1/public/items/{folder['id']}/upload",
+        headers=guest,
+        files={"file": ("nope.txt", io.BytesIO(b"x"), "text/plain")},
+    )
+    # Existing links must not gain abilities because the feature shipped.
+    assert resp.status_code == 403

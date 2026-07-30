@@ -27,13 +27,16 @@ from app.core.security import (
 from app.download.service import ArchiveResult, DownloadFileResult, DownloadService
 from app.drive.repository import AbstractDriveItemRepository
 from app.drive.schemas import DriveItemSortField, ItemType
+from app.drive.service import DriveService
 from app.models.drive_item import DriveItem
-from app.permission.permissions import Permission
+from app.permission.permissions import LinkPermission
 from app.preview.service import PreviewService, resolve_preview_type
 from app.public_share.schemas import PublicItemResponse, PublicSessionResponse
 from app.schemas.common import Page, SortOrder
 from app.share.repository import AbstractShareLinkRepository
 from app.storage.base import StorageProvider
+from app.trash.service import TrashService
+from app.upload.service import UploadService
 
 # Guard against a cycle in parent_id turning the ancestor walk into an infinite
 # loop. Real drives are nowhere near this deep.
@@ -84,13 +87,21 @@ def _to_public_item(item: DriveItem) -> PublicItemResponse:
     )
 
 
+@dataclass(frozen=True)
+class AuditContext:
+    """The two facts an audit row needs about an anonymous write."""
+
+    owner_id: UUID
+    link_id: UUID
+
+
 @dataclass
 class _Authorized:
     """A validated credential plus the live link and root item behind it."""
 
     claims: ShareAccessClaims
     root: DriveItem
-    permission: Permission
+    permission: LinkPermission
 
 
 class PublicShareService:
@@ -101,12 +112,38 @@ class PublicShareService:
         storage: StorageProvider,
         preview_svc: PreviewService,
         download_svc: DownloadService,
+        drive_svc: DriveService | None = None,
+        upload_svc: UploadService | None = None,
+        trash_svc: TrashService | None = None,
     ) -> None:
         self._items = item_repo
         self._links = link_repo
         self._storage = storage
         self._preview = preview_svc
         self._download = download_svc
+        # Only the write paths need these; read-only callers (and their tests)
+        # can leave them out.
+        self._drive_svc = drive_svc
+        self._upload_svc = upload_svc
+        self._trash_svc = trash_svc
+
+    @property
+    def _drive(self) -> DriveService:
+        if self._drive_svc is None:  # pragma: no cover - wiring error
+            raise RuntimeError("PublicShareService was built without a DriveService")
+        return self._drive_svc
+
+    @property
+    def _upload(self) -> UploadService:
+        if self._upload_svc is None:  # pragma: no cover - wiring error
+            raise RuntimeError("PublicShareService was built without an UploadService")
+        return self._upload_svc
+
+    @property
+    def _trash(self) -> TrashService:
+        if self._trash_svc is None:  # pragma: no cover - wiring error
+            raise RuntimeError("PublicShareService was built without a TrashService")
+        return self._trash_svc
 
     # --- session ----------------------------------------------------------
 
@@ -236,7 +273,7 @@ class PublicShareService:
         root = await self._items.get_by_id(link.item_id)
         if root is None or root.is_deleted:
             raise _invalid()
-        return _Authorized(claims=claims, root=root, permission=Permission(link.permission))
+        return _Authorized(claims=claims, root=root, permission=LinkPermission(link.permission))
 
     async def _resolve_in_subtree(self, auth: _Authorized, item_id: UUID) -> DriveItem:
         """Fetch an item, refusing anything outside the shared subtree.
@@ -261,8 +298,21 @@ class PublicShareService:
 
     @staticmethod
     def _assert_can_download(auth: _Authorized) -> None:
-        if auth.permission == Permission.VIEWER:
+        if auth.permission == LinkPermission.VIEWER:
             raise ForbiddenError("This link does not allow downloads")
+
+    @staticmethod
+    def _assert_can_edit(auth: _Authorized) -> None:
+        """The only thing standing between a guest and owner-level access.
+
+        Every write below runs downstream as `root.owner_id` — the sole identity
+        the existing services accept — which is *more* than editor. So the limit
+        cannot be delegated: it has to be checked here, on every write path,
+        before anything is called. The downstream permission check is a no-op in
+        this context, not a second line of defence (design §6.12.11b).
+        """
+        if auth.permission != LinkPermission.EDITOR:
+            raise ForbiddenError("This link does not allow editing")
 
     # --- content ----------------------------------------------------------
 
@@ -320,6 +370,84 @@ class PublicShareService:
             size_bytes=item.size_bytes,
             stream=self._storage.open_read(item.storage_key),
         )
+
+    # --- writes (editor links only, proposal §33) -------------------------
+
+    async def create_folder(self, access_token: str, parent_id: UUID, name: str) -> DriveItem:
+        auth = await self._authorize(access_token)
+        self._assert_can_edit(auth)
+        parent = await self._resolve_in_subtree(auth, parent_id)
+        if parent.item_type != ItemType.FOLDER:
+            raise AppError(ErrorCode.INVALID_OPERATION, "Parent must be a folder")
+        created = await self._drive.create_folder(auth.root.owner_id, parent.id, name)
+        return await self._reload(created.id)
+
+    async def rename(self, access_token: str, item_id: UUID, new_name: str) -> DriveItem:
+        auth = await self._authorize(access_token)
+        self._assert_can_edit(auth)
+        item = await self._resolve_in_subtree(auth, item_id)
+        await self._drive.rename(auth.root.owner_id, item.id, new_name)
+        return await self._reload(item.id)
+
+    async def move(self, access_token: str, item_id: UUID, new_parent_id: UUID) -> DriveItem:
+        auth = await self._authorize(access_token)
+        self._assert_can_edit(auth)
+        item = await self._resolve_in_subtree(auth, item_id)
+        # The destination is checked the same way as the source: a guest must not
+        # be able to move content *out* of the subtree they were given.
+        parent = await self._resolve_in_subtree(auth, new_parent_id)
+        if parent.item_type != ItemType.FOLDER:
+            raise AppError(ErrorCode.INVALID_OPERATION, "Destination must be a folder")
+        await self._drive.move(auth.root.owner_id, item.id, parent.id)
+        return await self._reload(item.id)
+
+    async def trash(self, access_token: str, item_id: UUID) -> None:
+        auth = await self._authorize(access_token)
+        self._assert_can_edit(auth)
+        item = await self._resolve_in_subtree(auth, item_id)
+        if item.id == auth.root.id:
+            # Trashing the shared root would delete the thing the link points at,
+            # leaving the link alive and aimed at nothing.
+            raise AppError(ErrorCode.INVALID_OPERATION, "Cannot trash the shared item itself")
+        await self._trash.trash_item(auth.root.owner_id, item.id)
+
+    async def upload(
+        self,
+        access_token: str,
+        parent_id: UUID,
+        *,
+        filename: str,
+        stream: AsyncGenerator[bytes, None],
+        size_bytes: int,
+        mime_type: str | None = None,
+    ) -> DriveItem:
+        """Upload into a shared folder. Quota is charged to the owner, whose
+        drive the file lands in (proposal §33.3 rule 6)."""
+        auth = await self._authorize(access_token)
+        self._assert_can_edit(auth)
+        parent = await self._resolve_in_subtree(auth, parent_id)
+        if parent.item_type != ItemType.FOLDER:
+            raise AppError(ErrorCode.INVALID_OPERATION, "Uploads need a folder")
+        created = await self._upload.upload_simple(
+            auth.root.owner_id,
+            parent.id,
+            filename,
+            stream,
+            size_bytes,
+            mime_type,
+        )
+        return await self._reload(created.id)
+
+    async def audit_context(self, access_token: str) -> AuditContext:
+        """Who a guest write is recorded against, and via which link."""
+        auth = await self._authorize(access_token)
+        return AuditContext(owner_id=auth.root.owner_id, link_id=auth.claims.link_id)
+
+    async def _reload(self, item_id: UUID) -> DriveItem:
+        item = await self._items.get_by_id(item_id)
+        if item is None:  # pragma: no cover - written moments ago
+            raise _invalid()
+        return item
 
     async def archive(self, access_token: str) -> ArchiveResult:
         """Zip the whole shared subtree (proposal §28.7 decision 3).

@@ -96,6 +96,43 @@ describe('ShareDialog', () => {
   })
 })
 
+describe('link permission tiers', () => {
+  it('offers editor but never owner for a public link', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+
+    const select = screen.getByRole('combobox', { name: /permission level/i })
+    const tiers = Array.from(select.querySelectorAll('option')).map((o) => o.value)
+    // Editor is deliberate (proposal §33). Owner never is — a URL cannot hand
+    // over ownership, and the backend refuses it with a 422.
+    expect(tiers).toEqual(['viewer', 'downloader', 'editor'])
+  })
+
+  it('makes the expiry required once the link can write', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+
+    expect(screen.getByLabelText('Link expiry')).not.toBeRequired()
+
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /permission level/i }),
+      'editor',
+    )
+
+    // A link that lets strangers write and never dies should not be creatable
+    // by leaving a field alone.
+    expect(screen.getByLabelText('Link expiry (required)')).toBeRequired()
+    expect(screen.getByText(/without signing in/)).toBeInTheDocument()
+  })
+
+  it('still offers Editor when sharing with a person', async () => {
+    renderDialog()
+    const select = screen.getByRole('combobox', { name: /permission level/i })
+    const tiers = Array.from(select.querySelectorAll('option')).map((o) => o.value)
+    expect(tiers).toContain('editor')
+  })
+})
+
 describe('link actions', () => {
   it('offers copy but not deactivate', async () => {
     renderDialog()

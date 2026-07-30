@@ -85,7 +85,7 @@
 | --- | --- | --- |
 | 時光機還原時的硬配額檢查待補強（還原已寫 activity log） | 低 | [time-machine.md](./time-machine.md) |
 | 語意搜尋舊檔 embedding backfill 尚未背景自動化（目前手動觸發） | 低 | [backend-search.md](./backend-search.md) |
-| 評測結論綁定單一模型與硬體，換模型需重跑 sweep | — 前提而非缺陷 | [assistant-eval.md](./assistant-eval.md) |
+| 評測結論綁定單一模型與硬體（gemma4:26b + 本機 GPU），換模型需重跑 sweep | — 前提而非缺陷 | [assistant-eval.md](./assistant-eval.md) |
 | ~~planner 寫入意圖規劃在困難集（EC2/EC4）約 47%~~ **已改善**：現行基準 EC2 95/120、EC4 100/100（`runs=3`，判分語意見 §10.18）。殘餘失敗集中在批次分類誤搬 canary | 中（功能可靠性） | [detailed-design §10.19](../detailed-design/10-assistant-eval.md) |
 | ~~助理無對話記憶（有存沒回讀）~~ **已落地**：對話記憶 v1（`assistant/memory.py` + `router.py` 回讀歷史）。**但評測案例仍全為單輪**，多輪指涉的可靠性尚未量化 | 中（驗證覆蓋） | [roadmap.md](../roadmap.md) |
 

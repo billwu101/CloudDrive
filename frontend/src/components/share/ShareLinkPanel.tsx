@@ -88,7 +88,14 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <PermissionSelect value={permission} onChange={setPermission} />
+        {/* "owner" is never on offer — a URL cannot hand over ownership.
+            "editor" can (proposal §33): the holder edits inside the shared
+            subtree, and the link must then carry an expiry. */}
+        <PermissionSelect
+          value={permission}
+          onChange={setPermission}
+          allowed={['viewer', 'downloader', 'editor']}
+        />
         <input
           type="password"
           placeholder="Password (optional)"
@@ -98,13 +105,20 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
           aria-label="Link password (optional)"
         />
       </div>
+      {permission === 'editor' && (
+        <p className="text-xs text-muted-foreground">
+          Anyone with this link can add, rename, move and trash files inside the shared item —
+          without signing in. It must have an expiry, and the changes count against your storage.
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <input
           type="datetime-local"
           value={expiresAt}
           onChange={(e) => setExpiresAt(e.target.value)}
           className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-          aria-label="Link expiry"
+          required={permission === 'editor'}
+          aria-label={permission === 'editor' ? 'Link expiry (required)' : 'Link expiry'}
         />
         <button
           onClick={handleCreate}

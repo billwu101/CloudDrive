@@ -9,6 +9,7 @@ passwords, or reach items the link never covered.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
@@ -24,7 +25,7 @@ from app.core.security import (
     decode_share_access_token,
 )
 from app.drive.schemas import ItemType
-from app.permission.permissions import Permission
+from app.permission.permissions import LinkPermission, Permission
 from app.public_share.service import PublicShareService
 from app.share.service import ShareLinkService
 from tests.drive.test_service import MemDriveItemRepo, _item
@@ -64,7 +65,7 @@ async def _link_for(
     item_id: UUID,
     owner_id: UUID,
     *,
-    permission: Permission = Permission.DOWNLOADER,
+    permission: LinkPermission = LinkPermission.DOWNLOADER,
     password: str | None = None,
     expires_at: datetime | None = None,
 ) -> str:
@@ -315,7 +316,7 @@ async def test_viewer_link_cannot_download_even_though_creator_owns_the_file() -
     """Permission comes from the link, never from 'the creator is the owner'."""
     owner, items, doc = await _drive_with_file()
     links = MemShareLinkRepo()
-    token = await _link_for(items, links, doc.id, owner, permission=Permission.VIEWER)
+    token = await _link_for(items, links, doc.id, owner, permission=LinkPermission.VIEWER)
     svc = _svc(items, links)
     credential = (await svc.open_session(token, None)).access_token
 
@@ -328,7 +329,7 @@ async def test_viewer_link_cannot_download_even_though_creator_owns_the_file() -
 async def test_downloader_link_can_download() -> None:
     owner, items, doc = await _drive_with_file()
     links = MemShareLinkRepo()
-    token = await _link_for(items, links, doc.id, owner, permission=Permission.DOWNLOADER)
+    token = await _link_for(items, links, doc.id, owner, permission=LinkPermission.DOWNLOADER)
     svc = _svc(items, links)
     credential = (await svc.open_session(token, None)).access_token
 
@@ -376,3 +377,167 @@ async def test_refresh_cannot_outrun_the_total_lifetime_cap() -> None:
     with pytest.raises(AppError) as exc:
         await _svc(items, links).refresh_session(stale)
     assert exc.value.code == ErrorCode.SHARE_LINK_INVALID
+
+
+# ── guest writes (editor links, proposal §33) ────────────────────────────────
+
+
+def _svc_with_writes(items: MemDriveItemRepo, links: MemShareLinkRepo) -> PublicShareService:
+    """A service wired for writes, with the downstream services mocked.
+
+    The mocks matter: everything below runs downstream as the *owner*, whose
+    permissions exceed editor's. These tests therefore assert that the guard
+    fires before the downstream call, not that the downstream refused.
+    """
+    return PublicShareService(
+        item_repo=items,
+        link_repo=links,
+        storage=_Storage(),  # type: ignore[arg-type]
+        preview_svc=AsyncMock(),
+        download_svc=AsyncMock(),
+        drive_svc=AsyncMock(),
+        upload_svc=AsyncMock(),
+        trash_svc=AsyncMock(),
+    )
+
+
+async def _editor_credential(
+    items: MemDriveItemRepo, links: MemShareLinkRepo, root_id: UUID, owner: UUID
+) -> tuple[PublicShareService, str]:
+    # An editor link must carry an expiry — that rule is enforced in create_link,
+    # so every fixture here has to satisfy it.
+    token = await _link_for(
+        items,
+        links,
+        root_id,
+        owner,
+        permission=LinkPermission.EDITOR,
+        expires_at=datetime.now(UTC) + timedelta(days=7),
+    )
+    svc = _svc_with_writes(items, links)
+    return svc, (await svc.open_session(token, None)).access_token
+
+
+async def test_a_viewer_link_cannot_write() -> None:
+    owner, items, doc = await _drive_with_file()
+    links = MemShareLinkRepo()
+    token = await _link_for(items, links, doc.id, owner, permission=LinkPermission.VIEWER)
+    svc = _svc_with_writes(items, links)
+    credential = (await svc.open_session(token, None)).access_token
+
+    with pytest.raises(ForbiddenError):
+        await svc.rename(credential, doc.id, "renamed.txt")
+    # The guard must fire before anything downstream is asked — downstream runs
+    # as the owner and would happily comply.
+    svc._drive.rename.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+async def test_a_downloader_link_cannot_write() -> None:
+    owner, items, doc = await _drive_with_file()
+    links = MemShareLinkRepo()
+    token = await _link_for(items, links, doc.id, owner, permission=LinkPermission.DOWNLOADER)
+    svc = _svc_with_writes(items, links)
+    credential = (await svc.open_session(token, None)).access_token
+
+    with pytest.raises(ForbiddenError):
+        await svc.trash(credential, doc.id)
+
+
+async def test_an_editor_link_renames_as_the_owner() -> None:
+    owner = uuid4()
+    items = MemDriveItemRepo()
+    folder = _item(owner_id=owner, name="Shared")
+    inside = _item(owner_id=owner, parent_id=folder.id, item_type=ItemType.FILE, name="a.txt")
+    for i in (folder, inside):
+        items._items[i.id] = i
+    links = MemShareLinkRepo()
+    svc, credential = await _editor_credential(items, links, folder.id, owner)
+
+    await svc.rename(credential, inside.id, "b.txt")
+
+    # Downstream is called with the owner's id — the only identity the existing
+    # services accept for a visitor who has no account of their own.
+    svc._drive.rename.assert_awaited_once_with(owner, inside.id, "b.txt")  # type: ignore[attr-defined]
+
+
+async def test_writes_outside_the_subtree_look_absent() -> None:
+    owner = uuid4()
+    items = MemDriveItemRepo()
+    shared = _item(owner_id=owner, name="Shared")
+    outsider = _item(owner_id=owner, item_type=ItemType.FILE, name="private.txt")
+    for i in (shared, outsider):
+        items._items[i.id] = i
+    links = MemShareLinkRepo()
+    svc, credential = await _editor_credential(items, links, shared.id, owner)
+
+    with pytest.raises(AppError) as exc:
+        await svc.rename(credential, outsider.id, "hijacked.txt")
+
+    # 404, not 403 — a 403 would confirm the id exists.
+    assert exc.value.status_code == 404
+    svc._drive.rename.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+async def test_moving_out_of_the_subtree_is_refused() -> None:
+    owner = uuid4()
+    items = MemDriveItemRepo()
+    shared = _item(owner_id=owner, name="Shared")
+    inside = _item(owner_id=owner, parent_id=shared.id, item_type=ItemType.FILE, name="a.txt")
+    elsewhere = _item(owner_id=owner, name="Elsewhere")
+    for i in (shared, inside, elsewhere):
+        items._items[i.id] = i
+    links = MemShareLinkRepo()
+    svc, credential = await _editor_credential(items, links, shared.id, owner)
+
+    with pytest.raises(AppError):
+        await svc.move(credential, inside.id, elsewhere.id)
+
+    svc._drive.move.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+async def test_the_shared_item_itself_cannot_be_trashed() -> None:
+    owner = uuid4()
+    items = MemDriveItemRepo()
+    shared = _item(owner_id=owner, name="Shared")
+    items._items[shared.id] = shared
+    links = MemShareLinkRepo()
+    svc, credential = await _editor_credential(items, links, shared.id, owner)
+
+    with pytest.raises(AppError):
+        # Otherwise the link stays alive pointing at nothing.
+        await svc.trash(credential, shared.id)
+
+
+async def test_upload_is_charged_to_the_owner() -> None:
+    owner = uuid4()
+    items = MemDriveItemRepo()
+    folder = _item(owner_id=owner, name="Dropbox")
+    items._items[folder.id] = folder
+    links = MemShareLinkRepo()
+    svc, credential = await _editor_credential(items, links, folder.id, owner)
+
+    # The service reloads the created row, so the mock has to name a real one.
+    uploaded = _item(owner_id=owner, parent_id=folder.id, item_type=ItemType.FILE, name="note.txt")
+    items._items[uploaded.id] = uploaded
+    svc._upload.upload_simple.return_value = uploaded  # type: ignore[attr-defined]
+
+    async def _bytes() -> AsyncGenerator[bytes, None]:
+        yield b"hello"
+
+    await svc.upload(credential, folder.id, filename="note.txt", stream=_bytes(), size_bytes=5)
+
+    called = svc._upload.upload_simple.await_args  # type: ignore[attr-defined]
+    # First positional arg is the user the quota is charged to.
+    assert called.args[0] == owner
+
+
+async def test_audit_context_names_the_owner_and_the_link() -> None:
+    owner, items, doc = await _drive_with_file()
+    links = MemShareLinkRepo()
+    svc, credential = await _editor_credential(items, links, doc.id, owner)
+
+    who = await svc.audit_context(credential)
+
+    # Both halves are needed: the owner alone would read as "they did it".
+    assert who.owner_id == owner
+    assert who.link_id is not None

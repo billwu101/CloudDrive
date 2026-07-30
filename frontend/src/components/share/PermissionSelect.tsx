@@ -10,9 +10,19 @@ interface PermissionSelectProps {
   value: Permission
   onChange: (value: Permission) => void
   disabled?: boolean
+  /** Restrict the tiers offered. Public links, for instance, cannot grant
+   *  "editor" — the person opening one has no account to attribute edits to. */
+  allowed?: Permission[]
 }
 
-export function PermissionSelect({ value, onChange, disabled }: PermissionSelectProps) {
+export function PermissionSelect({
+  value,
+  onChange,
+  disabled,
+  allowed,
+}: PermissionSelectProps) {
+  const options = allowed ? OPTIONS.filter((o) => allowed.includes(o.value)) : OPTIONS
+
   return (
     <select
       value={value}
@@ -21,7 +31,7 @@ export function PermissionSelect({ value, onChange, disabled }: PermissionSelect
       className="rounded-md border border-input bg-background px-2 py-1 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
       aria-label="Permission level"
     >
-      {OPTIONS.map((o) => (
+      {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
         </option>

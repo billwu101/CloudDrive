@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.permission.permissions import Permission
+from app.permission.permissions import LinkPermission, Permission
 from app.schemas.common import DriveItemResponse
 
 
@@ -31,7 +31,9 @@ class UpdateShareRequest(BaseModel):
 
 
 class ShareLinkRequest(BaseModel):
-    permission: Permission
+    # Not `Permission`: a public link only ever grants viewer/downloader, and an
+    # out-of-range value used to reach the DB and die there as a 500.
+    permission: LinkPermission
     password: str | None = None
     expires_at: datetime | None = None
 
