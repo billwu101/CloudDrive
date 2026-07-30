@@ -15,7 +15,7 @@ loop that already fixes manifest errors.
 
 **Only code defects trigger a repair.** A skill written for PNGs, handed a text
 fixture, will fail — and "fix" attempts against a phantom input problem made
-things worse when the eval harness made this exact mistake (48 of 99 M4
+things worse when the eval harness made this exact mistake (48 of 99 EC3
 failures turned out to be fixture mismatch, not model error). Anything that
 looks like the input being the wrong shape is reported as "unchecked", never as
 a defect.

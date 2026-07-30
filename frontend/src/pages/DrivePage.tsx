@@ -1,5 +1,5 @@
 import { ArrowLeft, FolderOpen } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { downloadItem, triggerBlobDownload } from '@/api/download'
@@ -24,11 +24,13 @@ import { MoveDialog } from '@/components/drive/MoveDialog'
 import { MultiFileContextMenu } from '@/components/drive/MultiFileContextMenu'
 import { RenameDialog } from '@/components/drive/RenameDialog'
 import { PreviewDialog } from '@/components/preview/PreviewDialog'
+import { ShareDialog } from '@/components/share/ShareDialog'
 import { UploadMenu } from '@/components/upload/UploadMenu'
 import { UploadDropzone } from '@/components/upload/UploadDropzone'
 import { UploadQueue } from '@/components/upload/UploadQueue'
 import { useAssistantSkills, useExecuteAssistantSkill } from '@/hooks/useAssistant'
 import { useCreateFolder, useDriveItems, useFolderAncestors, useFolderItem, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
+import { useDragMove } from '@/hooks/useDragMove'
 import { useDragSelect } from '@/hooks/useDragSelect'
 import { useUploadFiles, useUploadFolders } from '@/hooks/useUpload'
 import { useUIStore } from '@/stores/uiStore'
@@ -92,6 +94,7 @@ export function DrivePage() {
   const [moveTarget, setMoveTarget] = useState<DriveItemResponse | null>(null)
   const [trashTargets, setTrashTargets] = useState<DriveItemResponse[]>([])
   const [previewItemId, setPreviewItemId] = useState<string | null>(null)
+  const [shareTarget, setShareTarget] = useState<DriveItemResponse | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
   const [assistantSkillResult, setAssistantSkillResult] =
     useState<AssistantSkillExecuteResponse | null>(null)
@@ -106,6 +109,15 @@ export function DrivePage() {
         : [],
     [assistantSkills, contextMenu],
   )
+
+  // Selection belongs to one folder's listing. Without this, double-clicking a
+  // folder (the click selects it, the second click navigates) left that folder
+  // selected while you stood inside it — the toolbar then offered to trash an
+  // item that wasn't even on screen. Keyed on folderId so it also covers
+  // breadcrumbs, the back button and browser history.
+  useEffect(() => {
+    clearSelection()
+  }, [folderId, clearSelection])
 
   const handleBack = useCallback(() => {
     if (!folderId) return
@@ -169,13 +181,19 @@ export function DrivePage() {
     [star],
   )
 
+  // Belt and braces alongside the effect above: actions and counts are derived
+  // from what is actually listed, so a stale id can never be acted on.
+  const visibleSelected = useMemo(
+    () => items.filter((i) => selectedIds.has(i.id)),
+    [items, selectedIds],
+  )
+
   const handleTrashSelected = useCallback(() => {
-    const targets = items.filter((i) => selectedIds.has(i.id))
-    setTrashTargets(targets)
-  }, [items, selectedIds])
+    setTrashTargets(visibleSelected)
+  }, [visibleSelected])
 
   const handleDownloadSelected = useCallback(async () => {
-    const ids = [...selectedIds]
+    const ids = visibleSelected.map((i) => i.id)
     if (ids.length === 0) return
     const res = await driveApi.downloadArchive(ids)
     // The server names the zip after the selection (folder/file name); read it
@@ -184,7 +202,7 @@ export function DrivePage() {
     const match = /filename\*=UTF-8''([^;]+)/i.exec(cd)
     const filename = match ? decodeURIComponent(match[1]) : 'download.zip'
     triggerBlobDownload(res.data, filename)
-  }, [selectedIds])
+  }, [visibleSelected])
 
   const handleRetryUpload = useCallback(
     (task: { file: File | null }) => {
@@ -205,6 +223,7 @@ export function DrivePage() {
 
   const handleDragSelect = useCallback((ids: string[]) => selectAll(ids), [selectAll])
   const { dragRect } = useDragSelect(fileListRef, handleDragSelect, clearSelection)
+  const drag = useDragMove({ selectedIds, items })
 
   const sharedProps = {
     items,
@@ -217,6 +236,7 @@ export function DrivePage() {
     onItemContextMenu: handleContextMenu,
     onStarClick: handleStarClick,
     onCheckboxClick: handleCheckboxClick,
+    drag,
   }
 
   return (
@@ -238,7 +258,7 @@ export function DrivePage() {
           <div className="flex items-center gap-2">
             <UploadMenu onFiles={upload} onFolders={uploadFolders} />
             <DriveToolbar
-              selectedCount={selectedIds.size}
+              selectedCount={visibleSelected.length}
               onNewFolder={() => setShowCreateFolder(true)}
               onDownloadSelected={handleDownloadSelected}
               onTrashSelected={handleTrashSelected}
@@ -256,6 +276,23 @@ export function DrivePage() {
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
             <FolderOpen className="size-12" aria-hidden="true" />
             <p className="text-sm">This folder is empty</p>
+          </div>
+        )}
+
+        {drag.moveError && (
+          <div
+            role="alert"
+            className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            <span>Could not move: {drag.moveError}</span>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={drag.clearMoveError}
+              className="shrink-0 rounded px-1 hover:bg-destructive/10"
+            >
+              ×
+            </button>
           </div>
         )}
 
@@ -289,8 +326,8 @@ export function DrivePage() {
             onDownload={(item) => downloadItem(item.id, item.name)}
             onRename={(item) => setRenameTarget(item)}
             onMove={(item) => setMoveTarget(item)}
-            onShare={() => {}}
-            onCopyLink={() => {}}
+            onShare={(item) => setShareTarget(item)}
+            onCopyName={(item) => void navigator.clipboard?.writeText(item.name)}
             onToggleStar={(item) => star.mutate({ id: item.id, starred: !item.is_starred })}
             onTrash={(item) => setTrashTargets([item])}
             onAssistantAction={handleAssistantAction}
@@ -358,6 +395,14 @@ export function DrivePage() {
         <UploadQueue onRetry={handleRetryUpload} />
 
         <PreviewDialog itemId={previewItemId} onClose={() => setPreviewItemId(null)} />
+        {shareTarget && (
+          <ShareDialog
+            open
+            itemId={shareTarget.id}
+            itemName={shareTarget.name}
+            onClose={() => setShareTarget(null)}
+          />
+        )}
         <AssistantSkillResultDialog
           result={assistantSkillResult}
           onClose={() => setAssistantSkillResult(null)}

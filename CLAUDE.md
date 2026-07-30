@@ -114,18 +114,49 @@ npm run test:e2e
 
 > **Always pass `--maxWorkers=2` when running vitest on this machine.** The repo lives in a OneDrive-synced folder; vitest's default parallelism spawns 30+ workers that saturate OneDrive's file provider, so runs either fail to start workers (`Timeout waiting for worker to respond`) or produce false failures — e.g. `router.test.tsx` timing out after 97s on a test that normally takes 330ms. With `--maxWorkers=2` the full suite is stable (255 tests in ~15s vs 434s and 2 spurious failures without it). `--no-file-parallelism` also works and is the safest for a single file. Real fix: move the repo out of OneDrive.
 
+### AI assistant eval harness (`cd backend`)
+
+Separate from pytest — it drives the assistant from *outside* the app and measures real-model behaviour. Never invoked by `uv run pytest`.
+
+```bash
+uv run python -m eval.run                       # --llm mock (default): deterministic in-process, what CI runs
+uv run python -m eval.run --llm real --token <access-token>   # HTTP against a live backend
+uv run python -m eval.run --mode browser        # Playwright runner (drives the frontend)
+uv run python -m eval.run --cases eval/cases/create_folder.yaml
+uv run python -m eval.temp_sweep                # temperature / thinking A-B sweeps
+```
+
+`--mode` is `api | browser | exec`; cases are YAML under `eval/cases/`; raw results land in `eval/out/` (gitignored). Pass/fail comes from the **deterministic verifier** (`eval/verifier.py`) — the LLM judge (`eval/judge.py`, `--judge`) is qualitative supplement only and never the source of a quoted pass-rate.
+
 ### Docker
 
 ```bash
-docker compose up --build   # start all services
+./scripts/start.sh          # one-line startup: seeds .env, generates JWT_SECRET_KEY, builds, migrates
+docker compose up --build   # equivalent manual path
 docker compose up postgres  # Postgres only (for integration tests)
 ```
+
+nginx serves the SPA on `localhost:8088` and reverse-proxies `/api` to the backend (same-origin — no CORS anywhere). The backend runs `alembic upgrade head` on startup.
+
+**Optional features are env-gated — check these before treating a failure as a bug:**
+- `ASSISTANT_ENABLED=false` when there is no reachable Ollama; `EMBEDDING_ENABLED=false` disables semantic search. Files/share/search/Time Machine work regardless.
+- `SNAPSHOT_SCHEDULER_ENABLED` — the Time Machine scheduler is in-process and assumes a single worker; disable it for multi-replica deployments.
+- `file_embeddings.embedding` is `vector(768)`; pointing `EMBEDDING_MODEL` at a different dimension requires both a migration and a `Settings.embedding_dim` change.
+- nginx `client_max_body_size` and backend `MAX_UPLOAD_SIZE_BYTES` must be raised together.
 
 ## Architecture
 
 ### Backend
 
 Every domain is a self-contained package under `backend/app/<module>/` with four files: `router.py`, `service.py`, `repository.py`, `schemas.py`. Modules never import from each other's internals — they import each other's services via FastAPI dependency injection.
+
+Core CRUD modules (`drive`, `upload`, `download`, `preview`, `trash`, `search`, `share`, `public_share`, `file_version`, `activity_log`, `users`, `auth`, `permission`) follow that four-file shape exactly. **Three extension modules deliberately do not** — read their package before assuming the standard layout:
+
+| Module | Extra shape |
+|---|---|
+| `assistant/` | `planner.py` (NL → structured workflow), `workflow.py` (executor), `permissions.py` (read-only vs destructive classification), `hooks.py` (governance), `context.py`, `memory.py`, `subagent.py`, plus `llm/` (client abstraction + model router) and `skills/` (registry, manifest, codegen, codeguard, sandbox) |
+| `snapshot/` | adds `scheduler.py` — an in-process background runner started from the app lifespan |
+| `external_model/` | adds `crypto.py` (Fernet at-rest encryption for per-user credentials), `codex_client.py`, `factory.py` |
 
 ```
 app/
@@ -148,10 +179,14 @@ app/
 
 **Storage:** `StorageProvider` protocol (in `app/storage/`) abstracts file I/O. `LocalStorageProvider` is the only implementation. The `LOCAL_STORAGE_PATH` env var must be set before app import because `get_settings()` is `@lru_cache`.
 
+**Assistant execution model:** the planner emits a *complete* structured workflow up front; the executor then runs it step-by-step. Read-only, non-destructive plans auto-execute; anything destructive is shown to the user and waits for confirmation. There is deliberately **no agentic step-by-step tool loop** — that would dissolve the boundary of what the user actually approved. On failure the reply is rebuilt programmatically from `StepResult`s (never re-narrated by the LLM), and only the chat fast-path may replan once, under read-only-only guardrails.
+
 **Data model notes:**
-- `user_item_preferences` table stores per-user starred state (not a column on `drive_items`)
+- `user_item_preferences` table stores per-user starred state (not a column on `drive_items`); `drive_items.is_starred` is a legacy column and is **not** the authoritative source
 - "Recent" items are derived from `activity_logs`, not `drive_items.updated_at`
-- Refresh token and public share token are stored as hashes only
+- Refresh token and public share token are stored as hashes only; per-user external-model credentials are Fernet-encrypted (`CREDENTIAL_ENCRYPTION_KEY`) and never returned in plaintext
+- Snapshots do not copy blobs — `snapshot_entries` reference existing `file_versions` and dedupe on `checksum_sha256`, so permanent-delete paths must be dedupe-aware and leave still-referenced blobs to background GC
+- DB metadata and file blobs are **not** in one transaction: uploads write the blob first and delete it if the DB step fails (compensating rollback); deletes remove metadata first and defer blob reclamation to GC
 
 ### Frontend
 
@@ -224,7 +259,14 @@ Use Vitest + MSW. Per-test MSW overrides: `server.use(http.get(...))` inside the
 | `doc/detailed-design/` | Module-level architecture, service interfaces, API contracts |
 | `doc/proposal.md` | Product requirements and feature design |
 | `doc/tasks/<module>.md` | Per-module task checklist (checked = implemented + tested) |
-| `doc/tasks/progress.md` | Overall 28-module completion status |
+| `doc/tasks/progress.md` | Completion status — 28 core modules plus the AI Assistant / Time Machine / external-model extensions |
 | `doc/detailed-design/` 附錄 A | Architecture decision records (DEC-XXX format) — 原 `doc/decisions.md`，已併入 detailed-design 附錄 A |
 
+> `doc/detailed-design.md` (single 4,500-line file) is the **superseded** original. The split `doc/detailed-design/` directory is authoritative and is what the other docs cross-link to; edit the directory, not the flat file.
+
 **After adding any new feature**, update `doc/prompt.md` (Stage extra requirements + file ownership table), `doc/detailed-design/` (relevant module section), and the affected `doc/tasks/<module>.md` (new items, checked).
+
+## Repo conventions
+
+- **`AGENTS.md` mirrors this file for Codex** — it is CLAUDE.md minus the Vibe Coding section. When editing the Commands / Architecture / Testing / Design Documents sections here, apply the same change there so the two do not drift.
+- CI/CD lives in `.github/workflows/{ci,deploy.yml}`; production topology in `compose.prod.yml`; one-time host and GitHub setup in `deploy/README.md`. Production images are built only by CI and tagged with the full commit SHA (never `latest`).

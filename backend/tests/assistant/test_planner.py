@@ -342,7 +342,7 @@ async def test_planner_gives_up_gracefully_without_executing_invalid_plan() -> N
 def test_planner_prompt_documents_each_step_output_shape() -> None:
     """The planner must be told what each skill returns, not just search/list_items.
 
-    2026-07-28: an eval case (gen-m3-101, "sort these files into folders by
+    2026-07-28: an eval case (gen-ec2-101, "sort these files into folders by
     name") failed live with `move_item: argument 'parent_id': cannot resolve
     path 'items.0.id' from step 1` — the model referenced a folder it had just
     created as if create_folder returned {"items": [...]}. The prompt only ever
@@ -377,7 +377,7 @@ def test_planner_prompt_documents_each_step_output_shape() -> None:
 def test_split_plan_rule_is_only_taught_when_a_second_pass_will_run() -> None:
     """Teaching needs_followup with two-phase planning off makes the model return
     read-only lookups and stop — the writes it deferred never get planned. On 20
-    M3 cases against the real model that was 0/20 (every failure: the write step
+    EC2 cases against the real model that was 0/20 (every failure: the write step
     missing) versus 7/20 with the second pass actually running.
     """
 

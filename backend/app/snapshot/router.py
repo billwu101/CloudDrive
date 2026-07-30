@@ -102,7 +102,14 @@ async def list_snapshots(
     service: SnapshotServiceDep,
 ) -> list[SnapshotResponse]:
     snapshots = await service.list_snapshots(user_id=current_user_id)
-    return [SnapshotResponse.model_validate(s) for s in snapshots]
+    # One extra query for the whole page rather than one per snapshot.
+    reclaimable = await service.reclaimable_bytes(user_id=current_user_id)
+    return [
+        SnapshotResponse.model_validate(s).model_copy(
+            update={"reclaimable_bytes": reclaimable.get(s.id, 0)}
+        )
+        for s in snapshots
+    ]
 
 
 @router.get(

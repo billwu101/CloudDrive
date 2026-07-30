@@ -179,6 +179,11 @@ expires_at timestamptz null
 is_active boolean not null default true
 created_by uuid not null references users(id)
 created_at timestamptz not null
+
+-- 驗證嘗試速率限制（proposal §28.7 決策 2、設計 §6.12.11 第 6 點）
+attempt_window_start timestamptz null
+attempt_count int not null default 0
+locked_until timestamptz null
 ```
 
 約束：
@@ -188,6 +193,8 @@ ALTER TABLE share_links
 ADD CONSTRAINT ck_share_links_permission
 CHECK (permission IN ('viewer', 'downloader'));
 ```
+
+速率限制計數存在資料列上而非行程記憶體：正式部署為多 worker，行程內計數會讓「每分鐘 5 次」實際變成「每分鐘 5 × worker 數」。三個欄位由 `PublicShareService.open_session` 在同一個交易內讀取並更新。
 
 ### 7.7 upload_sessions 與 upload_chunks
 
@@ -326,7 +333,7 @@ CREATE INDEX idx_file_embeddings_item_id ON file_embeddings(item_id);
 
 ### 7.12 Schema 演進（Migrations）
 
-資料庫 schema 由 Alembic 管理（`backend/alembic/versions/`），為**單一連續 revision 鏈、無分支**，head 為 `0014`。下表為完整演進（亦可作為「migration → 對應文件章節」的覆蓋對照）：
+資料庫 schema 由 Alembic 管理（`backend/alembic/versions/`），為**單一連續 revision 鏈、無分支**，head 為 `0019`（`0020` 為本次規劃、尚未實作）。下表為完整演進（亦可作為「migration → 對應文件章節」的覆蓋對照）：
 
 | Rev | 變更 | 對應章節 |
 | --- | --- | --- |
@@ -344,5 +351,11 @@ CREATE INDEX idx_file_embeddings_item_id ON file_embeddings(item_id);
 | 0012 | `file_embeddings` + `CREATE EXTENSION vector`（pgvector 語意） | §7.11 |
 | 0013 | `file_embeddings` 改一檔多向量（chunk）+ snippet | §7.11 |
 | 0014 | `user_external_credentials`（外部模型 per-user 憑證，DEC-026） | §11.3 |
+| 0015 | `assistant_skills` 加 `chat_enabled` | §8.9 |
+| 0016 | `external_model_connections` | §11.3 |
+| 0017 | `upload_sessions` + `upload_chunks`（分片續傳，DEC-036） | §7.7 |
+| 0018 | 永久刪除所需的 FK ON DELETE：`activity_logs.item_id` → SET NULL、`user_item_preferences.item_id` → CASCADE | §7.8、§6.10 |
+| 0019 | `upload_sessions.parent_id` / `drive_item_id` → SET NULL（同上，清空垃圾桶用） | §7.7 |
+| 0020 | `share_links` 加 `attempt_window_start` / `attempt_count` / `locked_until`（公開連結速率限制） | §7.6、§6.12.11 |
 
 > 部署時 `alembic upgrade head` 套用全鏈（見 §21）。**新增 migration 必須接在鏈尾並回填本表**，維持文件與 schema 同步。

@@ -169,15 +169,15 @@ def aggregates_to_json(scores: list[AggregateScore]) -> str:
 def efficiency_summary_to_markdown(cases: list[EvalCase], scores: list[AggregateScore]) -> str:
     """Per-tag rollup of token usage and failure-category distribution.
 
-    Report-only (never affects pass/fail) — lets M2-M5 tiers be compared on
+    Report-only (never affects pass/fail) — lets EC1-EC4 tiers be compared on
     cost/failure-mode, not just pass-rate. See
     doc/detailed-design/10-assistant-eval.md §10.13/§10.15. Tags come from
-    each case's own `tags` (e.g. "m2".."m5"), matched by case_id; a case with
-    no matching mX tag or no llm_meta data is skipped.
+    each case's own `tags` (e.g. "ec1".."ec4"), matched by case_id; a case with
+    no matching tier tag or no llm_meta data is skipped.
     """
 
     by_id = {case.id: case for case in cases}
-    tiers = ("m2", "m3", "m4", "m5")
+    tiers = ("ec1", "ec2", "ec3", "ec4")
     rows: list[str] = [
         "| Tier | Cases w/ tokens | Avg prompt | Avg completion | Avg 工具呼叫 | 路徑偏離 "
         "| Failure categories |"

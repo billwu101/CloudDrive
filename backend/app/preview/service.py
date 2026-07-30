@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
+from app.core.mime import EXT_MIME, effective_extension, resolve_mime
 from app.drive.repository import AbstractDriveItemRepository
 from app.drive.schemas import ItemType
 from app.models.drive_item import DriveItem
@@ -58,7 +59,7 @@ def _resolve_preview_type(
     mime_type: str | None, extension: str | None, *, office: bool
 ) -> PreviewType:
     ext = (extension or "").lower().lstrip(".")
-    m = (mime_type or "").lower()
+    m = (mime_type or "").lower() or EXT_MIME.get(ext, "")
     # Markdown first — its MIME often starts with text/ and would be caught below.
     if ext in _MARKDOWN_EXTS or m == "text/markdown":
         return PreviewType.MARKDOWN
@@ -70,13 +71,27 @@ def _resolve_preview_type(
         return PreviewType.IMAGE
     if m == "application/pdf":
         return PreviewType.PDF
-    if m.startswith("text/"):
+    if m.startswith("text/") or m == "application/json":
         return PreviewType.TEXT
     if m.startswith("video/"):
         return PreviewType.VIDEO
     if m.startswith("audio/"):
         return PreviewType.AUDIO
     return PreviewType.UNSUPPORTED
+
+
+def resolve_preview_type(item: DriveItem) -> PreviewType:
+    """How this item should be previewed, given the server's Office support."""
+    return _resolve_preview_type(
+        item.mime_type,
+        effective_extension(name=item.name, extension=item.extension),
+        office=office_available(),
+    )
+
+
+def resolve_item_mime(item: DriveItem) -> str | None:
+    """The MIME type to serve this item with (see `app.core.mime`)."""
+    return resolve_mime(mime_type=item.mime_type, name=item.name, extension=item.extension)
 
 
 class PreviewService:
@@ -101,9 +116,9 @@ class PreviewService:
 
     async def get_info(self, user_id: UUID, item_id: UUID) -> PreviewInfoResponse:
         item = await self._get_file(user_id, item_id)
-        ptype = _resolve_preview_type(item.mime_type, item.extension, office=office_available())
+        ptype = resolve_preview_type(item)
         # Document is delivered as PDF; report that so the client uses the PDF viewer.
-        mime = "application/pdf" if ptype == PreviewType.DOCUMENT else item.mime_type
+        mime = "application/pdf" if ptype == PreviewType.DOCUMENT else resolve_item_mime(item)
         return PreviewInfoResponse(
             item_id=item.id,
             preview_type=ptype,
@@ -117,11 +132,22 @@ class PreviewService:
     ) -> tuple[PreviewType, str, AsyncGenerator[bytes, None]]:
         """Returns (preview_type, effective_mime_type, byte_stream)."""
         item = await self._get_file(user_id, item_id)
+        return await self.content_for_item(item)
+
+    async def content_for_item(
+        self, item: DriveItem
+    ) -> tuple[PreviewType, str, AsyncGenerator[bytes, None]]:
+        """Same as :meth:`get_content` for an item the caller already authorised.
+
+        Used by the public share path (§6.12.8), where authorisation comes from
+        a share credential rather than a user id — so that Office conversion,
+        text truncation and mime resolution are not duplicated there.
+        """
         if not item.storage_key or not await self._storage.exists(item.storage_key):
             raise AppError(
                 ErrorCode.ITEM_CONTENT_NOT_FOUND, "File content not found", status_code=404
             )
-        ptype = _resolve_preview_type(item.mime_type, item.extension, office=office_available())
+        ptype = resolve_preview_type(item)
         if ptype == PreviewType.UNSUPPORTED:
             raise AppError(ErrorCode.INVALID_OPERATION, "File type not supported for preview")
         if ptype == PreviewType.DOCUMENT:
@@ -131,10 +157,10 @@ class PreviewService:
             return PreviewType.MARKDOWN, "text/markdown", stream
         if ptype == PreviewType.TEXT:
             stream = _limited_text_stream(self._storage.open_read(item.storage_key))
-            return ptype, item.mime_type or "text/plain", stream
+            return ptype, resolve_item_mime(item) or "text/plain", stream
         return (
             ptype,
-            item.mime_type or "application/octet-stream",
+            resolve_item_mime(item) or "application/octet-stream",
             self._storage.open_read(item.storage_key),
         )
 

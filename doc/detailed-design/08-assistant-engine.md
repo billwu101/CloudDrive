@@ -190,7 +190,7 @@ WorkflowRun {
 - **名稱衝突（FR6）**：自建 skill 名稱與內建衝突 → **跳過不載入並提示改名**。
 - **planner prompt**：系統提示告知自建 skill 需 `item_id`、且**僅在有勾選檔時可用**，避免 LLM 在未選檔時把自建 skill 排入計畫。
 
-**planner 提示必須交代每個技能的輸出形狀（2026-07-28，由 E9 eval 抓到並修正）**：步驟引用 `{"from": i, "path": ...}` 的 `path` 寫法取決於被引用步驟回傳什麼，但系統提示原本只說明了 `search`/`list_items` 的分頁形狀，且所有範例都是 `items.0.id`。實測後果（`eval/cases/generated/gen-m3-101`，真實 gemma4:26b）：模型要引用「自己剛用 `create_folder` 建立的資料夾」時照抄 `items.0.id`，執行期報 `cannot resolve path 'items.0.id' from step 1`，整批搬移失敗。已於 `build_planner_prompt` 補上三種形狀（依 `skills/builtin/{read_only,write}.py` 實作核對）：
+**planner 提示必須交代每個技能的輸出形狀（2026-07-28，由 E9 eval 抓到並修正）**：步驟引用 `{"from": i, "path": ...}` 的 `path` 寫法取決於被引用步驟回傳什麼，但系統提示原本只說明了 `search`/`list_items` 的分頁形狀，且所有範例都是 `items.0.id`。實測後果（`eval/cases/generated/gen-ec2-101`，真實 gemma4:26b）：模型要引用「自己剛用 `create_folder` 建立的資料夾」時照抄 `items.0.id`，執行期報 `cannot resolve path 'items.0.id' from step 1`，整批搬移失敗。已於 `build_planner_prompt` 補上三種形狀（依 `skills/builtin/{read_only,write}.py` 實作核對）：
 
 | 技能 | 回傳 | `path` 寫法 |
 |---|---|---|
@@ -299,9 +299,9 @@ app/assistant/
 
 **只有唯讀步驟能當偵察**：模型即使被明確禁止，仍慣性把「先建好目的地資料夾」折進第一段。直接拒收這種計畫等於讓功能永遠不啟動，因此改為**跳過**寫入步驟——未確認的寫入絕不執行，第二段會重新規劃那些準備工作。判斷「哪些讀取可以先跑」只看**參數引用**，不看 `depends_on`：模型常常把「列出根目錄」標成依賴「建立資料夾」，當成資料依賴會讓偵察集合變空、功能靜默失效。
 
-**提示詞必須與旗標一致（回歸事故）**：`needs_followup` 的說明一度**無條件**寫進系統提示，旗標關閉時也照教。模型於是照樣拆兩段、只回傳唯讀查詢，而沒有第二段補上寫入——請求安靜地退化成一次列表。同 20 個 M3 案例：旗標關但提示照教 **0/20**（全數 `state_mismatch`，寫入步驟消失）；提示改為依旗標切換後 **20/20**。`build_planner_prompt(registry, *, two_phase)` 與 `WorkflowPlanner` 因此都讀同一個設定，與 `WorkflowService` 保持一致。**教一條不會被兌現的規則，比不教更糟。**
+**提示詞必須與旗標一致（回歸事故）**：`needs_followup` 的說明一度**無條件**寫進系統提示，旗標關閉時也照教。模型於是照樣拆兩段、只回傳唯讀查詢，而沒有第二段補上寫入——請求安靜地退化成一次列表。同 20 個 EC2 案例：旗標關但提示照教 **0/20**（全數 `state_mismatch`，寫入步驟消失）；提示改為依旗標切換後 **20/20**。`build_planner_prompt(registry, *, two_phase)` 與 `WorkflowPlanner` 因此都讀同一個設定，與 `WorkflowService` 保持一致。**教一條不會被兌現的規則，比不教更糟。**
 
-**成效與預設值**（各 5 次、真模型、每案例獨立帳號；詳見 `doc/tasks/backend-assistant.md`）：語意分類（單輪）0/5 → **5/5**、搬走最大的檔案 0/5 → **5/5**（基準線還會誤搬 canary）、重複檔案 0/5 → 4/5、語意分類（多輪）0/5 → 1/5；合計 **0/20 → 15/20**。仍**預設關閉**：同 20 個 M3 一般案例旗標開為 7/20，13 個失敗全部是同一項檢查（未呼叫 `get_info`，`state`／`execution` 兩維度仍 20/20、工具呼叫數更少），亦即不是做錯而是少做一次冗餘查詢；但一般案例本來就不需要偵察，多一次 LLM 呼叫的延遲與詞元（輸入 1799 vs 1406）沒有回報。以 `ASSISTANT_TWO_PHASE_PLANNING` 環境變數開啟。
+**成效與預設值**（各 5 次、真模型、每案例獨立帳號；詳見 `doc/tasks/backend-assistant.md`）：語意分類（單輪）0/5 → **5/5**、搬走最大的檔案 0/5 → **5/5**（基準線還會誤搬 canary）、重複檔案 0/5 → 4/5、語意分類（多輪）0/5 → 1/5；合計 **0/20 → 15/20**。仍**預設關閉**：同 20 個 EC2 一般案例旗標開為 7/20，13 個失敗全部是同一項檢查（未呼叫 `get_info`，`state`／`execution` 兩維度仍 20/20、工具呼叫數更少），亦即不是做錯而是少做一次冗餘查詢；但一般案例本來就不需要偵察，多一次 LLM 呼叫的延遲與詞元（輸入 1799 vs 1406）沒有回報。以 `ASSISTANT_TWO_PHASE_PLANNING` 環境變數開啟。
 
 **已知缺口**：`validate_plan` 只檢查「引用必須指向更早的步驟」，不檢查**被引用步驟的輸出型別是否合用**。多輪語意分類殘餘的失敗即是模型把 `parent_id` 指向一個 `move_item` 的輸出，規劃期驗證放行、執行期才報 `Destination must be a folder`。加上型別感知的引用檢查可讓它落進既有的修補迴圈，記為待辦。
 
@@ -354,7 +354,7 @@ AgentFolder_23f4b9ba'}}]}<tool_call|>> {
 
 做法：`CodegenSubAgent.author(request, smoke=...)` 多一個可選的試跑鉤子。驗證通過後，把程式碼丟進**正式環境同一個沙箱**跑一次（每個宣告的 item_type 各一次），失敗就把錯誤當成 repair problem 丟回既有的修補迴圈——與 manifest 錯誤走同一條路，不新增流程。`AssistantSkillService` 在有沙箱時自動接上；沒有沙箱時行為完全不變。
 
-**只有「程式碼壞了」才觸發重寫**（`skills/smoke.py` 的 `_CODE_DEFECT_MARKERS`：NameError／SyntaxError／AttributeError／TypeError／re.error…）。輸入格式不合（PNG 技能拿到純文字 fixture）**不算**——評測 harness 正是在這裡摔過：99 個 M4 失敗有 48 個其實是 fixture 不匹配，對著幻覺問題修只會更糟。試跑用的 fixture 刻意是最小的純文字檔／資料夾，不從技能名稱猜格式。
+**只有「程式碼壞了」才觸發重寫**（`skills/smoke.py` 的 `_CODE_DEFECT_MARKERS`：NameError／SyntaxError／AttributeError／TypeError／re.error…）。輸入格式不合（PNG 技能拿到純文字 fixture）**不算**——評測 harness 正是在這裡摔過：99 個 EC3 失敗有 48 個其實是 fixture 不匹配，對著幻覺問題修只會更糟。試跑用的 fixture 刻意是最小的純文字檔／資料夾，不從技能名稱猜格式。
 
 **已知限制**：純文字 fixture 對影像／PDF／壓縮類技能只能驗到「程式碼跑得起來」，驗不到「做對了」。要更進一步得讓使用者選一個真實檔案當試跑輸入，或依 manifest 推斷格式——後者就是評測那邊踩過的坑，暫不做。
 

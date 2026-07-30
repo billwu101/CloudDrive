@@ -84,3 +84,10 @@ class DriveItemResponse(BaseModel):
     updated_by: UUID | None
     created_at: datetime
     updated_at: datetime
+    # Sharing state, shown as badges in the drive listing (proposal §29.2 rule 5).
+    # Two flags rather than one "is_shared": a public link is the only path that
+    # needs no account at all, so it must be distinguishable at a glance.
+    # Both stay False for anyone who is not the owner — this is the owner's own
+    # state, not something to reveal to people the item was shared with.
+    is_shared_with_users: bool = False
+    has_active_public_link: bool = False

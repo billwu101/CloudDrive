@@ -16,6 +16,10 @@ const SharedPage = lazy(async () => {
   const { SharedPage } = await import('@/pages/SharedPage')
   return { default: SharedPage }
 })
+const SharedByMePage = lazy(async () => {
+  const { SharedByMePage } = await import('@/pages/SharedByMePage')
+  return { default: SharedByMePage }
+})
 const TrashPage = lazy(async () => {
   const { TrashPage } = await import('@/pages/TrashPage')
   return { default: TrashPage }
@@ -69,6 +73,14 @@ export function LazySharedPage() {
   return (
     <Suspense fallback={<PageFallback />}>
       <SharedPage />
+    </Suspense>
+  )
+}
+
+export function LazySharedByMePage() {
+  return (
+    <Suspense fallback={<PageFallback />}>
+      <SharedByMePage />
     </Suspense>
   )
 }

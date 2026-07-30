@@ -1,4 +1,4 @@
-"""E9 階段 A driver: run the M2-M5 generated cases against a live backend +
+"""E9 階段 A driver: run the EC1-EC4 generated cases against a live backend +
 real LLM, each case under its own freshly-registered test user.
 
 Why not just `eval.run --mode api --llm real`: that CLI shares one token/test
@@ -19,7 +19,7 @@ user, and writes one JSON line per finished case immediately (resumable via
 Usage:
     uv run python -m eval.run_isolated_e9 --base-url http://localhost:8001/api/v1 \
         --cases eval/cases/generated --runs 3 --out eval/out/e9_stage_a.jsonl \
-        [--tag m2] [--resume] [--limit 5]
+        [--tag ec1] [--resume] [--limit 5]
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def _run_one_case(case: EvalCase, *, base_url: str, runs: int) -> AggregateScore
         # Hard gate too: with the case's data really seeded, skipping a
         # declared query tool is a modelling failure, not sequence noise.
         checks = [*checks, *verify_required_skills(case, response)]
-        # M4: does the actually-generated code run, not just "proposed a
+        # EC3: does the actually-generated code run, not just "proposed a
         # skill" (2026-07-28, alfred). Smoke test only — see
         # eval/codegen_smoke.py docstring for exact scope.
         checks = [*checks, *verify_codegen_execution(case, response)]
@@ -219,7 +219,7 @@ def main() -> int:
     parser.add_argument("--cases", default="eval/cases/generated")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--out", default="eval/out/e9_stage_a.jsonl")
-    parser.add_argument("--tag", default=None, help="only cases with this tag (e.g. m2)")
+    parser.add_argument("--tag", default=None, help="only cases with this tag (e.g. ec1)")
     parser.add_argument("--limit", type=int, default=0, help="0 = no limit")
     parser.add_argument("--resume", action="store_true", help="skip case_ids already in --out")
     parser.add_argument(

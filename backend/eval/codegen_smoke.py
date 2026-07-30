@@ -1,10 +1,10 @@
-"""M4 smoke-test: does a generated skill's code actually run? (2026-07-28, alfred)
+"""EC3 smoke-test: does a generated skill's code actually run? (2026-07-28, alfred)
 
 ``CodegenSubAgent.author()`` only statically validates generated code (AST
 safety scan + manifest schema) — it never executes it. A skill can pass those
 checks and still crash on first real run (real-model-observed symptom:
 token-garbled typos like ``os.pathlext`` that are syntactically legal but
-undefined). "M4 只驗證有沒有提出技能提案...功能不對、程式碼的結果不對，
+undefined). "EC3 只驗證有沒有提出技能提案...功能不對、程式碼的結果不對，
 做錯了根本就沒有意義" (alfred).
 
 This runs the REAL generated code (not a hand-written reference — unlike
@@ -51,7 +51,7 @@ def _resolve_fixture(name: str | None) -> Path:
     compress / text-processing skills). A named fixture is required for skills
     whose input must be a specific format — feeding sample.txt to an image or
     PDF skill tests the fixture, not the model (2026-07-28: that alone accounted
-    for 48 of 99 M4 failures)."""
+    for 48 of 99 EC3 failures)."""
 
     if name is None:
         return _FILE_FIXTURE
@@ -69,7 +69,7 @@ def _folder_fixture(source: Path) -> Path:
     2026-07-28 second pass: this used to always create a.txt + sub/b.txt, so a
     skill declaring [FILE, FOLDER] got a matching file for its FILE run and a
     folder of plain text for its FOLDER run — the same fixture mismatch that
-    invalidated the FILE results, one level down (10 of the 29 remaining M4
+    invalidated the FILE results, one level down (10 of the 29 remaining EC3
     failures were FOLDER-only). Building the folder from ``source`` keeps both
     item types on inputs the skill can actually work on."""
 

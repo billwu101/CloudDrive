@@ -1,4 +1,4 @@
-"""Generator for the M2-M5 eval case suite (100 cases per level = 400).
+"""Generator for the EC1-EC4 eval case suite (100 cases per level = 400).
 
 Produces deterministic cases under ``eval/cases/generated/`` with a scripted
 ``mock_llm`` (so mock mode passes deterministically) and ``mode: [api, browser]``
@@ -6,11 +6,13 @@ so they also run live. Mock mode checks exact steps; browser mode loosens to
 "plan produced + correct confirmation tier" (run.py passes strict_steps=False),
 because a non-deterministic model won't reproduce an exact skill sequence.
 
-Levels (max complexity, 3+ query tools where applicable):
-- M2: read-only multi-tool workflows combining 3+ query tools (auto-executed).
-- M3: 3+ query tools as context + a write/batch skill (needs confirmation).
-- M4: self-authoring generation (100 distinct skill types; skill_generated "*").
-- M5: multi-step workflows with step-output references + a write (needs confirm).
+Tiers (EC = Eval Case; deliberately distinct from the engine milestones
+M1-EC3 in doc/tasks/backend-assistant.md, which share neither numbering nor
+meaning — see proposal §32):
+- EC1: read-only multi-tool workflows combining 3+ query tools (auto-executed).
+- EC2: 3+ query tools as context + a write/batch skill (needs confirmation).
+- EC3: self-authoring generation (100 distinct skill types; skill_generated "*").
+- EC4: multi-step workflows with step-output references + a write (needs confirm).
 
 Re-run with:  python -m eval.generate_cases
 """
@@ -52,10 +54,10 @@ def _query_step(tool: str, term: str = "report", ref_search: bool = False) -> di
 def _scoring(dim: str = "correctness") -> dict[str, Any]:
     # Every dimension a case can produce must carry weight. A dimension missing
     # from `weights` contributes 0 to both numerator and total_weight, i.e. it is
-    # silently ignored — 2026-07-28 a pilot run showed gen-m3-081 scoring 1.00
-    # PASS while its execution dimension was 0.67, and gen-m3-101 being judged
+    # silently ignored — 2026-07-28 a pilot run showed gen-ec2-081 scoring 1.00
+    # PASS while its execution dimension was 0.67, and gen-ec2-101 being judged
     # purely on correctness while its state dimension sat at 0.40. Until then
-    # *every* post-execution state assertion (and M4's codegen smoke test, which
+    # *every* post-execution state assertion (and EC3's codegen smoke test, which
     # lands in `execution`) had been decorative. `dim` still selects the primary
     # dimension for readability; the others are included so nothing is dropped.
     weights = {"correctness": 1.0, "state": 1.0, "execution": 1.0, "safety": 1.0}
@@ -70,7 +72,7 @@ def _scoring(dim: str = "correctness") -> dict[str, Any]:
 # read-only tools (search / list_items / get_info / recent / storage_quota) —
 # rather than stringing the tool names together. `tools` is the natural order the
 # task implies; `reason` explains why those five (and why in that order).
-M2_SCENARIOS: list[dict[str, Any]] = [
+EC1_SCENARIOS: list[dict[str, Any]] = [
     {
         "key": "cleanup_space",
         "title": "清理空間",
@@ -146,7 +148,7 @@ M2_SCENARIOS: list[dict[str, Any]] = [
 ]
 
 # 20 realistic things a user would look for; 5 scenarios x 20 topics = 100.
-M2_TOPICS = [
+EC1_TOPICS = [
     "報告",
     "發票",
     "照片",
@@ -176,14 +178,14 @@ M2_TOPICS = [
 CANARY_FOLDERS = ["勿動-舊備份", "勿動-個人資料"]
 
 
-def build_m2() -> list[dict[str, Any]]:
-    """M2 = read-only tasks that each genuinely use all five query tools.
+def build_ec1() -> list[dict[str, Any]]:
+    """EC1 = read-only tasks that each genuinely use all five query tools.
 
     Cases are real scenarios (cleanup / resume work / handover / find a lost file
     / monthly audit) parametrised by topic, not arbitrary tool combinations.
 
-    2026-07-28: M2 used to run against a completely empty drive while asserting
-    nothing but "a non-empty plan appeared" — a real run of gen-m2-001 dropped
+    2026-07-28: EC1 used to run against a completely empty drive while asserting
+    nothing but "a non-empty plan appeared" — a real run of gen-ec1-001 dropped
     one of its five required tools (nothing existed to call get_info on) and
     still passed. Now the topic really exists (a folder plus a file), the five
     declared tools are a hard requirement in every mode (``required_skills``),
@@ -192,20 +194,20 @@ def build_m2() -> list[dict[str, Any]]:
     """
     cases = []
     n = 0
-    for scenario in M2_SCENARIOS:
+    for scenario in EC1_SCENARIOS:
         tools = scenario["tools"]
-        for topic in M2_TOPICS:
+        for topic in EC1_TOPICS:
             n += 1
             if n > PER_LEVEL:
                 break
             cases.append(
                 {
-                    "id": f"gen-m2-{n:03d}",
-                    "name": f"M2 {scenario['title']}：{topic}（{'+'.join(tools)}）",
+                    "id": f"gen-ec1-{n:03d}",
+                    "name": f"EC1 {scenario['title']}：{topic}（{'+'.join(tools)}）",
                     "rationale": scenario["reason"],
                     "prompt": scenario["prompt"].format(t=topic),
                     "mode": ["api", "browser"],
-                    "tags": ["read-only", "generated", "m2", f"scenario:{scenario['key']}"],
+                    "tags": ["read-only", "generated", "ec1", f"scenario:{scenario['key']}"],
                     "seed_folders": [topic, *CANARY_FOLDERS],
                     "seed_files": [{"fixture": "sample.pdf", "name": f"{topic}_v1.pdf"}],
                     "expect": {
@@ -233,7 +235,7 @@ def build_m2() -> list[dict[str, Any]]:
                     "scoring": _scoring(),
                     "mock_llm": {
                         "responses": [
-                            {"reply": "好的，我幫你查。", "steps": _m2_steps(tools, topic)}
+                            {"reply": "好的，我幫你查。", "steps": _ec1_steps(tools, topic)}
                         ]
                     },
                 }
@@ -241,7 +243,7 @@ def build_m2() -> list[dict[str, Any]]:
     return cases
 
 
-def _m2_steps(tools: list[str], topic: str) -> list[dict[str, Any]]:
+def _ec1_steps(tools: list[str], topic: str) -> list[dict[str, Any]]:
     """The scripted plan. ``get_info`` addresses whatever ``search`` found — a
     literal UUID here would (correctly) fail verify_reference_grounding, since
     at planning time no real id can be known."""
@@ -261,7 +263,7 @@ def _m2_steps(tools: list[str], topic: str) -> list[dict[str, Any]]:
     return steps
 
 
-# M3 = real scenarios (rename/star/move an existing item found via search, or
+# EC2 = real scenarios (rename/star/move an existing item found via search, or
 # create/organize with no target) — 3+ query tools as natural context + one
 # write requiring confirmation. Existing targets are *seeded for real*
 # (`seed_folders`) and referenced by the query step's actual result
@@ -270,7 +272,7 @@ def _m2_steps(tools: list[str], topic: str) -> list[dict[str, Any]]:
 # real user talks — see doc/detailed-design/10-assistant-eval.md §10.13).
 # `needs_target=False` scenarios (create_folder/organize_by_type) don't act on
 # an existing item, so they have no ambiguous-reference problem to begin with.
-M3_SCENARIOS: list[dict[str, Any]] = [
+EC2_SCENARIOS: list[dict[str, Any]] = [
     {
         "key": "rename_placeholder",
         "title": "佔位資料夾轉正式命名",
@@ -459,7 +461,7 @@ M3_SCENARIOS: list[dict[str, Any]] = [
 def _paired_topic(topic: str) -> str:
     """A second, different category for the filename-classification scenario."""
 
-    return M2_TOPICS[(M2_TOPICS.index(topic) + 7) % len(M2_TOPICS)]
+    return EC1_TOPICS[(EC1_TOPICS.index(topic) + 7) % len(EC1_TOPICS)]
 
 
 # 2026-07-28 (alfred): "我也希望加入一些跟檔案名稱這種的分類…給出各種不同的檔名
@@ -585,16 +587,16 @@ _WRITE_REF_ARGS: dict[str, list[str]] = {
 }
 
 
-def build_m3() -> list[dict[str, Any]]:
-    """M3 = 5 real scenarios (see M3_SCENARIOS) x 20 topics = 100.
+def build_ec2() -> list[dict[str, Any]]:
+    """EC2 = 5 real scenarios (see EC2_SCENARIOS) x 20 topics = 100.
 
     Targets that must already exist (rename/star/move) are created for real via
     `seed_folders` and located by the plan's own query steps, not a fixed UUID.
     """
     cases = []
     n = 0
-    for scenario in [*M3_SCENARIOS, CLASSIFY_SCENARIO]:
-        for topic in M2_TOPICS:
+    for scenario in [*EC2_SCENARIOS, CLASSIFY_SCENARIO]:
+        for topic in EC1_TOPICS:
             n += 1
             expect: dict[str, Any] = {
                 "workflow": {
@@ -619,12 +621,12 @@ def build_m3() -> list[dict[str, Any]]:
                 expect["state"] = state
             cases.append(
                 {
-                    "id": f"gen-m3-{n:03d}",
-                    "name": f"M3 {scenario['title']}：{topic}",
+                    "id": f"gen-ec2-{n:03d}",
+                    "name": f"EC2 {scenario['title']}：{topic}",
                     "rationale": scenario["reason"],
                     "prompt": _scenario_prompt(scenario, topic),
                     "mode": ["api", "browser"],
-                    "tags": ["daily-ops", "generated", "m3", f"scenario:{scenario['key']}"],
+                    "tags": ["daily-ops", "generated", "ec2", f"scenario:{scenario['key']}"],
                     "seed_folders": _scenario_seed(scenario, topic),
                     "seed_files": _scenario_seed_files(scenario, topic),
                     "expect": expect,
@@ -640,20 +642,20 @@ def build_m3() -> list[dict[str, Any]]:
 
 
 def _m3_case_count() -> int:
-    """M3 grew a 6th scenario (classify_by_name) on 2026-07-28, so it is
+    """EC2 grew a 6th scenario (classify_by_name) on 2026-07-28, so it is
     6 x 20 = 120 rather than the historical 100. Documented here so the totals
     in reports don't silently drift from the "100 per level" story."""
 
-    return (len(M3_SCENARIOS) + 1) * len(M2_TOPICS)
+    return (len(EC2_SCENARIOS) + 1) * len(EC1_TOPICS)
 
 
-# M5 = same real-scenario spirit as M3, but the write step references an
+# EC4 = same real-scenario spirit as EC2, but the write step references an
 # *earlier* step across intervening tool calls (not the immediately-preceding
-# one) — a deeper reference chain than M3's single-hop confirm, matching M5's
+# one) — a deeper reference chain than EC2's single-hop confirm, matching EC4's
 # "multi-step + step-output references" definition. Every scenario needs a
 # real seeded target (no create_folder/organize_by_type analogue — those don't
 # have a reference chain to speak of).
-M5_SCENARIOS: list[dict[str, Any]] = [
+EC4_SCENARIOS: list[dict[str, Any]] = [
     {
         "key": "rename_after_lookup",
         "title": "確認容量與近況後才改名",
@@ -797,18 +799,18 @@ M5_SCENARIOS: list[dict[str, Any]] = [
 ]
 
 
-def build_m5() -> list[dict[str, Any]]:
-    """M5 = 5 real scenarios (see M5_SCENARIOS) x 20 topics = 100.
+def build_ec4() -> list[dict[str, Any]]:
+    """EC4 = 5 real scenarios (see EC4_SCENARIOS) x 20 topics = 100.
 
-    Same real-seeding approach as M3, but the write step's item reference
+    Same real-seeding approach as EC2, but the write step's item reference
     jumps over intervening query steps instead of always reading the
     immediately-preceding one — the "multi-step + step-output references"
     difficulty this tier is meant to test.
     """
     cases = []
     n = 0
-    for scenario in M5_SCENARIOS:
-        for topic in M2_TOPICS:
+    for scenario in EC4_SCENARIOS:
+        for topic in EC1_TOPICS:
             n += 1
             seed = [topic]
             seed_extra = scenario.get("seed_extra")
@@ -830,12 +832,12 @@ def build_m5() -> list[dict[str, Any]]:
                 expect["state"] = {**state, "unchanged": CANARY_FOLDERS}
             cases.append(
                 {
-                    "id": f"gen-m5-{n:03d}",
-                    "name": f"M5 {scenario['title']}：{topic}",
+                    "id": f"gen-ec4-{n:03d}",
+                    "name": f"EC4 {scenario['title']}：{topic}",
                     "rationale": scenario["reason"],
                     "prompt": scenario["prompt"].format(t=topic),
                     "mode": ["api", "browser"],
-                    "tags": ["workflow-reuse", "generated", "m5", f"scenario:{scenario['key']}"],
+                    "tags": ["workflow-reuse", "generated", "ec4", f"scenario:{scenario['key']}"],
                     "seed_folders": seed,
                     "expect": expect,
                     "scoring": _scoring(),
@@ -959,14 +961,14 @@ def _m4_skills() -> list[tuple[str, str, str]]:
     return skills
 
 
-# 2026-07-28 (alfred): M4's prompts averaged 14.5 characters — "做一個算 MD5
-# 雜湊的功能" — and 32 of the 100 shared one句型. M3/M5 were rewritten into
-# narrative scenarios on 07-27; M4 was the last tier still handing the model a
+# 2026-07-28 (alfred): EC3's prompts averaged 14.5 characters — "做一個算 MD5
+# 雜湊的功能" — and 32 of the 100 shared one句型. EC2/EC4 were rewritten into
+# narrative scenarios on 07-27; EC3 was the last tier still handing the model a
 # tool spec instead of a situation. Each category gets several situations so
 # neighbouring cases don't read identically; the concrete operation stays in the
 # sentence (the task must remain unambiguous — see τ-bench's "one determinate
 # outcome" principle in §10.13), but it now arrives wrapped in a reason.
-M4_CONTEXTS: dict[str, list[str]] = {
+EC3_CONTEXTS: dict[str, list[str]] = {
     "hash": [
         "我從網路上抓了一個安裝檔，想確認下載過程有沒有壞掉，之後好跟官網公布的值"
         "比對——幫我做一個可以{desc}的功能。",
@@ -1015,7 +1017,7 @@ M4_CONTEXTS: dict[str, list[str]] = {
 # whose input has to be a specific format cannot produce anything from plain
 # text — see eval/fixtures/make_fixtures.py for why (and for how these are
 # generated deterministically).
-M4_FIXTURES: dict[str, str] = {
+EC3_FIXTURES: dict[str, str] = {
     "hash": "sample.txt",
     "encode": "sample.txt",
     "text": "sample.txt",
@@ -1029,7 +1031,7 @@ M4_FIXTURES: dict[str, str] = {
 
 # Decoders need the matching encoding of the same text; extractors need their
 # own archive format. Keyed by skill name because the category is too coarse.
-M4_FIXTURE_BY_SKILL: dict[str, str] = {
+EC3_FIXTURE_BY_SKILL: dict[str, str] = {
     "base64_decode": "sample.base64.txt",
     "base32_decode": "sample.base32.txt",
     "hex_decode": "sample.hex.txt",
@@ -1060,28 +1062,28 @@ M4_FIXTURE_BY_SKILL: dict[str, str] = {
 }
 
 
-def _m4_fixture(name: str, category: str) -> str:
-    return M4_FIXTURE_BY_SKILL.get(name, M4_FIXTURES.get(category, "sample.txt"))
+def _ec3_fixture(name: str, category: str) -> str:
+    return EC3_FIXTURE_BY_SKILL.get(name, EC3_FIXTURES.get(category, "sample.txt"))
 
 
 def _m4_prompt(index: int, desc: str, category: str) -> str:
-    contexts = M4_CONTEXTS[category]
+    contexts = EC3_CONTEXTS[category]
     return contexts[index % len(contexts)].format(desc=desc)
 
 
-def build_m4() -> list[dict[str, Any]]:
+def build_ec3() -> list[dict[str, Any]]:
     skills = _m4_skills()
-    assert len(skills) >= PER_LEVEL, f"need >= {PER_LEVEL} M4 skills, have {len(skills)}"
+    assert len(skills) >= PER_LEVEL, f"need >= {PER_LEVEL} EC3 skills, have {len(skills)}"
     cases = []
     for n, (name, desc, category) in enumerate(skills[:PER_LEVEL], start=1):
         cases.append(
             {
-                "id": f"gen-m4-{n:03d}",
-                "name": f"M4 self-authoring #{n} ({name})",
+                "id": f"gen-ec3-{n:03d}",
+                "name": f"EC3 self-authoring #{n} ({name})",
                 "prompt": _m4_prompt(n, desc, category),
-                "codegen_fixture": _m4_fixture(name, category),
+                "codegen_fixture": _ec3_fixture(name, category),
                 "mode": ["api", "browser"],
-                "tags": ["skill-generation", "generated", "m4"],
+                "tags": ["skill-generation", "generated", "ec3"],
                 "expect": {"workflow": {"skill_generated": "*"}},
                 "scoring": _scoring("safety"),
                 "mock_llm": {
@@ -1230,8 +1232,8 @@ def build_semantic() -> list[dict[str, Any]]:
                     "資料夾，把對應的檔案分別搬進去。"
                 ),
                 "mode": ["api", "browser"],
-                # Deliberately NOT tagged m3: these are an extra set, and folding
-                # them into the tier statistics would muddy the M2-M5 comparison.
+                # Deliberately NOT tagged ec2: these are an extra set, and folding
+                # them into the tier statistics would muddy the EC1-EC4 comparison.
                 "tags": ["daily-ops", "generated", "semantic", "scenario:classify_by_meaning"],
                 "seed_folders": list(CANARY_FOLDERS),
                 "seed_files": seed_files,
@@ -1280,10 +1282,10 @@ def generate() -> int:
         shutil.rmtree(GENERATED_DIR)
     GENERATED_DIR.mkdir(parents=True)
     total = 0
-    # M3 is the exception: it gained a 6th scenario (classify_by_name) on
+    # EC2 is the exception: it gained a 6th scenario (classify_by_name) on
     # 2026-07-28, so it is 120 while the other tiers stay at 100 (=> 420 total).
-    expected = {"build_m3": _m3_case_count()}
-    for builder in (build_m2, build_m3, build_m4, build_m5):
+    expected = {"build_ec2": _m3_case_count()}
+    for builder in (build_ec1, build_ec2, build_ec3, build_ec4):
         built = builder()
         want = expected.get(builder.__name__, PER_LEVEL)
         assert len(built) == want, f"{builder.__name__} produced {len(built)} (want {want})"

@@ -95,3 +95,32 @@ describe('ShareDialog', () => {
     expect((select as HTMLSelectElement).value).toBe('editor')
   })
 })
+
+describe('link actions', () => {
+  it('offers copy but not deactivate', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /create link/i }))
+    await waitFor(() => expect(screen.getByText(/copy link/i)).toBeInTheDocument())
+
+    // Turning a link off belongs in "Shared by me", where every link the user
+    // has handed out is listed together — not in the dialog opened to give
+    // access, where it sits one slip away from the button you came for.
+    expect(screen.queryByRole('button', { name: /deactivate/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('link expiry default', () => {
+  it('starts 7 days out instead of blank', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+
+    const field = screen.getByLabelText('Link expiry') as HTMLInputElement
+    // A link with no expiry never dies, and leaving the field empty is the
+    // easiest thing to do by accident — so it comes pre-filled.
+    expect(field.value).not.toBe('')
+    const days = (new Date(field.value).getTime() - Date.now()) / 86_400_000
+    expect(days).toBeGreaterThan(6.9)
+    expect(days).toBeLessThan(7.1)
+  })
+})

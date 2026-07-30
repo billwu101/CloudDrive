@@ -1,0 +1,36 @@
+id: gen-ec3-071
+name: 'EC3 self-authoring #71 (image_blur)'
+prompt: 投影片裡的圖片規格不一，看起來很雜亂，幫我做一個能把圖片模糊化的功能。
+codegen_fixture: sample.png
+mode:
+- api
+- browser
+tags:
+- skill-generation
+- generated
+- ec3
+expect:
+  workflow:
+    skill_generated: '*'
+scoring:
+  weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
+    safety: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - name: image_blur
+    description: 把圖片模糊化
+    version: 1.0.0
+    code: "import os\ndef run(input_path, output_dir, params):\n    out = os.path.join(output_dir, 'output.bin')\n\
+      \    with open(input_path, 'rb') as src:\n        data = src.read()\n    with open(out, 'wb') as\
+      \ dst:\n        dst.write(data)\n    return {'produced': ['output.bin'], 'size': len(data)}\n"
+    ui:
+      context_menu:
+      - label: 把圖片模糊化
+        handler: image_blur
+        item_types:
+        - FILE

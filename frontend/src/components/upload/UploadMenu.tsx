@@ -15,12 +15,14 @@ export function UploadMenu({ onFiles, onFolders }: UploadMenuProps) {
   const folderInputRef = useRef<HTMLInputElement>(null)
 
   // The folder picker needs webkitdirectory, which isn't a standard JSX attr.
+  // Only webkitdirectory (matching OneDrive's input exactly) — the legacy
+  // `directory` alias is dropped so the native picker behaves identically to
+  // OneDrive across browsers. In Safari on macOS this picker lets the user
+  // select files *and* folders together; in Chrome it's folders-only (a
+  // browser difference, not an app one). Either way the onFolders handler
+  // copes: folder contents keep their path, loose files land at the root.
   useEffect(() => {
-    const input = folderInputRef.current
-    if (input) {
-      input.setAttribute('webkitdirectory', '')
-      input.setAttribute('directory', '')
-    }
+    folderInputRef.current?.setAttribute('webkitdirectory', '')
   }, [])
 
   // Close on outside click / Escape.

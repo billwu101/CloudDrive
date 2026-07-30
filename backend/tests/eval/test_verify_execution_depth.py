@@ -2,7 +2,7 @@
 the declared tools were really called, whether the reply told the truth, and
 whether anything else got damaged on the way.
 
-Before these, a real-mode M2 case asserted exactly two things ("a non-empty plan
+Before these, a real-mode EC1 case asserted exactly two things ("a non-empty plan
 appeared", "it didn't ask for confirmation") and the backend's own per-step
 record was never read at all.
 """
@@ -34,7 +34,7 @@ def _ok(skill: str, output: object = None) -> dict[str, object]:
 
 
 def test_required_skills_fails_when_a_declared_tool_is_missing() -> None:
-    # The concrete M2 regression: the case declares five tools, the model plans
+    # The concrete EC1 regression: the case declares five tools, the model plans
     # four, and the loose "non-empty plan" check calls it a pass.
     case = _case(expect={"workflow": {"required_skills": ["search", "get_info"]}})
     response = {"plan": {"steps": [{"skill": "search"}]}}

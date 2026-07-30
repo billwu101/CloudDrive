@@ -132,6 +132,10 @@ def _drive_service(session: DbSession) -> DriveService:
         item_repo=SQLDriveItemRepository(session),
         pref_repo=SQLUserItemPreferenceRepository(session),
         activity_svc=activity,
+        permission_svc=PermissionService(
+            share_repo=SQLShareRepository(session),
+            item_repo=SQLDriveItemRepository(session),
+        ),
     )
 
 

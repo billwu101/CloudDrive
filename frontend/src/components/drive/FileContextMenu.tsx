@@ -1,9 +1,9 @@
 import {
+  Copy,
   Download,
   Edit2,
   Eye,
   FolderInput,
-  Link2,
   Share2,
   Sparkles,
   Star,
@@ -28,7 +28,7 @@ interface FileContextMenuProps {
   onRename: (item: DriveItemResponse) => void
   onMove: (item: DriveItemResponse) => void
   onShare: (item: DriveItemResponse) => void
-  onCopyLink: (item: DriveItemResponse) => void
+  onCopyName: (item: DriveItemResponse) => void
   onToggleStar: (item: DriveItemResponse) => void
   onTrash: (item: DriveItemResponse) => void
   onDownload?: (item: DriveItemResponse) => void
@@ -65,7 +65,7 @@ export function FileContextMenu({
   onRename,
   onMove,
   onShare,
-  onCopyLink,
+  onCopyName,
   onToggleStar,
   onTrash,
   onDownload,
@@ -100,7 +100,7 @@ export function FileContextMenu({
         <MenuItem icon={Edit2} label="Rename" onClick={wrap(() => onRename(item))} />
         <MenuItem icon={FolderInput} label="Move to" onClick={wrap(() => onMove(item))} />
         <MenuItem icon={Share2} label="Share" onClick={wrap(() => onShare(item))} />
-        <MenuItem icon={Link2} label="Copy link" onClick={wrap(() => onCopyLink(item))} />
+        <MenuItem icon={Copy} label="Copy name" onClick={wrap(() => onCopyName(item))} />
         <MenuItem
           icon={item.is_starred ? StarOff : Star}
           label={item.is_starred ? 'Unstar' : 'Star'}

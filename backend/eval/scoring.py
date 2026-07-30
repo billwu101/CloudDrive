@@ -175,8 +175,8 @@ def score_case(
 
     # A check that ran must be able to fail the case. Weighting an observed
     # dimension at 0 because the case forgot to declare it made every state /
-    # execution / safety check decorative: gen-m3-081 scored 1.00 PASS with its
-    # execution dimension at 0.67, and the M4 codegen smoke-test checks had been
+    # execution / safety check decorative: gen-ec2-081 scored 1.00 PASS with its
+    # execution dimension at 0.67, and the EC3 codegen smoke-test checks had been
     # silently ignored since Stage A. An undeclared dimension therefore carries
     # FULL weight (never zero), and the case records that it happened so the
     # report can name it — silence is exactly the failure mode being fixed.
@@ -192,8 +192,8 @@ def score_case(
         score = sum(dimension_scores[d] * effective[d] for d in dimension_scores) / total_weight
 
     passed = score >= case.scoring.pass_threshold
-    # A skill-generation case (M4) answers with a proposal and never a plan, so
-    # "no plan" is its normal shape — labelling every M4 failure "no_plan" hid
+    # A skill-generation case (EC3) answers with a proposal and never a plan, so
+    # "no plan" is its normal shape — labelling every EC3 failure "no_plan" hid
     # the real cause (the generated code produced nothing). 2026-07-28.
     workflow = case.expect.workflow
     if workflow is not None and workflow.skill_generated is not None:

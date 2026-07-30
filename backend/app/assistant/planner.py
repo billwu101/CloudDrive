@@ -126,7 +126,7 @@ def build_planner_prompt(registry: SkillRegistry, *, two_phase: bool = False) ->
     honoured. Teaching it unconditionally regressed the default configuration
     hard: the model split the work, returned only the read-only lookups, and —
     with no second pass to append the writes — the request silently completed
-    as a plain listing. Measured on 20 M3 cases against the real model: 7/20
+    as a plain listing. Measured on 20 EC2 cases against the real model: 7/20
     passed with two-phase on, 0/20 with it off but the instruction still in the
     prompt (every failure ``state_mismatch``, the write step simply missing).
     """

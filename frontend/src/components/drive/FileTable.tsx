@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 
 import type { DriveItemResponse } from '@/api/types'
 
+import type { DragMove } from '@/hooks/useDragMove'
+
 import { FileRow } from './FileRow'
 
 interface FileTableProps {
@@ -12,6 +14,7 @@ interface FileTableProps {
   onItemContextMenu: (item: DriveItemResponse, e: React.MouseEvent) => void
   onStarClick: (item: DriveItemResponse, e: React.MouseEvent) => void
   onCheckboxClick: (item: DriveItemResponse, e: React.MouseEvent) => void
+  drag?: DragMove
   onSelectAll: () => void
 }
 
@@ -23,6 +26,7 @@ export function FileTable({
   onItemContextMenu,
   onStarClick,
   onCheckboxClick,
+  drag,
   onSelectAll,
 }: FileTableProps) {
   const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i.id))
@@ -76,6 +80,13 @@ export function FileTable({
             onContextMenu={(e) => onItemContextMenu(item, e)}
             onStarClick={(e) => onStarClick(item, e)}
             onCheckboxClick={(e) => onCheckboxClick(item, e)}
+            dragging={drag?.draggingIds.has(item.id)}
+            dropTarget={drag?.dropTargetId === item.id}
+            onDragStart={drag ? (e) => drag.onItemDragStart(item, e) : undefined}
+            onDragEnd={drag?.onItemDragEnd}
+            onDragOver={drag ? (e) => drag.onItemDragOver(item, e) : undefined}
+            onDragLeave={drag ? () => drag.onItemDragLeave(item) : undefined}
+            onDrop={drag ? (e) => drag.onItemDrop(item, e) : undefined}
           />
         ))}
       </tbody>

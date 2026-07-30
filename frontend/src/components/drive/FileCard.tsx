@@ -3,6 +3,7 @@ import { Star } from 'lucide-react'
 import type { DriveItemResponse } from '@/api/types'
 
 import { FileIcon } from './FileIcon'
+import { ShareBadges } from './ShareBadges'
 
 interface FileCardProps {
   item: DriveItemResponse
@@ -12,9 +13,31 @@ interface FileCardProps {
   onContextMenu: (e: React.MouseEvent) => void
   onStarClick: (e: React.MouseEvent) => void
   onCheckboxClick: (e: React.MouseEvent) => void
+  dragging?: boolean
+  dropTarget?: boolean
+  onDragStart?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  onDragOver?: (e: React.DragEvent) => void
+  onDragLeave?: () => void
+  onDrop?: (e: React.DragEvent) => void
 }
 
-export function FileCard({ item, selected, onClick, onDoubleClick, onContextMenu, onStarClick, onCheckboxClick }: FileCardProps) {
+export function FileCard({
+  item,
+  selected,
+  onClick,
+  onDoubleClick,
+  onContextMenu,
+  onStarClick,
+  onCheckboxClick,
+  dragging,
+  dropTarget,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: FileCardProps) {
   const isFolder = item.item_type === 'FOLDER'
 
   return (
@@ -22,10 +45,16 @@ export function FileCard({ item, selected, onClick, onDoubleClick, onContextMenu
       role="option"
       aria-selected={selected}
       data-item-id={item.id}
+      draggable
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      className={`group relative flex cursor-pointer select-none flex-col items-center gap-2 rounded-lg border p-3 transition-colors hover:bg-accent/50 ${selected ? 'border-primary bg-accent' : 'border-border'}`}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`group relative flex cursor-pointer select-none flex-col items-center gap-2 rounded-lg border p-3 transition-colors hover:bg-accent/50 ${selected ? 'border-primary bg-accent' : 'border-border'} ${dragging ? 'opacity-40' : ''} ${dropTarget ? 'border-primary ring-2 ring-primary' : ''}`}
     >
       {/* Checkbox top-left: visible on hover or when selected */}
       <input
@@ -54,9 +83,15 @@ export function FileCard({ item, selected, onClick, onDoubleClick, onContextMenu
         />
       </div>
 
-      <p className="w-full truncate text-center text-xs font-medium" title={item.name}>
-        {item.name}
-      </p>
+      <div className="flex w-full min-w-0 items-center justify-center gap-1">
+        <p className="truncate text-center text-xs font-medium" title={item.name}>
+          {item.name}
+        </p>
+        <ShareBadges
+          isSharedWithUsers={item.is_shared_with_users}
+          hasActivePublicLink={item.has_active_public_link}
+        />
+      </div>
     </div>
   )
 }

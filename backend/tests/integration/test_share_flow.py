@@ -125,6 +125,201 @@ async def test_deactivate_share_link(client: AsyncClient) -> None:
     deact = await client.delete(f"/api/v1/share/links/{link_id}", headers=h)
     assert deact.status_code == 204
 
-    # Validating the deactivated link should fail
-    validate = await client.post("/api/v1/share/links/validate", params={"token": link_token})
-    assert validate.status_code in (400, 401, 404, 410)
+    # Opening the deactivated link as a guest must fail (§28.5 criterion 4).
+    opened = await client.post(f"/api/v1/public/links/{link_token}/session", json={})
+    assert opened.status_code == 404
+    assert opened.json()["error"]["code"] == "SHARE_LINK_INVALID"
+
+
+async def test_editor_can_modify_shared_item(client: AsyncClient) -> None:
+    """A share granting `editor` must actually allow editing.
+
+    Regression: drive operations compared `owner_id` directly and ignored
+    shares entirely, so an editor could view/download but never rename or
+    move — the tier was effectively dead (detailed-design §6.5 grants
+    rename/move/create-folder to "owner or editor").
+    """
+    owner = auth_headers(await register_and_login(client, email="ed-owner@test.com"))
+    editor_email = "ed-editor@test.com"
+    editor = auth_headers(await register_and_login(client, email=editor_email))
+
+    folder = await client.post("/api/v1/drive/folders", json={"name": "Team"}, headers=owner)
+    folder_id = folder.json()["id"]
+    upload = await client.post(
+        "/api/v1/upload/simple",
+        headers=owner,
+        params={"parent_id": folder_id},
+        files={"file": ("notes.txt", io.BytesIO(b"team notes"), "text/plain")},
+    )
+    item_id = upload.json()["id"]
+
+    shared = await client.post(
+        f"/api/v1/share/items/{folder_id}",
+        json={"target_email": editor_email, "permission": "editor"},
+        headers=owner,
+    )
+    assert shared.status_code == 201
+
+    # Editor may rename, create a folder inside, and move — all previously 403.
+    renamed = await client.patch(
+        f"/api/v1/drive/items/{item_id}/name", json={"name": "edited.txt"}, headers=editor
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "edited.txt"
+
+    sub = await client.post(
+        "/api/v1/drive/folders", json={"name": "Sub", "parent_id": folder_id}, headers=editor
+    )
+    assert sub.status_code == 201, sub.text
+
+    moved = await client.patch(
+        f"/api/v1/drive/items/{item_id}/parent",
+        json={"parent_id": sub.json()["id"]},
+        headers=editor,
+    )
+    assert moved.status_code == 200, moved.text
+
+
+async def test_viewer_cannot_modify_shared_item(client: AsyncClient) -> None:
+    """Honouring shares must not over-grant: viewer stays read-only."""
+    owner = auth_headers(await register_and_login(client, email="vw-owner@test.com"))
+    viewer_email = "vw-viewer@test.com"
+    viewer = auth_headers(await register_and_login(client, email=viewer_email))
+
+    upload = await client.post(
+        "/api/v1/upload/simple",
+        headers=owner,
+        files={"file": ("readonly.txt", io.BytesIO(b"look only"), "text/plain")},
+    )
+    item_id = upload.json()["id"]
+    await client.post(
+        f"/api/v1/share/items/{item_id}",
+        json={"target_email": viewer_email, "permission": "viewer"},
+        headers=owner,
+    )
+
+    renamed = await client.patch(
+        f"/api/v1/drive/items/{item_id}/name", json={"name": "nope.txt"}, headers=viewer
+    )
+    assert renamed.status_code == 403
+    # Viewing is still allowed.
+    assert (await client.get(f"/api/v1/drive/items/{item_id}", headers=viewer)).status_code == 200
+
+
+# ── Shared by me (proposal §29) ──────────────────────────────────────────────
+
+
+async def test_shared_by_me_aggregates_and_badges_the_drive_listing(
+    client: AsyncClient,
+) -> None:
+    """The reverse view plus the My Drive markers, against real SQL.
+
+    The grouping and the badge query are pure repository work, so the in-memory
+    fakes cannot vouch for them.
+    """
+    owner = await register_and_login(client, email="sbm-owner@test.com", username="sbmowner")
+    h = auth_headers(owner)
+    for i in range(2):
+        await register_and_login(client, email=f"sbm-friend{i}@test.com", username=f"sbmfriend{i}")
+
+    deck = (await client.post("/api/v1/drive/folders", json={"name": "Deck"}, headers=h)).json()
+    # Never shared — the control case for both the listing and the badges.
+    await client.post("/api/v1/drive/folders", json={"name": "Private"}, headers=h)
+    linked = (await client.post("/api/v1/drive/folders", json={"name": "Linked"}, headers=h)).json()
+
+    for i in range(2):
+        resp = await client.post(
+            f"/api/v1/share/items/{deck['id']}",
+            json={"target_email": f"sbm-friend{i}@test.com", "permission": "viewer"},
+            headers=h,
+        )
+        assert resp.status_code == 201, resp.text
+    await client.post(
+        f"/api/v1/share/items/{deck['id']}/links",
+        json={"permission": "viewer", "password": "pw"},
+        headers=h,
+    )
+    await client.post(
+        f"/api/v1/share/items/{linked['id']}/links",
+        json={"permission": "downloader"},
+        headers=h,
+    )
+
+    listed = await client.get("/api/v1/share/shared-by-me", headers=h)
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    by_name = {e["item"]["name"]: e for e in body["items"]}
+
+    assert body["total"] == 2  # Private is not listed at all
+    assert "Private" not in by_name
+    # Two people plus a link on one item is a single entry (§29.3 criterion 4).
+    assert len(by_name["Deck"]["user_shares"]) == 2
+    assert len(by_name["Deck"]["links"]) == 1
+    assert by_name["Deck"]["links"][0]["has_password"] is True
+    assert "pw" not in listed.text and "password_hash" not in listed.text
+    assert {u["email"] for u in by_name["Deck"]["user_shares"]} == {
+        "sbm-friend0@test.com",
+        "sbm-friend1@test.com",
+    }
+
+    # My Drive markers: the two kinds of sharing stay distinguishable.
+    drive = await client.get("/api/v1/drive/items", headers=h)
+    flags = {
+        i["name"]: (i["is_shared_with_users"], i["has_active_public_link"])
+        for i in drive.json()["items"]
+    }
+    assert flags["Deck"] == (True, True)
+    assert flags["Linked"] == (False, True)
+    assert flags["Private"] == (False, False)
+
+
+async def test_shared_by_me_drops_trashed_items_and_marks_dead_links(
+    client: AsyncClient,
+) -> None:
+    owner = await register_and_login(client, email="sbm-trash@test.com", username="sbmtrash")
+    h = auth_headers(owner)
+    gone = (await client.post("/api/v1/drive/folders", json={"name": "Gone"}, headers=h)).json()
+    kept = (await client.post("/api/v1/drive/folders", json={"name": "Kept"}, headers=h)).json()
+
+    await client.post(
+        f"/api/v1/share/items/{gone['id']}/links", json={"permission": "viewer"}, headers=h
+    )
+    created = await client.post(
+        f"/api/v1/share/items/{kept['id']}/links", json={"permission": "viewer"}, headers=h
+    )
+    await client.post(f"/api/v1/trash/items/{gone['id']}", headers=h)
+    await client.delete(f"/api/v1/share/links/{created.json()['id']}", headers=h)
+
+    body = (await client.get("/api/v1/share/shared-by-me", headers=h)).json()
+    names = [e["item"]["name"] for e in body["items"]]
+
+    assert names == ["Kept"]  # trashed item disappears from the view
+    # The disabled link stays visible so the owner knows it once existed.
+    assert body["items"][0]["links"][0]["is_active"] is False
+    assert body["items"][0]["item"]["has_active_public_link"] is False
+
+
+async def test_removing_a_link_revokes_it_and_clears_the_row(client: AsyncClient) -> None:
+    """One action, not two (proposal §29.5 decision 4, revised 2026-07-27)."""
+    owner = await register_and_login(client, email="sbm-clear@test.com", username="sbmclear")
+    h = auth_headers(owner)
+    folder = (
+        await client.post("/api/v1/drive/folders", json={"name": "Cleanup"}, headers=h)
+    ).json()
+    created = await client.post(
+        f"/api/v1/share/items/{folder['id']}/links", json={"permission": "viewer"}, headers=h
+    )
+    link_id = created.json()["id"]
+    guest_token = created.json()["token"]
+
+    # Removing a live link is allowed and is itself the revocation.
+    assert (
+        await client.delete(f"/api/v1/share/links/{link_id}/record", headers=h)
+    ).status_code == 204
+
+    # The guest side stops working straight away — the token no longer resolves.
+    opened = await client.post(f"/api/v1/public/links/{guest_token}/session", json={})
+    assert opened.status_code == 404
+
+    # With its only share gone, the item drops out of the view entirely.
+    assert (await client.get("/api/v1/share/shared-by-me", headers=h)).json()["items"] == []

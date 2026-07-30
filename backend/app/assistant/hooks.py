@@ -61,18 +61,36 @@ def snapshot_before_write_hook(snapshot_service: Any) -> Hook:
     don't trigger a snapshot. Snapshot failures never block execution."""
 
     async def _hook(context: HookContext) -> None:
-        if not any(step.requires_approval for step in context.steps):
+        write_steps = [step for step in context.steps if step.requires_approval]
+        if not write_steps:
             return
         try:
             await snapshot_service.create(
                 user_id=context.user_id,
                 trigger="assistant",
-                label="Before assistant workflow",
+                # Record *which* operations are about to run, so the Time Machine
+                # timeline says why the backup was taken, not just "assistant".
+                label=_assistant_snapshot_label(write_steps),
             )
         except Exception:
             logger.exception("Failed to create pre-action assistant snapshot")
 
     return _hook
+
+
+def _assistant_snapshot_label(write_steps: list[WorkflowStep]) -> str:
+    """A human reason for a pre-assistant snapshot: the write operations about
+    to run (deduped, order-preserved, at most three then an ellipsis)."""
+    names: list[str] = []
+    for step in write_steps:
+        if step.skill not in names:
+            names.append(step.skill)
+    if not names:
+        return "Before assistant action"
+    shown = ", ".join(names[:3])
+    if len(names) > 3:
+        shown += f", +{len(names) - 3} more"
+    return f"Before assistant action: {shown}"
 
 
 def default_hook_registry() -> HookRegistry:

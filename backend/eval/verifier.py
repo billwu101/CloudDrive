@@ -189,14 +189,14 @@ def verify_reference_grounding(case: EvalCase, response: dict[str, Any]) -> list
 
 
 def verify_codegen_execution(case: EvalCase, response: dict[str, Any]) -> list[CheckResult]:
-    """M4 hard gate: does the *actually generated* code run, not just "did it
+    """EC3 hard gate: does the *actually generated* code run, not just "did it
     propose a skill" (2026-07-28, alfred: "只驗證有沒有提出技能提案非常沒有
     意義...如果功能不對、程式碼的結果不對做錯了根本就沒有意義"). Runs
     ``eval.codegen_smoke.smoke_test_skill`` — see its docstring for exactly
     what "smoke test" does and doesn't verify (execution succeeds + produces
     output; NOT semantic/output correctness per skill type). Lands in the
     ``execution`` dimension. Only meaningful for cases whose
-    ``expect.workflow.skill_generated`` is set (M4); returns [] otherwise.
+    ``expect.workflow.skill_generated`` is set (EC3); returns [] otherwise.
     """
 
     workflow = case.expect.workflow
@@ -263,10 +263,10 @@ def count_tool_calls(response: dict[str, Any]) -> int | None:
 
     Counts **planned** steps, not executed ones: every case yields a plan, while
     an execution trace exists only for the cases a driver confirms, so planned
-    steps are the only definition comparable across the whole M2-M5 suite (and
+    steps are the only definition comparable across the whole EC1-EC4 suite (and
     it is the number that reflects the model's own decision — a step that
     fails at runtime was still a tool the model chose to call). Returns None
-    when there is no plan at all (M4's skill-authoring path, or a refusal), so
+    when there is no plan at all (EC3's skill-authoring path, or a refusal), so
     "no plan" is never averaged in as a zero.
     """
 
@@ -372,7 +372,7 @@ def verify_required_skills(case: EvalCase, response: dict[str, Any]) -> list[Che
     Why it exists: ``steps_include`` is loosened to "produced a non-empty plan"
     for real/browser, because a non-deterministic model won't reproduce an exact
     sequence. That loosening left read-only tiers with almost nothing verified —
-    the 2026-07-28 review found `gen-m2-001` passing while silently dropping one
+    the 2026-07-28 review found `gen-ec1-001` passing while silently dropping one
     of its five required tools.
 
     Why it no longer gates: with state assertions in place, "which lookups did

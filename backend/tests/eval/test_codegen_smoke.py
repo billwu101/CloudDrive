@@ -90,7 +90,7 @@ def test_folder_fixture_is_built_from_the_skills_own_file_fixture() -> None:
 
     2026-07-28 second pass: the folder fixture was always a.txt + sub/b.txt, so
     an image skill got sample.png for FILE and a folder of text for FOLDER —
-    10 of the remaining 29 M4 failures were FOLDER-only for exactly this reason.
+    10 of the remaining 29 EC3 failures were FOLDER-only for exactly this reason.
     """
 
     outcome = smoke_test_skill(
@@ -131,7 +131,7 @@ def test_smoke_test_skill_passes_both_types_when_code_branches_correctly() -> No
 
 def _m4_case() -> EvalCase:
     return _case(
-        id="m4",
+        id="ec3",
         expect={"workflow": {"skill_generated": "*"}},
     )
 
@@ -187,7 +187,7 @@ _IMAGE_CODE = (
 
 
 def test_format_specific_skill_needs_a_matching_fixture() -> None:
-    """The 2026-07-28 full run scored 48/99 M4 cases as failures because every
+    """The 2026-07-28 full run scored 48/99 EC3 cases as failures because every
     FILE skill was fed sample.txt. Same code, right input → passes; wrong input
     → fails. Without ``codegen_fixture`` the check measures the fixture, not the
     model."""
@@ -209,7 +209,7 @@ def test_unknown_fixture_is_a_loud_error_not_a_silent_pass() -> None:
 
 def test_verify_codegen_execution_uses_the_cases_declared_fixture() -> None:
     case = _case(
-        id="m4",
+        id="ec3",
         expect={"workflow": {"skill_generated": "*"}},
         codegen_fixture="sample.png",
     )

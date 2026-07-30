@@ -43,6 +43,9 @@ export function UploadDropzone({ onFiles, onFolders, children }: UploadDropzoneP
 
   const handleFiles = useCallback(
     (e: DragEvent) => {
+      // An in-app item drag (moving into a folder) carries our own MIME type
+      // and no files — leave it to the drop target that understands it.
+      if (!e.dataTransfer?.types.includes('Files')) return
       e.preventDefault()
       enterCount.current = 0
       setDragging(false)

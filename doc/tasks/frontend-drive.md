@@ -77,3 +77,110 @@
 - [x] 測試列表與格狀切換。
 - [x] 測試 loading/empty/error 狀態。
 - [x] 測試框選命中、取代選取、空白點擊清除及無效拖曳起點。
+
+---
+
+## 追加：拖曳移動到資料夾（proposal §30）
+
+**目標**：不必開對話框，直接把項目拖到看得見的資料夾上完成移動。
+**不含範圍**：拖到麵包屑／側邊欄、跨分頁拖曳、拖曳排序、拖曳複製（proposal §30.4）。
+**後端**：無需改動——`PATCH /drive/items/{id}/parent` 既有的驗證（目的地須為資料夾、不可移入自身子樹、同名衝突）已足夠。
+**設計依據**：§5.6.2「拖曳移動到資料夾」。
+
+### 子任務
+
+- [x] `src/hooks/useDragMove.ts`：自訂 MIME `application/x-clouddrive-items`；管理 `draggingIds` / `dropTargetId`；逐一送出移動、收集部分失敗。
+- [x] `src/components/drive/FileCard.tsx`：`draggable` + drag/drop handlers + 放置態樣式。
+- [x] `src/components/drive/FileRow.tsx`：同上。
+- [x] `src/components/drive/FileGrid.tsx` / `FileTable.tsx`：把 handlers 往下傳。
+- [x] `src/pages/DrivePage.tsx`：接上 `useDragMove`，顯示移動失敗訊息。
+- [x] `src/components/upload/UploadDropzone.tsx`：`drop` 監聽補上 `types.includes('Files')` 判斷（`dragenter`/`dragover` 已有）。
+
+### 測試任務
+
+- [x] 拖曳單一項目到資料夾會呼叫移動，帶正確的目的地 id。
+- [x] 拖曳選取範圍內的項目 → 整批移動。
+- [x] 拖曳未選取的項目 → 只移動它，且既有選取不變。
+- [x] 放到檔案上不觸發移動。
+- [x] 放到被拖曳項目自身不觸發移動。
+- [x] 部分失敗時其餘照常完成，並列出失敗項目。
+- [x] 內部拖曳不會叫出上傳覆蓋層。
+
+### 驗收條件
+
+proposal §30.3 全部 9 項通過；`lint` / `typecheck` / `vitest` 全綠。
+
+### 驗證結果（2026-07-27）
+
+- 單元測試 8 項（`src/hooks/useDragMove.test.tsx`）：單一／整批／選取外、放到檔案、放到自身、外部拖曳、放置標示、部分失敗。前端全套 **318 passed**；`lint` / `typecheck` 全綠。
+- Chrome 實機驗證（dev server）：`draggable=true`、`dragstart` 寫入自訂 MIME payload、資料夾 `dragover` 接受而檔案不接受、放置標示與來源淡化都正確套用。
+- **未做**：真正的原生 OS 拖放。CDP 的合成滑鼠事件不會啟動 HTML5 drag，且真的放開會搬動使用者的實際檔案，故止於 `dragover`，由使用者手動確認最後一哩。
+
+---
+
+## 修正：選取狀態沒有跟著資料夾切換清掉（2026-07-27 使用者回報）
+
+**症狀**：進入資料夾後工具列仍顯示 `Download (1)` / `Trash (1)`。因為雙擊資料夾的第一下會先選取它，第二下才導航，結果你站在資料夾裡、而那個資料夾自己是被選取的狀態。
+
+**風險**：`Trash (N)` 會刪掉畫面上根本看不到的項目；`handleDownloadSelected` 當時用的是未過濾的 `selectedIds`，會下載到不在此資料夾的檔案。
+
+- [x] `src/pages/DrivePage.tsx`：`useEffect` 依 `folderId` 清空選取（同時涵蓋麵包屑、返回鍵、瀏覽器上一頁、直接輸入網址）。
+- [x] `src/pages/DrivePage.tsx`：新增 `visibleSelected`（選取 ∩ 當前列表），工具列數字、下載、垃圾桶一律改用它——即使 store 裡殘留舊 id 也無法被操作。
+- [x] `src/pages/DrivePage.selection.test.tsx`：進資料夾後按鈕消失且 store 已清空；殘留的幽靈 id 不計入數量。
+
+---
+
+## 調整：公開連結到期日預設 7 天（2026-07-27 使用者要求）
+
+- [x] `src/components/share/ShareLinkPanel.tsx`：`DEFAULT_EXPIRY_DAYS = 7`，欄位預填 7 天後的本地時間（`datetime-local` 需要本地時間字串，不能直接用 ISO/UTC，否則會偏移時區）。
+- [x] 欄位 aria-label 由「Link expiry (optional)」改為「Link expiry」——已有預設值，不再是選填。
+- [x] `ShareDialog.test.tsx`：驗證預設值落在 7 天 ±0.1 天。
+
+---
+
+## 追加：快照用量可見性（proposal §30）
+
+**背景**：實測本機帳號現存檔案 34 MB、快照歷史 3.5 GB，介面完全沒有呈現，且快照配額滿了會自動刪除最舊快照而使用者無從得知。
+**後端**：零改動——`GET /snapshots/settings` 已回傳 `used_bytes`（依 checksum 去重）與 `effective_quota_bytes`。
+
+- [x] `src/components/snapshot/SnapshotUsagePanel.tsx`：用量條、80% 警告、最大前 5 個快照（含時間，因為排程快照標籤全是「Scheduled」）、去重說明。
+- [x] `src/pages/TimeMachinePage.tsx`：掛上面板，接 `useSnapshotSettings()`。
+- [x] `src/components/layout/StorageUsageBar.tsx`：抽出 `Meter`，檔案與快照各一條獨立量表（§30.4 決策 1）。
+- [x] 測試 9 項：`SnapshotUsagePanel.test.tsx` 6 項 + `StorageUsageBar.test.tsx` 3 項。
+
+### 驗證結果（2026-07-27）
+
+前端 **330 passed**；`lint` / `typecheck` 全綠。Chrome 實機確認：時光機頁顯示「3.5 GB of 7.5 GB」、最大快照 3.0 GB、側邊欄兩條量表（33.4 MB / 15.0 GB 與 3.5 GB / 7.5 GB）。
+
+### 修正（同日）：面板顯示的是「涵蓋量」而非「可回收量」
+
+使用者追問「這些檔案不是都一樣嗎，為什麼還要一直存 1.3 GB」——問題不在儲存，在**我顯示的數字**。`total_bytes` 是該快照涵蓋的內容大小，不是刪掉它能省的空間。五列各寫 1.3 GB，讀起來就是每個各佔 1.3 GB。
+
+實測：涵蓋 3063 MB 的快照與 6 個各 1358 MB 的快照，後者刪掉全部釋放 **0 bytes**（彼此共用同一份 blob）。
+
+- [x] `backend/app/snapshot/repository.py`：`reclaimable_bytes_by_snapshot()`——以 `storage_key` 計算「僅此快照持有」的 blob（其他快照、drive_items、file_versions 皆無引用）。
+- [x] `backend/app/snapshot/service.py` / `schemas.py` / `router.py`：`SnapshotResponse.reclaimable_bytes`；列表端點每頁一次查詢。
+- [x] 面板改為「Worth deleting」，依可回收量排序、0 的不列出、全為 0 時顯示說明。
+- [x] 測試：後端單元 + router + integration（共用 blob 的快照回報 0）；前端排序與空狀態。
+
+### 調整（同日）：列出 5 個供比較，不只列出有得回收的
+
+只顯示可回收 > 0 的結果是整份清單只剩一列，使用者沒有比較基準。改為依可回收量由大到小列最多 5 個，0 的標示「frees nothing」。
+
+- [x] `SnapshotUsagePanel`：移除 `> 0` 過濾；標題改「Space you would reclaim」；零回收列以較淡樣式與「frees nothing」呈現。
+- [x] 測試 3 項：排序正確、零回收仍列出、上限 5 筆。
+
+### 追加：多選拖曳的拖曳影像（proposal §30.2 第 3.1 點）
+
+瀏覽器預設的拖曳影像是起始元素的截圖——選 8 個檔案拖曳，游標下只看到 1 個。
+
+- [x] `src/hooks/useDragMove.ts`：`makeDragGhost()` + `setDragImage()`。顯示「N items」與前 3 個名稱（超出以 `+N more` 收合），依列表順序；單選時只顯示名稱。節點需掛進 DOM 才能被點陣化，故置於畫面外並於 `setTimeout(0)` 後移除。
+- [x] 測試 4 項：多選列出全部、長清單收合、單選只顯示名稱、節點不殘留在 DOM。
+- [x] Chrome 實機驗證：勾選 3 個檔案拖曳，拖曳影像內容為「3 items」加三個檔名。
+
+### 調整（同日）：每列並列「涵蓋」與「可回收」
+
+使用者追問「為什麼是 nothing？應該也有佔大小吧」——只顯示可回收量，會被讀成「這個快照是空的」。實測最新快照涵蓋 34 MB／引用 36 個檔案，但只有它持有的檔案數為 0，所以刪掉確實回收不到空間。
+
+- [x] `SnapshotUsagePanel`：每列改為「covers X · frees Y」；註腳改寫成解釋「為什麼會是 nothing」而非重述定義。
+- [x] 測試更新：兩個數字都要出現，零回收列也要顯示 covers。

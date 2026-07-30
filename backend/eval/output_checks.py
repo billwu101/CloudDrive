@@ -52,7 +52,7 @@ def _fixed_length_algorithms() -> dict[int, tuple[str, ...]]:
     Keyed on length rather than name because that is all a bare hex token in an
     output file tells us. Several algorithms share a length (sha256, sha3_256
     and blake2s are all 64 hex chars), so a token is only wrong if it matches
-    NONE of them — assuming sha256 because the length fits cost a real M4 case
+    NONE of them — assuming sha256 because the length fits cost a real EC3 case
     a false failure: the skill had computed a correct blake2s.
     """
 

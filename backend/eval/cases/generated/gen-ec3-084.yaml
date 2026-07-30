@@ -1,0 +1,36 @@
+id: gen-ec3-084
+name: 'EC3 self-authoring #84 (hexdump_file)'
+prompt: 我在整理雲端硬碟，想先摸清楚每個檔案的狀況再決定怎麼分類，幫我做一個能產生檔案 hex dump的功能。
+codegen_fixture: sample.txt
+mode:
+- api
+- browser
+tags:
+- skill-generation
+- generated
+- ec3
+expect:
+  workflow:
+    skill_generated: '*'
+scoring:
+  weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
+    safety: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - name: hexdump_file
+    description: 產生檔案 hex dump
+    version: 1.0.0
+    code: "import os\ndef run(input_path, output_dir, params):\n    out = os.path.join(output_dir, 'output.bin')\n\
+      \    with open(input_path, 'rb') as src:\n        data = src.read()\n    with open(out, 'wb') as\
+      \ dst:\n        dst.write(data)\n    return {'produced': ['output.bin'], 'size': len(data)}\n"
+    ui:
+      context_menu:
+      - label: 產生檔案 hex dump
+        handler: hexdump_file
+        item_types:
+        - FILE

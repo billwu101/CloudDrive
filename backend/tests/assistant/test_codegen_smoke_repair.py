@@ -124,7 +124,7 @@ async def test_a_working_skill_is_accepted_without_a_second_call() -> None:
 
 async def test_an_input_mismatch_is_not_treated_as_a_defect() -> None:
     """A PNG skill handed the text fixture fails — that says nothing about the
-    code. The eval harness made exactly this mistake and spent 48 of 99 M4
+    code. The eval harness made exactly this mistake and spent 48 of 99 EC3
     failures on it; repairing against a phantom problem is worse than not
     checking at all."""
 

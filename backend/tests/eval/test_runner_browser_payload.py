@@ -66,7 +66,7 @@ def test_generated_cases_needing_fixtures_are_seedable_in_browser_mode() -> None
     # The concrete regression: organize_by_type cases declare browser mode and
     # need real files on the drive to have anything to classify.
     case = _case(
-        id="gen-m3-093",
+        id="gen-ec2-093",
         mode=["api", "browser"],
         seed_files=["sample.pdf", "sample.png"],
         expect={"state": {"item_parent": {"sample.pdf": "pdf-files"}}},

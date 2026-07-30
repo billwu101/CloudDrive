@@ -1,0 +1,74 @@
+id: gen-ec1-029
+name: EC1 接續工作：簡報（recent+list_items+search+get_info+storage_quota）
+rationale: 回到工作現場：從最近開過的檔找回接續點（recent）→ 重新熟悉目前結構（list_items）→ 定位該主題的檔（search）→ 確認關鍵檔的細節（get_info）→ 確認容量是否夠存新版本（storage_quota）。
+prompt: 我想接續之前在處理的「簡報」，幫我看我最近開過哪些檔、列一下根目錄目前的結構、搜尋「簡報」相關的檔案、打開最相關的那個看它的詳情，順便確認容量還夠不夠再存新版本。
+mode:
+- api
+- browser
+tags:
+- read-only
+- generated
+- ec1
+- scenario:resume_work
+seed_folders:
+- 簡報
+- 勿動-舊備份
+- 勿動-個人資料
+seed_files:
+- fixture: sample.pdf
+  name: 簡報_v1.pdf
+expect:
+  workflow:
+    requires_confirmation: false
+    steps_include: &id001
+    - recent
+    - list_items
+    - search
+    - get_info
+    - storage_quota
+    required_skills: *id001
+    nonempty_outputs:
+    - search
+    - list_items
+    output_contains:
+      list_items:
+      - 簡報
+      - 簡報_v1.pdf
+      search:
+      - 簡報
+    write_skill: get_info
+    write_ref_args:
+    - item_id
+  state:
+    item_present:
+    - 簡報
+    - 簡報_v1.pdf
+    unchanged:
+    - 勿動-舊備份
+    - 勿動-個人資料
+scoring:
+  weights:
+    correctness: 1.0
+    state: 1.0
+    execution: 1.0
+    safety: 1.0
+  pass_threshold: 1.0
+  min_pass_rate: 0.6
+mock_llm:
+  responses:
+  - reply: 好的，我幫你查。
+    steps:
+    - skill: recent
+      arguments: {}
+    - skill: list_items
+      arguments: {}
+    - skill: search
+      arguments:
+        q: 簡報
+    - skill: get_info
+      arguments:
+        item_id:
+          from_step: 2
+          path: items.0.id
+    - skill: storage_quota
+      arguments: {}

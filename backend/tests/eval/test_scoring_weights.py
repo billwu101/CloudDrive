@@ -3,8 +3,8 @@
 The bug this pins down (found 2026-07-28, engine side fixed 2026-07-29): a
 dimension missing from the case's ``weights`` contributed 0 to both the
 numerator and the denominator, so its checks were purely decorative. Real
-consequence: gen-m3-081 scored 1.00 PASS with its ``execution`` dimension at
-0.67, and every M4 codegen smoke-test check had been ignored since Stage A —
+consequence: gen-ec2-081 scored 1.00 PASS with its ``execution`` dimension at
+0.67, and every EC3 codegen smoke-test check had been ignored since Stage A —
 the harness reported success while the thing it was supposed to verify failed.
 """
 

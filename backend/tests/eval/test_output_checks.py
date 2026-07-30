@@ -80,8 +80,8 @@ def test_a_digest_from_another_algorithm_of_the_same_length_is_not_a_failure(
     tmp_path: Path,
 ) -> None:
     """sha256, sha3_256 and blake2s all produce 64 hex chars. Assuming sha256
-    because the length fits failed a real M4 case whose skill had correctly
-    computed a blake2s digest (gen-m4-008, 2026-07-29)."""
+    because the length fits failed a real EC3 case whose skill had correctly
+    computed a blake2s digest (gen-ec3-008, 2026-07-29)."""
 
     source = _fixture(tmp_path)
     out = _outputs(tmp_path)

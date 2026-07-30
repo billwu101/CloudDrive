@@ -3,6 +3,7 @@ import { Star } from 'lucide-react'
 import type { DriveItemResponse } from '@/api/types'
 
 import { FileIcon } from './FileIcon'
+import { ShareBadges } from './ShareBadges'
 
 interface FileRowProps {
   item: DriveItemResponse
@@ -12,6 +13,13 @@ interface FileRowProps {
   onContextMenu: (e: React.MouseEvent) => void
   onStarClick: (e: React.MouseEvent) => void
   onCheckboxClick: (e: React.MouseEvent) => void
+  dragging?: boolean
+  dropTarget?: boolean
+  onDragStart?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  onDragOver?: (e: React.DragEvent) => void
+  onDragLeave?: () => void
+  onDrop?: (e: React.DragEvent) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -29,16 +37,37 @@ function formatDate(iso: string): string {
   })
 }
 
-export function FileRow({ item, selected, onClick, onDoubleClick, onContextMenu, onStarClick, onCheckboxClick }: FileRowProps) {
+export function FileRow({
+  item,
+  selected,
+  onClick,
+  onDoubleClick,
+  onContextMenu,
+  onStarClick,
+  onCheckboxClick,
+  dragging,
+  dropTarget,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: FileRowProps) {
   return (
     <tr
       role="row"
       aria-selected={selected}
       data-item-id={item.id}
+      draggable
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      className={`group cursor-pointer select-none border-b transition-colors last:border-b-0 hover:bg-accent/50 ${selected ? 'bg-accent' : ''}`}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`group cursor-pointer select-none border-b transition-colors last:border-b-0 hover:bg-accent/50 ${selected ? 'bg-accent' : ''} ${dragging ? 'opacity-40' : ''} ${dropTarget ? 'bg-primary/10 outline outline-2 -outline-offset-2 outline-primary' : ''}`}
     >
       {/* Checkbox column — its own space, so it never covers the file icon.
           Fades in on hover but the slot is always reserved (no layout shift). */}
@@ -60,7 +89,15 @@ export function FileRow({ item, selected, onClick, onDoubleClick, onContextMenu,
           <FileIcon mimeType={item.mime_type} isFolder={item.item_type === 'FOLDER'} />
         </div>
       </td>
-      <td className="py-2 pr-3 text-sm font-medium truncate max-w-xs">{item.name}</td>
+      <td className="py-2 pr-3 text-sm font-medium max-w-xs">
+        <div className="flex items-center gap-2">
+          <span className="truncate">{item.name}</span>
+          <ShareBadges
+            isSharedWithUsers={item.is_shared_with_users}
+            hasActivePublicLink={item.has_active_public_link}
+          />
+        </div>
+      </td>
       <td className="py-2 pr-3 text-sm text-muted-foreground whitespace-nowrap">
         {item.item_type === 'FILE' && item.size_bytes != null ? formatBytes(item.size_bytes) : '—'}
       </td>
