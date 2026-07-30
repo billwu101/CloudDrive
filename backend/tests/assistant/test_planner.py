@@ -416,6 +416,7 @@ def _shape_registry() -> SkillRegistry:
         ("recent", "read", SkillOutput.ITEM_LIST),
         ("get_info", "read", SkillOutput.ITEM),
         ("create_folder", "write", SkillOutput.NEW_FOLDER),
+        ("rename_item", "write", SkillOutput.MUTATED_ITEM),
         ("move_item", "write", SkillOutput.MUTATED_ITEM),
         ("my_own_skill", "write", SkillOutput.OPAQUE),
     ):
@@ -430,6 +431,12 @@ def _shape_registry() -> SkillRegistry:
             )
         )
     return registry
+
+
+def _search_step() -> PlannedStep:
+    """A preceding search whose output a write step can legitimately reference."""
+
+    return PlannedStep(skill="search", arguments={"q": "報告"}, depends_on=[])
 
 
 def test_paged_path_against_a_step_that_returns_the_item_itself_is_rejected() -> None:
@@ -686,3 +693,53 @@ def test_a_name_with_ordinary_brackets_survives() -> None:
 
     assert result is not None
     assert result.steps[0].arguments == {"name": "report [2026] {final}"}
+
+
+def test_a_byte_token_in_an_argument_is_rejected_not_repaired_by_guessing() -> None:
+    """報告_2026 arrived from the model as 報告_20<0xA0>26 and the folder was
+    created under that name. Deleting the marker would be a guess: it happens to
+    give the right answer here, but 預算_20<0xA0>6 → 預算_206 is a different
+    year. Rejection sends it back through the repair loop instead.
+    """
+
+    steps = [
+        PlannedStep(
+            skill="rename_item",
+            arguments={"item_id": {"from": 0, "path": "items.0.id"}, "new_name": "報告_20<0xA0>26"},
+            depends_on=[0],
+        )
+    ]
+
+    problems = validate_plan(steps, _shape_registry(), preceding=[_search_step()])
+
+    assert len(problems) == 1
+    assert "raw byte tokens" in problems[0]
+    assert "new_name" in problems[0]
+
+
+def test_clean_arguments_are_untouched_by_the_byte_token_rule() -> None:
+    steps = [
+        PlannedStep(
+            skill="rename_item",
+            arguments={"item_id": {"from": 0, "path": "items.0.id"}, "new_name": "報告_2026"},
+            depends_on=[0],
+        )
+    ]
+
+    assert validate_plan(steps, _shape_registry(), preceding=[_search_step()]) == []
+
+
+def test_byte_tokens_are_only_scrubbed_from_the_reply_text() -> None:
+    """Prose with <0xA0> in it is merely ugly, so it gets cleaned. The same
+    marker in an argument must survive parsing so validate_plan can reject it."""
+
+    raw = (
+        '{"reply": "已建立 報告_20<0xA0>26。", "needs_followup": false, "steps": '
+        '[{"skill": "create_folder", "arguments": {"name": "報告_20<0xA0>26"}, "depends_on": []}]}'
+    )
+
+    result = _parse(raw)
+
+    assert result is not None
+    assert result.reply == "已建立 報告_2026。"
+    assert result.steps[0].arguments == {"name": "報告_20<0xA0>26"}

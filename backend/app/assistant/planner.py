@@ -227,6 +227,27 @@ _DECODING_ARTIFACTS = ("<tool_call", "<|", "<end_of_turn>", "<start_of_turn>")
 _JSON_CLOSURE_DEBRIS = re.compile(r"['\"]\s*[}\]][}\]\s]*")
 # Punctuation left over from the interrupted JSON, immediately before the debris.
 _ARTIFACT_TAIL = "'\"`}]{[ \t\r\n"
+# A byte-fallback token rendered as literal text: the model emitted the bytes of
+# a character it could not spell, and the serving stack never merged them back.
+# Observed inside otherwise-clean values — 報告_2026 came out as 報告_20<0xA0>26.
+_BYTE_TOKEN = re.compile(r"<0x[0-9A-Fa-f]{2}>")
+
+
+def _has_byte_tokens(value: object) -> bool:
+    return isinstance(value, str) and _BYTE_TOKEN.search(value) is not None
+
+
+def _strip_byte_tokens(value: str) -> str:
+    """Drop byte-fallback markers from text shown to the user.
+
+    Only ever applied to ``reply`` — prose with ``<0xA0>`` in it is merely ugly.
+    NEVER to arguments: dropping the marker guesses at what the model meant, and
+    it guesses wrong half the time (``報告_20<0xA0>26`` → ``報告_2026`` is right,
+    but ``預算_20<0xA0>6`` → ``預算_206`` is a different year). Corrupted
+    arguments are rejected in ``validate_plan`` so the model writes them again.
+    """
+
+    return _BYTE_TOKEN.sub("", value)
 
 
 def _strip_decoding_artifacts(value: str) -> str:
@@ -273,7 +294,10 @@ def _parse(content: str) -> PlanResult | None:
         cleaned = _clean_artifacts(data)
         if cleaned != data:
             _LOG.warning("stripped chat-template artifacts from a plan: %r", content[:300])
-        return PlanResult.model_validate(cleaned)
+        result = PlanResult.model_validate(cleaned)
+        if _has_byte_tokens(result.reply):
+            result.reply = _strip_byte_tokens(result.reply)
+        return result
     except (json.JSONDecodeError, ValidationError, TypeError):
         return None
 
@@ -414,6 +438,19 @@ def validate_plan(
                     f"step {index}: depends_on must point to an earlier step, got {dependency}"
                 )
         for arg_name, arg_value in step.arguments.items():
+            # A literal carrying byte-fallback markers is corrupted text, not a
+            # value: 報告_2026 arrived as 報告_20<0xA0>26 and the folder was
+            # created under that name. Rejecting sends it back through the repair
+            # loop, which is the only honest option — the marker cannot be
+            # removed safely (see _strip_byte_tokens) and the corruption is
+            # stochastic, so re-planning usually produces a clean value.
+            if _has_byte_tokens(arg_value):
+                problems.append(
+                    f"step {index}: argument {arg_name!r} contains raw byte tokens "
+                    f"({arg_value!r}) — that text is corrupted. Write the value again "
+                    "as plain characters."
+                )
+                continue
             # Step-output references must point at an earlier step. Selection
             # references are always resolvable (the selection exists independently
             # of step order), so they are exempt from the earlier-step rule.
