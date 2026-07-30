@@ -16,6 +16,25 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Local mail catcher: the password-reset flow needs somewhere to deliver to.
+  # Without it EMAIL_PROVIDER falls back to "console", which only logs — the
+  # flow then looks like it worked while no mail exists anywhere.
+  # Web UI on http://localhost:8025, SMTP on 1025 (no auth, no TLS).
+  mailpit:
+    image: axllent/mailpit:latest
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -26,6 +45,13 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-change-me}
       LOCAL_STORAGE_PATH: /app/storage
       SNAPSHOT_SCHEDULER_ENABLED: ${SNAPSHOT_SCHEDULER_ENABLED:-true}
+      # Password-reset mail goes to the local mailpit catcher (see above).
+      # No credentials and no TLS — it accepts anything on the compose network.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_FROM: ${SMTP_FROM:-Cloud Drive <no-reply@clouddrive.local>}
       # AI Assistant (optional). Set ASSISTANT_ENABLED=false if you have no Ollama.
       ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
@@ -52,6 +78,8 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      mailpit:
         condition: service_healthy
     # Lets the container reach an Ollama running on the host (Linux + Docker
     # Desktop). Harmless if the assistant is disabled.
