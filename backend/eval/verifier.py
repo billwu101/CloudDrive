@@ -223,7 +223,12 @@ def verify_codegen_execution(case: EvalCase, response: dict[str, Any]) -> list[C
                 f"generated skill runs on a {item_type} fixture and produces output",
                 result["ok"],
                 f"error={result['error']} produced={result['produced_files']} "
-                f"json_serializable={result['json_serializable']}",
+                f"json_serializable={result['json_serializable']} "
+                # Without this the content checks (eval/output_checks.py) can fail
+                # a case while the detail line says nothing about why: gen-ec3-003
+                # showed "produced=['checksums.txt', ...]" and ok=False, and the
+                # actual reason (a wrong digest) was only in the discarded report.
+                f"output_problems={result.get('output_problems')}",
             )
         )
     return checks
