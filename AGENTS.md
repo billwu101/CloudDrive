@@ -102,6 +102,20 @@ src/
 
 ## Testing Patterns
 
+> **User-visible changes must be verified in a real browser before they count as done.**
+> Unit tests run against jsdom and MSW mocks; the app runs against a real backend
+> in a real browser. Open the page with the browser tools, drive the actual flow,
+> and check the console and the requests that were really sent — confirming an
+> element exists is not verification. Report what you did and what you saw, and
+> record it in the module's `doc/tasks/<module>.md`. Never ask the user to check
+> manually, and never use throwaway-free real data for destructive steps: create a
+> disposable account and folder.
+>
+> This exists because it has already gone wrong twice here: a PDF preview declared
+> fixed after only checking that an `<iframe>` rendered (it still could not
+> preview), and proposal §33's backend shipped with no frontend at all (an editor
+> link opened read-only). Both had green unit suites.
+
 ### Backend unit tests
 
 Each module's `tests/<module>/test_router.py` follows this pattern — no real DB needed:

@@ -163,4 +163,28 @@ export function downloadSharedArchive(folderName: string): Promise<void> {
   return saveBlob('/public/archive', `${folderName}.zip`)
 }
 
+/** Zip just the items the guest selected (proposal §34.4). */
+export async function downloadSharedSelection(itemIds: string[]): Promise<void> {
+  const res = await publicClient.post<Blob>(
+    '/public/archive',
+    { item_ids: itemIds },
+    { headers: authHeaders(), responseType: 'blob' },
+  )
+  const disposition = String(res.headers['content-disposition'] ?? '')
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition)
+  const url = URL.createObjectURL(res.data)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = match?.[1] ? decodeURIComponent(match[1]) : 'download.zip'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** Preview bytes as an object URL, for the shared `PreviewDialog`. */
+export async function fetchSharedPreviewBlob(itemId: string): Promise<string> {
+  return fetchSharePreviewUrl(itemId)
+}
+
 export type { ApiError }

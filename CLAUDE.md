@@ -40,7 +40,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 使用專案既有 Python 版本與 `uv`；新增依賴先確認必要性；禁止改全域環境；公開函式／類別提供型別註記與 Docstring；不留無用測試碼／除錯輸出／註解掉的大段程式。
 - 必過檢查：`uv run pytest`、`uv run mypy .`、`uv run ruff check .`、`uv run ruff format --check .`（專案有不同指令以專案設定為準）。
 - 測試：每模組單元測試；核心流程整合測試；每個錯誤分支至少一測試；不依賴不穩定外部網路；外部 API／FS／時間／隨機可替換或 Mock；修 Bug 先寫能重現的測試；驗證行為而非追覆蓋率數字；測試全通過前任務不得標完成。
-- **完成定義**：功能實作 + 單元測試通過 + 型別檢查通過 + Ruff 通過 + 文件已更新 + checklist 已更新 + 無未說明技術債 + 主 Agent 已審查。
+- **使用者看得到的功能，一律要跑瀏覽器實測才算完成**（強制）：新增或修改任何前端行為後，必須用瀏覽器工具實際開頁面操作一遍，並在回報中附上實測結果（做了哪些操作、看到什麼、console 有無錯誤）。單元測試綠燈**不等於**功能可用——測試跑的是 jsdom 與 mock，實際跑的是真後端、真瀏覽器、真資料。
+  - **不得以「單元測試通過」或「程式碼看起來正確」代替實測**，也不得請使用者自己去點點看。
+  - **要實測到功能真正發生**，不是只確認元素存在。查 console 錯誤、查實際發出的請求、必要時查資料庫或稽核紀錄確認狀態真的改變了。
+  - **實測結果要回填到對應的 `doc/tasks/<module>.md`**（做了什麼、結果、環境限制）。
+  - **測試資料只用拋棄式帳號與測試資料夾**，不得拿使用者的真實檔案做破壞性操作。
+  - 為什麼要這條：本專案已發生過兩次——PDF 預覽只確認了 iframe 存在就宣稱修好（實際仍不能預覽）、§33 後端做完但前端完全沒接（editor 連結開起來與唯讀無異）。兩者單元測試都是綠的。
+- **完成定義**：功能實作 + 單元測試通過 + 型別檢查通過 + Ruff 通過 + **使用者可見功能已瀏覽器實測** + 文件已更新 + checklist 已更新 + 無未說明技術債 + 主 Agent 已審查。
 
 ### 五、需求與變更管理
 
@@ -211,6 +217,20 @@ src/
 **State:** Server state via TanStack Query (v5); UI/upload/auth state via Zustand (v5). Query keys are defined per-hook file using factory functions (`driveKeys.items(parentId)` etc.).
 
 ## Testing Patterns
+
+> **User-visible changes must be verified in a real browser before they count as done.**
+> Unit tests run against jsdom and MSW mocks; the app runs against a real backend
+> in a real browser. Open the page with the browser tools, drive the actual flow,
+> and check the console and the requests that were really sent — confirming an
+> element exists is not verification. Report what you did and what you saw, and
+> record it in the module's `doc/tasks/<module>.md`. Never ask the user to check
+> manually, and never use throwaway-free real data for destructive steps: create a
+> disposable account and folder.
+>
+> This exists because it has already gone wrong twice here: a PDF preview declared
+> fixed after only checking that an `<iframe>` rendered (it still could not
+> preview), and proposal §33's backend shipped with no frontend at all (an editor
+> link opened read-only). Both had green unit suites.
 
 ### Backend unit tests
 
