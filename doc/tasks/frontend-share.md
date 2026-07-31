@@ -235,3 +235,22 @@ proposal §34.5 全部 7 項通過；`npm run lint` / `typecheck` / `npx vitest 
 ### 明確不做（proposal §34.3，實作時不得順手加上）
 
 星號、再分享、`ShareBadges`、Assistant 技能選單、垃圾桶頁。前四項成因相同——那些狀態屬於**使用者或擁有者**，訪客兩者皆非。
+
+---
+
+## 階段 4b：同一份 Drive 本體直接給訪客（2026-07-31 使用者定案）
+
+**背景**：階段 4 用元件拼出的訪客頁仍與 My Drive 有可見差異（右鍵選單項目集合、工具列位置等）。使用者定案：**直接把使用者前端的頁面本體分享給訪客，適度減少功能**——不是拼一個像的，是同一份程式碼。
+
+### 子任務
+
+- [ ] 抽出 `DriveExplorer`（`src/components/drive/DriveExplorer.tsx`）：DrivePage 檔案區本體全搬入，動作全部經 `actions` 注入且**選填**——能力缺席＝介面隱藏。
+- [ ] `FileContextMenu`：`item` 放寬 + `onRename`／`onMove`／`onShare`／`onToggleStar`／`onTrash` 選填（缺席不渲染）；刪除 `PublicContextMenu`。
+- [ ] `DriveToolbar`：三個 handler 選填。
+- [ ] `DrivePage` 改為組裝 `DriveExplorer`（注入 uiStore 選取、路由麵包屑、Share／Star／Assistant 能力）；**既有測試不需修改**。
+- [ ] 訪客頁改為組裝 `DriveExplorer`（注入 local 選取、trail 麵包屑、`/public` 動作；viewer 無能力、downloader 僅下載、editor 除星號／分享／assistant 外全部）。
+- [ ] 測試更新：訪客右鍵選單與 My Drive 同元件但無 Star／Share／assistant 項。
+
+### 驗收條件
+
+editor 訪客頁與 My Drive 的差異只剩 proposal §34.3 表列五項＋外殼（Sidebar／搜尋／助理）；lint / typecheck / vitest 全綠；瀏覽器實測。

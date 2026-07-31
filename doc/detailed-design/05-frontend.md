@@ -536,15 +536,16 @@ Sidebar 於「Shared with me」下方新增入口。
    - 失敗顯示後端 message（經 `toApiError`）。這是操作結果回饋，不受第 3 點「不可區分性」約束——那條只管「連結開不開得起來」，不管開起來之後的名稱衝突或配額滿。
    - **下載能力 editor ≥ downloader**：後端 `_assert_can_download` 只擋 viewer，前端判斷須為 `permission !== 'viewer'`，不可寫成 `=== 'downloader'`（否則 editor 連結看不到下載鈕）。
 9. **根目錄不重複顯示名稱**：麵包屑只在 `trail.length > 1` 時渲染——停在分享根時麵包屑第一段永遠等於頁首標題，重複無資訊量。
-10. **與 My Drive 對齊（proposal §34）**：訪客編輯頁**沿用 My Drive 的元件**，不另寫一套。
+10. **與 My Drive 對齊（proposal §34）**：**同一份頁面本體直接給訪客用**（2026-07-31 使用者定案，取代先前「用元件拼」的方向）。
 
-    **元件重用的作法**：`FileCard` / `FileRow` / `FileGrid` / `FileTable` 的 `item` 型別放寬為兩者的共同子集（`id`／`name`／`item_type`／`mime_type`／`size_bytes`／`updated_at`），而 `is_starred`／`is_shared_with_users`／`has_active_public_link` 改為**選填**。三者皆為 owner-only 的可見性，欄位缺席時星號與 `ShareBadges` 自動不渲染——訪客頁不必傳假值，My Drive 也不必改呼叫端。
+    **作法**：把 `DrivePage` 的檔案區本體抽成 `DriveExplorer`（工具列、格狀／清單、選取／框選、右鍵選單、四個對話框、拖放移動、拖曳上傳、上傳佇列、預覽）。`DrivePage` 與訪客頁都渲染它，差別只在注入的 `actions`：
 
-    `MoveDialog` 與 `PreviewDialog` 把「取子資料夾」「取預覽內容」的函式**參數化**（預設值即目前的登入版），訪客頁注入 `/public` 版本。`MoveDialog` 的瀏覽起點改為傳入，訪客頁傳分享根——這是子樹邊界在 UI 上的落點。
-
-    **選取狀態不共用 `uiStore`**：訪客頁自帶 local state。`uiStore.selectedItemIds` 是全域單一份，同一個瀏覽器同時開著 My Drive 與訪客頁時會互相污染選取。`viewMode` 則可共用（純顯示偏好，跨頁一致反而合理）。
-
-    訪客版右鍵選單是**另一個元件**而非給 `FileContextMenu` 加旗標：訪客沒有星號、分享與 Assistant 三項，若靠旗標關掉，選單元件會累積「這個情境不要顯示這項」的分支，而兩者要顯示的動作集合本來就不同。
+    - **能力缺席＝介面隱藏**：`createFolder`／`renameItem`／`moveItem`／`trashItem`／`uploadFiles`／`downloadItem`／`downloadSelection`／`toggleStar`／`share` 全部選填。viewer 什麼都不注入；downloader 只注入下載；editor 注入除 `toggleStar`／`share`／assistant 之外的全部。**沒有「isGuest」旗標**——判斷的是能力，不是身分。
+    - **右鍵選單共用 `FileContextMenu`**（推翻本節先前「另寫元件」的決定）：handler 選填、缺席即不渲染該項。多選選單只在 `trashItem` 存在時開啟。
+    - **選取狀態由呼叫端注入**：`DrivePage` 注入 `uiStore`（AssistantPanel 靠它拿聊天附件，不能搬）；訪客頁注入 local state（全域單一份會被同時開著的兩頁互相污染）。`viewMode` 共用。
+    - **麵包屑由呼叫端注入**（ReactNode）：`Breadcrumbs` 寫死 `/drive` 路由連結，訪客的導覽是 trail 狀態不是路由。
+    - `item` 型別放寬為 `BrowsableItem` 共同子集；`is_starred`／`is_shared_with_users`／`has_active_public_link` 選填，缺席時星號與 `ShareBadges` 不渲染。
+    - `MoveDialog`／`PreviewDialog` 資料來源參數化，訪客注入 `/public` 版本；`MoveDialog` 起點為分享根（子樹邊界在 UI 的落點）。
 
 11. **訪客頁不提供的 My Drive 功能**（proposal §34.3，實作時不得「順手加上」）：星號、再分享、`ShareBadges`、Assistant 技能選單、垃圾桶頁。前四項的成因都是同一個——那些狀態屬於**使用者或擁有者**，訪客兩者皆非。
 
