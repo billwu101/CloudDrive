@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 
 import { isApiError } from '@/api/client'
-import type { DriveItemResponse } from '@/api/types'
+import type { BrowsableItem } from '@/api/types'
 
 import { useMoveItem } from './useDrive'
 
@@ -84,26 +84,32 @@ export interface DragMove {
   moveError: string | null
   clearMoveError: () => void
   isMoving: boolean
-  onItemDragStart: (item: DriveItemResponse, e: React.DragEvent) => void
+  onItemDragStart: (item: BrowsableItem, e: React.DragEvent) => void
   onItemDragEnd: () => void
-  onItemDragOver: (item: DriveItemResponse, e: React.DragEvent) => void
-  onItemDragLeave: (item: DriveItemResponse) => void
-  onItemDrop: (item: DriveItemResponse, e: React.DragEvent) => void
+  onItemDragOver: (item: BrowsableItem, e: React.DragEvent) => void
+  onItemDragLeave: (item: BrowsableItem) => void
+  onItemDrop: (item: BrowsableItem, e: React.DragEvent) => void
 }
 
 interface UseDragMoveOptions {
   selectedIds: Set<string>
-  items: DriveItemResponse[]
+  items: BrowsableItem[]
+  /**
+   * How to actually move one item. Guests go through the public endpoint with
+   * their share credential; left out, this is the signed-in drive mutation.
+   */
+  moveItem?: (id: string, targetParentId: string) => Promise<unknown>
 }
 
-export function useDragMove({ selectedIds, items }: UseDragMoveOptions): DragMove {
+export function useDragMove({ selectedIds, items, moveItem }: UseDragMoveOptions): DragMove {
   const move = useMoveItem()
   const [draggingIds, setDraggingIds] = useState<Set<string>>(new Set())
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
+  const [isMoving, setIsMoving] = useState(false)
 
   const onItemDragStart = useCallback(
-    (item: DriveItemResponse, e: React.DragEvent) => {
+    (item: BrowsableItem, e: React.DragEvent) => {
       // Dragging something outside the selection moves only that item and
       // leaves the selection alone — a drag is a move gesture, not a
       // selection one (proposal §30.5 decision 2).
@@ -132,7 +138,7 @@ export function useDragMove({ selectedIds, items }: UseDragMoveOptions): DragMov
   }, [])
 
   const canAccept = useCallback(
-    (item: DriveItemResponse, e: React.DragEvent) =>
+    (item: BrowsableItem, e: React.DragEvent) =>
       item.item_type === 'FOLDER' &&
       e.dataTransfer.types.includes(DRAG_MIME) &&
       !draggingIds.has(item.id),
@@ -140,7 +146,7 @@ export function useDragMove({ selectedIds, items }: UseDragMoveOptions): DragMov
   )
 
   const onItemDragOver = useCallback(
-    (item: DriveItemResponse, e: React.DragEvent) => {
+    (item: BrowsableItem, e: React.DragEvent) => {
       // Not calling preventDefault leaves the browser showing its "no drop"
       // cursor, which is exactly the feedback an invalid target should give.
       if (!canAccept(item, e)) return
@@ -151,12 +157,12 @@ export function useDragMove({ selectedIds, items }: UseDragMoveOptions): DragMov
     [canAccept],
   )
 
-  const onItemDragLeave = useCallback((item: DriveItemResponse) => {
+  const onItemDragLeave = useCallback((item: BrowsableItem) => {
     setDropTargetId((current) => (current === item.id ? null : current))
   }, [])
 
   const onItemDrop = useCallback(
-    (target: DriveItemResponse, e: React.DragEvent) => {
+    (target: BrowsableItem, e: React.DragEvent) => {
       if (!canAccept(target, e)) return
       e.preventDefault()
       e.stopPropagation()
@@ -174,24 +180,29 @@ export function useDragMove({ selectedIds, items }: UseDragMoveOptions): DragMov
 
       const nameOf = (id: string) => items.find((i) => i.id === id)?.name ?? id
 
+      const runMove =
+        moveItem ?? ((id: string, parentId: string) => move.mutateAsync({ id, targetParentId: parentId }))
+
       void (async () => {
         const failures: string[] = []
+        setIsMoving(true)
         // No bulk endpoint, and a name clash on one item is routine rather
         // than exceptional — so each move stands on its own and successes
         // are never rolled back (proposal §30.5 decision 3).
         for (const id of moving) {
           try {
-            await move.mutateAsync({ id, targetParentId: target.id })
+            await runMove(id, target.id)
           } catch (err) {
             const reason = isApiError(err) ? err.message : 'could not be moved'
             failures.push(`${nameOf(id)} — ${reason}`)
           }
         }
+        setIsMoving(false)
         setDraggingIds(new Set())
         setMoveError(failures.length > 0 ? failures.join('; ') : null)
       })()
     },
-    [canAccept, items, move],
+    [canAccept, items, move, moveItem],
   )
 
   return {
@@ -199,7 +210,7 @@ export function useDragMove({ selectedIds, items }: UseDragMoveOptions): DragMov
     dropTargetId,
     moveError,
     clearMoveError: () => setMoveError(null),
-    isMoving: move.isPending,
+    isMoving,
     onItemDragStart,
     onItemDragEnd,
     onItemDragOver,

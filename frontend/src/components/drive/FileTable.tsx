@@ -1,24 +1,26 @@
 import { useEffect, useRef } from 'react'
 
-import type { DriveItemResponse } from '@/api/types'
+import type { BrowsableItem } from '@/api/types'
 
 import type { DragMove } from '@/hooks/useDragMove'
 
 import { FileRow } from './FileRow'
 
-interface FileTableProps {
-  items: DriveItemResponse[]
+/** Generic for the same reason as `FileGrid` — see its note. */
+interface FileTableProps<T extends BrowsableItem> {
+  items: T[]
   selectedIds: Set<string>
-  onItemClick: (item: DriveItemResponse, e: React.MouseEvent) => void
-  onItemDoubleClick: (item: DriveItemResponse) => void
-  onItemContextMenu: (item: DriveItemResponse, e: React.MouseEvent) => void
-  onStarClick: (item: DriveItemResponse, e: React.MouseEvent) => void
-  onCheckboxClick: (item: DriveItemResponse, e: React.MouseEvent) => void
+  onItemClick: (item: T, e: React.MouseEvent) => void
+  onItemDoubleClick: (item: T) => void
+  onItemContextMenu: (item: T, e: React.MouseEvent) => void
+  /** Omitted for guests — starring needs an account to own the star. */
+  onStarClick?: (item: T, e: React.MouseEvent) => void
+  onCheckboxClick: (item: T, e: React.MouseEvent) => void
   drag?: DragMove
   onSelectAll: () => void
 }
 
-export function FileTable({
+export function FileTable<T extends BrowsableItem>({
   items,
   selectedIds,
   onItemClick,
@@ -28,7 +30,7 @@ export function FileTable({
   onCheckboxClick,
   drag,
   onSelectAll,
-}: FileTableProps) {
+}: FileTableProps<T>) {
   const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i.id))
   const someSelected = !allSelected && items.some((i) => selectedIds.has(i.id))
 
@@ -78,7 +80,7 @@ export function FileTable({
             onClick={(e) => onItemClick(item, e)}
             onDoubleClick={() => onItemDoubleClick(item)}
             onContextMenu={(e) => onItemContextMenu(item, e)}
-            onStarClick={(e) => onStarClick(item, e)}
+            onStarClick={onStarClick && ((e) => onStarClick(item, e))}
             onCheckboxClick={(e) => onCheckboxClick(item, e)}
             dragging={drag?.draggingIds.has(item.id)}
             dropTarget={drag?.dropTargetId === item.id}

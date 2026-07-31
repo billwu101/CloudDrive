@@ -3,12 +3,45 @@ import { useState } from 'react'
 
 import { useDriveItems } from '@/hooks/useDrive'
 
+/** How the dialog lists folders — swapped out on the guest side. */
+export interface FolderSource {
+  /** Folders directly under `parentId`; `undefined` means the browsing root. */
+  useFolders: (parentId?: string) => { folders: FolderChoice[]; isLoading: boolean }
+  /** Label for the top-level entry. */
+  rootLabel: string
+  /** Id the root entry resolves to — `null` is the drive root, guests pass their share root. */
+  rootId: string | null
+}
+
+export interface FolderChoice {
+  id: string
+  name: string
+}
+
 interface MoveDialogProps {
   open: boolean
   itemId: string
   loading: boolean
   onConfirm: (targetParentId: string | null) => void
   onClose: () => void
+  /**
+   * Defaults to the signed-in drive. Guests must pass their own: this dialog
+   * decides what a user is allowed to move things *into*, so browsing from the
+   * drive root would show a guest folders outside the shared subtree.
+   */
+  source?: FolderSource
+}
+
+const driveSource: FolderSource = {
+  useFolders: (parentId) => {
+    const { data, isLoading } = useDriveItems(parentId)
+    return {
+      folders: (data?.items ?? []).filter((i) => i.item_type === 'FOLDER'),
+      isLoading,
+    }
+  },
+  rootLabel: 'My Drive (root)',
+  rootId: null,
 }
 
 function FolderBrowser({
@@ -16,15 +49,17 @@ function FolderBrowser({
   excludeId,
   selectedId,
   onSelect,
+  source,
 }: {
   parentId?: string
   excludeId: string
   selectedId: string | null
   onSelect: (id: string | null) => void
+  source: FolderSource
 }) {
-  const { data, isLoading } = useDriveItems(parentId)
+  const { folders: all, isLoading } = source.useFolders(parentId)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const folders = (data?.items ?? []).filter((i) => i.item_type === 'FOLDER' && i.id !== excludeId)
+  const folders = all.filter((f) => f.id !== excludeId)
 
   if (isLoading) return <Loader2 className="size-4 animate-spin text-muted-foreground" />
 
@@ -58,6 +93,7 @@ function FolderBrowser({
                 excludeId={excludeId}
                 selectedId={selectedId}
                 onSelect={onSelect}
+                source={source}
               />
             </div>
           )}
@@ -70,8 +106,15 @@ function FolderBrowser({
   )
 }
 
-export function MoveDialog({ open, itemId, loading, onConfirm, onClose }: MoveDialogProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+export function MoveDialog({
+  open,
+  itemId,
+  loading,
+  onConfirm,
+  onClose,
+  source = driveSource,
+}: MoveDialogProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(source.rootId)
 
   if (!open) return null
 
@@ -92,14 +135,20 @@ export function MoveDialog({ open, itemId, loading, onConfirm, onClose }: MoveDi
 
         <div className="max-h-72 overflow-y-auto p-3">
           <button
-            onClick={() => setSelectedId(null)}
-            className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-accent ${selectedId === null ? 'bg-accent font-medium' : ''}`}
+            onClick={() => setSelectedId(source.rootId)}
+            className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-accent ${selectedId === source.rootId ? 'bg-accent font-medium' : ''}`}
           >
             <HardDrive className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            My Drive (root)
+            {source.rootLabel}
           </button>
           <div className="ml-4 mt-0.5">
-            <FolderBrowser parentId={undefined} excludeId={itemId} selectedId={selectedId} onSelect={setSelectedId} />
+            <FolderBrowser
+              parentId={source.rootId ?? undefined}
+              excludeId={itemId}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              source={source}
+            />
           </div>
         </div>
 

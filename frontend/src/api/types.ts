@@ -355,6 +355,28 @@ export type PreviewKind =
   | 'audio'
   | 'unsupported'
 
+/**
+ * What the file browser needs to draw a row or card (design §5.9.6 point 10).
+ *
+ * The common ground between a signed-in user's `DriveItemResponse` and a
+ * guest's `PublicItem`, so both can use the same components. The last three
+ * are owner-only visibility: a guest has neither an account to hang a star on
+ * nor any business seeing who else an item was shared with. They are optional
+ * rather than nullable so the guest side simply doesn't pass them, and their
+ * absence — not a flag — is what hides the affordance.
+ */
+export interface BrowsableItem {
+  id: string
+  name: string
+  item_type: 'FILE' | 'FOLDER'
+  mime_type: string | null
+  size_bytes: number
+  updated_at: string
+  is_starred?: boolean
+  is_shared_with_users?: boolean
+  has_active_public_link?: boolean
+}
+
 /** What a guest is allowed to see about a shared item — no owner, no flags. */
 export interface PublicItem {
   id: string
