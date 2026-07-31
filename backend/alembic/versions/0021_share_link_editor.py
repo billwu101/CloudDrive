@@ -35,6 +35,4 @@ def downgrade() -> None:
     op.execute("UPDATE share_links SET is_active = false WHERE permission = 'editor'")
     op.execute("DELETE FROM share_links WHERE permission = 'editor'")
     op.drop_constraint(_NAME, "share_links", type_="check")
-    op.create_check_constraint(
-        _NAME, "share_links", "permission IN ('viewer', 'downloader')"
-    )
+    op.create_check_constraint(_NAME, "share_links", "permission IN ('viewer', 'downloader')")

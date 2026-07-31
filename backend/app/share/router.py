@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from app.core.dependencies import CurrentUserId, DbSession
 from app.drive.repository import SQLDriveItemRepository
@@ -126,6 +127,24 @@ async def create_link(
     )
     await session.commit()
     return result
+
+
+class LinkTokenResponse(BaseModel):
+    token: str
+
+
+@router.get(
+    "/links/{link_id}/token",
+    response_model=LinkTokenResponse,
+    summary="Reveal a share link's token so the owner can copy the URL again",
+)
+async def reveal_link_token(
+    link_id: UUID,
+    current_user_id: CurrentUserId,
+    service: LinkServiceDep,
+) -> LinkTokenResponse:
+    """Owner-only, and only on demand — see design §6.12.11 rule 3a."""
+    return LinkTokenResponse(token=await service.reveal_token(current_user_id, link_id))
 
 
 @router.delete(

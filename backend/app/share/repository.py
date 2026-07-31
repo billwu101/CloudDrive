@@ -91,6 +91,7 @@ class AbstractShareLinkRepository(ABC):
         password_hash: str | None,
         expires_at: datetime | None,
         created_by: UUID,
+        token_encrypted: str | None = None,
     ) -> ShareLink: ...
 
     @abstractmethod
@@ -292,12 +293,14 @@ class SQLShareLinkRepository(AbstractShareLinkRepository):  # pragma: no cover
         password_hash: str | None,
         expires_at: datetime | None,
         created_by: UUID,
+        token_encrypted: str | None = None,
     ) -> ShareLink:
         now = datetime.now(UTC)
         link = ShareLink(
             id=uuid4(),
             item_id=item_id,
             token_hash=token_hash,
+            token_encrypted=token_encrypted,
             permission=permission,
             password_hash=password_hash,
             expires_at=expires_at,

@@ -11,6 +11,7 @@ from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError, ForbiddenError, NotFoundError
 from app.core.security import hash_password, verify_password
 from app.drive.repository import AbstractDriveItemRepository
+from app.external_model.crypto import CredentialCipher, CredentialCipherError
 from app.models.drive_item import DriveItem
 from app.models.share import Share
 from app.models.share_link import ShareLink
@@ -231,14 +232,25 @@ class ShareLinkService:
         if item.owner_id != actor_id:
             raise ForbiddenError("Only the owner can create share links")
 
-        if permission == LinkPermission.EDITOR and expires_at is None:
-            # The only time bound an editor link has. A link that lets strangers
-            # write and never dies is not something to create by omission.
-            raise AppError(
-                ErrorCode.INVALID_OPERATION,
-                "An editor link must have an expiry date",
-                status_code=422,
-            )
+        if permission == LinkPermission.EDITOR:
+            # An editor link hands write access to whoever holds the URL, and a
+            # URL gets forwarded, pasted into group chats and left in history.
+            # The expiry bounds how long that lasts; the password is what keeps
+            # "has the URL" and "can change things" from being the same thing
+            # (proposal §33.3 rule 4). Existing links are untouched — this only
+            # constrains what can be created from now on.
+            if expires_at is None:
+                raise AppError(
+                    ErrorCode.INVALID_OPERATION,
+                    "An editor link must have an expiry date",
+                    status_code=422,
+                )
+            if not password:
+                raise AppError(
+                    ErrorCode.INVALID_OPERATION,
+                    "An editor link must have a password",
+                    status_code=422,
+                )
 
         token = secrets.token_urlsafe(32)
         token_hash = _hash_token(token)
@@ -250,12 +262,54 @@ class ShareLinkService:
         link = await self._links.create(
             item_id=item_id,
             token_hash=token_hash,
+            # Stored so the owner can be shown this URL again (§6.12.11 rule 3a).
+            # Best-effort: without a configured key the link is still created,
+            # it just cannot be copied later — refusing to share at all would be
+            # a worse trade than losing a convenience.
+            token_encrypted=self._encrypt_token(token),
             permission=permission.value,
             password_hash=password_hash,
             expires_at=expires_at,
             created_by=actor_id,
         )
         return _link_to_response(link, token=token)
+
+    @staticmethod
+    def _cipher() -> CredentialCipher | None:
+        from app.core.config import get_settings
+
+        key = get_settings().credential_encryption_key
+        if not key:
+            return None
+        try:
+            return CredentialCipher(key)
+        except CredentialCipherError:
+            return None
+
+    def _encrypt_token(self, token: str) -> str | None:
+        cipher = self._cipher()
+        return cipher.encrypt(token) if cipher else None
+
+    async def reveal_token(self, actor_id: UUID, link_id: UUID) -> str:
+        """The link's original URL token, for the owner only.
+
+        Deliberately its own endpoint rather than a field on the listing: the
+        plaintext then travels only when someone actually asks to copy it,
+        instead of on every page load (design §6.12.11 rule 3a).
+        """
+        link = await self._owned_link(actor_id, link_id)
+        if link.token_encrypted is None:
+            # Predates the column — there is nothing to recover, and saying so
+            # is the honest answer.
+            raise NotFoundError("This link's address can no longer be retrieved")
+        cipher = self._cipher()
+        if cipher is None:
+            raise NotFoundError("This link's address can no longer be retrieved")
+        try:
+            return cipher.decrypt(link.token_encrypted)
+        except CredentialCipherError as exc:
+            # Wrong or rotated key: the row is intact but unreadable.
+            raise NotFoundError("This link's address can no longer be retrieved") from exc
 
     async def validate_access(self, token: str, *, password: str | None = None) -> ShareLink:
         token_hash = _hash_token(token)
