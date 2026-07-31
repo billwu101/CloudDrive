@@ -1,8 +1,9 @@
 import { Link2, Users } from 'lucide-react'
 
 interface ShareBadgesProps {
-  isSharedWithUsers: boolean
-  hasActivePublicLink: boolean
+  /** Undefined on the guest side, where sharing state is the owner's business. */
+  isSharedWithUsers?: boolean
+  hasActivePublicLink?: boolean
 }
 
 /**

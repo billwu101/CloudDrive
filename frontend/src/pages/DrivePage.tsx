@@ -1,5 +1,5 @@
-import { ArrowLeft, FolderOpen } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { downloadItem, triggerBlobDownload } from '@/api/download'
@@ -11,44 +11,22 @@ import type {
 } from '@/api/types'
 import { AssistantSkillResultDialog } from '@/components/assistant/AssistantSkillResultDialog'
 import { Breadcrumbs, type BreadcrumbItem } from '@/components/drive/Breadcrumbs'
-import { ConfirmTrashDialog } from '@/components/drive/ConfirmTrashDialog'
-import { CreateFolderDialog } from '@/components/drive/CreateFolderDialog'
-import { DriveToolbar } from '@/components/drive/DriveToolbar'
-import {
-  FileContextMenu,
-  type AssistantContextMenuAction,
-} from '@/components/drive/FileContextMenu'
-import { FileGrid } from '@/components/drive/FileGrid'
-import { FileTable } from '@/components/drive/FileTable'
-import { MoveDialog } from '@/components/drive/MoveDialog'
-import { MultiFileContextMenu } from '@/components/drive/MultiFileContextMenu'
-import { RenameDialog } from '@/components/drive/RenameDialog'
-import { PreviewDialog } from '@/components/preview/PreviewDialog'
+import { DriveExplorer, type ExplorerActions } from '@/components/drive/DriveExplorer'
+import { type AssistantContextMenuAction } from '@/components/drive/FileContextMenu'
 import { ShareDialog } from '@/components/share/ShareDialog'
-import { UploadMenu } from '@/components/upload/UploadMenu'
-import { UploadDropzone } from '@/components/upload/UploadDropzone'
-import { UploadQueue } from '@/components/upload/UploadQueue'
 import { useAssistantSkills, useExecuteAssistantSkill } from '@/hooks/useAssistant'
-import { useCreateFolder, useDriveItems, useFolderAncestors, useFolderItem, useMoveItem, useMoveToTrash, useRenameItem, useSetStarred } from '@/hooks/useDrive'
-import { useDragMove } from '@/hooks/useDragMove'
-import { useDragSelect } from '@/hooks/useDragSelect'
+import {
+  useCreateFolder,
+  useDriveItems,
+  useFolderAncestors,
+  useFolderItem,
+  useMoveItem,
+  useMoveToTrash,
+  useRenameItem,
+  useSetStarred,
+} from '@/hooks/useDrive'
 import { useUploadFiles, useUploadFolders } from '@/hooks/useUpload'
 import { useUIStore } from '@/stores/uiStore'
-
-interface SingleContextMenuState {
-  kind: 'single'
-  item: DriveItemResponse
-  x: number
-  y: number
-}
-
-interface MultiContextMenuState {
-  kind: 'multi'
-  x: number
-  y: number
-}
-
-type ContextMenuState = SingleContextMenuState | MultiContextMenuState | null
 
 function assistantActionsForItem(
   skills: AssistantSkillResponse[],
@@ -65,10 +43,15 @@ function assistantActionsForItem(
   )
 }
 
+/**
+ * My Drive — a thin assembly around `DriveExplorer` (design §5.9.6 point 10):
+ * routing, the uiStore-backed selection (AssistantPanel reads it for chat
+ * attachments), and the owner-only capabilities the guest page never wires —
+ * starring, sharing, assistant skills.
+ */
 export function DrivePage() {
   const { folderId } = useParams<{ folderId?: string }>()
   const navigate = useNavigate()
-  const viewMode = useUIStore((s) => s.viewMode)
   const selectedIds = useUIStore((s) => s.selectedItemIds)
   const selectItem = useUIStore((s) => s.selectItem)
   const selectAll = useUIStore((s) => s.selectAll)
@@ -84,40 +67,15 @@ export function DrivePage() {
   const star = useSetStarred(folderId)
   const trash = useMoveToTrash(folderId)
   const executeAssistantSkill = useExecuteAssistantSkill()
-
   const { upload } = useUploadFiles(folderId)
   const { uploadFolders } = useUploadFolders(folderId)
 
-  const fileListRef = useRef<HTMLDivElement>(null)
-  const [showCreateFolder, setShowCreateFolder] = useState(false)
-  const [renameTarget, setRenameTarget] = useState<DriveItemResponse | null>(null)
-  const [moveTarget, setMoveTarget] = useState<DriveItemResponse | null>(null)
-  const [trashTargets, setTrashTargets] = useState<DriveItemResponse[]>([])
-  const [previewItemId, setPreviewItemId] = useState<string | null>(null)
   const [shareTarget, setShareTarget] = useState<DriveItemResponse | null>(null)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
   const [assistantSkillResult, setAssistantSkillResult] =
     useState<AssistantSkillExecuteResponse | null>(null)
 
   const ancestors: BreadcrumbItem[] = (ancestorsData ?? []).map((a) => ({ id: a.id, name: a.name }))
-  const currentFolderName = folderItem?.name
   const items = useMemo(() => data?.items ?? [], [data?.items])
-  const assistantMenuActions = useMemo(
-    () =>
-      contextMenu?.kind === 'single'
-        ? assistantActionsForItem(assistantSkills, contextMenu.item)
-        : [],
-    [assistantSkills, contextMenu],
-  )
-
-  // Selection belongs to one folder's listing. Without this, double-clicking a
-  // folder (the click selects it, the second click navigates) left that folder
-  // selected while you stood inside it — the toolbar then offered to trash an
-  // item that wasn't even on screen. Keyed on folderId so it also covers
-  // breadcrumbs, the back button and browser history.
-  useEffect(() => {
-    clearSelection()
-  }, [folderId, clearSelection])
 
   const handleBack = useCallback(() => {
     if (!folderId) return
@@ -129,71 +87,8 @@ export function DrivePage() {
     }
   }, [folderId, folderItem?.parent_id, navigate])
 
-  const handleDoubleClick = useCallback(
-    (item: DriveItemResponse) => {
-      if (item.item_type === 'FOLDER') {
-        navigate(`/drive/folder/${item.id}`)
-      } else {
-        setPreviewItemId(item.id)
-      }
-    },
-    [navigate],
-  )
-
-  const handleContextMenu = useCallback(
-    (item: DriveItemResponse, e: React.MouseEvent) => {
-      e.preventDefault()
-      // If the right-clicked item is part of a multi-selection → show multi-item menu
-      if (selectedIds.size > 1 && selectedIds.has(item.id)) {
-        setContextMenu({ kind: 'multi', x: e.clientX, y: e.clientY })
-      } else {
-        // Single item: if not already selected, replace selection
-        if (!selectedIds.has(item.id)) {
-          selectItem(item.id)
-        }
-        setContextMenu({ kind: 'single', item, x: e.clientX, y: e.clientY })
-      }
-    },
-    [selectedIds, selectItem],
-  )
-
-  const handleCheckboxClick = useCallback(
-    (item: DriveItemResponse, e: React.MouseEvent) => {
-      e.stopPropagation()
-      selectItem(item.id, true) // always multi-select mode
-    },
-    [selectItem],
-  )
-
-  const handleSelectAll = useCallback(() => {
-    if (items.every((i) => selectedIds.has(i.id))) {
-      clearSelection()
-    } else {
-      selectAll(items.map((i) => i.id))
-    }
-  }, [items, selectedIds, selectAll, clearSelection])
-
-  const handleStarClick = useCallback(
-    (item: DriveItemResponse, e: React.MouseEvent) => {
-      e.stopPropagation()
-      star.mutate({ id: item.id, starred: !item.is_starred })
-    },
-    [star],
-  )
-
-  // Belt and braces alongside the effect above: actions and counts are derived
-  // from what is actually listed, so a stale id can never be acted on.
-  const visibleSelected = useMemo(
-    () => items.filter((i) => selectedIds.has(i.id)),
-    [items, selectedIds],
-  )
-
-  const handleTrashSelected = useCallback(() => {
-    setTrashTargets(visibleSelected)
-  }, [visibleSelected])
-
-  const handleDownloadSelected = useCallback(async () => {
-    const ids = visibleSelected.map((i) => i.id)
+  const handleDownloadSelection = useCallback(async (selected: DriveItemResponse[]) => {
+    const ids = selected.map((i) => i.id)
     if (ids.length === 0) return
     const res = await driveApi.downloadArchive(ids)
     // The server names the zip after the selection (folder/file name); read it
@@ -202,14 +97,7 @@ export function DrivePage() {
     const match = /filename\*=UTF-8''([^;]+)/i.exec(cd)
     const filename = match ? decodeURIComponent(match[1]) : 'download.zip'
     triggerBlobDownload(res.data, filename)
-  }, [visibleSelected])
-
-  const handleRetryUpload = useCallback(
-    (task: { file: File | null }) => {
-      if (task.file) upload([task.file])
-    },
-    [upload],
-  )
+  }, [])
 
   const handleAssistantAction = useCallback(
     (action: AssistantContextMenuAction, item: DriveItemResponse) => {
@@ -221,29 +109,32 @@ export function DrivePage() {
     [executeAssistantSkill],
   )
 
-  const handleDragSelect = useCallback((ids: string[]) => selectAll(ids), [selectAll])
-  const { dragRect } = useDragSelect(fileListRef, handleDragSelect, clearSelection)
-  const drag = useDragMove({ selectedIds, items })
-
-  const sharedProps = {
-    items,
-    selectedIds,
-    onItemClick: (item: DriveItemResponse, e: React.MouseEvent) => {
-      e.stopPropagation()
-      selectItem(item.id, e.metaKey || e.ctrlKey)
-    },
-    onItemDoubleClick: handleDoubleClick,
-    onItemContextMenu: handleContextMenu,
-    onStarClick: handleStarClick,
-    onCheckboxClick: handleCheckboxClick,
-    drag,
-  }
+  const actions: ExplorerActions<DriveItemResponse> = useMemo(
+    () => ({
+      createFolder: (name) => createFolder.mutateAsync(name),
+      renameItem: (id, name) => rename.mutateAsync({ id, name }),
+      moveItem: (id, targetParentId) => move.mutateAsync({ id, targetParentId }),
+      trashItem: (id) => trash.mutateAsync(id),
+      uploadFiles: upload,
+      uploadFolders,
+      downloadItem: (item) => void downloadItem(item.id, item.name),
+      downloadSelection: handleDownloadSelection,
+      toggleStar: (item) => star.mutate({ id: item.id, starred: !item.is_starred }),
+      share: setShareTarget,
+    }),
+    [createFolder, rename, move, trash, upload, uploadFolders, handleDownloadSelection, star],
+  )
 
   return (
-    <UploadDropzone onFiles={upload} onFolders={uploadFolders}>
-      <div className="flex h-full flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
+    <>
+      <DriveExplorer
+        items={items}
+        isLoading={isLoading}
+        // '' is the drive root; DriveExplorer drops the selection when this changes.
+        folderKey={folderId ?? ''}
+        selection={{ selectedIds, selectItem, selectAll, clearSelection }}
+        breadcrumb={
+          <>
             {folderId && (
               <button
                 onClick={handleBack}
@@ -253,161 +144,27 @@ export function DrivePage() {
                 <ArrowLeft className="size-4" aria-hidden="true" />
               </button>
             )}
-            <Breadcrumbs ancestors={ancestors} current={currentFolderName} />
-          </div>
-          <div className="flex items-center gap-2">
-            <UploadMenu onFiles={upload} onFolders={uploadFolders} />
-            <DriveToolbar
-              selectedCount={visibleSelected.length}
-              onNewFolder={() => setShowCreateFolder(true)}
-              onDownloadSelected={handleDownloadSelected}
-              onTrashSelected={handleTrashSelected}
-            />
-          </div>
-        </div>
+            <Breadcrumbs ancestors={ancestors} current={folderItem?.name} />
+          </>
+        }
+        onOpenFolder={(item) => navigate(`/drive/folder/${item.id}`)}
+        actions={actions}
+        assistantActions={(item) => assistantActionsForItem(assistantSkills, item)}
+        onAssistantAction={handleAssistantAction}
+      />
 
-        {isLoading && (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Loading…
-          </div>
-        )}
-
-        {!isLoading && items.length === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
-            <FolderOpen className="size-12" aria-hidden="true" />
-            <p className="text-sm">This folder is empty</p>
-          </div>
-        )}
-
-        {drag.moveError && (
-          <div
-            role="alert"
-            className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            <span>Could not move: {drag.moveError}</span>
-            <button
-              type="button"
-              aria-label="Dismiss"
-              onClick={drag.clearMoveError}
-              className="shrink-0 rounded px-1 hover:bg-destructive/10"
-            >
-              ×
-            </button>
-          </div>
-        )}
-
-        {!isLoading && items.length > 0 && (
-          <div ref={fileListRef} data-testid="file-list" className="relative flex-1 overflow-auto">
-            {viewMode === 'list' ? (
-              <FileTable {...sharedProps} onSelectAll={handleSelectAll} />
-            ) : (
-              <FileGrid {...sharedProps} />
-            )}
-            {/* Rubber-band selection overlay */}
-            {dragRect && (
-              <div
-                data-testid="drag-overlay"
-                aria-hidden="true"
-                className="pointer-events-none fixed z-30 rounded-sm border border-primary/60 bg-primary/10"
-                style={{ top: dragRect.y, left: dragRect.x, width: dragRect.width, height: dragRect.height }}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Single-item context menu */}
-        {contextMenu?.kind === 'single' && (
-          <FileContextMenu
-            item={contextMenu.item}
-            position={{ x: contextMenu.x, y: contextMenu.y }}
-            assistantActions={assistantMenuActions}
-            onClose={() => setContextMenu(null)}
-            onPreview={(item) => setPreviewItemId(item.id)}
-            onDownload={(item) => downloadItem(item.id, item.name)}
-            onRename={(item) => setRenameTarget(item)}
-            onMove={(item) => setMoveTarget(item)}
-            onShare={(item) => setShareTarget(item)}
-            onCopyName={(item) => void navigator.clipboard?.writeText(item.name)}
-            onToggleStar={(item) => star.mutate({ id: item.id, starred: !item.is_starred })}
-            onTrash={(item) => setTrashTargets([item])}
-            onAssistantAction={handleAssistantAction}
-          />
-        )}
-
-        {/* Multi-item context menu */}
-        {contextMenu?.kind === 'multi' && (
-          <MultiFileContextMenu
-            count={selectedIds.size}
-            position={{ x: contextMenu.x, y: contextMenu.y }}
-            onClose={() => setContextMenu(null)}
-            onTrash={handleTrashSelected}
-          />
-        )}
-
-        <CreateFolderDialog
-          open={showCreateFolder}
-          loading={createFolder.isPending}
-          onConfirm={(name) =>
-            createFolder.mutate(name, { onSuccess: () => setShowCreateFolder(false) })
-          }
-          onClose={() => setShowCreateFolder(false)}
+      {shareTarget && (
+        <ShareDialog
+          open
+          itemId={shareTarget.id}
+          itemName={shareTarget.name}
+          onClose={() => setShareTarget(null)}
         />
-
-        <RenameDialog
-          open={!!renameTarget}
-          initialName={renameTarget?.name ?? ''}
-          loading={rename.isPending}
-          onConfirm={(name) =>
-            renameTarget &&
-            rename.mutate({ id: renameTarget.id, name }, { onSuccess: () => setRenameTarget(null) })
-          }
-          onClose={() => setRenameTarget(null)}
-        />
-
-        <MoveDialog
-          open={!!moveTarget}
-          itemId={moveTarget?.id ?? ''}
-          loading={move.isPending}
-          onConfirm={(targetParentId) =>
-            moveTarget &&
-            move.mutate(
-              { id: moveTarget.id, targetParentId },
-              { onSuccess: () => setMoveTarget(null) },
-            )
-          }
-          onClose={() => setMoveTarget(null)}
-        />
-
-        <ConfirmTrashDialog
-          open={trashTargets.length > 0}
-          itemNames={trashTargets.map((i) => i.name)}
-          loading={trash.isPending}
-          onConfirm={async () => {
-            for (const item of trashTargets) {
-              await trash.mutateAsync(item.id)
-            }
-            setTrashTargets([])
-            clearSelection()
-          }}
-          onClose={() => setTrashTargets([])}
-        />
-
-        <UploadQueue onRetry={handleRetryUpload} />
-
-        <PreviewDialog itemId={previewItemId} onClose={() => setPreviewItemId(null)} />
-        {shareTarget && (
-          <ShareDialog
-            open
-            itemId={shareTarget.id}
-            itemName={shareTarget.name}
-            onClose={() => setShareTarget(null)}
-          />
-        )}
-        <AssistantSkillResultDialog
-          result={assistantSkillResult}
-          onClose={() => setAssistantSkillResult(null)}
-        />
-      </div>
-    </UploadDropzone>
+      )}
+      <AssistantSkillResultDialog
+        result={assistantSkillResult}
+        onClose={() => setAssistantSkillResult(null)}
+      />
+    </>
   )
 }

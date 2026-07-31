@@ -2,6 +2,7 @@ import { Download, Loader2, X } from 'lucide-react'
 import { useEffect } from 'react'
 
 import { downloadItem } from '@/api/download'
+import type { PreviewInfoResponse } from '@/api/types'
 import { usePreviewBlobUrl, usePreviewInfo } from '@/hooks/usePreview'
 
 import { AudioPreview } from './AudioPreview'
@@ -12,17 +13,41 @@ import { TextPreview } from './TextPreview'
 import { UnsupportedPreview } from './UnsupportedPreview'
 import { VideoPreview } from './VideoPreview'
 
+/**
+ * Where the dialog gets its data — swapped out on the guest side, which reads
+ * the `/public` endpoints with a share credential instead of the user's token.
+ * The three pieces are separate because a guest has no `/preview/{id}` info
+ * endpoint at all: the type already came down with the folder listing.
+ */
+export interface PreviewSource {
+  useInfo: (itemId: string | null) => {
+    data: PreviewInfoResponse | undefined
+    isLoading: boolean
+    isError: boolean
+  }
+  useBlobUrl: (itemId: string | null, converted: boolean) => { url: string | null; isError: boolean }
+  download: (itemId: string, filename: string) => void
+}
+
+const driveSource: PreviewSource = {
+  useInfo: usePreviewInfo,
+  useBlobUrl: usePreviewBlobUrl,
+  download: downloadItem,
+}
+
 interface PreviewDialogProps {
   itemId: string | null
   onClose: () => void
+  /** Defaults to the signed-in drive endpoints. */
+  source?: PreviewSource
 }
 
-function PreviewContent({ itemId }: { itemId: string }) {
-  const { data, isLoading, isError } = usePreviewInfo(itemId)
+function PreviewContent({ itemId, source }: { itemId: string; source: PreviewSource }) {
+  const { data, isLoading, isError } = source.useInfo(itemId)
   // Office documents need the PDF-converted endpoint; everything else the raw file.
   const converted = data?.preview_type === 'document'
   const needsContent = !!data && data.preview_type !== 'unsupported'
-  const { url: blobUrl, isError: blobError } = usePreviewBlobUrl(
+  const { url: blobUrl, isError: blobError } = source.useBlobUrl(
     needsContent ? itemId : null,
     converted,
   )
@@ -48,7 +73,7 @@ function PreviewContent({ itemId }: { itemId: string }) {
       <UnsupportedPreview
         filename={data.filename}
         mimeType={data.mime_type}
-        onDownload={() => downloadItem(itemId, data.filename)}
+        onDownload={() => source.download(itemId, data.filename)}
       />
     )
   }
@@ -88,14 +113,14 @@ function PreviewContent({ itemId }: { itemId: string }) {
         <UnsupportedPreview
           filename={data.filename}
           mimeType={data.mime_type}
-          onDownload={() => downloadItem(itemId, data.filename)}
+          onDownload={() => source.download(itemId, data.filename)}
         />
       )
   }
 }
 
-export function PreviewDialog({ itemId, onClose }: PreviewDialogProps) {
-  const { data } = usePreviewInfo(itemId)
+export function PreviewDialog({ itemId, onClose, source = driveSource }: PreviewDialogProps) {
+  const { data } = source.useInfo(itemId)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -126,7 +151,7 @@ export function PreviewDialog({ itemId, onClose }: PreviewDialogProps) {
         <div className="flex items-center gap-2">
           {data && (
             <button
-              onClick={() => downloadItem(itemId, data.filename)}
+              onClick={() => source.download(itemId, data.filename)}
               aria-label="Download file"
               className="flex size-8 items-center justify-center rounded text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             >
@@ -148,7 +173,7 @@ export function PreviewDialog({ itemId, onClose }: PreviewDialogProps) {
         className="min-h-0 flex-1 overflow-auto bg-background"
         onClick={(e) => e.stopPropagation()}
       >
-        <PreviewContent itemId={itemId} />
+        <PreviewContent itemId={itemId} source={source} />
       </div>
     </div>
   )

@@ -211,3 +211,35 @@ proposal §33.4 全部 7 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 
 - **下游以 owner 身分執行**：邊界完全靠 `PublicShareService` 自己擋，下游的權限檢查在此情境是 no-op。任何新增的訪客寫入端點都必須自行呼叫 `_assert_can_edit` + `_resolve_in_subtree`，漏掉即等於把 owner 權限交給匿名者。
 - **無上傳上限**（proposal §33.6 決策 4）：外洩的連結可填滿擁有者配額並使其自身無法上傳。
+
+---
+
+## 階段 4 追加：訪客多選打包下載（proposal §34.4 / 設計 §6.12.8）
+
+**背景**：訪客只能打包**整個分享根**（`GET /public/archive`）。§34 要求訪客頁的批次操作與 My Drive 一致，而 My Drive 的 `Download (N)` 走 `POST /download/archive` 收 `item_ids`——訪客端缺這個能力。
+
+### 子任務
+
+- [x] `app/public_share/service.py`：`archive()` 增加 `item_ids: list[UUID] | None = None`；`None` 維持整根打包，給定清單則**逐一** `_resolve_in_subtree` 後交給 `DownloadService.archive`。
+- [x] `app/public_share/router.py`：新增 `POST /public/archive`（body `{item_ids}`），保留既有 `GET`。
+- [x] 空清單回 422（不默默等同整根打包）。
+
+### 測試任務
+
+- [x] `downloader`／`editor` 憑證可打包指定項目；zip 內含所選檔案。
+- [x] 任一 id 在子樹外 → **整個請求 404**，不做部分打包。
+- [x] `viewer` → 403。
+- [x] 空 `item_ids` → 422。
+- [x] 既有 `GET /public/archive` 行為不變。
+
+### 驗收條件
+
+proposal §34.4 全部 4 點通過；`uv run pytest` / `mypy` / `ruff` 全綠。
+
+### 驗證結果（2026-07-31）
+
+後端 **1010 passed**（`tests/integration/test_assistant_flow.py` 的 5 項因本機未跑 Ollama 而 `ASSISTANT_UNAVAILABLE`，與本次改動無關，故排除）；ruff format／check、mypy 全綠。integration 實測「訪客只打包所選項目 → zip 內有 wanted.txt、沒有 skipped.txt」與「夾帶子樹外的 id → 整個請求 404」。
+
+### 風險
+
+- **部分打包是資訊洩漏管道**：若對子樹外的 id 採「略過並打包其餘」，訪客可用「zip 少了哪一個」推斷某 id 是否存在。因此設計上明訂為全有全無（§6.12.8）。

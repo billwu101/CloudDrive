@@ -1,17 +1,18 @@
 import { Star } from 'lucide-react'
 
-import type { DriveItemResponse } from '@/api/types'
+import type { BrowsableItem } from '@/api/types'
 
 import { FileIcon } from './FileIcon'
 import { ShareBadges } from './ShareBadges'
 
 interface FileRowProps {
-  item: DriveItemResponse
+  item: BrowsableItem
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
-  onStarClick: (e: React.MouseEvent) => void
+  /** Omitted for guests — starring needs an account to own the star. */
+  onStarClick?: (e: React.MouseEvent) => void
   onCheckboxClick: (e: React.MouseEvent) => void
   dragging?: boolean
   dropTarget?: boolean
@@ -105,13 +106,15 @@ export function FileRow({
         {formatDate(item.updated_at)}
       </td>
       <td className="py-2 pr-3 w-8">
-        <button
-          aria-label={item.is_starred ? 'Unstar' : 'Star'}
-          onClick={onStarClick}
-          className={`rounded p-0.5 transition-colors hover:text-amber-400 focus-visible:outline-none focus-visible:ring-2 ${item.is_starred ? 'text-amber-400' : 'text-transparent group-hover:text-muted-foreground'}`}
-        >
-          <Star className="size-4" fill={item.is_starred ? 'currentColor' : 'none'} aria-hidden="true" />
-        </button>
+        {onStarClick && (
+          <button
+            aria-label={item.is_starred ? 'Unstar' : 'Star'}
+            onClick={onStarClick}
+            className={`rounded p-0.5 transition-colors hover:text-amber-400 focus-visible:outline-none focus-visible:ring-2 ${item.is_starred ? 'text-amber-400' : 'text-transparent group-hover:text-muted-foreground'}`}
+          >
+            <Star className="size-4" fill={item.is_starred ? 'currentColor' : 'none'} aria-hidden="true" />
+          </button>
+        )}
       </td>
     </tr>
   )

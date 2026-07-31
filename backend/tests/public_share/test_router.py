@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -137,3 +138,37 @@ async def test_invalid_link_returns_the_generic_error() -> None:
         resp = await c.post("/public/links/nope/session", json={})
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == ErrorCode.SHARE_LINK_INVALID
+
+
+async def test_selected_archive_passes_the_ids_through_and_needs_a_credential() -> None:
+    """proposal §34.4 — the ids travel in the body, not the URL."""
+    ids = [uuid4(), uuid4()]
+
+    async def _chunks() -> AsyncGenerator[bytes, None]:
+        yield b"zip"
+
+    svc = AsyncMock(spec=PublicShareService)
+    svc.archive.return_value = SimpleNamespace(
+        stream=_chunks(), filename="Shared.zip", size_bytes=None
+    )
+    app = _make_app(svc)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post(
+            "/public/archive",
+            json={"item_ids": [str(i) for i in ids]},
+            headers={"Authorization": "Bearer share-cred"},
+        )
+
+    assert resp.status_code == 200
+    svc.archive.assert_awaited_once_with("share-cred", ids)
+    # A selection can be long; keeping it out of the URL also keeps it out of logs.
+    assert str(ids[0]) not in str(resp.request.url)
+
+
+async def test_selected_archive_without_a_credential_is_refused() -> None:
+    svc = AsyncMock(spec=PublicShareService)
+    app = _make_app(svc)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/public/archive", json={"item_ids": [str(uuid4())]})
+    assert resp.status_code == 401
+    svc.archive.assert_not_awaited()

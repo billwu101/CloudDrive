@@ -536,6 +536,18 @@ Sidebar 於「Shared with me」下方新增入口。
    - 失敗顯示後端 message（經 `toApiError`）。這是操作結果回饋，不受第 3 點「不可區分性」約束——那條只管「連結開不開得起來」，不管開起來之後的名稱衝突或配額滿。
    - **下載能力 editor ≥ downloader**：後端 `_assert_can_download` 只擋 viewer，前端判斷須為 `permission !== 'viewer'`，不可寫成 `=== 'downloader'`（否則 editor 連結看不到下載鈕）。
 9. **根目錄不重複顯示名稱**：麵包屑只在 `trail.length > 1` 時渲染——停在分享根時麵包屑第一段永遠等於頁首標題，重複無資訊量。
+10. **與 My Drive 對齊（proposal §34）**：**同一份頁面本體直接給訪客用**（2026-07-31 使用者定案，取代先前「用元件拼」的方向）。
+
+    **作法**：把 `DrivePage` 的檔案區本體抽成 `DriveExplorer`（工具列、格狀／清單、選取／框選、右鍵選單、四個對話框、拖放移動、拖曳上傳、上傳佇列、預覽）。`DrivePage` 與訪客頁都渲染它，差別只在注入的 `actions`：
+
+    - **能力缺席＝介面隱藏**：`createFolder`／`renameItem`／`moveItem`／`trashItem`／`uploadFiles`／`downloadItem`／`downloadSelection`／`toggleStar`／`share` 全部選填。viewer 什麼都不注入；downloader 只注入下載；editor 注入除 `toggleStar`／`share`／assistant 之外的全部。**沒有「isGuest」旗標**——判斷的是能力，不是身分。
+    - **右鍵選單共用 `FileContextMenu`**（推翻本節先前「另寫元件」的決定）：handler 選填、缺席即不渲染該項。多選選單只在 `trashItem` 存在時開啟。
+    - **選取狀態由呼叫端注入**：`DrivePage` 注入 `uiStore`（AssistantPanel 靠它拿聊天附件，不能搬）；訪客頁注入 local state（全域單一份會被同時開著的兩頁互相污染）。`viewMode` 共用。
+    - **麵包屑由呼叫端注入**（ReactNode）：`Breadcrumbs` 寫死 `/drive` 路由連結，訪客的導覽是 trail 狀態不是路由。
+    - `item` 型別放寬為 `BrowsableItem` 共同子集；`is_starred`／`is_shared_with_users`／`has_active_public_link` 選填，缺席時星號與 `ShareBadges` 不渲染。
+    - `MoveDialog`／`PreviewDialog` 資料來源參數化，訪客注入 `/public` 版本；`MoveDialog` 起點為分享根（子樹邊界在 UI 的落點）。
+
+11. **訪客頁不提供的 My Drive 功能**（proposal §34.3，實作時不得「順手加上」）：星號、再分享、`ShareBadges`、Assistant 技能選單、垃圾桶頁。前四項的成因都是同一個——那些狀態屬於**使用者或擁有者**，訪客兩者皆非。
 
 #### 可獨立測試項
 
@@ -550,6 +562,12 @@ Sidebar 於「Shared with me」下方新增入口。
 9. 建立資料夾／改名／移到垃圾桶／上傳各自打到對應的 `/public` 端點。
 10. 拖放到資料夾列送出 `PATCH /public/items/{id}/parent`。
 11. 停在分享根時，資料夾名稱在頁面上只出現一次。
+12. 訪客頁渲染 `FileGrid`／`FileTable`，且**不**出現星號與 `ShareBadges`（即使 My Drive 同元件會顯示）。
+13. 勾選多個項目後出現 `Download (N)`／`Trash (N)`，下載打到 `POST /public/archive` 並帶上選取的 ids。
+14. 訪客右鍵選單不含「加星號」「分享」「Assistant 技能」。
+15. `MoveDialog` 在訪客頁只列得出分享子樹內的資料夾。
+16. 桌面檔案拖進訪客頁會觸發上傳，且不與拖放移動手勢衝突。
+17. My Drive 既有測試全數不受元件放寬影響。
 
 ### 5.10 Trash 前端模組
 

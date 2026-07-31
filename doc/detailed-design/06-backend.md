@@ -1101,6 +1101,7 @@ iss_at_chain = 首次簽發時間（續發時原樣沿用，用於封頂總時�
 | GET | `/api/v1/public/items/{item_id}/preview` | 線上預覽 | 🎫 |
 | GET | `/api/v1/public/items/{item_id}/download` | 下載原檔 | 🎫 + downloader |
 | GET | `/api/v1/public/archive` | 子樹整包 zip | 🎫 + downloader |
+| POST | `/api/v1/public/archive` | **指定項目**打包 zip（`{item_ids}`，proposal §34.4） | 🎫 + downloader |
 
 🎫 = `Authorization: Bearer <share access token>`。
 
@@ -1109,6 +1110,10 @@ iss_at_chain = 首次簽發時間（續發時原樣沿用，用於封頂總時�
 `/public/items/{id}/preview` 直接串流內容（Office 轉 PDF、文字截斷等邏輯由 `PreviewService.content_for_item()` 提供——該方法由既有 `get_content()` 抽出，接收「呼叫端已授權的 item」，避免在公開路徑重寫一份）。前端要選哪個檢視器，看 `/public/items` 回傳的 `preview_type`。
 
 `/public/archive` 重用 §6.8.1 既有的 zip 打包能力（proposal §28.7 決策 3），差別只在項目來源是憑證授權的子樹而非使用者選取，且**不做 owner 權限檢查**（改由憑證的子樹邊界把關）。
+
+**GET 與 POST 的分工**（proposal §34.4）：GET 打包整個分享根，來源固定、無輸入；POST 打包呼叫端指定的 `item_ids`。兩者共用同一個 service 方法——`archive(access_token, item_ids=None)`，`None` 代表整根。
+
+POST 的關鍵約束：**每個 `item_ids` 都要各自過 `_resolve_in_subtree`**，任一項不在子樹內就整個請求 404，不做「跳過不合法的項目、打包剩下的」。理由是後者會讓訪客得到一個「少了幾個檔案但看起來成功」的 zip，無法分辨是自己選錯還是被擋——而這正是探測子樹外是否存在某個 id 的手法。空清單視為輸入錯誤（422），不默默等同整根打包。
 
 #### 6.12.10 Service 介面
 
@@ -1125,7 +1130,11 @@ class PublicShareService:
         self, access_token: str, item_id: UUID, page: int, page_size: int
     ) -> Page[DriveItem]
     async def open_content(self, access_token: str, item_id: UUID) -> ContentStream
-    async def build_archive(self, access_token: str) -> ArchiveResult
+
+    # item_ids=None → 整個分享根；給定清單則逐一過子樹檢查（proposal §34.4）
+    async def archive(
+        self, access_token: str, item_ids: list[UUID] | None = None
+    ) -> ArchiveResult
 ```
 
 #### 6.12.11 安全規則（proposal §28.3 的實作對應）
