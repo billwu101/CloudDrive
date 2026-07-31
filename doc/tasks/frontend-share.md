@@ -168,5 +168,13 @@ proposal §33.4 第 2 點的五種操作皆可從訪客頁 UI 完成；`npm run 
 ### 驗證結果（2026-07-31）
 
 - 前端 **346 passed**（50 檔，含 `ShareTokenPage` 16 項）；lint／typecheck 全綠。
-- 瀏覽器實測（dev，editor 連結）：建資料夾、改名、上傳（檔名保留——jsdom 掉檔名確認為測試環境限制）、垃圾桶皆從 UI 完成；移動因驅動器發不出原生 dragstart 改以訪客憑證直打 `PATCH /public/items/{id}/parent` 驗證（UI 接線由單元測試覆蓋）。五筆寫入均見於 `activity_logs` 且帶 `via_share_link_id` + IP。
+- **瀏覽器實測（dev，三種權限各建一條連結）**：
+  - `viewer`：無下載鈕、無編輯控制，根目錄名稱只出現一次。
+  - `downloader`：有下載鈕、無編輯控制。
+  - `editor`：五種寫入全部從 UI 完成——建資料夾、改名、上傳、垃圾桶、**拖放移動**（拖到資料夾列與拖到麵包屑往上移各驗一次，均送出 `PATCH /public/items/{id}/parent` 並在畫面反映）。
+  - 名稱衝突顯示後端訊息（`'review-notes.txt' already exists in this location`）且改名表單保留可修正；失敗的操作**不留稽核**。
+  - 密碼保護連結：錯誤密碼與失效連結顯示同一句文案（防枚舉守住）；正確密碼開啟後編輯控制正常。
+  - 連結被 Remove 後訪客頁立即顯示「Link unavailable」。
+  - console 全程無錯誤。
+- **後端閘門（以訪客憑證直打）**：viewer 寫入／下載皆 403；downloader 寫入 403、下載 200；editor 讀寫分享子樹外的項目皆 404，丟棄分享根 400；訪客上傳計入擁有者配額；垃圾桶為軟刪除（進擁有者垃圾桶可還原）。五筆寫入均見於 `activity_logs`，帶正確的 `via_share_link_id` 與 IP。
 - **附帶發現**：本機 dev DB 停在 migration 0020，建 editor 連結 500（`ck_share_links_permission` 違反）——`alembic upgrade head` 後復原。凡出現同症狀先查 migration 版本。
