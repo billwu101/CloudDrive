@@ -136,7 +136,10 @@ function SharedContent({
   previewOf,
   onPreview,
 }: SharedContentProps) {
-  const canDownload = session.permission === 'downloader'
+  // Download is everything above viewer — writing `=== 'downloader'` here once
+  // left editor links looking read-only (design §5.9.6 point 8).
+  const canDownload = session.permission !== 'viewer'
+  const canEdit = session.permission === 'editor'
   const current = trail[trail.length - 1] ?? session.item
   const isFolder = session.item.item_type === 'FOLDER'
 
@@ -148,7 +151,8 @@ function SharedContent({
           <p className="text-sm text-muted-foreground">
             Shared with you
             {!isFolder && ` · ${formatBytes(session.item.size_bytes)}`}
-            {!canDownload && ' · View only'}
+            {session.permission === 'viewer' && ' · View only'}
+            {canEdit && ' · Can edit'}
           </p>
         </div>
         {canDownload && (
@@ -181,6 +185,7 @@ function SharedContent({
           folder={current}
           trail={trail}
           canDownload={canDownload}
+          canEdit={canEdit}
           onOpenFolder={(item) => onTrailChange([...trail, item])}
           onOpenFile={(item) => onPreview(item)}
           onNavigateTo={(depth) => onTrailChange(trail.slice(0, depth + 1))}

@@ -528,6 +528,14 @@ Sidebar 於「Shared with me」下方新增入口。
 5. 內容請求以獨立 axios 實例送出（帶 share access token，不掛使用者 token 的 401→refresh 攔截器）。此處的 401 意義是「這個連結需要密碼」，不是「你的登入過期了」——若沿用主 client 的攔截器會誤觸 refresh。實例共用 `client.ts` 匯出的 `BASE_URL` 與 `toApiError`。
 6. **session 狀態走 TanStack Query**（`['public-share','session',token]`）而非 `useState` + effect：初次探測是一個 query、輸入密碼是一個 mutation，成功後以 `setQueryData` 覆寫同一把 key。這樣不需要在 effect 內同步 state（專案的 `react-hooks/set-state-in-effect` 規則會擋）。
 7. **`ShareBadges` 同時用在 `FileRow`（清單）與 `FileCard`（格狀）**，兩種檢視都要標，否則切換檢視就看不到分享狀態。
+8. **editor 連結的訪客編輯 UI（proposal §33）**：`session.permission === 'editor'` 時，`PublicFolderBrowser` 加入寫入操作，全部打 §6.12.8 的 editor 端點（同第 5 點的獨立 axios 實例，帶 share access token）：
+   - 工具列：「New folder」（行內輸入）與「Upload」（隱藏 file input，可多選；逐檔循序上傳，單檔失敗不中斷其餘檔案）。
+   - 每列：「Rename」（行內輸入）與「Trash」。清單只列子項、永遠不含分享根本身，因此不會出現指向根的 Trash 按鈕（後端對根另有拒絕，§6.12.11b）。
+   - **移動沿用主硬碟的拖放手勢與 `DRAG_MIME`**（proposal §31）：列可拖，資料夾列與麵包屑（非目前層）為放置目標。訪客頁無多選，一次拖一項。
+   - 寫入成功後 invalidate `['public-share', 'children']` **前綴**——移動影響來源與目的兩個資料夾，鎖單一資料夾 key 會漏。
+   - 失敗顯示後端 message（經 `toApiError`）。這是操作結果回饋，不受第 3 點「不可區分性」約束——那條只管「連結開不開得起來」，不管開起來之後的名稱衝突或配額滿。
+   - **下載能力 editor ≥ downloader**：後端 `_assert_can_download` 只擋 viewer，前端判斷須為 `permission !== 'viewer'`，不可寫成 `=== 'downloader'`（否則 editor 連結看不到下載鈕）。
+9. **根目錄不重複顯示名稱**：麵包屑只在 `trail.length > 1` 時渲染——停在分享根時麵包屑第一段永遠等於頁首標題，重複無資訊量。
 
 #### 可獨立測試項
 
@@ -538,6 +546,10 @@ Sidebar 於「Shared with me」下方新增入口。
 5. 訪客頁不會因未登入而被導向 `/login`。
 6. `SharedByMeRow` 展開後列出全部對象與連結；停用連結後該列更新。
 7. `DriveItemRow` 在兩個標記欄位為真時各自渲染對應圖示。
+8. `editor` 連結顯示編輯控制與下載按鈕；`viewer`／`downloader` 連結不顯示任何編輯控制。
+9. 建立資料夾／改名／移到垃圾桶／上傳各自打到對應的 `/public` 端點。
+10. 拖放到資料夾列送出 `PATCH /public/items/{id}/parent`。
+11. 停在分享根時，資料夾名稱在頁面上只出現一次。
 
 ### 5.10 Trash 前端模組
 
