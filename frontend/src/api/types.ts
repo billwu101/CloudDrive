@@ -370,7 +370,7 @@ export interface PublicItem {
 export interface PublicSession {
   access_token: string
   expires_in: number
-  permission: 'viewer' | 'downloader'
+  permission: 'viewer' | 'downloader' | 'editor'
   item: PublicItem
 }
 

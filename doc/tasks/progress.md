@@ -41,7 +41,7 @@
 - [x] [Frontend Drive](./frontend-drive.md)
 - [x] [Frontend Upload](./frontend-upload.md) — 預檢／並行上限 3／錯誤分類 + **分片流程／續傳／暫停繼續取消**皆完成（proposal §27 / DEC-036）
 - [x] [Frontend Preview](./frontend-preview.md)
-- [x] [Frontend Share](./frontend-share.md) — 分享彈窗（指定使用者 + 公開連結）；**2026-07-27 補齊**：`/s/:shareToken` 訪客頁（免登入、短效憑證、資料夾瀏覽與 zip）與 Shared by me 頁（可展開、就地移除）+ My Drive 兩種分享標記。
+- [x] [Frontend Share](./frontend-share.md) — 分享彈窗（指定使用者 + 公開連結）；**2026-07-27 補齊**：`/s/:shareToken` 訪客頁（免登入、短效憑證、資料夾瀏覽與 zip）與 Shared by me 頁（可展開、就地移除）+ My Drive 兩種分享標記；**2026-07-31 補齊**：editor 連結的訪客編輯 UI（proposal §33——New folder／Upload／Rename／Trash／拖放移動，editor 亦可下載）。
 - [x] [Frontend Trash](./frontend-trash.md)
 - [x] [Frontend Search](./frontend-search.md)
 

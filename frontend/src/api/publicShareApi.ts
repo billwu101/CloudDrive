@@ -107,6 +107,58 @@ export function downloadSharedItem(itemId: string, filename: string): Promise<vo
   return saveBlob(`/public/items/${itemId}/download`, filename)
 }
 
+// ── Guest writes — editor links only (proposal §33) ─────────────────────────
+// The server re-checks the permission on every call; these wrappers exist so
+// the guest page has something to wire its UI to, not as the enforcement.
+
+export function createSharedFolder(parentId: string, name: string): Promise<PublicItem> {
+  return unwrap(
+    publicClient.post<PublicItem>(
+      '/public/folders',
+      { parent_id: parentId, name },
+      { headers: authHeaders() },
+    ),
+  )
+}
+
+export function renameSharedItem(itemId: string, name: string): Promise<PublicItem> {
+  return unwrap(
+    publicClient.patch<PublicItem>(
+      `/public/items/${itemId}/name`,
+      { name },
+      { headers: authHeaders() },
+    ),
+  )
+}
+
+export function moveSharedItem(itemId: string, parentId: string): Promise<PublicItem> {
+  return unwrap(
+    publicClient.patch<PublicItem>(
+      `/public/items/${itemId}/parent`,
+      { parent_id: parentId },
+      { headers: authHeaders() },
+    ),
+  )
+}
+
+export function trashSharedItem(itemId: string): Promise<void> {
+  return unwrap(
+    publicClient.post<void>(`/public/items/${itemId}/trash`, undefined, {
+      headers: authHeaders(),
+    }),
+  )
+}
+
+export function uploadSharedFile(folderId: string, file: File): Promise<PublicItem> {
+  const form = new FormData()
+  form.append('file', file)
+  return unwrap(
+    publicClient.post<PublicItem>(`/public/items/${folderId}/upload`, form, {
+      headers: authHeaders(),
+    }),
+  )
+}
+
 export function downloadSharedArchive(folderName: string): Promise<void> {
   return saveBlob('/public/archive', `${folderName}.zip`)
 }
