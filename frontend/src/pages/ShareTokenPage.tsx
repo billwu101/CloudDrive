@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FileWarning, FolderArchive, Loader2, X } from 'lucide-react'
+import { Download, FileWarning, FolderArchive, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -40,7 +40,6 @@ export function ShareTokenPage() {
   // Empty until the visitor navigates; the share root fills in below, so there
   // is no effect syncing state that the render can already work out.
   const [trail, setTrail] = useState<PublicItem[]>([])
-  const [previewOf, setPreviewOf] = useState<PublicItem | null>(null)
 
   // First contact goes out without a password: links that have none open
   // straight away, which is what keeps the password step out of the way when
@@ -115,8 +114,6 @@ export function ShareTokenPage() {
       session={session}
       trail={trail.length > 0 ? trail : [session.item]}
       onTrailChange={setTrail}
-      previewOf={previewOf}
-      onPreview={setPreviewOf}
     />
   )
 }
@@ -125,17 +122,9 @@ interface SharedContentProps {
   session: PublicSession
   trail: PublicItem[]
   onTrailChange: (next: PublicItem[]) => void
-  previewOf: PublicItem | null
-  onPreview: (item: PublicItem | null) => void
 }
 
-function SharedContent({
-  session,
-  trail,
-  onTrailChange,
-  previewOf,
-  onPreview,
-}: SharedContentProps) {
+function SharedContent({ session, trail, onTrailChange }: SharedContentProps) {
   // Download is everything above viewer — writing `=== 'downloader'` here once
   // left editor links looking read-only (design §5.9.6 point 8).
   const canDownload = session.permission !== 'viewer'
@@ -144,7 +133,7 @@ function SharedContent({
   const isFolder = session.item.item_type === 'FOLDER'
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 p-6">
+    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 p-6">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold">{session.item.name}</h1>
@@ -187,31 +176,12 @@ function SharedContent({
           canDownload={canDownload}
           canEdit={canEdit}
           onOpenFolder={(item) => onTrailChange([...trail, item])}
-          onOpenFile={(item) => onPreview(item)}
           onNavigateTo={(depth) => onTrailChange(trail.slice(0, depth + 1))}
-          onDownload={(item) => void downloadSharedItem(item.id, item.name)}
         />
       ) : (
+        // A link to a single file has nothing to browse, so it shows the file
+        // itself rather than an empty file list.
         <SharedFilePreview item={session.item} />
-      )}
-
-      {previewOf && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="truncate text-sm font-medium">{previewOf.name}</span>
-            <button
-              type="button"
-              aria-label="Close preview"
-              onClick={() => onPreview(null)}
-              className="rounded p-1 hover:bg-accent"
-            >
-              <X className="size-5" aria-hidden="true" />
-            </button>
-          </div>
-          <div className="min-h-0 flex-1">
-            <SharedFilePreview item={previewOf} />
-          </div>
-        </div>
       )}
     </main>
   )

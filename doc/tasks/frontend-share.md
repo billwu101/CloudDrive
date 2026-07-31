@@ -191,36 +191,46 @@ proposal §33.4 第 2 點的五種操作皆可從訪客頁 UI 完成；`npm run 
 
 ### 子任務：讓既有元件可被訪客重用
 
-- [ ] `FileCard` / `FileRow` / `FileGrid` / `FileTable`：`item` 型別放寬為共同子集；`is_starred` / `is_shared_with_users` / `has_active_public_link` 改選填，缺席時星號與 `ShareBadges` 不渲染。
-- [ ] `MoveDialog`：取子資料夾的函式與瀏覽起點參數化（預設為目前的登入版 + 硬碟根）。
-- [ ] `PreviewDialog`：取預覽內容的函式參數化（預設為目前的登入版）。
-- [ ] **My Drive 既有測試必須全綠且不需修改**——需要改 `DrivePage` 呼叫端就代表放寬的方式錯了。
+- [x] `FileCard` / `FileRow` / `FileGrid` / `FileTable`：`item` 型別放寬為共同子集；`is_starred` / `is_shared_with_users` / `has_active_public_link` 改選填，缺席時星號與 `ShareBadges` 不渲染。
+- [x] `MoveDialog`：取子資料夾的函式與瀏覽起點參數化（預設為目前的登入版 + 硬碟根）。
+- [x] `PreviewDialog`：取預覽內容的函式參數化（預設為目前的登入版）。
+- [x] **My Drive 既有測試必須全綠且不需修改**——需要改 `DrivePage` 呼叫端就代表放寬的方式錯了。
 
 ### 子任務：訪客頁改用 My Drive 版面
 
-- [ ] 格狀／清單雙檢視 + 切換（`viewMode` 可共用 `uiStore`）。
-- [ ] 勾選多選 + 框選；**選取狀態用訪客頁自己的 local state**，不共用 `uiStore.selectedItemIds`（同瀏覽器同時開 My Drive 會互相污染）。
-- [ ] `DriveToolbar`：New folder + 選取後的 `Download (N)` / `Trash (N)`。
-- [ ] `UploadMenu`（檔案／資料夾）+ `UploadDropzone`（桌面拖入）+ `UploadQueue`（含重試）。
-- [ ] `CreateFolderDialog` / `RenameDialog` / `ConfirmTrashDialog` 取代行內輸入。
-- [ ] `MultiFileContextMenu`（沿用）+ **訪客版單選右鍵選單**（新元件，無星號／分享／Assistant）。
-- [ ] `useDragMove` 升級為多選拖放（目前訪客頁一次只拖一項）。
-- [ ] `MoveDialog` 起點傳分享根。
-- [ ] `api/publicShareApi.ts`：`archiveSharedItems(itemIds)` 打 `POST /public/archive`。
+- [x] 格狀／清單雙檢視 + 切換（`viewMode` 可共用 `uiStore`）。
+- [x] 勾選多選 + 框選；**選取狀態用訪客頁自己的 local state**，不共用 `uiStore.selectedItemIds`（同瀏覽器同時開 My Drive 會互相污染）。
+- [x] `DriveToolbar`：New folder + 選取後的 `Download (N)` / `Trash (N)`。
+- [x] `UploadMenu`（檔案／資料夾）+ `UploadDropzone`（桌面拖入）+ `UploadQueue`（含重試）。
+- [x] `CreateFolderDialog` / `RenameDialog` / `ConfirmTrashDialog` 取代行內輸入。
+- [x] `MultiFileContextMenu`（沿用）+ **訪客版單選右鍵選單**（新元件，無星號／分享／Assistant）。
+- [x] `useDragMove` 升級為多選拖放（目前訪客頁一次只拖一項）。
+- [x] `MoveDialog` 起點傳分享根。
+- [x] `api/publicShareApi.ts`：`archiveSharedItems(itemIds)` 打 `POST /public/archive`。
 
 ### 測試任務
 
-- [ ] 訪客頁渲染 `FileGrid`／`FileTable`，且不出現星號與 `ShareBadges`。
-- [ ] 勾選多項後出現 `Download (N)`／`Trash (N)`；下載打到 `POST /public/archive` 並帶正確 ids。
-- [ ] 訪客右鍵選單不含加星號／分享／Assistant 技能。
-- [ ] `MoveDialog` 只列得出分享子樹內的資料夾。
-- [ ] 桌面檔案拖進訪客頁觸發上傳，且不與拖放移動手勢衝突。
-- [ ] `viewer`／`downloader` 連結不出現任何編輯控制。
-- [ ] My Drive 既有測試全數通過。
+- [x] 訪客頁渲染 `FileGrid`／`FileTable`，且不出現星號與 `ShareBadges`。
+- [x] 勾選多項後出現 `Download (N)`／`Trash (N)`；下載打到 `POST /public/archive` 並帶正確 ids。
+- [x] 訪客右鍵選單不含加星號／分享／Assistant 技能。
+- [x] `MoveDialog` 只列得出分享子樹內的資料夾。
+- [x] 桌面檔案拖進訪客頁觸發上傳，且不與拖放移動手勢衝突。
+- [x] `viewer`／`downloader` 連結不出現任何編輯控制。
+- [x] My Drive 既有測試全數通過。
 
 ### 驗收條件
 
 proposal §34.5 全部 7 項通過；`npm run lint` / `typecheck` / `npx vitest run --maxWorkers=2` 全綠。
+
+### 驗證結果（2026-07-31）
+
+- 前端 **348 passed**（50 檔）、lint、typecheck 全綠；**My Drive 既有測試無一需要修改**。
+- **瀏覽器實測（dev，同一資料夾建三種連結）**：
+  - `editor`：版面與 My Drive 一致（卡片格狀、型別圖示、Upload 下拉 + New folder）。實測完成——勾選多選累加成 `Download (2)`／`Trash (2)`；批次下載送出 `POST /public/archive` 200；右鍵選單只有 Preview／Download／Copy name／Rename／Move to／Move to trash（**無星號、無分享、無 Assistant**）；`MoveDialog` 起點是分享根 `AlignTest`、只列得出子樹內的 `Archive`，實際移動送出 `PATCH .../parent` 200；New folder 對話框建立成功；**桌面檔案拖入頁面**觸發上傳並在上傳佇列顯示「Uploaded」；`PreviewDialog` 以訪客端點正確顯示檔案內容；批次垃圾桶經確認對話框送出兩個 `204`。
+  - `downloader`：選取後只出現 `Download (1)`，無 Trash、無編輯控制。
+  - `viewer`：無工具列、無下載、無編輯控制。
+  - 三者皆無星號與分享標記；console 全程無錯誤。
+- **狀態確認（非只看畫面）**：訪客丟棄的兩個檔案出現在**擁有者的**垃圾桶（軟刪除可還原）；五筆寫入均見於 `activity_logs`，帶正確的 `via_share_link_id` 與 IP。
 
 ### 明確不做（proposal §34.3，實作時不得順手加上）
 

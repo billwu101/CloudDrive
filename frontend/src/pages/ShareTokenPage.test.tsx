@@ -212,7 +212,11 @@ describe('ShareTokenPage', () => {
   })
 })
 
-// ── Editor links (proposal §33 / design §5.9.6 points 8–9) ──────────────────
+// ── Editor links (proposal §33–§34) ─────────────────────────────────────────
+//
+// The guest page now uses My Drive's own components, so these drive it the way
+// My Drive is driven: select a card, then act from the toolbar or the context
+// menu — not from per-row buttons, which no longer exist.
 
 const SUBFOLDER = { ...FILE_ITEM, id: 'sub-1', name: 'Docs', item_type: 'FOLDER' as const }
 
@@ -234,30 +238,46 @@ function makeDataTransfer() {
   }
 }
 
-function useEditorFolderSession() {
+function editorSession(items: object[] = [FILE_ITEM]) {
   server.use(
     http.post(`${BASE}/public/links/:token/session`, () =>
       HttpResponse.json(session({ item: FOLDER_ITEM, permission: 'editor' })),
     ),
+    http.get(`${BASE}/public/items/:id/children`, () =>
+      HttpResponse.json({ items, total: items.length, page: 1, page_size: 100, pages: 1 }),
+    ),
   )
 }
 
+/** The card for an item in the grid — clicking it selects, as in My Drive. */
+function cardFor(name: string): HTMLElement {
+  const el = screen.getByText(name).closest('[data-item-id]')
+  if (!el) throw new Error(`no card for ${name}`)
+  return el as HTMLElement
+}
+
 describe('ShareTokenPage editor links', () => {
-  it('shows download and edit controls on an editor folder link', async () => {
-    useEditorFolderSession()
-    server.use(
-      http.get(`${BASE}/public/items/:id/children`, () =>
-        HttpResponse.json({ items: [FILE_ITEM], total: 1, page: 1, page_size: 100, pages: 1 }),
-      ),
-    )
+  it('shows the drive toolbar and download on an editor folder link', async () => {
+    editorSession()
     renderPage()
 
     expect(await screen.findByRole('button', { name: /Download folder/ })).toBeInTheDocument()
     expect(screen.getByText(/Can edit/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New folder' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: 'Rename report.txt' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Move report.txt to trash' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Upload/ })).toBeInTheDocument()
+  })
+
+  it('never offers the owner-only affordances', async () => {
+    editorSession()
+    renderPage()
+
+    await screen.findByText('report.txt')
+    // proposal §34.3 — a guest has no account to hang a star on, and may not
+    // re-share. Both come free with the reused components, so they are pinned.
+    expect(screen.queryByRole('button', { name: 'Star' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unstar' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Shared with other people')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Has an active public link')).not.toBeInTheDocument()
   })
 
   it('shows no edit controls on a downloader link', async () => {
@@ -273,15 +293,16 @@ describe('ShareTokenPage editor links', () => {
 
     await screen.findByText('report.txt')
     expect(screen.queryByRole('button', { name: 'New folder' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Upload' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Rename report.txt' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Upload/ })).not.toBeInTheDocument()
   })
 
-  it('creates a folder inside the current folder', async () => {
-    useEditorFolderSession()
+  it('creates a folder through the shared dialog', async () => {
     let created: { parent_id: string; name: string } | null = null
     let children = [FILE_ITEM as object]
     server.use(
+      http.post(`${BASE}/public/links/:token/session`, () =>
+        HttpResponse.json(session({ item: FOLDER_ITEM, permission: 'editor' })),
+      ),
       http.get(`${BASE}/public/items/:id/children`, () =>
         HttpResponse.json({
           items: children,
@@ -300,20 +321,17 @@ describe('ShareTokenPage editor links', () => {
     renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: 'New folder' }))
-    await userEvent.type(screen.getByLabelText('Folder name'), 'Docs')
-    await userEvent.click(screen.getByRole('button', { name: 'Create folder' }))
+    await userEvent.type(screen.getByPlaceholderText('Folder name'), 'Docs')
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
 
     expect(await screen.findByText('Docs')).toBeInTheDocument()
     expect(created).toEqual({ parent_id: FOLDER_ITEM.id, name: 'Docs' })
   })
 
-  it('renames an item in place', async () => {
-    useEditorFolderSession()
+  it('renames the item picked from the context menu', async () => {
     let renamed: { name: string } | null = null
+    editorSession()
     server.use(
-      http.get(`${BASE}/public/items/:id/children`, () =>
-        HttpResponse.json({ items: [FILE_ITEM], total: 1, page: 1, page_size: 100, pages: 1 }),
-      ),
       http.patch(`${BASE}/public/items/:id/name`, async ({ params, request }) => {
         renamed = (await request.json()) as { name: string }
         expect(params['id']).toBe(FILE_ITEM.id)
@@ -322,19 +340,23 @@ describe('ShareTokenPage editor links', () => {
     )
     renderPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Rename report.txt' }))
-    const field = screen.getByLabelText('New name for report.txt')
+    fireEvent.contextMenu(cardFor(await screen.findByText('report.txt').then(() => 'report.txt')))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Rename/ }))
+
+    const field = screen.getByDisplayValue('report.txt')
     await userEvent.clear(field)
     await userEvent.type(field, 'notes.txt')
-    await userEvent.click(screen.getByRole('button', { name: 'Save name' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
 
     await waitFor(() => expect(renamed).toEqual({ name: 'notes.txt' }))
   })
 
-  it('moves an item to the trash', async () => {
-    useEditorFolderSession()
+  it('trashes the selection from the toolbar, after confirming', async () => {
     let trashed = false
     server.use(
+      http.post(`${BASE}/public/links/:token/session`, () =>
+        HttpResponse.json(session({ item: FOLDER_ITEM, permission: 'editor' })),
+      ),
       http.get(`${BASE}/public/items/:id/children`, () =>
         HttpResponse.json(
           trashed
@@ -350,53 +372,61 @@ describe('ShareTokenPage editor links', () => {
     )
     renderPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Move report.txt to trash' }))
+    await screen.findByText('report.txt')
+    await userEvent.click(cardFor('report.txt'))
+    await userEvent.click(screen.getByRole('button', { name: /Trash \(1\)/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Move to trash' }))
 
-    await waitFor(() => expect(screen.queryByText('report.txt')).not.toBeInTheDocument())
-    expect(trashed).toBe(true)
+    await waitFor(() => expect(trashed).toBe(true))
+  })
+
+  it('zips the selected items rather than the whole share', async () => {
+    let body: { item_ids: string[] } | null = null
+    editorSession([FILE_ITEM, SUBFOLDER])
+    server.use(
+      http.post(`${BASE}/public/archive`, async ({ request }) => {
+        body = (await request.json()) as { item_ids: string[] }
+        return HttpResponse.text('PK', {
+          headers: { 'Content-Disposition': "attachment; filename*=UTF-8''picked.zip" },
+        })
+      }),
+    )
+    renderPage()
+
+    await screen.findByText('report.txt')
+    await userEvent.click(cardFor('report.txt'))
+    await userEvent.click(screen.getByRole('button', { name: /Download \(1\)/ }))
+
+    // proposal §34.4 — the selection travels in the body, not the whole root.
+    await waitFor(() => expect(body).toEqual({ item_ids: [FILE_ITEM.id] }))
   })
 
   it('uploads a picked file into the current folder', async () => {
-    useEditorFolderSession()
     let uploadedTo: string | null = null
-    let rawBody = ''
+    editorSession()
     server.use(
-      http.get(`${BASE}/public/items/:id/children`, () =>
-        HttpResponse.json({ items: [FILE_ITEM], total: 1, page: 1, page_size: 100, pages: 1 }),
-      ),
-      http.post(`${BASE}/public/items/:id/upload`, async ({ params, request }) => {
+      http.post(`${BASE}/public/items/:id/upload`, async ({ params }) => {
         uploadedTo = String(params['id'])
-        // jsdom's File does not survive MSW's request.formData(), and undici
-        // even drops its filename during serialisation — so only the field
-        // wiring can be asserted here, not the name (see CLAUDE.md notes).
-        rawBody = await request.text()
         return HttpResponse.json({ ...FILE_ITEM, id: 'new-file', name: 'draft.txt' })
       }),
     )
     renderPage()
 
-    await screen.findByRole('button', { name: 'Upload' })
+    await screen.findByRole('button', { name: /Upload/ })
     const file = new File(['draft body'], 'draft.txt', { type: 'text/plain' })
-    await userEvent.upload(screen.getByLabelText('Upload files'), file)
+    // UploadMenu keeps its pickers hidden and aria-hidden, driven by the menu
+    // items; the test drives the input the picker would have filled.
+    const input = document.querySelector('input[type=file]') as HTMLInputElement
+    await userEvent.upload(input, file)
 
     await waitFor(() => expect(uploadedTo).toBe(FOLDER_ITEM.id))
-    expect(rawBody).toContain('name="file"')
   })
 
-  it('moves an item by dragging it onto a folder row', async () => {
-    useEditorFolderSession()
+  it('moves an item by dragging it onto a folder card', async () => {
     let moved: { parent_id: string } | null = null
     let movedId: string | null = null
+    editorSession([SUBFOLDER, FILE_ITEM])
     server.use(
-      http.get(`${BASE}/public/items/:id/children`, () =>
-        HttpResponse.json({
-          items: [SUBFOLDER, FILE_ITEM],
-          total: 2,
-          page: 1,
-          page_size: 100,
-          pages: 1,
-        }),
-      ),
       http.patch(`${BASE}/public/items/:id/parent`, async ({ params, request }) => {
         movedId = String(params['id'])
         moved = (await request.json()) as { parent_id: string }
@@ -405,13 +435,11 @@ describe('ShareTokenPage editor links', () => {
     )
     renderPage()
 
-    const sourceRow = (await screen.findByText('report.txt')).closest('li')!
-    const targetRow = screen.getByText('Docs').closest('li')!
+    await screen.findByText('report.txt')
     const dataTransfer = makeDataTransfer()
-
-    fireEvent.dragStart(sourceRow, { dataTransfer })
-    fireEvent.dragOver(targetRow, { dataTransfer })
-    fireEvent.drop(targetRow, { dataTransfer })
+    fireEvent.dragStart(cardFor('report.txt'), { dataTransfer })
+    fireEvent.dragOver(cardFor('Docs'), { dataTransfer })
+    fireEvent.drop(cardFor('Docs'), { dataTransfer })
 
     await waitFor(() => expect(movedId).toBe(FILE_ITEM.id))
     expect(moved).toEqual({ parent_id: SUBFOLDER.id })

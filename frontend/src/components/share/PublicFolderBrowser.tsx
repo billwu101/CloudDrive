@@ -1,31 +1,54 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Check,
-  ChevronRight,
-  Download,
-  File,
-  Folder,
-  FolderPlus,
-  Loader2,
-  Pencil,
-  Trash2,
-  Upload,
-  X,
-} from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { ChevronRight, FolderOpen, Loader2 } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
 import { isApiError } from '@/api/client'
 import {
   createSharedFolder,
-  listShareChildren,
+  downloadSharedItem,
+  downloadSharedSelection,
   moveSharedItem,
   renameSharedItem,
   trashSharedItem,
-  uploadSharedFile,
 } from '@/api/publicShareApi'
 import type { PublicItem } from '@/api/types'
-import { DRAG_MIME } from '@/hooks/useDragMove'
-import { formatBytes } from '@/lib/uploadLimits'
+import { ConfirmTrashDialog } from '@/components/drive/ConfirmTrashDialog'
+import { CreateFolderDialog } from '@/components/drive/CreateFolderDialog'
+import { DriveToolbar } from '@/components/drive/DriveToolbar'
+import { FileGrid } from '@/components/drive/FileGrid'
+import { FileTable } from '@/components/drive/FileTable'
+import { MoveDialog } from '@/components/drive/MoveDialog'
+import { MultiFileContextMenu } from '@/components/drive/MultiFileContextMenu'
+import { RenameDialog } from '@/components/drive/RenameDialog'
+import { PreviewDialog } from '@/components/preview/PreviewDialog'
+import { UploadDropzone } from '@/components/upload/UploadDropzone'
+import { UploadMenu } from '@/components/upload/UploadMenu'
+import { UploadQueue } from '@/components/upload/UploadQueue'
+import { useDragMove } from '@/hooks/useDragMove'
+import { useDragSelect } from '@/hooks/useDragSelect'
+import {
+  publicKeys,
+  useGuestChildren,
+  useGuestFolderSource,
+  useGuestPreviewSource,
+  useGuestUploadFiles,
+  useGuestUploadFolders,
+} from '@/hooks/usePublicDrive'
+import { useUIStore } from '@/stores/uiStore'
+
+import { PublicContextMenu } from './PublicContextMenu'
+
+/**
+ * The guest file browser (proposal §34).
+ *
+ * Deliberately built from My Drive's own components rather than a simpler
+ * bespoke list: someone handed an editor link is doing the same work as a
+ * signed-in user, and should not have to learn a second set of gestures.
+ *
+ * What is *not* here is as deliberate — no star, no re-sharing, no share
+ * badges, no assistant skills (proposal §34.3). Each needs either an account
+ * or the owner's private state, and a guest has neither.
+ */
 
 interface PublicFolderBrowserProps {
   /** Folder currently being shown — the share root, or one of its descendants. */
@@ -33,13 +56,15 @@ interface PublicFolderBrowserProps {
   /** Path from the share root down to `folder`, root first. */
   trail: PublicItem[]
   canDownload: boolean
-  /** Editor links only (proposal §33) — turns on the write controls. */
   canEdit: boolean
   onOpenFolder: (item: PublicItem) => void
-  onOpenFile: (item: PublicItem) => void
   onNavigateTo: (depth: number) => void
-  onDownload: (item: PublicItem) => void
 }
+
+type ContextMenuState =
+  | { kind: 'single'; item: PublicItem; x: number; y: number }
+  | { kind: 'multi'; x: number; y: number }
+  | null
 
 export function PublicFolderBrowser({
   folder,
@@ -47,36 +72,46 @@ export function PublicFolderBrowser({
   canDownload,
   canEdit,
   onOpenFolder,
-  onOpenFile,
   onNavigateTo,
-  onDownload,
 }: PublicFolderBrowserProps) {
   const qc = useQueryClient()
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['public-share', 'children', folder.id],
-    queryFn: () => listShareChildren(folder.id),
-  })
+  const { data, isLoading, isError } = useGuestChildren(folder.id)
+  const items = useMemo(() => data?.items ?? [], [data?.items])
 
-  const [creating, setCreating] = useState(false)
-  const [newFolderName, setNewFolderName] = useState('')
-  const [renamingId, setRenamingId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
+  // View mode is a display preference and can be shared with My Drive.
+  // Selection cannot: it is a single global set, so a guest tab and a My Drive
+  // tab open at once would each act on the other's picks (design §5.9.6).
+  const viewMode = useUIStore((s) => s.viewMode)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const [showCreateFolder, setShowCreateFolder] = useState(false)
+  const [renameTarget, setRenameTarget] = useState<PublicItem | null>(null)
+  const [moveTarget, setMoveTarget] = useState<PublicItem | null>(null)
+  const [trashTargets, setTrashTargets] = useState<PublicItem[]>([])
+  const [previewItemId, setPreviewItemId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
-  const [draggingId, setDraggingId] = useState<string | null>(null)
-  const fileInput = useRef<HTMLInputElement>(null)
+  const fileListRef = useRef<HTMLDivElement>(null)
 
-  // Moves touch two folders (source and destination), so the whole children
-  // prefix is invalidated rather than just the folder on screen.
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['public-share', 'children'] })
-  const fail = (err: unknown) =>
-    setActionError(isApiError(err) ? err.message : 'Something went wrong.')
+  const shareRoot = trail[0] ?? folder
+  const previewSource = useGuestPreviewSource(items)
+  const folderSource = useGuestFolderSource(shareRoot.id, shareRoot.name)
+  const { upload } = useGuestUploadFiles(folder.id)
+  const { uploadFolders } = useGuestUploadFolders(folder.id)
+
+  const invalidate = useCallback(
+    () => qc.invalidateQueries({ queryKey: publicKeys.allChildren }),
+    [qc],
+  )
+  const fail = useCallback(
+    (err: unknown) => setActionError(isApiError(err) ? err.message : 'Something went wrong.'),
+    [],
+  )
 
   const createFolder = useMutation({
     mutationFn: (name: string) => createSharedFolder(folder.id, name),
     onSuccess: () => {
-      setCreating(false)
-      setNewFolderName('')
+      setShowCreateFolder(false)
       setActionError(null)
       void invalidate()
     },
@@ -86,16 +121,7 @@ export function PublicFolderBrowser({
   const rename = useMutation({
     mutationFn: (input: { id: string; name: string }) => renameSharedItem(input.id, input.name),
     onSuccess: () => {
-      setRenamingId(null)
-      setActionError(null)
-      void invalidate()
-    },
-    onError: fail,
-  })
-
-  const trash = useMutation({
-    mutationFn: (id: string) => trashSharedItem(id),
-    onSuccess: () => {
+      setRenameTarget(null)
       setActionError(null)
       void invalidate()
     },
@@ -106,165 +132,158 @@ export function PublicFolderBrowser({
     mutationFn: (input: { id: string; parentId: string }) =>
       moveSharedItem(input.id, input.parentId),
     onSuccess: () => {
+      setMoveTarget(null)
       setActionError(null)
       void invalidate()
     },
     onError: fail,
   })
 
-  const upload = useMutation({
-    // One file per call — a per-file failure (name clash, quota) should not
-    // take the rest of the batch down with it.
-    mutationFn: (file: globalThis.File) => uploadSharedFile(folder.id, file),
+  const trash = useMutation({ mutationFn: (id: string) => trashSharedItem(id) })
+
+  // Only ever act on what is actually listed, so a stale id from a folder the
+  // guest has since left can never be trashed or downloaded.
+  const visibleSelected = useMemo(
+    () => items.filter((i) => selectedIds.has(i.id)),
+    [items, selectedIds],
+  )
+
+  const selectItem = useCallback((id: string, multi = false) => {
+    setSelectedIds((prev) => {
+      if (!multi) return new Set([id])
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
+  const selectAll = useCallback((ids: string[]) => setSelectedIds(new Set(ids)), [])
+
+  const handleSelectAll = useCallback(() => {
+    if (items.length > 0 && items.every((i) => selectedIds.has(i.id))) clearSelection()
+    else selectAll(items.map((i) => i.id))
+  }, [items, selectedIds, selectAll, clearSelection])
+
+  const drag = useDragMove({
+    selectedIds,
+    items,
+    moveItem: (id, parentId) => moveSharedItem(id, parentId).then(invalidate),
   })
+  useDragSelect(fileListRef, selectAll, clearSelection)
 
-  const handleFiles = async (list: FileList | null) => {
-    if (!list || list.length === 0) return
-    setActionError(null)
-    const failures: string[] = []
-    for (const file of Array.from(list)) {
-      try {
-        await upload.mutateAsync(file)
-      } catch (err) {
-        failures.push(`${file.name} — ${isApiError(err) ? err.message : 'upload failed'}`)
-      }
-    }
-    void invalidate()
-    if (failures.length > 0) setActionError(failures.join('; '))
-  }
-
-  // ── Drag to move (same gesture and MIME as the main drive, proposal §31).
-  // No multi-select on the guest page, so a drag carries exactly one id.
-
-  const canAcceptDrop = (targetId: string, e: React.DragEvent) =>
-    canEdit && e.dataTransfer.types.includes(DRAG_MIME) && draggingId !== targetId
-
-  const handleDrop = (targetId: string, e: React.DragEvent) => {
-    if (!canAcceptDrop(targetId, e)) return
-    e.preventDefault()
-    setDropTargetId(null)
-    const id = e.dataTransfer.getData(DRAG_MIME)
-    if (!id || id === targetId) return
-    move.mutate({ id, parentId: targetId })
-  }
-
-  const dropHandlers = (targetId: string) => ({
-    onDragOver: (e: React.DragEvent) => {
-      if (!canAcceptDrop(targetId, e)) return
+  const handleContextMenu = useCallback(
+    (item: PublicItem, e: React.MouseEvent) => {
       e.preventDefault()
-      e.dataTransfer.dropEffect = 'move'
-      setDropTargetId(targetId)
+      if (selectedIds.size > 1 && selectedIds.has(item.id)) {
+        setContextMenu({ kind: 'multi', x: e.clientX, y: e.clientY })
+      } else {
+        if (!selectedIds.has(item.id)) selectItem(item.id)
+        setContextMenu({ kind: 'single', item, x: e.clientX, y: e.clientY })
+      }
     },
-    onDragLeave: () => setDropTargetId((cur) => (cur === targetId ? null : cur)),
-    onDrop: (e: React.DragEvent) => handleDrop(targetId, e),
-  })
+    [selectedIds, selectItem],
+  )
 
-  return (
-    <div className="w-full">
-      {/* At the share root the breadcrumb's only entry equals the page title —
-          rendering it would just print the same name twice. */}
-      {trail.length > 1 && (
-        <nav aria-label="Breadcrumb" className="mb-3 flex flex-wrap items-center gap-1 text-sm">
-          {trail.map((crumb, i) => (
-            <span key={crumb.id} className="flex items-center gap-1">
-              {i > 0 && (
-                <ChevronRight className="size-3 text-muted-foreground" aria-hidden="true" />
-              )}
-              <button
-                type="button"
-                onClick={() => onNavigateTo(i)}
-                disabled={i === trail.length - 1}
-                className={`rounded px-1 hover:bg-accent disabled:font-medium disabled:hover:bg-transparent ${
-                  dropTargetId === crumb.id ? 'bg-accent ring-1 ring-ring' : ''
-                }`}
-                {...(i < trail.length - 1 ? dropHandlers(crumb.id) : {})}
-              >
-                {crumb.name}
-              </button>
-            </span>
-          ))}
-        </nav>
-      )}
+  const handleDownloadSelected = useCallback(async () => {
+    const ids = visibleSelected.map((i) => i.id)
+    if (ids.length === 0) return
+    try {
+      await downloadSharedSelection(ids)
+    } catch (err) {
+      fail(err)
+    }
+  }, [visibleSelected, fail])
 
-      {canEdit && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setCreating(true)
-              setNewFolderName('')
-            }}
-            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
-          >
-            <FolderPlus className="size-4" aria-hidden="true" />
-            New folder
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            disabled={upload.isPending}
-            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
-          >
-            {upload.isPending ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Upload className="size-4" aria-hidden="true" />
-            )}
-            {upload.isPending ? 'Uploading…' : 'Upload'}
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            aria-label="Upload files"
-            onChange={(e) => {
-              void handleFiles(e.target.files)
-              e.target.value = ''
-            }}
-          />
-        </div>
-      )}
+  const listProps = {
+    items,
+    selectedIds,
+    onItemClick: (item: PublicItem, e: React.MouseEvent) => {
+      e.stopPropagation()
+      selectItem(item.id, e.metaKey || e.ctrlKey)
+    },
+    onItemDoubleClick: (item: PublicItem) =>
+      item.item_type === 'FOLDER' ? onOpenFolder(item) : setPreviewItemId(item.id),
+    onItemContextMenu: handleContextMenu,
+    onCheckboxClick: (item: PublicItem, e: React.MouseEvent) => {
+      e.stopPropagation()
+      selectItem(item.id, true)
+    },
+    drag,
+    // onStarClick deliberately absent — see the note at the top of this file.
+  }
 
-      {creating && (
-        <form
-          className="mb-3 flex items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (newFolderName.trim()) createFolder.mutate(newFolderName.trim())
-          }}
-        >
-          <input
-            autoFocus
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="Folder name"
-            aria-label="Folder name"
-            className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-          />
+  const body = (
+    <div className="flex h-full flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* At the share root the only crumb equals the page title, so the whole
+            bar is dropped rather than printing the same name twice. */}
+        {trail.length > 1 ? (
+          <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-sm">
+            {trail.map((crumb, i) => (
+              <span key={crumb.id} className="flex items-center gap-1">
+                {i > 0 && (
+                  <ChevronRight className="size-3 text-muted-foreground" aria-hidden="true" />
+                )}
+                <button
+                  type="button"
+                  onClick={() => onNavigateTo(i)}
+                  disabled={i === trail.length - 1}
+                  className="rounded px-1 hover:bg-accent disabled:font-medium disabled:hover:bg-transparent"
+                  {...(i < trail.length - 1 && canEdit
+                    ? {
+                        onDragOver: (e: React.DragEvent) => drag.onItemDragOver(crumb, e),
+                        onDragLeave: () => drag.onItemDragLeave(crumb),
+                        onDrop: (e: React.DragEvent) => drag.onItemDrop(crumb, e),
+                      }
+                    : {})}
+                >
+                  {crumb.name}
+                </button>
+              </span>
+            ))}
+          </nav>
+        ) : (
+          <span />
+        )}
+
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <UploadMenu onFiles={upload} onFolders={uploadFolders} />
+            <DriveToolbar
+              selectedCount={visibleSelected.length}
+              onNewFolder={() => setShowCreateFolder(true)}
+              onDownloadSelected={handleDownloadSelected}
+              onTrashSelected={() => setTrashTargets(visibleSelected)}
+            />
+          </div>
+        )}
+        {!canEdit && canDownload && visibleSelected.length > 0 && (
           <button
-            type="submit"
-            disabled={createFolder.isPending || !newFolderName.trim()}
-            aria-label="Create folder"
-            className="rounded-md bg-primary p-1.5 text-primary-foreground disabled:opacity-50"
+            onClick={handleDownloadSelected}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
           >
-            <Check className="size-4" aria-hidden="true" />
+            Download ({visibleSelected.length})
           </button>
-          <button
-            type="button"
-            aria-label="Cancel new folder"
-            onClick={() => setCreating(false)}
-            className="rounded-md border p-1.5 hover:bg-accent"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        </form>
-      )}
+        )}
+      </div>
 
       {actionError && (
-        <p role="alert" className="mb-3 text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {actionError}
         </p>
+      )}
+
+      {drag.moveError && (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          <span>Could not move: {drag.moveError}</span>
+          <button type="button" aria-label="Dismiss" onClick={drag.clearMoveError}>
+            ×
+          </button>
+        </div>
       )}
 
       {isLoading && (
@@ -277,125 +296,112 @@ export function PublicFolderBrowser({
         <p className="py-10 text-center text-sm text-destructive">Could not load this folder.</p>
       )}
 
-      {data && data.items.length === 0 && !creating && (
-        <p className="py-10 text-center text-sm text-muted-foreground">This folder is empty.</p>
+      {!isLoading && !isError && items.length === 0 && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
+          <FolderOpen className="size-12" aria-hidden="true" />
+          <p className="text-sm">This folder is empty</p>
+        </div>
       )}
 
-      {data && data.items.length > 0 && (
-        <ul className="divide-y rounded-md border">
-          {data.items.map((item) => (
-            <li
-              key={item.id}
-              draggable={canEdit}
-              onDragStart={(e) => {
-                if (!canEdit) return
-                e.dataTransfer.effectAllowed = 'move'
-                e.dataTransfer.setData(DRAG_MIME, item.id)
-                setDraggingId(item.id)
-              }}
-              onDragEnd={() => {
-                setDraggingId(null)
-                setDropTargetId(null)
-              }}
-              {...(item.item_type === 'FOLDER' ? dropHandlers(item.id) : {})}
-              className={`flex items-center gap-3 px-3 py-2 ${
-                dropTargetId === item.id ? 'bg-accent' : ''
-              } ${draggingId === item.id ? 'opacity-50' : ''}`}
-            >
-              {renamingId === item.id ? (
-                <form
-                  className="flex min-w-0 flex-1 items-center gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    if (renameValue.trim()) rename.mutate({ id: item.id, name: renameValue.trim() })
-                  }}
-                >
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    aria-label={`New name for ${item.name}`}
-                    className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm outline-none focus:border-ring"
-                  />
-                  <button
-                    type="submit"
-                    disabled={rename.isPending || !renameValue.trim()}
-                    aria-label="Save name"
-                    className="rounded p-1 hover:bg-accent disabled:opacity-50"
-                  >
-                    <Check className="size-4" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Cancel rename"
-                    onClick={() => setRenamingId(null)}
-                    className="rounded p-1 hover:bg-accent"
-                  >
-                    <X className="size-4" aria-hidden="true" />
-                  </button>
-                </form>
-              ) : (
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  onClick={() =>
-                    item.item_type === 'FOLDER' ? onOpenFolder(item) : onOpenFile(item)
-                  }
-                >
-                  {item.item_type === 'FOLDER' ? (
-                    <Folder className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  ) : (
-                    <File className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  )}
-                  <span className="truncate text-sm">{item.name}</span>
-                </button>
-              )}
-              {item.item_type === 'FILE' && renamingId !== item.id && (
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatBytes(item.size_bytes)}
-                </span>
-              )}
-              {canDownload && item.item_type === 'FILE' && (
-                <button
-                  type="button"
-                  aria-label={`Download ${item.name}`}
-                  onClick={() => onDownload(item)}
-                  className="shrink-0 rounded p-1 hover:bg-accent"
-                >
-                  <Download className="size-4" aria-hidden="true" />
-                </button>
-              )}
-              {canEdit && renamingId !== item.id && (
-                <>
-                  <button
-                    type="button"
-                    aria-label={`Rename ${item.name}`}
-                    onClick={() => {
-                      setRenamingId(item.id)
-                      setRenameValue(item.name)
-                    }}
-                    className="shrink-0 rounded p-1 hover:bg-accent"
-                  >
-                    <Pencil className="size-4" aria-hidden="true" />
-                  </button>
-                  {/* Only children are ever listed, never the share root
-                      itself — so a trash button here can never aim at the
-                      root the server refuses to trash (§6.12.11b). */}
-                  <button
-                    type="button"
-                    aria-label={`Move ${item.name} to trash`}
-                    onClick={() => trash.mutate(item.id)}
-                    disabled={trash.isPending}
-                    className="shrink-0 rounded p-1 hover:bg-accent disabled:opacity-50"
-                  >
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  </button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
+      {items.length > 0 && (
+        <div ref={fileListRef} data-testid="file-list" className="relative flex-1 overflow-auto">
+          {viewMode === 'list' ? (
+            <FileTable {...listProps} onSelectAll={handleSelectAll} />
+          ) : (
+            <FileGrid {...listProps} />
+          )}
+        </div>
       )}
+
+      {contextMenu?.kind === 'single' && (
+        <PublicContextMenu
+          item={contextMenu.item}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          canEdit={canEdit}
+          canDownload={canDownload}
+          onClose={() => setContextMenu(null)}
+          onPreview={(item) => setPreviewItemId(item.id)}
+          onRename={setRenameTarget}
+          onMove={setMoveTarget}
+          onCopyName={(item) => void navigator.clipboard?.writeText(item.name)}
+          onTrash={(item) => setTrashTargets([item])}
+          onDownload={(item) => void downloadSharedItem(item.id, item.name)}
+        />
+      )}
+
+      {contextMenu?.kind === 'multi' && (
+        <MultiFileContextMenu
+          count={selectedIds.size}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+          onTrash={() => setTrashTargets(visibleSelected)}
+        />
+      )}
+
+      <CreateFolderDialog
+        open={showCreateFolder}
+        loading={createFolder.isPending}
+        onConfirm={(name) => createFolder.mutate(name)}
+        onClose={() => setShowCreateFolder(false)}
+      />
+
+      <RenameDialog
+        open={!!renameTarget}
+        initialName={renameTarget?.name ?? ''}
+        loading={rename.isPending}
+        onConfirm={(name) => renameTarget && rename.mutate({ id: renameTarget.id, name })}
+        onClose={() => setRenameTarget(null)}
+      />
+
+      <MoveDialog
+        open={!!moveTarget}
+        itemId={moveTarget?.id ?? ''}
+        loading={move.isPending}
+        source={folderSource}
+        onConfirm={(parentId) =>
+          moveTarget && parentId && move.mutate({ id: moveTarget.id, parentId })
+        }
+        onClose={() => setMoveTarget(null)}
+      />
+
+      <ConfirmTrashDialog
+        open={trashTargets.length > 0}
+        itemNames={trashTargets.map((i) => i.name)}
+        loading={trash.isPending}
+        onConfirm={async () => {
+          const failures: string[] = []
+          for (const item of trashTargets) {
+            try {
+              await trash.mutateAsync(item.id)
+            } catch (err) {
+              failures.push(`${item.name} — ${isApiError(err) ? err.message : 'failed'}`)
+            }
+          }
+          setTrashTargets([])
+          clearSelection()
+          setActionError(failures.length > 0 ? failures.join('; ') : null)
+          void invalidate()
+        }}
+        onClose={() => setTrashTargets([])}
+      />
+
+      <UploadQueue onRetry={(task) => task.file && void upload([task.file])} />
+
+      <PreviewDialog
+        itemId={previewItemId}
+        source={previewSource}
+        onClose={() => setPreviewItemId(null)}
+      />
     </div>
+  )
+
+  // Dropping desktop files only makes sense when the guest may write. The
+  // custom drag MIME keeps this from firing on an internal item drag.
+  return canEdit ? (
+    <UploadDropzone onFiles={upload} onFolders={uploadFolders}>
+      {body}
+    </UploadDropzone>
+  ) : (
+    body
   )
 }
