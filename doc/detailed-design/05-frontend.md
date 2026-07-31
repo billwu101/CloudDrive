@@ -536,6 +536,17 @@ Sidebar 於「Shared with me」下方新增入口。
    - 失敗顯示後端 message（經 `toApiError`）。這是操作結果回饋，不受第 3 點「不可區分性」約束——那條只管「連結開不開得起來」，不管開起來之後的名稱衝突或配額滿。
    - **下載能力 editor ≥ downloader**：後端 `_assert_can_download` 只擋 viewer，前端判斷須為 `permission !== 'viewer'`，不可寫成 `=== 'downloader'`（否則 editor 連結看不到下載鈕）。
 9. **根目錄不重複顯示名稱**：麵包屑只在 `trail.length > 1` 時渲染——停在分享根時麵包屑第一段永遠等於頁首標題，重複無資訊量。
+10. **與 My Drive 對齊（proposal §34）**：訪客編輯頁**沿用 My Drive 的元件**，不另寫一套。
+
+    **元件重用的作法**：`FileCard` / `FileRow` / `FileGrid` / `FileTable` 的 `item` 型別放寬為兩者的共同子集（`id`／`name`／`item_type`／`mime_type`／`size_bytes`／`updated_at`），而 `is_starred`／`is_shared_with_users`／`has_active_public_link` 改為**選填**。三者皆為 owner-only 的可見性，欄位缺席時星號與 `ShareBadges` 自動不渲染——訪客頁不必傳假值，My Drive 也不必改呼叫端。
+
+    `MoveDialog` 與 `PreviewDialog` 把「取子資料夾」「取預覽內容」的函式**參數化**（預設值即目前的登入版），訪客頁注入 `/public` 版本。`MoveDialog` 的瀏覽起點改為傳入，訪客頁傳分享根——這是子樹邊界在 UI 上的落點。
+
+    **選取狀態不共用 `uiStore`**：訪客頁自帶 local state。`uiStore.selectedItemIds` 是全域單一份，同一個瀏覽器同時開著 My Drive 與訪客頁時會互相污染選取。`viewMode` 則可共用（純顯示偏好，跨頁一致反而合理）。
+
+    訪客版右鍵選單是**另一個元件**而非給 `FileContextMenu` 加旗標：訪客沒有星號、分享與 Assistant 三項，若靠旗標關掉，選單元件會累積「這個情境不要顯示這項」的分支，而兩者要顯示的動作集合本來就不同。
+
+11. **訪客頁不提供的 My Drive 功能**（proposal §34.3，實作時不得「順手加上」）：星號、再分享、`ShareBadges`、Assistant 技能選單、垃圾桶頁。前四項的成因都是同一個——那些狀態屬於**使用者或擁有者**，訪客兩者皆非。
 
 #### 可獨立測試項
 
@@ -550,6 +561,12 @@ Sidebar 於「Shared with me」下方新增入口。
 9. 建立資料夾／改名／移到垃圾桶／上傳各自打到對應的 `/public` 端點。
 10. 拖放到資料夾列送出 `PATCH /public/items/{id}/parent`。
 11. 停在分享根時，資料夾名稱在頁面上只出現一次。
+12. 訪客頁渲染 `FileGrid`／`FileTable`，且**不**出現星號與 `ShareBadges`（即使 My Drive 同元件會顯示）。
+13. 勾選多個項目後出現 `Download (N)`／`Trash (N)`，下載打到 `POST /public/archive` 並帶上選取的 ids。
+14. 訪客右鍵選單不含「加星號」「分享」「Assistant 技能」。
+15. `MoveDialog` 在訪客頁只列得出分享子樹內的資料夾。
+16. 桌面檔案拖進訪客頁會觸發上傳，且不與拖放移動手勢衝突。
+17. My Drive 既有測試全數不受元件放寬影響。
 
 ### 5.10 Trash 前端模組
 

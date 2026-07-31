@@ -178,3 +178,50 @@ proposal §33.4 第 2 點的五種操作皆可從訪客頁 UI 完成；`npm run 
   - console 全程無錯誤。
 - **後端閘門（以訪客憑證直打）**：viewer 寫入／下載皆 403；downloader 寫入 403、下載 200；editor 讀寫分享子樹外的項目皆 404，丟棄分享根 400；訪客上傳計入擁有者配額；垃圾桶為軟刪除（進擁有者垃圾桶可還原）。五筆寫入均見於 `activity_logs`，帶正確的 `via_share_link_id` 與 IP。
 - **附帶發現**：本機 dev DB 停在 migration 0020，建 editor 連結 500（`ck_share_links_permission` 違反）——`alembic upgrade head` 後復原。凡出現同症狀先查 migration 版本。
+
+---
+
+## 階段 4 追加：訪客編輯頁與 My Drive 對齊（proposal §34 / 設計 §5.9.6 第 10–11 點）
+
+**背景**：§33 的訪客編輯 UI 是「能用」，但與 My Drive 是兩套操作方式——訪客頁只有簡單清單與行內小按鈕，My Drive 有雙檢視、多選、批次操作、右鍵選單與拖曳上傳。本節讓兩者**看起來一樣、操作也一樣**，能力允許範圍內。
+
+**前置依賴**：backend-share.md「訪客多選打包下載」（`POST /public/archive`）。
+
+**核心原則**：**沿用 My Drive 的元件，不另寫一套**。任何「訪客頁專屬的檔案列表元件」都是走錯方向。
+
+### 子任務：讓既有元件可被訪客重用
+
+- [ ] `FileCard` / `FileRow` / `FileGrid` / `FileTable`：`item` 型別放寬為共同子集；`is_starred` / `is_shared_with_users` / `has_active_public_link` 改選填，缺席時星號與 `ShareBadges` 不渲染。
+- [ ] `MoveDialog`：取子資料夾的函式與瀏覽起點參數化（預設為目前的登入版 + 硬碟根）。
+- [ ] `PreviewDialog`：取預覽內容的函式參數化（預設為目前的登入版）。
+- [ ] **My Drive 既有測試必須全綠且不需修改**——需要改 `DrivePage` 呼叫端就代表放寬的方式錯了。
+
+### 子任務：訪客頁改用 My Drive 版面
+
+- [ ] 格狀／清單雙檢視 + 切換（`viewMode` 可共用 `uiStore`）。
+- [ ] 勾選多選 + 框選；**選取狀態用訪客頁自己的 local state**，不共用 `uiStore.selectedItemIds`（同瀏覽器同時開 My Drive 會互相污染）。
+- [ ] `DriveToolbar`：New folder + 選取後的 `Download (N)` / `Trash (N)`。
+- [ ] `UploadMenu`（檔案／資料夾）+ `UploadDropzone`（桌面拖入）+ `UploadQueue`（含重試）。
+- [ ] `CreateFolderDialog` / `RenameDialog` / `ConfirmTrashDialog` 取代行內輸入。
+- [ ] `MultiFileContextMenu`（沿用）+ **訪客版單選右鍵選單**（新元件，無星號／分享／Assistant）。
+- [ ] `useDragMove` 升級為多選拖放（目前訪客頁一次只拖一項）。
+- [ ] `MoveDialog` 起點傳分享根。
+- [ ] `api/publicShareApi.ts`：`archiveSharedItems(itemIds)` 打 `POST /public/archive`。
+
+### 測試任務
+
+- [ ] 訪客頁渲染 `FileGrid`／`FileTable`，且不出現星號與 `ShareBadges`。
+- [ ] 勾選多項後出現 `Download (N)`／`Trash (N)`；下載打到 `POST /public/archive` 並帶正確 ids。
+- [ ] 訪客右鍵選單不含加星號／分享／Assistant 技能。
+- [ ] `MoveDialog` 只列得出分享子樹內的資料夾。
+- [ ] 桌面檔案拖進訪客頁觸發上傳，且不與拖放移動手勢衝突。
+- [ ] `viewer`／`downloader` 連結不出現任何編輯控制。
+- [ ] My Drive 既有測試全數通過。
+
+### 驗收條件
+
+proposal §34.5 全部 7 項通過；`npm run lint` / `typecheck` / `npx vitest run --maxWorkers=2` 全綠。
+
+### 明確不做（proposal §34.3，實作時不得順手加上）
+
+星號、再分享、`ShareBadges`、Assistant 技能選單、垃圾桶頁。前四項成因相同——那些狀態屬於**使用者或擁有者**，訪客兩者皆非。
