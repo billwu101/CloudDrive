@@ -181,7 +181,7 @@ proposal §33.4 第 2 點的五種操作皆可從訪客頁 UI 完成；`npm run 
 
 ---
 
-## 階段 4 追加：訪客編輯頁與 My Drive 對齊（proposal §34 / 設計 §5.9.6 第 10–11 點）
+## 階段 4 追加：訪客編輯頁與 My Drive 對齊（proposal §28.8 / 設計 §5.9.6 第 10–11 點）
 
 **背景**：§33 的訪客編輯 UI 是「能用」，但與 My Drive 是兩套操作方式——訪客頁只有簡單清單與行內小按鈕，My Drive 有雙檢視、多選、批次操作、右鍵選單與拖曳上傳。本節讓兩者**看起來一樣、操作也一樣**，能力允許範圍內。
 
@@ -220,7 +220,7 @@ proposal §33.4 第 2 點的五種操作皆可從訪客頁 UI 完成；`npm run 
 
 ### 驗收條件
 
-proposal §34.5 全部 7 項通過；`npm run lint` / `typecheck` / `npx vitest run --maxWorkers=2` 全綠。
+proposal §28.8.4 全部 7 項通過；`npm run lint` / `typecheck` / `npx vitest run --maxWorkers=2` 全綠。
 
 ### 驗證結果（2026-07-31）
 
@@ -232,7 +232,7 @@ proposal §34.5 全部 7 項通過；`npm run lint` / `typecheck` / `npx vitest 
   - 三者皆無星號與分享標記；console 全程無錯誤。
 - **狀態確認（非只看畫面）**：訪客丟棄的兩個檔案出現在**擁有者的**垃圾桶（軟刪除可還原）；五筆寫入均見於 `activity_logs`，帶正確的 `via_share_link_id` 與 IP。
 
-### 明確不做（proposal §34.3，實作時不得順手加上）
+### 明確不做（proposal §28.8.2，實作時不得順手加上）
 
 星號、再分享、`ShareBadges`、Assistant 技能選單、垃圾桶頁。前四項成因相同——那些狀態屬於**使用者或擁有者**，訪客兩者皆非。
 
@@ -253,13 +253,13 @@ proposal §34.5 全部 7 項通過；`npm run lint` / `typecheck` / `npx vitest 
 
 ### 驗收條件
 
-editor 訪客頁與 My Drive 的差異只剩 proposal §34.3 表列五項＋外殼（Sidebar／搜尋／助理）；lint / typecheck / vitest 全綠；瀏覽器實測。
+editor 訪客頁與 My Drive 的差異只剩 proposal §28.8.2 表列五項＋外殼（Sidebar／搜尋／助理）；lint / typecheck / vitest 全綠；瀏覽器實測。
 
 ### 驗證結果（2026-07-31）
 
 - 前端 **348 passed**（50 檔）、lint、typecheck 全綠；**DrivePage 既有測試零修改**、訪客頁測試零修改（同名選單項使斷言直接沿用）。
 - **瀏覽器實測（dev）**：
-  - editor 訪客頁：版面即 My Drive（左麵包屑列＋右 Upload/New folder；名稱只出現一次——資料夾分享的頁首不再印名稱，交給麵包屑，與 My Drive 頂列同款）。**資料夾右鍵選單與 My Drive 同一個元件**：Rename／Move to／Copy name／Move to trash，含分隔線與 danger 樣式；缺的正好是 §34.3 的 Share／Star／assistant。經選單實測 Rename 成功（GuestMade → Reviewed-v2）。
+  - editor 訪客頁：版面即 My Drive（左麵包屑列＋右 Upload/New folder；名稱只出現一次——資料夾分享的頁首不再印名稱，交給麵包屑，與 My Drive 頂列同款）。**資料夾右鍵選單與 My Drive 同一個元件**：Rename／Move to／Copy name／Move to trash，含分隔線與 danger 樣式；缺的正好是 §28.8.2 的 Share／Star／assistant。經選單實測 Rename 成功（GuestMade → Reviewed-v2）。
   - My Drive：重構後版面、完整右鍵選單（含 Share／Star／assistant 技能）、卡片星號全部無恙。
   - console 僅有刪除 PublicContextMenu.tsx 當下的 vite HMR 殘響（緩衝殘留，重載後頁面正常），無產品錯誤。
 

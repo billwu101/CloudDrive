@@ -212,7 +212,7 @@ describe('ShareTokenPage', () => {
   })
 })
 
-// ── Editor links (proposal §33–§34) ─────────────────────────────────────────
+// ── Editor links (proposal §33–§28.8) ─────────────────────────────────────────
 //
 // The guest page now uses My Drive's own components, so these drive it the way
 // My Drive is driven: select a card, then act from the toolbar or the context
@@ -272,7 +272,7 @@ describe('ShareTokenPage editor links', () => {
     renderPage()
 
     await screen.findByText('report.txt')
-    // proposal §34.3 — a guest has no account to hang a star on, and may not
+    // proposal §28.8.2 — a guest has no account to hang a star on, and may not
     // re-share. Both come free with the reused components, so they are pinned.
     expect(screen.queryByRole('button', { name: 'Star' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Unstar' })).not.toBeInTheDocument()
@@ -397,7 +397,7 @@ describe('ShareTokenPage editor links', () => {
     await userEvent.click(cardFor('report.txt'))
     await userEvent.click(screen.getByRole('button', { name: /Download \(1\)/ }))
 
-    // proposal §34.4 — the selection travels in the body, not the whole root.
+    // proposal §28.8.3 — the selection travels in the body, not the whole root.
     await waitFor(() => expect(body).toEqual({ item_ids: [FILE_ITEM.id] }))
   })
 

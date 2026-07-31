@@ -214,9 +214,9 @@ proposal §33.4 全部 7 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 
 ---
 
-## 階段 4 追加：訪客多選打包下載（proposal §34.4 / 設計 §6.12.8）
+## 階段 4 追加：訪客多選打包下載（proposal §28.8.3 / 設計 §6.12.8）
 
-**背景**：訪客只能打包**整個分享根**（`GET /public/archive`）。§34 要求訪客頁的批次操作與 My Drive 一致，而 My Drive 的 `Download (N)` 走 `POST /download/archive` 收 `item_ids`——訪客端缺這個能力。
+**背景**：訪客只能打包**整個分享根**（`GET /public/archive`）。§28.8 要求訪客頁的批次操作與 My Drive 一致，而 My Drive 的 `Download (N)` 走 `POST /download/archive` 收 `item_ids`——訪客端缺這個能力。
 
 ### 子任務
 
@@ -234,7 +234,7 @@ proposal §33.4 全部 7 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 
 ### 驗收條件
 
-proposal §34.4 全部 4 點通過；`uv run pytest` / `mypy` / `ruff` 全綠。
+proposal §28.8.3 全部 4 點通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 
 ### 驗證結果（2026-07-31）
 

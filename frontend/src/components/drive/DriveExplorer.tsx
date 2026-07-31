@@ -25,7 +25,7 @@ import { useUIStore } from '@/stores/uiStore'
 
 /**
  * The drive page's whole file area, shared verbatim between My Drive and the
- * public share guest page (proposal §34, user decision 2026-07-31: the guest
+ * public share guest page (proposal §28.8, user decision 2026-07-31: the guest
  * gets the *same* frontend with capabilities removed, not a look-alike).
  *
  * Every action is optional, and an absent action hides its affordance —

@@ -151,7 +151,7 @@ Base path：`/api/v1`。下表涵蓋全部 60 個端點；**逐欄位 request／
 | GET | `/public/items/{id}/preview` | 線上預覽 | 🎫 |
 | GET | `/public/items/{id}/download` | 下載原檔 | 🎫 downloader |
 | GET | `/public/archive` | 子樹整包 zip | 🎫 downloader |
-| POST | `/public/archive` | 指定項目打包 zip（`{item_ids}`，proposal §34.4） | 🎫 downloader |
+| POST | `/public/archive` | 指定項目打包 zip（`{item_ids}`，proposal §28.8.3） | 🎫 downloader |
 | POST | `/public/folders` | 子樹內建立資料夾 | 🎫 editor |
 | POST | `/public/items/{id}/upload` | 上傳新檔／覆寫為新版本 | 🎫 editor |
 | PATCH | `/public/items/{id}/name` | 重新命名 | 🎫 editor |

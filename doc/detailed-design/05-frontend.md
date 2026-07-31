@@ -538,7 +538,7 @@ Sidebar 於「Shared with me」下方新增入口。
    - 失敗顯示後端 message（經 `toApiError`）。這是操作結果回饋，不受第 3 點「不可區分性」約束——那條只管「連結開不開得起來」，不管開起來之後的名稱衝突或配額滿。
    - **下載能力 editor ≥ downloader**：後端 `_assert_can_download` 只擋 viewer，前端判斷須為 `permission !== 'viewer'`，不可寫成 `=== 'downloader'`（否則 editor 連結看不到下載鈕）。
 9. **根目錄不重複顯示名稱**：麵包屑只在 `trail.length > 1` 時渲染——停在分享根時麵包屑第一段永遠等於頁首標題，重複無資訊量。
-10. **與 My Drive 對齊（proposal §34）**：**同一份頁面本體直接給訪客用**（2026-07-31 使用者定案，取代先前「用元件拼」的方向）。
+10. **與 My Drive 對齊（proposal §28.8）**：**同一份頁面本體直接給訪客用**（2026-07-31 使用者定案，取代先前「用元件拼」的方向）。
 
     **作法**：把 `DrivePage` 的檔案區本體抽成 `DriveExplorer`（工具列、格狀／清單、選取／框選、右鍵選單、四個對話框、拖放移動、拖曳上傳、上傳佇列、預覽）。`DrivePage` 與訪客頁都渲染它，差別只在注入的 `actions`：
 
@@ -549,7 +549,7 @@ Sidebar 於「Shared with me」下方新增入口。
     - `item` 型別放寬為 `BrowsableItem` 共同子集；`is_starred`／`is_shared_with_users`／`has_active_public_link` 選填，缺席時星號與 `ShareBadges` 不渲染。
     - `MoveDialog`／`PreviewDialog` 資料來源參數化，訪客注入 `/public` 版本；`MoveDialog` 起點為分享根（子樹邊界在 UI 的落點）。
 
-11. **訪客頁不提供的 My Drive 功能**（proposal §34.3，實作時不得「順手加上」）：星號、再分享、`ShareBadges`、Assistant 技能選單、垃圾桶頁。前四項的成因都是同一個——那些狀態屬於**使用者或擁有者**，訪客兩者皆非。
+11. **訪客頁不提供的 My Drive 功能**（proposal §28.8.2，實作時不得「順手加上」）：星號、再分享、`ShareBadges`、Assistant 技能選單、垃圾桶頁。前四項的成因都是同一個——那些狀態屬於**使用者或擁有者**，訪客兩者皆非。
 
 #### 可獨立測試項
 

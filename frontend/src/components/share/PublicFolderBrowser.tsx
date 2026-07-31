@@ -23,11 +23,11 @@ import {
 
 /**
  * The guest file browser: the *same* `DriveExplorer` My Drive renders, with a
- * guest-shaped set of capabilities (proposal §34, user decision 2026-07-31).
+ * guest-shaped set of capabilities (proposal §28.8, user decision 2026-07-31).
  *
  * What is missing is expressed by what is not wired — a viewer wires nothing,
  * a downloader only downloads, an editor gets everything except starring,
- * re-sharing and assistant skills (proposal §34.3), which need an account or
+ * re-sharing and assistant skills (proposal §28.8.2), which need an account or
  * the owner's private state.
  */
 

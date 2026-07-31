@@ -163,7 +163,7 @@ export function downloadSharedArchive(folderName: string): Promise<void> {
   return saveBlob('/public/archive', `${folderName}.zip`)
 }
 
-/** Zip just the items the guest selected (proposal §34.4). */
+/** Zip just the items the guest selected (proposal §28.8.3). */
 export async function downloadSharedSelection(itemIds: string[]): Promise<void> {
   const res = await publicClient.post<Blob>(
     '/public/archive',

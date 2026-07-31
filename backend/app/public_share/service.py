@@ -450,7 +450,7 @@ class PublicShareService:
         return item
 
     async def archive(self, access_token: str, item_ids: list[UUID] | None = None) -> ArchiveResult:
-        """Zip the shared subtree, or just the items named (proposal §34.4).
+        """Zip the shared subtree, or just the items named (proposal §28.8.3).
 
         Reuses DownloadService's packer, called as the item's owner: the
         subtree boundary is already fixed by the credential, so the per-file

@@ -18,7 +18,7 @@ import { useUploadStore } from '@/stores/uploadStore'
 import { relativePathOf } from './useUpload'
 
 /**
- * Guest-side equivalents of the drive hooks (proposal §34).
+ * Guest-side equivalents of the drive hooks (proposal §28.8).
  *
  * These exist so the guest page can reuse My Drive's components rather than
  * growing a parallel UI. Differences from `useUpload` / `useDrive` are only

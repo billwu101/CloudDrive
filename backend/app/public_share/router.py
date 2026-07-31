@@ -189,7 +189,7 @@ class ArchiveBody(BaseModel):
 async def archive_selected(
     body: ArchiveBody, credential: ShareToken, service: ServiceDep
 ) -> StreamingResponse:
-    """Pack the items the guest picked (proposal §34.4).
+    """Pack the items the guest picked (proposal §28.8.3).
 
     Separate from the GET above rather than an optional query parameter: a
     selection can be long enough to hit URL length limits, and a body keeps
