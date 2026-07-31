@@ -243,3 +243,28 @@ proposal §34.4 全部 4 點通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 ### 風險
 
 - **部分打包是資訊洩漏管道**：若對子樹外的 id 採「略過並打包其餘」，訪客可用「zip 少了哪一個」推斷某 id 是否存在。因此設計上明訂為全有全無（§6.12.8）。
+
+---
+
+## 階段 5：連結網址可事後取回 + editor 必填密碼（proposal §29.2 第 7 點／§33.3 第 4 點）
+
+**背景**：`share_links` 只存 `token_hash`，明文建立後即無法還原，因此「事後複製連結」在原儲存方式下不可能。使用者決定改為可逆加密保存（§29.2.1 記錄安全取捨）。同時 editor 連結改為必填密碼，**只約束新建立的**。
+
+### 子任務
+
+- [ ] migration 0022：`share_links` 新增 `token_encrypted varchar null`（既有列為 NULL）。
+- [ ] `ShareLinkService.create_link`：同時寫入 `token_hash`（查詢用）與 Fernet 密文（還原用）；沿用 `CREDENTIAL_ENCRYPTION_KEY`。
+- [ ] `GET /share/links/{link_id}/token`：僅擁有者；`token_encrypted` 為 NULL 時回 404。**明文不得進入任何列表回應**。
+- [ ] `create_link`：`editor` 未帶密碼 → 422（既有連結不受影響）。
+
+### 測試任務
+
+- [ ] 建立連結後可用該端點取回，且取回的 token 與建立時回傳的相同。
+- [ ] 非擁有者取回 → 403；不存在或無密文 → 404。
+- [ ] `GET /share/shared-by-me` 的回應**不含**明文 token。
+- [ ] `editor` 未帶密碼 → 422；帶密碼 → 201。viewer／downloader 不受密碼約束。
+- [ ] 既有（`token_encrypted` 為 NULL）的 editor 連結仍可正常開啟。
+
+### 驗收條件
+
+proposal §29.3 第 3.2 點與 §33.4 第 1 點通過；`uv run pytest` / `mypy` / `ruff` 全綠。

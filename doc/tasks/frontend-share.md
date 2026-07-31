@@ -268,3 +268,20 @@ editor 訪客頁與 My Drive 的差異只剩 proposal §34.3 表列五項＋外�
 逐項對照 My Drive 的檔案區能力，訪客 editor 連結實測：格狀卡片與型別圖示、勾選多選累加（3 項）、**框選**（選取框可見、掃過的項目全被選上）、批次工具列 `Download (N)`／`Trash (N)`、**多選右鍵自動切換為只有 Move to trash**、單選右鍵完整項、雙擊進子資料夾、麵包屑回上層、空資料夾狀態——全部與 My Drive 同行為。
 
 **本次複驗抓到一個真實落差並已修正**：切換資料夾後訪客頁**沒有清除選取**（進子資料夾再回來，舊的 3 個選取還在；My Drive 會清）。原因是這個 effect 只寫在 `DrivePage`。已把它收進 `DriveExplorer`（新增 `folderKey` prop），兩個呼叫端都自動具備，不會再各寫一次而漂移；`DrivePage` 的原 effect 移除，其既有回歸測試仍通過。修正後實測：進 `Sub` 再回 `Compare`，工具列不再顯示 Download／Trash。
+
+---
+
+## 階段 5：Shared by me 複製連結 + editor 密碼必填（proposal §29.2 第 7 點／§33.3 第 4 點）
+
+### 子任務
+
+- [ ] `src/api/shareApi.ts`：`getLinkToken(linkId)`。
+- [ ] `src/hooks/useShare.ts`：取 token 的 mutation（**按下才取**，不放進列表 query）。
+- [ ] `src/components/share/SharedByMeRow.tsx`：每條連結加「Copy link」；成功寫入剪貼簿並顯示已複製；端點回 404 時停用並說明「此連結建立於本功能之前，無法取回網址」。
+- [ ] `src/components/share/ShareLinkPanel.tsx`：選 `editor` 時密碼欄標必填、未填不得送出。
+
+### 測試任務
+
+- [ ] 按下 Copy link 會打 `/share/links/{id}/token` 並把完整網址寫進剪貼簿。
+- [ ] 端點 404 時顯示無法取回的說明，不是通用錯誤。
+- [ ] 選 editor 且密碼留空時送出鈕停用；viewer／downloader 不受影響。
