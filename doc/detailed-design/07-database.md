@@ -180,6 +180,11 @@ is_active boolean not null default true
 created_by uuid not null references users(id)
 created_at timestamptz not null
 
+-- 讓擁有者事後仍能取回原網址（proposal §29.2 第 7 點、§29.2.1）
+-- Fernet 密文，金鑰為 CREDENTIAL_ENCRYPTION_KEY，不存於 DB。
+-- 可為 null：本欄位加入之前建立的連結沒有可還原的值。
+token_encrypted varchar null
+
 -- 驗證嘗試速率限制（proposal §28.7 決策 2、設計 §6.12.11 第 6 點）
 attempt_window_start timestamptz null
 attempt_count int not null default 0

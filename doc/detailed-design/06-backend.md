@@ -979,6 +979,7 @@ Share 模組負責分享檔案或資料夾，含三條互相獨立的路徑：
 | POST | `/api/v1/share/items/{item_id}/links` | 建立公開連結 |
 | DELETE | `/api/v1/share/links/{link_id}` | 停用公開連結（保留記錄） |
 | DELETE | `/api/v1/share/links/{link_id}/record` | 刪除已失效的連結記錄（§6.12.12 第 5 點） |
+| GET | `/api/v1/share/links/{link_id}/token` | 取回連結原網址的 token（proposal §29.2 第 7 點） |
 
 免認證的訪客存取端點另見 §6.12.9（`/api/v1/public/*`）。
 
@@ -1144,6 +1145,10 @@ class PublicShareService:
    **唯一的例外**是「連結有效、有設密碼、但呼叫端沒帶密碼」——即 §28.4 流程圖的第一次請求。這回 `401 SHARE_LINK_PASSWORD_REQUIRED`，否則前端無從決定要不要顯示密碼欄。此回應確實透露「此 token 存在且有密碼」，但不透露密碼是否正確，也不讓「密碼錯」與「token 不存在」變得可區分；token 有 256 bits 亂度，靠這點差異枚舉不可行。**此探測不計入速率限制**（未驗證任何憑證），否則使用者光是打開頁面就先耗掉一次額度。
 2. **不洩漏存在性**：驗證通過前不回傳任何項目欄位。故根項目中繼資料只出現在 `session` 的**成功**回應中，`GET /public/items` 也一律要求憑證。
 3. **密碼傳遞與儲存**：密碼只走 `POST` body，不得進 URL／query／log；例外處理不得把 body 寫入日誌。儲存改用 `core.security.hash_password`（`pwdlib`，加鹽、常數時間比對），不再沿用 token 用的裸 SHA-256——高亂度 token 用 SHA-256 沒問題，使用者自選的密碼不行。**既有連結的密碼會因此失效**；因為本章之前根本沒有存取端點，這些密碼從未被成功驗證過，無實際影響。
+
+   3a. **token 同時保存雜湊與密文**（2026-07-31，proposal §29.2.1）：`token_hash` 仍是訪客端查詢的唯一依據（`open_session` 以它查列，維持常數時間、唯一索引）；`token_encrypted` 只為了讓**擁有者**事後取回原網址，兩者用途不重疊。密文為 Fernet，金鑰取自 `CREDENTIAL_ENCRYPTION_KEY`（與外部模型憑證同一把，§12），**不存於資料庫**——單獨拿到 DB 仍解不開。
+   - 明文 token **絕不放進任何列表回應**：`GET /share/shared-by-me` 不含 token。取回改走專用端點 `GET /share/links/{link_id}/token`，只有擁有者、且只在他實際按下「複製」時才傳輸一次，避免明文隨每次列表載入在網路與快取中反覆出現。
+   - 本欄位加入前建立的連結 `token_encrypted` 為 `NULL`，該端點對它們回 `404`——沒有可還原的值是事實，不是錯誤，前端須據此停用按鈕並說明原因。
 4. **最小授權（子樹邊界）**：每次帶 `item_id` 的請求都必須驗證該項目位於憑證 `itm` 的子樹內（含自身），以遞迴 CTE 上溯 `parent_id` 比對；不在子樹內回 `404`（非 403，避免確認該 id 存在）。已在垃圾桶的項目視同不存在。
 5. **權限不被提升**：權限一律取自連結的 `prm`，**絕不查詢 `created_by` 是否為 owner**。`viewer` 呼叫 download／archive 回 `403 FORBIDDEN`。
 6. **速率限制**：每個連結每分鐘最多 5 次 `session` 嘗試（proposal §28.7 決策 2），超過鎖定 5 分鐘，鎖定期間一律回同一則錯誤。計數狀態存在 `share_links` 資料列上（§7.6），**不放記憶體**——本專案為多 worker 部署，行程內計數會讓限制隨 worker 數放大。成功驗證不重置計數窗，只有窗過期才重置；`refresh` 不計入（它需要已簽發的憑證，不是猜測管道）。
