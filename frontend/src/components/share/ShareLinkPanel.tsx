@@ -40,6 +40,10 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
   const [activeLink, setActiveLink] = useState<ShareLinkResponse | null>(existingLink ?? null)
 
   const createLink = useCreateShareLink()
+  // An editor link needs both an expiry and a password (proposal §33.3 rule 4).
+  // Blocked in the UI as well as the API so the requirement is visible before
+  // the user has filled the rest of the form in.
+  const missingForEditor = permission === 'editor' && (!password || !expiresAt)
 
   const handleCreate = async () => {
     const result = await createLink.mutateAsync({
@@ -98,17 +102,21 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
         />
         <input
           type="password"
-          placeholder="Password (optional)"
+          placeholder={permission === 'editor' ? 'Password (required)' : 'Password (optional)'}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          required={permission === 'editor'}
           className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-          aria-label="Link password (optional)"
+          aria-label={
+            permission === 'editor' ? 'Link password (required)' : 'Link password (optional)'
+          }
         />
       </div>
       {permission === 'editor' && (
         <p className="text-xs text-muted-foreground">
-          Anyone with this link can add, rename, move and trash files inside the shared item —
-          without signing in. It must have an expiry, and the changes count against your storage.
+          Anyone with this link and its password can add, rename, move and trash files inside the
+          shared item — without signing in. Both a password and an expiry are required, and the
+          changes count against your storage.
         </p>
       )}
       <div className="flex items-center gap-2">
@@ -122,7 +130,7 @@ export function ShareLinkPanel({ itemId, existingLink }: ShareLinkPanelProps) {
         />
         <button
           onClick={handleCreate}
-          disabled={createLink.isPending}
+          disabled={createLink.isPending || missingForEditor}
           className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50"
         >
           <Link className="size-4" aria-hidden="true" />

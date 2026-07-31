@@ -162,6 +162,46 @@ describe('SharedByMePage', () => {
     await waitFor(() => expect(removed).toBe('lnk-1'))
   })
 
+  it('copies a link URL the owner can no longer see anywhere else', async () => {
+    let asked: string | null = null
+    const written: string[] = []
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: (t: string) => {
+          written.push(t)
+          return Promise.resolve()
+        },
+      },
+    })
+    server.use(
+      http.get(`${BASE}/share/links/:linkId/token`, ({ params }) => {
+        asked = String(params['linkId'])
+        return HttpResponse.json({ token: 'tok-recovered' })
+      }),
+    )
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { expanded: false }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Copy link/ })[0]!)
+
+    // Fetched on click — the listing itself never carries the plaintext.
+    await waitFor(() => expect(asked).toBe('lnk-1'))
+    await waitFor(() => expect(written[0]).toContain('/s/tok-recovered'))
+  })
+
+  it('says so when a link predates the recoverable address', async () => {
+    server.use(
+      http.get(`${BASE}/share/links/:linkId/token`, () =>
+        HttpResponse.json({ code: 'NOT_FOUND', message: 'gone' }, { status: 404 }),
+      ),
+    )
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { expanded: false }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Copy link/ })[0]!)
+
+    // A fact about the link, not a transient error — so it replaces the button.
+    expect(await screen.findByText('Address unavailable')).toBeInTheDocument()
+  })
+
   it('offers no way to revoke everything at once', async () => {
     renderPage()
     await userEvent.click(await screen.findByRole('button', { expanded: false }))

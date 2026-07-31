@@ -125,6 +125,27 @@ describe('link permission tiers', () => {
     expect(screen.getByText(/without signing in/)).toBeInTheDocument()
   })
 
+  it('makes the password required too, and blocks creation until both are set', async () => {
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: /^link$/i }))
+
+    expect(screen.getByLabelText('Link password (optional)')).not.toBeRequired()
+
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /permission level/i }),
+      'editor',
+    )
+
+    // The URL alone must not be enough to start changing someone's files
+    // (proposal §33.3 rule 4) — the expiry is pre-filled, the password is not.
+    const password = screen.getByLabelText('Link password (required)')
+    expect(password).toBeRequired()
+    expect(screen.getByRole('button', { name: /create link/i })).toBeDisabled()
+
+    await userEvent.type(password, 's3cret')
+    expect(screen.getByRole('button', { name: /create link/i })).toBeEnabled()
+  })
+
   it('still offers Editor when sharing with a person', async () => {
     renderDialog()
     const select = screen.getByRole('combobox', { name: /permission level/i })

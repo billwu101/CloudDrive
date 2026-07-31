@@ -37,4 +37,10 @@ export const shareApi = {
   // off someone who is using the URL.
   deleteLinkRecord: (link_id: string) =>
     api.delete<void>(`/share/links/${link_id}/record`),
+
+  // The link's original URL token, fetched only when the owner asks to copy it
+  // — the listing deliberately carries no plaintext (design §6.12.11 rule 3a).
+  // 404 means there is nothing to recover: the link predates this feature.
+  getLinkToken: (link_id: string) =>
+    api.get<{ token: string }>(`/share/links/${link_id}/token`),
 }

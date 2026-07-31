@@ -86,6 +86,16 @@ export function useDeleteShareLinkRecord() {
   })
 }
 
+/**
+ * Fetch a link's URL token on demand. A mutation rather than a query because
+ * it should fire when the owner clicks "copy", not whenever the page renders.
+ */
+export function useRevealLinkToken() {
+  return useMutation({
+    mutationFn: async (linkId: string) => (await shareApi.getLinkToken(linkId)).data.token,
+  })
+}
+
 export function useDeactivateShareLink() {
   const qc = useQueryClient()
   return useMutation({
