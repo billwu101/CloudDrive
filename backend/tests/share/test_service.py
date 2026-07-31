@@ -139,11 +139,13 @@ class MemShareLinkRepo(AbstractShareLinkRepository):
         password_hash: str | None,
         expires_at: datetime | None,
         created_by: UUID,
+        token_encrypted: str | None = None,
     ) -> ShareLink:
         link = ShareLink(
             id=uuid4(),
             item_id=item_id,
             token_hash=token_hash,
+            token_encrypted=token_encrypted,
             permission=permission,
             password_hash=password_hash,
             expires_at=expires_at,

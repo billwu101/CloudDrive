@@ -61,6 +61,9 @@ async def _stored(links: MemShareLinkRepo, token: str):  # type: ignore[no-untyp
     return await links.get_by_token_hash(hashlib.sha256(token.encode()).hexdigest())
 
 
+EDITOR_PASSWORD = "editor-pass"
+
+
 async def _link_for(
     items: MemDriveItemRepo,
     links: MemShareLinkRepo,
@@ -73,6 +76,10 @@ async def _link_for(
 ) -> str:
     """Create a link through the real service and return its plaintext token."""
     link_svc = ShareLinkService(item_repo=items, link_repo=links)
+    if permission is LinkPermission.EDITOR:
+        # proposal §33.3 rule 4 — an editor link cannot be created without both.
+        password = password or EDITOR_PASSWORD
+        expires_at = expires_at or datetime.now(UTC) + timedelta(days=1)
     resp = await link_svc.create_link(
         owner_id, item_id, permission, password=password, expires_at=expires_at
     )
@@ -406,8 +413,8 @@ def _svc_with_writes(items: MemDriveItemRepo, links: MemShareLinkRepo) -> Public
 async def _editor_credential(
     items: MemDriveItemRepo, links: MemShareLinkRepo, root_id: UUID, owner: UUID
 ) -> tuple[PublicShareService, str]:
-    # An editor link must carry an expiry — that rule is enforced in create_link,
-    # so every fixture here has to satisfy it.
+    # An editor link must carry both an expiry and a password — create_link
+    # enforces that, so every fixture here has to satisfy it.
     token = await _link_for(
         items,
         links,
@@ -417,7 +424,7 @@ async def _editor_credential(
         expires_at=datetime.now(UTC) + timedelta(days=7),
     )
     svc = _svc_with_writes(items, links)
-    return svc, (await svc.open_session(token, None)).access_token
+    return svc, (await svc.open_session(token, EDITOR_PASSWORD)).access_token
 
 
 async def test_a_viewer_link_cannot_write() -> None:
