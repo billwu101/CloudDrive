@@ -252,19 +252,27 @@ proposal §34.4 全部 4 點通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 
 ### 子任務
 
-- [ ] migration 0022：`share_links` 新增 `token_encrypted varchar null`（既有列為 NULL）。
-- [ ] `ShareLinkService.create_link`：同時寫入 `token_hash`（查詢用）與 Fernet 密文（還原用）；沿用 `CREDENTIAL_ENCRYPTION_KEY`。
-- [ ] `GET /share/links/{link_id}/token`：僅擁有者；`token_encrypted` 為 NULL 時回 404。**明文不得進入任何列表回應**。
-- [ ] `create_link`：`editor` 未帶密碼 → 422（既有連結不受影響）。
+- [x] migration 0022：`share_links` 新增 `token_encrypted varchar null`（既有列為 NULL）。
+- [x] `ShareLinkService.create_link`：同時寫入 `token_hash`（查詢用）與 Fernet 密文（還原用）；沿用 `CREDENTIAL_ENCRYPTION_KEY`。
+- [x] `GET /share/links/{link_id}/token`：僅擁有者；`token_encrypted` 為 NULL 時回 404。**明文不得進入任何列表回應**。
+- [x] `create_link`：`editor` 未帶密碼 → 422（既有連結不受影響）。
 
 ### 測試任務
 
-- [ ] 建立連結後可用該端點取回，且取回的 token 與建立時回傳的相同。
-- [ ] 非擁有者取回 → 403；不存在或無密文 → 404。
-- [ ] `GET /share/shared-by-me` 的回應**不含**明文 token。
-- [ ] `editor` 未帶密碼 → 422；帶密碼 → 201。viewer／downloader 不受密碼約束。
-- [ ] 既有（`token_encrypted` 為 NULL）的 editor 連結仍可正常開啟。
+- [x] 建立連結後可用該端點取回，且取回的 token 與建立時回傳的相同。
+- [x] 非擁有者取回 → 403；不存在或無密文 → 404。
+- [x] `GET /share/shared-by-me` 的回應**不含**明文 token。
+- [x] `editor` 未帶密碼 → 422；帶密碼 → 201。viewer／downloader 不受密碼約束。
+- [x] 既有（`token_encrypted` 為 NULL）的 editor 連結仍可正常開啟。
 
 ### 驗收條件
 
 proposal §29.3 第 3.2 點與 §33.4 第 1 點通過；`uv run pytest` / `mypy` / `ruff` 全綠。
+
+### 驗證結果（2026-07-31）
+
+後端 **1020 passed**；ruff／mypy 全綠。migration 0022 已於 dev DB 套用。實測 round-trip：建立時回傳的 token 與事後取回的完全相同。
+
+**實作時發現的部署風險（已處理）**：`CREDENTIAL_ENCRYPTION_KEY` 原本只有外部模型會用，兩份 `.env` 範例都標為「選用」。現在分享連結也依賴它，**未設定會讓複製連結對所有新連結靜默失效**——dev 環境正好沒設，實測第一次就踩到（端點回 404、密文為 NULL）。已補：
+- `app/main.py` 啟動時未設此金鑰會 log warning（比照寄信的啟動診斷）。
+- `deploy/.env.prod.example` 與 `.env.example` 更正說明，不再只寫「外部模型才需」。

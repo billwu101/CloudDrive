@@ -21,6 +21,15 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     # Say at boot whether password-reset mail can actually reach anyone — the
     # endpoint itself can't tell you, by design (it must stay non-enumerable).
     check_mail_on_startup(settings)
+    if not settings.credential_encryption_key:
+        # This key used to matter only for external-model credentials, so a
+        # deployment that never used those will not have set it. Share links
+        # now need it too, and without it "copy link" silently stops working
+        # for every link created from here on (design §6.12.11 rule 3a).
+        logger.warning(
+            "CREDENTIAL_ENCRYPTION_KEY is not set — new share links will not be "
+            "copyable later, and external-model credentials cannot be stored"
+        )
     stop = asyncio.Event()
     tasks: list[asyncio.Task[None]] = []
     if settings.snapshot_scheduler_enabled:

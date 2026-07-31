@@ -275,13 +275,19 @@ editor 訪客頁與 My Drive 的差異只剩 proposal §34.3 表列五項＋外�
 
 ### 子任務
 
-- [ ] `src/api/shareApi.ts`：`getLinkToken(linkId)`。
-- [ ] `src/hooks/useShare.ts`：取 token 的 mutation（**按下才取**，不放進列表 query）。
-- [ ] `src/components/share/SharedByMeRow.tsx`：每條連結加「Copy link」；成功寫入剪貼簿並顯示已複製；端點回 404 時停用並說明「此連結建立於本功能之前，無法取回網址」。
-- [ ] `src/components/share/ShareLinkPanel.tsx`：選 `editor` 時密碼欄標必填、未填不得送出。
+- [x] `src/api/shareApi.ts`：`getLinkToken(linkId)`。
+- [x] `src/hooks/useShare.ts`：取 token 的 mutation（**按下才取**，不放進列表 query）。
+- [x] `src/components/share/SharedByMeRow.tsx`：每條連結加「Copy link」；成功寫入剪貼簿並顯示已複製；端點回 404 時停用並說明「此連結建立於本功能之前，無法取回網址」。
+- [x] `src/components/share/ShareLinkPanel.tsx`：選 `editor` 時密碼欄標必填、未填不得送出。
 
 ### 測試任務
 
-- [ ] 按下 Copy link 會打 `/share/links/{id}/token` 並把完整網址寫進剪貼簿。
-- [ ] 端點 404 時顯示無法取回的說明，不是通用錯誤。
-- [ ] 選 editor 且密碼留空時送出鈕停用；viewer／downloader 不受影響。
+- [x] 按下 Copy link 會打 `/share/links/{id}/token` 並把完整網址寫進剪貼簿。
+- [x] 端點 404 時顯示無法取回的說明，不是通用錯誤。
+- [x] 選 editor 且密碼留空時送出鈕停用；viewer／downloader 不受影響。
+
+### 驗證結果（2026-07-31）
+
+前端 **351 passed**、lint／typecheck 全綠。
+
+**瀏覽器實測**：同一項目下兩條連結各驗一種結果——本功能之前建立的（無密文）按下後端點回 404，該列改顯示「Address unavailable」且按鈕消失；之後建立的取回 200 並把 `http://localhost:5173/s/<token>` 寫進剪貼簿，與建立時回傳的 token 一致。接著把複製到的網址貼上開啟 → 出現密碼表單 → 輸入密碼 → 進到訪客編輯頁，**全鏈路走通**。後端閘門：editor 缺密碼 422、補上密碼 201。
