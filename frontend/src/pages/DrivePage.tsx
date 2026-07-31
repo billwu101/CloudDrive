@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { downloadItem, triggerBlobDownload } from '@/api/download'
@@ -77,15 +77,6 @@ export function DrivePage() {
   const ancestors: BreadcrumbItem[] = (ancestorsData ?? []).map((a) => ({ id: a.id, name: a.name }))
   const items = useMemo(() => data?.items ?? [], [data?.items])
 
-  // Selection belongs to one folder's listing. Without this, double-clicking a
-  // folder (the click selects it, the second click navigates) left that folder
-  // selected while you stood inside it — the toolbar then offered to trash an
-  // item that wasn't even on screen. Keyed on folderId so it also covers
-  // breadcrumbs, the back button and browser history.
-  useEffect(() => {
-    clearSelection()
-  }, [folderId, clearSelection])
-
   const handleBack = useCallback(() => {
     if (!folderId) return
     const parentId = folderItem?.parent_id
@@ -139,6 +130,8 @@ export function DrivePage() {
       <DriveExplorer
         items={items}
         isLoading={isLoading}
+        // '' is the drive root; DriveExplorer drops the selection when this changes.
+        folderKey={folderId ?? ''}
         selection={{ selectedIds, selectItem, selectAll, clearSelection }}
         breadcrumb={
           <>

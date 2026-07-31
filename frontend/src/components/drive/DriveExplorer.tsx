@@ -1,5 +1,5 @@
 import { FolderOpen } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { isApiError } from '@/api/client'
 import type { BrowsableItem } from '@/api/types'
@@ -59,6 +59,14 @@ export interface ExplorerActions<T extends BrowsableItem> {
 interface DriveExplorerProps<T extends BrowsableItem> {
   items: T[]
   isLoading: boolean
+  /**
+   * Identifies the folder on screen. Changing it drops the selection, because
+   * a selection belongs to one folder's listing: a double-click both selects
+   * and navigates, so entering a folder would otherwise leave that folder
+   * selected while you stand inside it — and the toolbar would offer to trash
+   * something that isn't even on screen.
+   */
+  folderKey: string
   selection: ExplorerSelection
   /** Rendered on the left of the toolbar row — router breadcrumbs for My
    *  Drive, the trail nav for a guest. Navigation is the caller's business. */
@@ -79,6 +87,7 @@ type ContextMenuState<T> =
 export function DriveExplorer<T extends BrowsableItem>({
   items,
   isLoading,
+  folderKey,
   selection,
   breadcrumb,
   onOpenFolder,
@@ -90,6 +99,12 @@ export function DriveExplorer<T extends BrowsableItem>({
 }: DriveExplorerProps<T>) {
   const viewMode = useUIStore((s) => s.viewMode)
   const { selectedIds, selectItem, selectAll, clearSelection } = selection
+
+  // See the note on `folderKey` — this is why both callers get it for free
+  // instead of each remembering to wire its own effect.
+  useEffect(() => {
+    clearSelection()
+  }, [folderKey, clearSelection])
 
   const fileListRef = useRef<HTMLDivElement>(null)
   const [showCreateFolder, setShowCreateFolder] = useState(false)

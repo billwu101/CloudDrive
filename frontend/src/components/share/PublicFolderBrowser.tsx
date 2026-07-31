@@ -104,6 +104,7 @@ export function PublicFolderBrowser({
     <DriveExplorer
       items={items}
       isLoading={isLoading}
+      folderKey={folder.id}
       selection={{ selectedIds, selectItem, selectAll, clearSelection }}
       breadcrumb={
         <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">

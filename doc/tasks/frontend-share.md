@@ -262,3 +262,9 @@ editor 訪客頁與 My Drive 的差異只剩 proposal §34.3 表列五項＋外�
   - editor 訪客頁：版面即 My Drive（左麵包屑列＋右 Upload/New folder；名稱只出現一次——資料夾分享的頁首不再印名稱，交給麵包屑，與 My Drive 頂列同款）。**資料夾右鍵選單與 My Drive 同一個元件**：Rename／Move to／Copy name／Move to trash，含分隔線與 danger 樣式；缺的正好是 §34.3 的 Share／Star／assistant。經選單實測 Rename 成功（GuestMade → Reviewed-v2）。
   - My Drive：重構後版面、完整右鍵選單（含 Share／Star／assistant 技能）、卡片星號全部無恙。
   - console 僅有刪除 PublicContextMenu.tsx 當下的 vite HMR 殘響（緩衝殘留，重載後頁面正常），無產品錯誤。
+
+### 再確認（2026-07-31，使用者要求逐項複驗）
+
+逐項對照 My Drive 的檔案區能力，訪客 editor 連結實測：格狀卡片與型別圖示、勾選多選累加（3 項）、**框選**（選取框可見、掃過的項目全被選上）、批次工具列 `Download (N)`／`Trash (N)`、**多選右鍵自動切換為只有 Move to trash**、單選右鍵完整項、雙擊進子資料夾、麵包屑回上層、空資料夾狀態——全部與 My Drive 同行為。
+
+**本次複驗抓到一個真實落差並已修正**：切換資料夾後訪客頁**沒有清除選取**（進子資料夾再回來，舊的 3 個選取還在；My Drive 會清）。原因是這個 effect 只寫在 `DrivePage`。已把它收進 `DriveExplorer`（新增 `folderKey` prop），兩個呼叫端都自動具備，不會再各寫一次而漂移；`DrivePage` 的原 effect 移除，其既有回歸測試仍通過。修正後實測：進 `Sub` 再回 `Compare`，工具列不再顯示 Download／Trash。
