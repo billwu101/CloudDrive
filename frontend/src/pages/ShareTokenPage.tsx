@@ -136,7 +136,13 @@ function SharedContent({ session, trail, onTrailChange }: SharedContentProps) {
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 p-6">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold">{session.item.name}</h1>
+          {/* Folder shares get their name from the breadcrumb below, exactly
+              like My Drive's top row — printing it here too was the duplicate
+              the user reported. A single file has no breadcrumb, so it keeps
+              its name in the heading. */}
+          {!isFolder && (
+            <h1 className="truncate text-lg font-semibold">{session.item.name}</h1>
+          )}
           <p className="text-sm text-muted-foreground">
             Shared with you
             {!isFolder && ` · ${formatBytes(session.item.size_bytes)}`}

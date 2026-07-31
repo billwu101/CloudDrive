@@ -11,7 +11,7 @@ import {
   Trash2,
 } from 'lucide-react'
 
-import type { DriveItemResponse } from '@/api/types'
+import type { BrowsableItem } from '@/api/types'
 
 export interface AssistantContextMenuAction {
   skillId: string
@@ -19,20 +19,25 @@ export interface AssistantContextMenuAction {
   handler: string
 }
 
-interface FileContextMenuProps {
-  item: DriveItemResponse
+/**
+ * Handlers are optional and an absent handler renders no entry (design §5.9.6
+ * point 10): the guest page shares this menu, and what a guest cannot do is
+ * expressed by not wiring the capability — never by an "is guest" flag.
+ */
+interface FileContextMenuProps<T extends BrowsableItem> {
+  item: T
   position: { x: number; y: number }
   assistantActions?: AssistantContextMenuAction[]
   onClose: () => void
-  onPreview: (item: DriveItemResponse) => void
-  onRename: (item: DriveItemResponse) => void
-  onMove: (item: DriveItemResponse) => void
-  onShare: (item: DriveItemResponse) => void
-  onCopyName: (item: DriveItemResponse) => void
-  onToggleStar: (item: DriveItemResponse) => void
-  onTrash: (item: DriveItemResponse) => void
-  onDownload?: (item: DriveItemResponse) => void
-  onAssistantAction?: (action: AssistantContextMenuAction, item: DriveItemResponse) => void
+  onPreview: (item: T) => void
+  onRename?: (item: T) => void
+  onMove?: (item: T) => void
+  onShare?: (item: T) => void
+  onCopyName: (item: T) => void
+  onToggleStar?: (item: T) => void
+  onTrash?: (item: T) => void
+  onDownload?: (item: T) => void
+  onAssistantAction?: (action: AssistantContextMenuAction, item: T) => void
 }
 
 const MenuItem = ({
@@ -56,7 +61,7 @@ const MenuItem = ({
   </button>
 )
 
-export function FileContextMenu({
+export function FileContextMenu<T extends BrowsableItem>({
   item,
   position,
   assistantActions = [],
@@ -70,7 +75,7 @@ export function FileContextMenu({
   onTrash,
   onDownload,
   onAssistantAction,
-}: FileContextMenuProps) {
+}: FileContextMenuProps<T>) {
   const wrap =
     (fn: () => void) =>
     (e: React.MouseEvent) => {
@@ -97,15 +102,23 @@ export function FileContextMenu({
         {item.item_type === 'FILE' && (
           <MenuItem icon={Eye} label="Preview" onClick={wrap(() => onPreview(item))} />
         )}
-        <MenuItem icon={Edit2} label="Rename" onClick={wrap(() => onRename(item))} />
-        <MenuItem icon={FolderInput} label="Move to" onClick={wrap(() => onMove(item))} />
-        <MenuItem icon={Share2} label="Share" onClick={wrap(() => onShare(item))} />
+        {onRename && (
+          <MenuItem icon={Edit2} label="Rename" onClick={wrap(() => onRename(item))} />
+        )}
+        {onMove && (
+          <MenuItem icon={FolderInput} label="Move to" onClick={wrap(() => onMove(item))} />
+        )}
+        {onShare && (
+          <MenuItem icon={Share2} label="Share" onClick={wrap(() => onShare(item))} />
+        )}
         <MenuItem icon={Copy} label="Copy name" onClick={wrap(() => onCopyName(item))} />
-        <MenuItem
-          icon={item.is_starred ? StarOff : Star}
-          label={item.is_starred ? 'Unstar' : 'Star'}
-          onClick={wrap(() => onToggleStar(item))}
-        />
+        {onToggleStar && (
+          <MenuItem
+            icon={item.is_starred ? StarOff : Star}
+            label={item.is_starred ? 'Unstar' : 'Star'}
+            onClick={wrap(() => onToggleStar(item))}
+          />
+        )}
         {item.item_type === 'FILE' && onDownload && (
           <MenuItem icon={Download} label="Download" onClick={wrap(() => onDownload(item))} />
         )}
@@ -122,8 +135,17 @@ export function FileContextMenu({
             ))}
           </>
         )}
-        <div className="my-1 h-px bg-border" />
-        <MenuItem icon={Trash2} label="Move to trash" onClick={wrap(() => onTrash(item))} danger />
+        {onTrash && (
+          <>
+            <div className="my-1 h-px bg-border" />
+            <MenuItem
+              icon={Trash2}
+              label="Move to trash"
+              onClick={wrap(() => onTrash(item))}
+              danger
+            />
+          </>
+        )}
       </div>
     </>
   )

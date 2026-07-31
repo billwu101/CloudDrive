@@ -1,10 +1,11 @@
 import { Download, FolderPlus, Trash2 } from 'lucide-react'
 
+/** Handlers are optional — an absent capability renders no button (§5.9.6). */
 interface DriveToolbarProps {
   selectedCount: number
-  onNewFolder: () => void
-  onDownloadSelected: () => void
-  onTrashSelected: () => void
+  onNewFolder?: () => void
+  onDownloadSelected?: () => void
+  onTrashSelected?: () => void
 }
 
 export function DriveToolbar({
@@ -15,6 +16,7 @@ export function DriveToolbar({
 }: DriveToolbarProps) {
   return (
     <div className="flex items-center gap-2">
+      {onNewFolder && (
       <button
         onClick={onNewFolder}
         className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -22,9 +24,11 @@ export function DriveToolbar({
         <FolderPlus className="size-4" aria-hidden="true" />
         New folder
       </button>
+      )}
 
       {selectedCount > 0 && (
         <>
+          {onDownloadSelected && (
           <button
             onClick={onDownloadSelected}
             className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -32,7 +36,9 @@ export function DriveToolbar({
             <Download className="size-4" aria-hidden="true" />
             Download ({selectedCount})
           </button>
+          )}
 
+          {onTrashSelected && (
           <button
             onClick={onTrashSelected}
             className="flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -40,6 +46,7 @@ export function DriveToolbar({
             <Trash2 className="size-4" aria-hidden="true" />
             Trash ({selectedCount})
           </button>
+          )}
         </>
       )}
     </div>
