@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -25,6 +26,7 @@ from app.core.security import (
     decode_share_access_token,
 )
 from app.drive.schemas import ItemType
+from app.models.drive_item import DriveItem
 from app.permission.permissions import LinkPermission, Permission
 from app.public_share.service import PublicShareService
 from app.share.service import ShareLinkService
@@ -541,3 +543,87 @@ async def test_audit_context_names_the_owner_and_the_link() -> None:
     # Both halves are needed: the owner alone would read as "they did it".
     assert who.owner_id == owner
     assert who.link_id is not None
+
+
+# ── selected-item archive (proposal §34.4) ───────────────────────────────────
+
+
+async def _shared_folder_with_two_files() -> tuple[
+    UUID, MemDriveItemRepo, DriveItem, DriveItem, DriveItem, DriveItem
+]:
+    """A share root holding two files, plus one file outside it."""
+    owner = uuid4()
+    items = MemDriveItemRepo()
+    root = _item(owner_id=owner, name="Shared")
+    a = _item(owner_id=owner, parent_id=root.id, item_type=ItemType.FILE, name="a.txt")
+    b = _item(owner_id=owner, parent_id=root.id, item_type=ItemType.FILE, name="b.txt")
+    outside = _item(owner_id=owner, item_type=ItemType.FILE, name="secret.txt")
+    for i in (root, a, b, outside):
+        i.storage_key = f"blob/{i.name}"
+        items._items[i.id] = i
+    return owner, items, root, a, b, outside
+
+
+async def test_archive_packs_only_the_items_asked_for() -> None:
+    owner, items, root, a, b, _ = await _shared_folder_with_two_files()
+    links = MemShareLinkRepo()
+    token = await _link_for(items, links, root.id, owner)
+    svc = _svc(items, links)
+    credential = (await svc.open_session(token, None)).access_token
+
+    await svc.archive(credential, [a.id, b.id])
+
+    cast(AsyncMock, svc._download.archive).assert_awaited_once_with(owner, [a.id, b.id])
+
+
+async def test_archive_without_ids_still_packs_the_whole_root() -> None:
+    """The original GET behaviour must survive the new parameter."""
+    owner, items, root, _, _, _ = await _shared_folder_with_two_files()
+    links = MemShareLinkRepo()
+    token = await _link_for(items, links, root.id, owner)
+    svc = _svc(items, links)
+    credential = (await svc.open_session(token, None)).access_token
+
+    await svc.archive(credential)
+
+    cast(AsyncMock, svc._download.archive).assert_awaited_once_with(owner, [root.id])
+
+
+async def test_archive_rejects_the_whole_request_when_one_id_is_outside() -> None:
+    """No partial packing — the difference would leak whether an id exists."""
+    owner, items, root, a, _, outside = await _shared_folder_with_two_files()
+    links = MemShareLinkRepo()
+    token = await _link_for(items, links, root.id, owner)
+    svc = _svc(items, links)
+    credential = (await svc.open_session(token, None)).access_token
+
+    with pytest.raises(AppError) as err:
+        await svc.archive(credential, [a.id, outside.id])
+
+    assert err.value.code == ErrorCode.SHARE_LINK_INVALID
+    cast(AsyncMock, svc._download.archive).assert_not_awaited()
+
+
+async def test_archive_of_selection_refuses_a_viewer_link() -> None:
+    owner, items, root, a, _, _ = await _shared_folder_with_two_files()
+    links = MemShareLinkRepo()
+    token = await _link_for(items, links, root.id, owner, permission=LinkPermission.VIEWER)
+    svc = _svc(items, links)
+    credential = (await svc.open_session(token, None)).access_token
+
+    with pytest.raises(ForbiddenError):
+        await svc.archive(credential, [a.id])
+
+
+async def test_archive_with_an_empty_selection_is_an_error_not_the_whole_root() -> None:
+    owner, items, root, _, _, _ = await _shared_folder_with_two_files()
+    links = MemShareLinkRepo()
+    token = await _link_for(items, links, root.id, owner)
+    svc = _svc(items, links)
+    credential = (await svc.open_session(token, None)).access_token
+
+    with pytest.raises(AppError) as err:
+        await svc.archive(credential, [])
+
+    assert err.value.code == ErrorCode.INVALID_OPERATION
+    cast(AsyncMock, svc._download.archive).assert_not_awaited()

@@ -181,6 +181,28 @@ async def archive(credential: ShareToken, service: ServiceDep) -> StreamingRespo
     )
 
 
+class ArchiveBody(BaseModel):
+    item_ids: list[UUID]
+
+
+@router.post("/archive", summary="Download selected shared items as a zip")
+async def archive_selected(
+    body: ArchiveBody, credential: ShareToken, service: ServiceDep
+) -> StreamingResponse:
+    """Pack the items the guest picked (proposal §34.4).
+
+    Separate from the GET above rather than an optional query parameter: a
+    selection can be long enough to hit URL length limits, and a body keeps
+    the picked ids out of access logs.
+    """
+    result = await service.archive(credential, body.item_ids)
+    return StreamingResponse(
+        result.stream,
+        media_type="application/zip",
+        headers=_attachment_headers(result.filename, None),
+    )
+
+
 class CreateFolderBody(BaseModel):
     parent_id: UUID
     name: str

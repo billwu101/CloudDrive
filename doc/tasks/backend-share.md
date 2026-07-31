@@ -220,21 +220,25 @@ proposal §33.4 全部 7 項通過；`uv run pytest` / `mypy` / `ruff` 全綠。
 
 ### 子任務
 
-- [ ] `app/public_share/service.py`：`archive()` 增加 `item_ids: list[UUID] | None = None`；`None` 維持整根打包，給定清單則**逐一** `_resolve_in_subtree` 後交給 `DownloadService.archive`。
-- [ ] `app/public_share/router.py`：新增 `POST /public/archive`（body `{item_ids}`），保留既有 `GET`。
-- [ ] 空清單回 422（不默默等同整根打包）。
+- [x] `app/public_share/service.py`：`archive()` 增加 `item_ids: list[UUID] | None = None`；`None` 維持整根打包，給定清單則**逐一** `_resolve_in_subtree` 後交給 `DownloadService.archive`。
+- [x] `app/public_share/router.py`：新增 `POST /public/archive`（body `{item_ids}`），保留既有 `GET`。
+- [x] 空清單回 422（不默默等同整根打包）。
 
 ### 測試任務
 
-- [ ] `downloader`／`editor` 憑證可打包指定項目；zip 內含所選檔案。
-- [ ] 任一 id 在子樹外 → **整個請求 404**，不做部分打包。
-- [ ] `viewer` → 403。
-- [ ] 空 `item_ids` → 422。
-- [ ] 既有 `GET /public/archive` 行為不變。
+- [x] `downloader`／`editor` 憑證可打包指定項目；zip 內含所選檔案。
+- [x] 任一 id 在子樹外 → **整個請求 404**，不做部分打包。
+- [x] `viewer` → 403。
+- [x] 空 `item_ids` → 422。
+- [x] 既有 `GET /public/archive` 行為不變。
 
 ### 驗收條件
 
 proposal §34.4 全部 4 點通過；`uv run pytest` / `mypy` / `ruff` 全綠。
+
+### 驗證結果（2026-07-31）
+
+後端 **1010 passed**（`tests/integration/test_assistant_flow.py` 的 5 項因本機未跑 Ollama 而 `ASSISTANT_UNAVAILABLE`，與本次改動無關，故排除）；ruff format／check、mypy 全綠。integration 實測「訪客只打包所選項目 → zip 內有 wanted.txt、沒有 skipped.txt」與「夾帶子樹外的 id → 整個請求 404」。
 
 ### 風險
 

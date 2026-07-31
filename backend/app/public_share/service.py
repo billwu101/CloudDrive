@@ -449,13 +449,25 @@ class PublicShareService:
             raise _invalid()
         return item
 
-    async def archive(self, access_token: str) -> ArchiveResult:
-        """Zip the whole shared subtree (proposal §28.7 decision 3).
+    async def archive(self, access_token: str, item_ids: list[UUID] | None = None) -> ArchiveResult:
+        """Zip the shared subtree, or just the items named (proposal §34.4).
 
         Reuses DownloadService's packer, called as the item's owner: the
         subtree boundary is already fixed by the credential, so the per-file
         owner check inside it is a no-op rather than a second opinion.
+
+        With ``item_ids``, every single one is resolved against the subtree
+        first and *any* miss fails the whole request. Packing the valid ones
+        and quietly dropping the rest would hand a guest an oracle: ask for a
+        known-good id plus a guess, and whether the guess appears in the zip
+        tells you if it exists (design §6.12.8).
         """
         auth = await self._authorize(access_token)
         self._assert_can_download(auth)
-        return await self._download.archive(auth.root.owner_id, [auth.root.id])
+        if item_ids is None:
+            return await self._download.archive(auth.root.owner_id, [auth.root.id])
+        if not item_ids:
+            raise AppError(ErrorCode.INVALID_OPERATION, "No items selected to download")
+        for item_id in item_ids:
+            await self._resolve_in_subtree(auth, item_id)
+        return await self._download.archive(auth.root.owner_id, item_ids)

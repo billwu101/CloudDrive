@@ -265,3 +265,34 @@ async def test_a_viewer_link_still_cannot_write(client: AsyncClient) -> None:
     )
     # Existing links must not gain abilities because the feature shipped.
     assert resp.status_code == 403
+
+
+async def test_a_guest_can_zip_just_the_items_they_picked(client: AsyncClient) -> None:
+    """proposal §34.4 — the selection is packed, and only the selection."""
+    token = await register_and_login(client, email="pub-pick@test.com")
+    h = auth_headers(token)
+    folder = (await client.post("/api/v1/drive/folders", json={"name": "Picked"}, headers=h)).json()
+    a = await _upload(client, h, "wanted.txt", folder["id"])
+    await _upload(client, h, "skipped.txt", folder["id"])
+    outside = await _upload(client, h, "elsewhere.txt", None)
+    link = await _create_link(client, h, folder["id"])
+
+    body = (await client.post(f"/api/v1/public/links/{link}/session", json={})).json()
+    guest = {"Authorization": f"Bearer {body['access_token']}"}
+
+    picked = await client.post(
+        "/api/v1/public/archive", json={"item_ids": [a["id"]]}, headers=guest
+    )
+    assert picked.status_code == 200
+    assert picked.content[:2] == b"PK"
+    assert b"wanted.txt" in picked.content
+    assert b"skipped.txt" not in picked.content
+
+    # One id outside the subtree fails the whole request rather than quietly
+    # packing the rest — a partial zip would reveal whether that id exists.
+    leaked = await client.post(
+        "/api/v1/public/archive",
+        json={"item_ids": [a["id"], outside["id"]]},
+        headers=guest,
+    )
+    assert leaked.status_code == 404
