@@ -312,3 +312,29 @@ async def test_create_link_accepts_every_tier_a_link_may_grant(
                 body["expires_at"] = "2026-12-31T00:00:00Z"
             resp = await c.post(f"/share/items/{item_id}/links", json=body, headers=headers)
         assert resp.status_code == 201, tier
+
+
+async def test_reveal_token_returns_the_url_token(user_id: UUID, headers: dict[str, str]) -> None:
+    """proposal §29.2 rule 7 — owner-only, and only when asked for."""
+    link_id = uuid4()
+    link_svc = AsyncMock(spec=ShareLinkService)
+    link_svc.reveal_token.return_value = "the-original-token"
+    app = _make_app(AsyncMock(spec=ShareService), link_svc, user_id)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get(f"/share/links/{link_id}/token", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.json() == {"token": "the-original-token"}
+    link_svc.reveal_token.assert_awaited_once_with(user_id, link_id)
+
+
+async def test_reveal_token_needs_authentication(user_id: UUID) -> None:
+    link_svc = AsyncMock(spec=ShareLinkService)
+    app = _make_app(AsyncMock(spec=ShareService), link_svc, user_id)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get(f"/share/links/{uuid4()}/token")
+
+    assert resp.status_code == 401
+    link_svc.reveal_token.assert_not_awaited()

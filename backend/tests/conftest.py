@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from cryptography.fernet import Fernet
+
 _FALLBACK_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/clouddrive_test"
 
 
@@ -38,3 +40,7 @@ os.environ.setdefault("DATABASE_URL", _default_database_url())
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-not-for-production-use-only")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
 os.environ.setdefault("CORS_ORIGINS", '["http://localhost:3000"]')
+# Share links keep a recoverable copy of their token under this key (design
+# §6.12.11 rule 3a). A fixed test key keeps encrypt/decrypt exercised rather
+# than silently skipped.
+os.environ.setdefault("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())

@@ -635,3 +635,72 @@ async def test_a_stranger_cannot_delete_a_link_record() -> None:
         await svc.delete_link_record(other_id, created.id)
 
     assert await links.get_by_id(created.id) is not None
+
+
+# ── link URL recovery + editor password (proposal §29.2 rule 7, §33.3 rule 4) ──
+
+
+async def test_the_owner_can_get_the_original_url_back() -> None:
+    """proposal §29.3 criterion 3.2 — the same token that was handed out."""
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    svc, _ = _make_link_svc(MemDriveItemRepo([item]))
+
+    created = await svc.create_link(owner_id, item.id, LinkPermission.DOWNLOADER)
+    revealed = await svc.reveal_token(owner_id, created.id)
+
+    assert revealed == created.token
+
+
+async def test_only_the_owner_can_get_the_url_back() -> None:
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    svc, _ = _make_link_svc(MemDriveItemRepo([item]))
+    created = await svc.create_link(owner_id, item.id, LinkPermission.DOWNLOADER)
+
+    with pytest.raises(ForbiddenError):
+        await svc.reveal_token(uuid4(), created.id)
+
+
+async def test_a_link_from_before_the_column_cannot_be_recovered() -> None:
+    """Saying so is the honest answer — there is nothing stored to return."""
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    svc, link_repo = _make_link_svc(MemDriveItemRepo([item]))
+    created = await svc.create_link(owner_id, item.id, LinkPermission.DOWNLOADER)
+    stored = await link_repo.get_by_id(created.id)
+    assert stored is not None
+    stored.token_encrypted = None
+
+    with pytest.raises(NotFoundError):
+        await svc.reveal_token(owner_id, created.id)
+
+
+async def test_an_editor_link_needs_a_password_as_well_as_an_expiry() -> None:
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    svc, _ = _make_link_svc(MemDriveItemRepo([item]))
+    later = datetime.now(UTC) + timedelta(days=1)
+
+    with pytest.raises(AppError) as no_password:
+        await svc.create_link(owner_id, item.id, LinkPermission.EDITOR, expires_at=later)
+    assert no_password.value.status_code == 422
+
+    with pytest.raises(AppError) as no_expiry:
+        await svc.create_link(owner_id, item.id, LinkPermission.EDITOR, password="s3cret")
+    assert no_expiry.value.status_code == 422
+
+    ok = await svc.create_link(
+        owner_id, item.id, LinkPermission.EDITOR, password="s3cret", expires_at=later
+    )
+    assert ok.permission == LinkPermission.EDITOR.value
+
+
+async def test_the_password_rule_does_not_touch_the_lower_tiers() -> None:
+    owner_id = uuid4()
+    item = _item(owner_id=owner_id)
+    svc, _ = _make_link_svc(MemDriveItemRepo([item]))
+
+    for tier in (LinkPermission.VIEWER, LinkPermission.DOWNLOADER):
+        created = await svc.create_link(owner_id, item.id, tier)
+        assert created.token is not None

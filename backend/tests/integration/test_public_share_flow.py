@@ -205,12 +205,20 @@ async def test_a_guest_with_an_editor_link_can_write_and_it_is_traceable(
     created = await client.post(
         f"/api/v1/share/items/{folder['id']}/links",
         headers=h,
-        json={"permission": "editor", "expires_at": "2027-01-01T00:00:00Z"},
+        json={
+            "permission": "editor",
+            "expires_at": "2027-01-01T00:00:00Z",
+            "password": "guest-pass",
+        },
     )
     assert created.status_code == 201, created.text
     link_token = created.json()["token"]
 
-    body = (await client.post(f"/api/v1/public/links/{link_token}/session", json={})).json()
+    body = (
+        await client.post(
+            f"/api/v1/public/links/{link_token}/session", json={"password": "guest-pass"}
+        )
+    ).json()
     guest = {"Authorization": f"Bearer {body['access_token']}"}
 
     dropped = await client.post(
@@ -229,22 +237,74 @@ async def test_a_guest_with_an_editor_link_can_write_and_it_is_traceable(
     assert after > before
 
 
-async def test_an_editor_link_must_carry_an_expiry(client: AsyncClient) -> None:
+async def test_an_editor_link_must_carry_an_expiry_and_a_password(client: AsyncClient) -> None:
     token = await register_and_login(client, email="pub-editor-exp@test.com")
     h = auth_headers(token)
     folder = (
         await client.post("/api/v1/drive/folders", json={"name": "NoExpiry"}, headers=h)
     ).json()
 
-    resp = await client.post(
-        f"/api/v1/share/items/{folder['id']}/links",
-        headers=h,
-        json={"permission": "editor"},
-    )
+    async def _create(**body: object) -> int:
+        resp = await client.post(
+            f"/api/v1/share/items/{folder['id']}/links",
+            headers=h,
+            json={"permission": "editor", **body},
+        )
+        return resp.status_code
 
-    # A link that lets strangers write and never dies is not something to
-    # create by omission (proposal §33.3 rule 4).
-    assert resp.status_code == 422
+    # A link that lets strangers write and never dies is not something to create
+    # by omission, and the URL alone must not be enough (proposal §33.3 rule 4).
+    assert await _create() == 422
+    assert await _create(expires_at="2027-01-01T00:00:00Z") == 422
+    assert await _create(password="s3cret") == 422
+    assert await _create(expires_at="2027-01-01T00:00:00Z", password="s3cret") == 201
+
+
+async def test_the_owner_can_copy_a_link_url_again_later(client: AsyncClient) -> None:
+    """proposal §29.3 criterion 3.2 — and the recovered URL really opens."""
+    token = await register_and_login(client, email="pub-recopy@test.com")
+    h = auth_headers(token)
+    folder = (await client.post("/api/v1/drive/folders", json={"name": "Recopy"}, headers=h)).json()
+    created = (
+        await client.post(
+            f"/api/v1/share/items/{folder['id']}/links",
+            headers=h,
+            json={"permission": "downloader"},
+        )
+    ).json()
+
+    listing = await client.get("/api/v1/share/shared-by-me", headers=h)
+    link_id = listing.json()["items"][0]["links"][0]["link_id"]
+    # The listing hands out no plaintext — that is what the endpoint below is for.
+    assert created["token"] not in listing.text
+
+    revealed = await client.get(f"/api/v1/share/links/{link_id}/token", headers=h)
+    assert revealed.status_code == 200
+    assert revealed.json()["token"] == created["token"]
+
+    # The whole point: the recovered token still opens the link.
+    opened = await client.post(f"/api/v1/public/links/{revealed.json()['token']}/session", json={})
+    assert opened.status_code == 200
+
+
+async def test_only_the_owner_can_copy_a_link_url(client: AsyncClient) -> None:
+    owner = auth_headers(await register_and_login(client, email="pub-recopy-owner@test.com"))
+    folder = (
+        await client.post("/api/v1/drive/folders", json={"name": "Mine"}, headers=owner)
+    ).json()
+    await client.post(
+        f"/api/v1/share/items/{folder['id']}/links",
+        headers=owner,
+        json={"permission": "downloader"},
+    )
+    link_id = (await client.get("/api/v1/share/shared-by-me", headers=owner)).json()["items"][0][
+        "links"
+    ][0]["link_id"]
+
+    stranger = auth_headers(await register_and_login(client, email="pub-recopy-other@test.com"))
+    resp = await client.get(f"/api/v1/share/links/{link_id}/token", headers=stranger)
+
+    assert resp.status_code == 403
 
 
 async def test_a_viewer_link_still_cannot_write(client: AsyncClient) -> None:
