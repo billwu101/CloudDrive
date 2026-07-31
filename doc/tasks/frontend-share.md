@@ -244,13 +244,21 @@ proposal §34.5 全部 7 項通過；`npm run lint` / `typecheck` / `npx vitest 
 
 ### 子任務
 
-- [ ] 抽出 `DriveExplorer`（`src/components/drive/DriveExplorer.tsx`）：DrivePage 檔案區本體全搬入，動作全部經 `actions` 注入且**選填**——能力缺席＝介面隱藏。
-- [ ] `FileContextMenu`：`item` 放寬 + `onRename`／`onMove`／`onShare`／`onToggleStar`／`onTrash` 選填（缺席不渲染）；刪除 `PublicContextMenu`。
-- [ ] `DriveToolbar`：三個 handler 選填。
-- [ ] `DrivePage` 改為組裝 `DriveExplorer`（注入 uiStore 選取、路由麵包屑、Share／Star／Assistant 能力）；**既有測試不需修改**。
-- [ ] 訪客頁改為組裝 `DriveExplorer`（注入 local 選取、trail 麵包屑、`/public` 動作；viewer 無能力、downloader 僅下載、editor 除星號／分享／assistant 外全部）。
-- [ ] 測試更新：訪客右鍵選單與 My Drive 同元件但無 Star／Share／assistant 項。
+- [x] 抽出 `DriveExplorer`（`src/components/drive/DriveExplorer.tsx`）：DrivePage 檔案區本體全搬入，動作全部經 `actions` 注入且**選填**——能力缺席＝介面隱藏。
+- [x] `FileContextMenu`：`item` 放寬 + `onRename`／`onMove`／`onShare`／`onToggleStar`／`onTrash` 選填（缺席不渲染）；刪除 `PublicContextMenu`。
+- [x] `DriveToolbar`：三個 handler 選填。
+- [x] `DrivePage` 改為組裝 `DriveExplorer`（注入 uiStore 選取、路由麵包屑、Share／Star／Assistant 能力）；**既有測試不需修改**。
+- [x] 訪客頁改為組裝 `DriveExplorer`（注入 local 選取、trail 麵包屑、`/public` 動作；viewer 無能力、downloader 僅下載、editor 除星號／分享／assistant 外全部）。
+- [x] 測試更新：訪客右鍵選單與 My Drive 同元件但無 Star／Share／assistant 項。
 
 ### 驗收條件
 
 editor 訪客頁與 My Drive 的差異只剩 proposal §34.3 表列五項＋外殼（Sidebar／搜尋／助理）；lint / typecheck / vitest 全綠；瀏覽器實測。
+
+### 驗證結果（2026-07-31）
+
+- 前端 **348 passed**（50 檔）、lint、typecheck 全綠；**DrivePage 既有測試零修改**、訪客頁測試零修改（同名選單項使斷言直接沿用）。
+- **瀏覽器實測（dev）**：
+  - editor 訪客頁：版面即 My Drive（左麵包屑列＋右 Upload/New folder；名稱只出現一次——資料夾分享的頁首不再印名稱，交給麵包屑，與 My Drive 頂列同款）。**資料夾右鍵選單與 My Drive 同一個元件**：Rename／Move to／Copy name／Move to trash，含分隔線與 danger 樣式；缺的正好是 §34.3 的 Share／Star／assistant。經選單實測 Rename 成功（GuestMade → Reviewed-v2）。
+  - My Drive：重構後版面、完整右鍵選單（含 Share／Star／assistant 技能）、卡片星號全部無恙。
+  - console 僅有刪除 PublicContextMenu.tsx 當下的 vite HMR 殘響（緩衝殘留，重載後頁面正常），無產品錯誤。
