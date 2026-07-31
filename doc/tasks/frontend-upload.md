@@ -77,3 +77,47 @@
 - [x] `UploadTaskItem` 增加暫停／繼續／取消控制與 `queued`／`paused` 狀態顯示。
 - [x] 測試：續傳只送缺片、暫停後停止送出、繼續可接續、取消會呼叫 DELETE。
 
+## 上傳佇列自動收斂（proposal §27.8 / detailed-design §5.7.5）
+
+> 一輪 = 一次 `addTasks()` 呼叫回傳的那組任務；一輪結束後**延遲 3 秒**移除該輪的 `completed`，其餘狀態一律留著。
+> 涵蓋四個上傳入口，含訪客頁的兩個（`usePublicDrive.ts` 一併在本節處理，見 `doc/tasks/frontend-share.md` 交叉註記）。
+
+### 子任務
+
+- [x] `src/stores/uploadStore.ts`：新增 `SETTLE_DELAY_MS = 3000` 與 `settleBatch(ids: string[])`；移除條件為「id 在該批 **且** 當下 `status === 'completed'`」。
+- [x] `src/hooks/useUpload.ts`：`useUploadFiles`／`useUploadFolders` 於 `await runWithConcurrency(...)` 之後呼叫 `settleBatch`。
+- [x] `src/hooks/usePublicDrive.ts`：`useGuestUploadFiles`／`useGuestUploadFolders` 同上。
+- [x] `src/components/upload/UploadQueue.tsx`：轉發 `onRetry` 時一併 `removeTask(task.id)`（放在佇列本身，不放在 `DriveExplorer` 等呼叫端）。
+
+### 測試任務
+
+- [x] `settleBatch` 在 3 秒前不動任何項目，3 秒後只移除該批的 `completed`。
+- [x] `failed`／`canceled`／`paused`／`needs_file` 不被移除。
+- [x] 只移除**該批**的成功項：另一批的 `completed` 不受影響。
+- [x] 排程後該 id 已被 `removeTask` 移除時，計時器到期不報錯。
+- [x] `useUploadFiles` 一輪結束後會呼叫 `settleBatch`（含全成功與混合兩種結果）。
+- [x] 重試時原失敗項被移除（`UploadQueue.test.tsx`，本模組新增的測試檔）。
+
+### 驗證結果（2026-08-01）
+
+單元測試 **361 passed**（51 檔，較先前 +10）；`npm run lint` / `npm run typecheck` 全綠。
+
+**瀏覽器實測（dev，於拋棄式資料夾 `_settle-test` 內進行，未觸碰任何既有檔案）**
+
+面板在單次 tool 往返之間就會收斂完畢，只看前後狀態會誤判，因此改成**單一腳本內按時間取樣**面板文字，記錄整段轉場：
+
+| 情境 | 觀察 |
+| --- | --- |
+| 全部成功（2 檔，My Drive） | `t=556ms` 起面板顯示 `settle-c.txt \| Uploaded \| settle-d.txt \| Uploaded`，**持續到 t=2501ms 仍在**，`t=3201ms` 面板整個消失 |
+| 有成功有失敗（My Drive） | `t=602ms` 兩列並存；`t=3402ms` 起只剩 `settle-huge.bin \| File is too large (max 5.0 GB)`，**5 秒後仍在** |
+| 新一輪不清舊失敗 | 上一輪的失敗列仍在時再傳一檔：`Uploads (2)` → 3.6 秒後 `Uploads (1)`，留下的正是**上一輪那筆失敗** |
+| 重試 | 按下 Retry 後列數維持 **1**（不是 2）；以 DOM node identity 驗證該列是**新節點**（舊節點已移除、`data-probe` 標記不再存在），確認是「舊列被換掉」而非「舊列沒動」 |
+| 訪客 editor 頁（`useGuestUploadFiles`） | 建 editor 連結（密碼＋到期）→ 訪客開啟 → 上傳 2 檔：`t=701ms` 兩列 Uploaded，`t=3602ms` 面板消失，檔案確實出現在資料夾中 |
+| 資料夾上傳（`useUploadFolders` / `useGuestUploadFolders`） | 兩端各傳一組含子目錄的資料夾，皆為 Uploaded → 延遲後消失；目錄結構正確重建 |
+
+四個上傳入口全部實際跑過。兩個分頁 console 全程無錯誤。
+
+**環境限制（誠實記錄）**：訪客端的**失敗**保留未能單獨實測——訪客路徑沒有前端預檢，而後端對同名上傳會自動改名（實測 `guest-g1.txt` → `guest-g1 (1).txt`）而非回錯，手上沒有不需破壞性操作就能觸發的失敗。該分支與 My Drive 共用同一個 `settleBatch`，已由 store 單元測試與 My Drive 端實測覆蓋。
+
+**收尾**：測試用的 editor 連結已 Remove（訪客頁隨即顯示「Link unavailable」），`_settle-test` 資料夾已移入垃圾桶。
+

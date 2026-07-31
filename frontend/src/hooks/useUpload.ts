@@ -103,7 +103,7 @@ async function uploadOne(task: UploadTask, targetParentId: string | undefined): 
 
 export function useUploadFiles(parentId?: string) {
   const qc = useQueryClient()
-  const { addTasks, markQueued, markFailed } = useUploadStore()
+  const { addTasks, markQueued, markFailed, settleBatch } = useUploadStore()
 
   const upload = useCallback(
     async (files: File[]) => {
@@ -118,8 +118,10 @@ export function useUploadFiles(parentId?: string) {
 
       // Refresh the quota so the next batch pre-checks against real numbers.
       qc.invalidateQueries({ queryKey: authKeys.quota() })
+      // The round is over: let its successes go, keep everything else (§27.8).
+      settleBatch(tasks.map((t) => t.id))
     },
-    [parentId, addTasks, markQueued, markFailed, qc],
+    [parentId, addTasks, markQueued, markFailed, settleBatch, qc],
   )
 
   return { upload }
@@ -130,7 +132,7 @@ export function useUploadFiles(parentId?: string) {
  *  recreated under `parentId` and each file uploaded into its folder. */
 export function useUploadFolders(parentId?: string) {
   const qc = useQueryClient()
-  const { addTasks, markQueued, markFailed } = useUploadStore()
+  const { addTasks, markQueued, markFailed, settleBatch } = useUploadStore()
 
   const uploadFolders = useCallback(
     async (files: File[]) => {
@@ -174,8 +176,9 @@ export function useUploadFolders(parentId?: string) {
 
       qc.invalidateQueries({ queryKey: driveKeys.items(parentId) })
       qc.invalidateQueries({ queryKey: authKeys.quota() })
+      settleBatch(tasks.map((t) => t.id))
     },
-    [parentId, addTasks, markQueued, markFailed, qc],
+    [parentId, addTasks, markQueued, markFailed, settleBatch, qc],
   )
 
   return { uploadFolders }

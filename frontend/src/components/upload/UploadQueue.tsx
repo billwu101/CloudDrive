@@ -48,7 +48,15 @@ export function UploadQueue({ onRetry }: UploadQueueProps) {
             key={task.id}
             task={task}
             onCancel={cancel}
-            onRetry={onRetry}
+            onRetry={(t) => {
+              // Retrying opens a *new* task, so the old failed row is no longer
+              // this file's current state. Leaving it would mean a successful
+              // retry ends with only the failure on screen — the new task
+              // having quietly settled — which reads as "the retry failed"
+              // (proposal §27.8).
+              onRetry(t)
+              removeTask(t.id)
+            }}
             onRemove={removeTask}
             onPause={pause}
             onContinue={continueUpload}

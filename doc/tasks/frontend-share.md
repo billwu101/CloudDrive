@@ -291,3 +291,9 @@ editor 訪客頁與 My Drive 的差異只剩 proposal §28.8.2 表列五項＋�
 前端 **351 passed**、lint／typecheck 全綠。
 
 **瀏覽器實測**：同一項目下兩條連結各驗一種結果——本功能之前建立的（無密文）按下後端點回 404，該列改顯示「Address unavailable」且按鈕消失；之後建立的取回 200 並把 `http://localhost:5173/s/<token>` 寫進剪貼簿，與建立時回傳的 token 一致。接著把複製到的網址貼上開啟 → 出現密碼表單 → 輸入密碼 → 進到訪客編輯頁，**全鏈路走通**。後端閘門：editor 缺密碼 422、補上密碼 201。
+
+---
+
+## 交叉註記：訪客頁上傳佇列自動收斂
+
+訪客頁的兩個上傳入口（`src/hooks/usePublicDrive.ts` 的 `useGuestUploadFiles`／`useGuestUploadFolders`）同樣適用 proposal §27.8 的佇列自動收斂。其子任務、測試與驗證結果統一列在 `doc/tasks/frontend-upload.md`，本檔不重複。

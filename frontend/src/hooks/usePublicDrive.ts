@@ -48,7 +48,7 @@ export function useGuestChildren(folderId: string) {
  */
 export function useGuestUploadFiles(folderId: string) {
   const qc = useQueryClient()
-  const { addTasks, markUploading, markCompleted, markFailed } = useUploadStore()
+  const { addTasks, markUploading, markCompleted, markFailed, settleBatch } = useUploadStore()
 
   const upload = useCallback(
     async (files: File[]) => {
@@ -64,8 +64,9 @@ export function useGuestUploadFiles(folderId: string) {
         }
       })
       void qc.invalidateQueries({ queryKey: publicKeys.allChildren })
+      settleBatch(tasks.map((t) => t.id))
     },
-    [folderId, addTasks, markUploading, markCompleted, markFailed, qc],
+    [folderId, addTasks, markUploading, markCompleted, markFailed, settleBatch, qc],
   )
 
   return { upload }
@@ -74,7 +75,7 @@ export function useGuestUploadFiles(folderId: string) {
 /** Upload whole folders, recreating their structure inside the shared subtree. */
 export function useGuestUploadFolders(folderId: string) {
   const qc = useQueryClient()
-  const { addTasks, markUploading, markCompleted, markFailed } = useUploadStore()
+  const { addTasks, markUploading, markCompleted, markFailed, settleBatch } = useUploadStore()
 
   const uploadFolders = useCallback(
     async (files: File[]) => {
@@ -126,8 +127,9 @@ export function useGuestUploadFolders(folderId: string) {
         }
       }
       void qc.invalidateQueries({ queryKey: publicKeys.allChildren })
+      settleBatch(tasks.map((t) => t.id))
     },
-    [folderId, addTasks, markUploading, markCompleted, markFailed, qc],
+    [folderId, addTasks, markUploading, markCompleted, markFailed, settleBatch, qc],
   )
 
   return { uploadFolders }

@@ -50,7 +50,13 @@ interface UploadState {
   cancelTask: (id: string) => void
   removeTask: (id: string) => void
   clearCompleted: () => void
+  settleBatch: (ids: string[]) => void
 }
+
+/** How long a finished round's successes stay on screen (proposal §27.8).
+ *  Removing them immediately would make a small file's only confirmation —
+ *  the word "Uploaded" — flash past before it can be read. */
+export const SETTLE_DELAY_MS = 3000
 
 function _newTask(file: File, parentId?: string): UploadTask {
   return {
@@ -145,4 +151,27 @@ export const useUploadStore = create<UploadState>()((set, get) => ({
     set((s) => ({
       tasks: s.tasks.filter((t) => t.status !== 'completed' && t.status !== 'canceled'),
     })),
+
+  /**
+   * Retire the successes of one finished round (proposal §27.8).
+   *
+   * `ids` is exactly what `addTasks` handed back, so the caller's `await`
+   * already defines both "this round" and "this round is over" — the store
+   * needs no notion of batches. Only `completed` goes: a failure is the user's
+   * one chance to learn why a file never arrived, `canceled` is their own
+   * decision to confirm, and `paused` still needs its Continue button.
+   *
+   * The timer lives here rather than in a component effect because
+   * `UploadQueue` unmounts whenever the user navigates away, which would
+   * otherwise cancel the round mid-settle. Membership is re-checked when the
+   * timer fires, so ids removed in the meantime simply don't match.
+   */
+  settleBatch: (ids) => {
+    const batch = new Set(ids)
+    setTimeout(() => {
+      set((s) => ({
+        tasks: s.tasks.filter((t) => !(batch.has(t.id) && t.status === 'completed')),
+      }))
+    }, SETTLE_DELAY_MS)
+  },
 }))

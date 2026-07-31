@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { authKeys } from '@/hooks/useAuth'
 import { MAX_CHUNKED_UPLOAD_SIZE_BYTES, UPLOAD_CONCURRENCY } from '@/lib/uploadLimits'
-import { useUploadStore } from '@/stores/uploadStore'
+import { SETTLE_DELAY_MS, useUploadStore } from '@/stores/uploadStore'
 
 import { relativePathOf, useUploadFiles, useUploadFolders } from './useUpload'
 
@@ -219,5 +219,77 @@ describe('useUploadFiles error classification', () => {
     const task = useUploadStore.getState().tasks.find((t) => t.file.name === 'f.txt')
     expect(task?.status).toBe('failed')
     expect(task?.error).toContain(expected)
+  })
+})
+
+describe('useUploadFiles queue settling (proposal §27.8)', () => {
+  // `shouldAdvanceTime` keeps the microtask-driven upload mocks resolving while
+  // the settle delay is under our control.
+  const useSettleTimers = () => vi.useFakeTimers({ shouldAdvanceTime: true })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('clears the queue once a fully successful round settles', async () => {
+    useSettleTimers()
+    uploadSimple.mockResolvedValue({ data: {} })
+
+    const { result } = renderHook(() => useUploadFiles(undefined), { wrapper })
+    await act(async () => {
+      await result.current.upload([fileOfSize('a.txt', 10), fileOfSize('b.txt', 10)])
+    })
+
+    // Still visible right after the round — the "Uploaded" state has to be
+    // readable, not a flash.
+    expect(useUploadStore.getState().tasks).toHaveLength(2)
+
+    await act(async () => {
+      vi.advanceTimersByTime(SETTLE_DELAY_MS)
+    })
+    expect(useUploadStore.getState().tasks).toHaveLength(0)
+  })
+
+  it('keeps the failures of a mixed round and drops only its successes', async () => {
+    useSettleTimers()
+    uploadSimple.mockImplementation((file: File) =>
+      file.name === 'bad.txt'
+        ? Promise.reject({ code: 'NETWORK_ERROR', status: 0 })
+        : Promise.resolve({ data: {} }),
+    )
+
+    const { result } = renderHook(() => useUploadFiles(undefined), { wrapper })
+    await act(async () => {
+      await result.current.upload([fileOfSize('ok.txt', 10), fileOfSize('bad.txt', 10)])
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(SETTLE_DELAY_MS)
+    })
+
+    const remaining = useUploadStore.getState().tasks
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].fileName).toBe('bad.txt')
+    expect(remaining[0].error).toContain('Connection lost')
+  })
+
+  it('does not remove an earlier round’s failure when a later round settles', async () => {
+    useSettleTimers()
+    uploadSimple.mockRejectedValueOnce({ code: 'NETWORK_ERROR', status: 0 })
+    uploadSimple.mockResolvedValue({ data: {} })
+
+    const { result } = renderHook(() => useUploadFiles(undefined), { wrapper })
+    await act(async () => {
+      await result.current.upload([fileOfSize('old.txt', 10)])
+    })
+    await act(async () => {
+      await result.current.upload([fileOfSize('new.txt', 10)])
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(SETTLE_DELAY_MS * 2)
+    })
+
+    expect(useUploadStore.getState().tasks.map((t) => t.fileName)).toEqual(['old.txt'])
   })
 })

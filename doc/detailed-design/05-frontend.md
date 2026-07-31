@@ -398,7 +398,45 @@ create session (回 chunk_size / total_chunks)
 
 **狀態擴充**：`UploadTask` 增加 `sessionId`、`uploadedChunks`、`totalChunks`，`status` 增加 `queued` 與 `paused`；`errorCode` 用於錯誤分類顯示（`FILE_TOO_LARGE`／`QUOTA_EXCEEDED`／連線中斷），取代單一 `Network error` 文案。
 
-### 5.7.5 可獨立測試項
+### 5.7.5 上傳佇列自動收斂（proposal §27.8）
+
+**一輪 = `addTasks()` 一次呼叫回傳的那組任務。** 四個上傳入口（`useUploadFiles`／`useUploadFolders`／`useGuestUploadFiles`／`useGuestUploadFolders`）都是「`addTasks` → `await` 全部跑完」的形狀，所以「這一輪」與「這一輪結束」都已經被既有程式碼精確表達，不需要在 store 裡另外維護批次狀態或監看每個 task 的狀態轉移。
+
+```ts
+// uploadStore
+settleBatch: (ids: string[]) => void   // 延遲 SETTLE_DELAY_MS 後，移除 ids 中 status === 'completed' 者
+export const SETTLE_DELAY_MS = 3000
+```
+
+呼叫點固定在每個入口 `await` 之後：
+
+```ts
+const tasks = addTasks(files, parentId)
+await runWithConcurrency(admitted, UPLOAD_CONCURRENCY, ...)
+settleBatch(tasks.map((t) => t.id))
+```
+
+**為什麼是 id 集合而不是 batchId 欄位**：`UploadTask` 不需要新增欄位，store 也不需要知道「輪」這個概念——它只被告知「這些 id 之中，成功的可以收掉了」。批次的界線留在唯一知道它的地方（呼叫端），store 保持成一個純粹的任務容器。
+
+**為什麼移除條件同時看 id 與 `status`**，而不是排程當下就算好要刪哪些：排程與實際移除之間隔了 3 秒，這段期間 `removeTask`、`clearCompleted`、使用者關閉單列都可能發生。以「事發當下的狀態」重新過濾，這些情況全部自然收斂——已不存在的 id 只是過濾不到，不是錯誤。
+
+**計時器放在 store action 內（模組層 `setTimeout`），不放在元件的 `useEffect`**：使用者按下上傳後很可能立刻切換資料夾或關掉面板，`UploadQueue` 隨時可能卸載；掛在元件上的計時器會跟著消失，那一輪就永遠不收斂。
+
+**各狀態的處置**
+
+| 狀態 | 自動移除 | 理由 |
+| --- | --- | --- |
+| `completed` | 是（延遲 3 秒） | 本節唯一的移除對象 |
+| `failed` | 否 | 錯誤訊息是使用者唯一能知道原因的管道（proposal §27.8 核心約束） |
+| `canceled` | 否 | 使用者的決定，留一列讓他確認；「Clear done」仍會清掉 |
+| `paused` | 否 | 該列必須留著才有「繼續」可按 |
+| `needs_file` | 否 | 跨工作階段還原的項目，本來就不屬於任何一輪 |
+
+**多輪並存**：`settleBatch` 只認自己那組 id，所以第一輪結算時不會碰到第二輪還在傳的項目，也不會碰到更早留下的失敗項。兩輪各自排一個計時器，互不干擾。
+
+**重試**：`UploadQueue` 的 `onRetry` 原本就是「拿舊 task 的 `File` 開一輪新的上傳」，並不會改動舊 task。舊失敗列若留著，重試成功後畫面反而只剩那筆失敗列（新任務已自動收掉），讀起來像是重試失敗。因此 `UploadQueue` 在轉發重試的同時 `removeTask(task.id)`——該檔案的現況已由新任務代表。放在 `UploadQueue` 而非呼叫端（`DriveExplorer`）：這是佇列自己的呈現語意，任何未來接上 `onRetry` 的頁面都應該一致，不該由每個呼叫端各自記得。
+
+### 5.7.6 可獨立測試項
 
 1. 選擇檔案後建立 UploadTask。
 2. 拖曳檔案到螢幕任意位置（包含 Sidebar、TopBar）均會建立 UploadTask；`UploadDropzone` 使用 `window` 全域 drag 事件並以 `position:fixed` overlay 覆蓋整個視窗。
@@ -411,6 +449,10 @@ create session (回 chunk_size / total_chunks)
 9. 續傳：以已完成分片索引只補送缺的分片，不重送已完成者。
 10. 暫停後停止送出後續分片；繼續後從缺漏 index 接續；取消會呼叫 DELETE 並移除任務。
 11. 錯誤碼分類顯示（`FILE_TOO_LARGE`／`QUOTA_EXCEEDED`／連線中斷），不再一律 `Network error`。
+12. 一輪全部成功 → 延遲 3 秒後該輪項目消失、佇列面板隨之不顯示。
+13. 一輪有成功有失敗 → 成功項消失，失敗項連同錯誤訊息留著。
+14. 上一輪的失敗項不因新一輪上傳被清掉；`paused`／`needs_file` 不被自動移除。
+15. 對失敗項按重試 → 舊失敗列消失，新任務接手，不留重複列。
 
 ### 5.8 Preview 前端模組
 

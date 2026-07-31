@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { useUploadStore } from './uploadStore'
+import { SETTLE_DELAY_MS, useUploadStore } from './uploadStore'
 
 function makeFile(name = 'test.txt', size = 100): File {
   return new File(['x'.repeat(size)], name, { type: 'text/plain' })
@@ -93,5 +93,85 @@ describe('clearCompleted', () => {
     const remaining = useUploadStore.getState().tasks
     expect(remaining).toHaveLength(1)
     expect(remaining[0].id).toBe(c.id)
+  })
+})
+
+describe('settleBatch', () => {
+  const store = () => useUploadStore.getState()
+
+  function addBatch(names: string[]) {
+    return store()
+      .addTasks(names.map((n) => makeFile(n)))
+      .map((t) => t.id)
+  }
+
+  it('keeps everything until the delay has elapsed', () => {
+    vi.useFakeTimers()
+    const [a] = addBatch(['a.txt'])
+    store().markCompleted(a)
+
+    store().settleBatch([a])
+    vi.advanceTimersByTime(SETTLE_DELAY_MS - 1)
+    expect(store().tasks).toHaveLength(1)
+
+    vi.advanceTimersByTime(1)
+    expect(store().tasks).toHaveLength(0)
+    vi.useRealTimers()
+  })
+
+  it('removes only the completed tasks, leaving every other status', () => {
+    vi.useFakeTimers()
+    const ids = addBatch(['ok.txt', 'bad.txt', 'stopped.txt', 'held.txt'])
+    const [ok, bad, stopped, held] = ids
+    store().markCompleted(ok)
+    store().markFailed(bad, 'Network error')
+    store().cancelTask(stopped)
+    store().markPaused(held)
+
+    store().settleBatch(ids)
+    vi.advanceTimersByTime(SETTLE_DELAY_MS)
+
+    expect(store().tasks.map((t) => t.id)).toEqual([bad, stopped, held])
+    vi.useRealTimers()
+  })
+
+  it('leaves another round untouched, including its successes', () => {
+    vi.useFakeTimers()
+    const [first] = addBatch(['first.txt'])
+    const [second] = addBatch(['second.txt'])
+    store().markCompleted(first)
+    store().markCompleted(second)
+
+    store().settleBatch([first])
+    vi.advanceTimersByTime(SETTLE_DELAY_MS)
+
+    expect(store().tasks.map((t) => t.id)).toEqual([second])
+    vi.useRealTimers()
+  })
+
+  it('does not disturb an earlier round’s failure', () => {
+    vi.useFakeTimers()
+    const [old] = addBatch(['old.txt'])
+    store().markFailed(old, 'Quota exceeded')
+    const [fresh] = addBatch(['fresh.txt'])
+    store().markCompleted(fresh)
+
+    store().settleBatch([fresh])
+    vi.advanceTimersByTime(SETTLE_DELAY_MS)
+
+    expect(store().tasks.map((t) => t.id)).toEqual([old])
+    vi.useRealTimers()
+  })
+
+  it('tolerates ids removed before the timer fires', () => {
+    vi.useFakeTimers()
+    const [a] = addBatch(['a.txt'])
+    store().markCompleted(a)
+
+    store().settleBatch([a])
+    store().removeTask(a)
+    expect(() => vi.advanceTimersByTime(SETTLE_DELAY_MS)).not.toThrow()
+    expect(store().tasks).toHaveLength(0)
+    vi.useRealTimers()
   })
 })
