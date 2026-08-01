@@ -18,7 +18,7 @@ flowchart TB
     R["replan 一次<br/>帶真實執行結果重規劃"]
     H["誠實報告<br/>由 StepResult 程式組出事實"]
     F2 -->|"chat 快速路徑"| R
-    R -->|"新計畫全為唯讀才執行"| F
+    R -->|"須全為唯讀<br/>且不含依賴勾選的技能"| F
     R -->|"不符護欄／再失敗"| H
     F2 -->|"confirm ／ rerun 路徑"| H
   end
@@ -26,14 +26,14 @@ flowchart TB
     direction LR
     CTX["context<br/>token 預算與裁切"]
     MEM["memory<br/>多輪歷史回讀"]
-    HK["hooks<br/>治理與稽核攔截點"]
+    HK["hooks<br/>執行器攔截點<br/>寫入前自動拍快照"]
     SA["subagent<br/>codegen 子代理"]
     CTX ~~~ MEM ~~~ HK ~~~ SA
   end
   F --> F2
   CTX -.-> B
   MEM -.-> B
-  HK -.-> E
+  HK -.->|"before_execution"| F
   SA -.-> D
   classDef inp fill:#fdf6e3,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
   classDef proc fill:#e3eef5,stroke:#5e8ba6,stroke-width:1.8px,color:#1f2a36

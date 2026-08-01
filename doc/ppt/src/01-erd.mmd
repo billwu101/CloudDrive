@@ -35,7 +35,7 @@ erDiagram
     uuid id PK
     uuid owner_id FK
     uuid parent_id FK "自關聯樹"
-    varchar item_type "FILE／FOLDER"
+    varchar item_type "enum: FILE, FOLDER"
     varchar name
     varchar mime_type
     varchar extension
