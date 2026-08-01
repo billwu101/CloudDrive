@@ -1,0 +1,33 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang TC, Avenir Next, Helvetica Neue, Arial, sans-serif','fontSize':'19px','primaryColor':'#eef1f5','primaryBorderColor':'#8b98a8','primaryTextColor':'#1f2a36','lineColor':'#5e7183','edgeLabelBackground':'#ffffff','clusterBkg':'#f7f9fb','clusterBorder':'#c2ccd8'},'flowchart':{'curve':'basis','nodeSpacing':44,'rankSpacing':64,'padding':14}}}%%
+graph LR
+  subgraph CD["CloudDrive（本專案）"]
+    direction LR
+    U["使用者瀏覽器"] -->|"HTTPS 請求"| NX["nginx:1.29-alpine"]
+    NX -->|"回傳 SPA 靜態資源"| U
+    NX -->|"轉發 /api/v1"| BE["FastAPI 後端<br/>uvicorn :8000"]
+    BE -->|"查詢／寫入 metadata"| PG[("pgvector/pgvector:pg16<br/>中繼資料 + 向量索引")]
+    BE -->|"存取檔案本體"| SP2["Storage Provider"]
+    SP2 -->|"讀寫 blob"| FS["本機檔案系統"]
+    BE -->|"轉交自然語言任務"| AS["AI 助理引擎"]
+  end
+  subgraph EXT["Gemma4APIServer（獨立專案 · 另一台主機）"]
+    direction LR
+    GW["API Gateway<br/>OpenAI／Anthropic 相容"] -->|"轉為原生格式"| OL["Ollama<br/>gemma4:26b"]
+  end
+  AS ==>|"HTTPS · 相容 API"| GW
+  AS -.->|"條件式外送"| EXM["外部模型<br/>GPT-5.5"]
+  classDef user fill:#fdf6e3,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
+  classDef front fill:#e3eef5,stroke:#5e8ba6,stroke-width:1.8px,color:#1f2a36
+  classDef back fill:#e4f1e8,stroke:#6da583,stroke-width:1.8px,color:#1c3225
+  classDef db fill:#faf0dc,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
+  classDef vol fill:#f0f2f5,stroke:#98a3b0,stroke-width:1.4px,color:#3a4450
+  classDef ai fill:#ece8f5,stroke:#8f7fc0,stroke-width:1.8px,color:#2e2547
+  classDef edge fill:#f7e8e8,stroke:#c07f7f,stroke-width:1.8px,color:#43221f
+  class U user
+  class NX front
+  class BE,SP2,FS back
+  class PG db
+  class AS ai
+  class GW,OL edge
+  class EXM ai
+  style EXT stroke-dasharray: 6 4,stroke:#c07f7f,stroke-width:2px

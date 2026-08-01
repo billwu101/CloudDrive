@@ -1,0 +1,37 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang TC, Avenir Next, Helvetica Neue, Arial, sans-serif','fontSize':'19px','primaryColor':'#eef1f5','primaryBorderColor':'#8b98a8','primaryTextColor':'#1f2a36','lineColor':'#5e7183','edgeLabelBackground':'#ffffff','clusterBkg':'#f7f9fb','clusterBorder':'#c2ccd8'},'flowchart':{'curve':'basis','nodeSpacing':42,'rankSpacing':60,'padding':14}}}%%
+graph TD
+  subgraph CICD["CI / CD 管線"]
+    direction LR
+    DEV2["開發者"] -->|"push / 開 PR"| GH("GitHub-hosted Runner")
+    GH -->|"跑測試與檢查<br/>合併 main 後建置映像"| GHCR[("GHCR<br/>image : commit SHA")]
+    GHCR -->|"領取部署工作"| SR("self-hosted Runner")
+    SR -->|"sudo 執行固定腳本"| DSC("deploy 腳本")
+  end
+  subgraph HOST["部署主機 · compose.prod.yml"]
+    direction LR
+    CFc("cloudflared 容器") -->|"轉入內網"| FE("frontend 容器<br/>nginx:1.29-alpine<br/>8088:80")
+    FE -->|"/api 反代"| BEc("backend 容器<br/>FastAPI · 127.0.0.1:8001:8000")
+    BEc -->|"asyncpg"| PGc[("postgres 容器<br/>pgvector/pgvector:pg16")]
+    BEc -->|"讀寫"| VOL2[/"storage_data"/]
+    PGc -->|"持久化"| VOL1[/"postgres_data"/]
+  end
+  DSC ==>|"pull → up -d → /health 檢查 → 失敗回滾"| HOST
+  NOTE["模型服務不在此 compose 內<br/>由 Gemma4APIServer 另一套獨立部署"]
+  BEc -.->|"HTTPS 帶金鑰"| NOTE
+  classDef user fill:#fdf6e3,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
+  classDef front fill:#e3eef5,stroke:#5e8ba6,stroke-width:1.8px,color:#1f2a36
+  classDef back fill:#e4f1e8,stroke:#6da583,stroke-width:1.8px,color:#1c3225
+  classDef db fill:#faf0dc,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
+  classDef vol fill:#f0f2f5,stroke:#98a3b0,stroke-width:1.4px,color:#3a4450
+  classDef ai fill:#ece8f5,stroke:#8f7fc0,stroke-width:1.8px,color:#2e2547
+  classDef edge fill:#f7e8e8,stroke:#c07f7f,stroke-width:1.8px,color:#43221f
+  class DEV2 user
+  class GH,SR,DSC front
+  class GHCR ai
+  class FE front
+  class BEc back
+  class PGc db
+  class VOL1,VOL2 vol
+  class CFc edge
+  class NOTE ai
+  style NOTE stroke-dasharray: 6 4,stroke:#c07f7f,stroke-width:2px

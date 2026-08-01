@@ -1,0 +1,52 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang TC, Avenir Next, Helvetica Neue, Arial, sans-serif','fontSize':'21px','primaryColor':'#e3eef5','primaryBorderColor':'#5e8ba6','primaryTextColor':'#1f2a36','lineColor':'#7e8a96','clusterBkg':'#f9fafb','clusterBorder':'#c2ccd8'},'flowchart':{'curve':'basis','nodeSpacing':26,'rankSpacing':46,'padding':12}}}%%
+graph TB
+  subgraph CORE["核心檔案管理（8 張）"]
+    direction LR
+    U["users"] --> DI["drive_items<br/>parent_id 自關聯（資料夾樹）"]
+    U --> RT["refresh_tokens"]
+    DI --> FV["file_versions"]
+    DI --> UIP["user_item_preferences"]
+    DI --> SH["shares"]
+    DI --> SL["share_links"]
+    DI --> AL["activity_logs"]
+  end
+  subgraph AI["AI 助理（5 張）"]
+    direction LR
+    AS["assistant_sessions"] --> AM["assistant_messages"]
+    ASK["assistant_skills"]
+    AW["assistant_workflows"] --> AWR["assistant_workflow_runs"]
+  end
+  subgraph TM["時光機（3 張）"]
+    direction LR
+    SN["snapshots"] --> SE["snapshot_entries"]
+    SS["snapshot_settings"]
+  end
+  subgraph SR["搜尋（2 張）"]
+    direction LR
+    FSI["file_search_index<br/>content text · GIN(to_tsvector)<br/>中文靠 ILIKE 子字串比對"]
+    FE["file_embeddings<br/>vector(768) · pgvector"]
+  end
+  subgraph UP["分片上傳（2 張）"]
+    direction LR
+    US["upload_sessions"] --> UC["upload_chunks"]
+  end
+  subgraph EM["外部模型（1 張）"]
+    EMC["external_model_connections<br/>Fernet 加密憑證"]
+  end
+  DI -.->|"被快照收錄"| SE
+  FV -.->|"指向內容 · checksum 去重"| SE
+  DI -.->|"抽取內容"| FSI
+  DI -.->|"切塊向量化"| FE
+  US -.->|"完成後建立"| DI
+  classDef core fill:#e3eef5,stroke:#5e8ba6,stroke-width:1.6px,color:#1f2a36
+  classDef ai fill:#ece8f5,stroke:#8f7fc0,stroke-width:1.6px,color:#2e2547
+  classDef tm fill:#fdf6e3,stroke:#c9a94e,stroke-width:1.6px,color:#4a3f1d
+  classDef sr fill:#e4f1e8,stroke:#6da583,stroke-width:1.6px,color:#1c3225
+  classDef up fill:#f7e8e8,stroke:#c07f7f,stroke-width:1.6px,color:#43221f
+  classDef em fill:#f0f2f5,stroke:#98a3b0,stroke-width:1.6px,color:#3a4450
+  class U,DI,RT,FV,UIP,SH,SL,AL core
+  class AS,AM,ASK,AW,AWR ai
+  class SN,SE,SS tm
+  class FSI,FE sr
+  class US,UC up
+  class EMC em

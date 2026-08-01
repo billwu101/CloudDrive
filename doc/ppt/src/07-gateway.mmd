@@ -1,0 +1,24 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang TC, Avenir Next, Helvetica Neue, Arial, sans-serif','fontSize':'19px','primaryColor':'#eef1f5','primaryBorderColor':'#8b98a8','primaryTextColor':'#1f2a36','lineColor':'#5e7183','edgeLabelBackground':'#ffffff','clusterBkg':'#f7f9fb','clusterBorder':'#c2ccd8'},'flowchart':{'curve':'basis','nodeSpacing':42,'rankSpacing':60,'padding':14}}}%%
+graph LR
+  C1["CloudDrive<br/>AI 助理引擎"] -->|"OpenAI 格式"| TUN
+  C2["OpenAI SDK<br/>任一 OpenAI model 別名"] -->|"OpenAI 格式"| TUN
+  C3["Claude SDK<br/>任一 Anthropic model 別名"] -->|"Anthropic 格式"| TUN
+  TUN("Cloudflare Tunnel<br/>公網唯一入口")
+  subgraph BOX["部署主機 · docker compose（三容器）"]
+    direction LR
+    TUN -->|"轉入內部網路"| GW("gateway 容器<br/>FastAPI · 驗金鑰 · 格式轉換 · 記用量<br/>別名一律映射到同一顆本地模型")
+    GW -->|"轉為原生請求<br/>自動帶 think:false"| OLM("ollama 容器<br/>OLLAMA_KEEP_ALIVE=-1")
+    OLM -->|"推論"| MD["gemma4:26b<br/>GPU 常駐"]
+  end
+  classDef user fill:#fdf6e3,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
+  classDef front fill:#e3eef5,stroke:#5e8ba6,stroke-width:1.8px,color:#1f2a36
+  classDef back fill:#e4f1e8,stroke:#6da583,stroke-width:1.8px,color:#1c3225
+  classDef db fill:#faf0dc,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
+  classDef vol fill:#f0f2f5,stroke:#98a3b0,stroke-width:1.4px,color:#3a4450
+  classDef ai fill:#ece8f5,stroke:#8f7fc0,stroke-width:1.8px,color:#2e2547
+  classDef edge fill:#f7e8e8,stroke:#c07f7f,stroke-width:1.8px,color:#43221f
+  class C1 ai
+  class C2,C3 user
+  class TUN edge
+  class GW back
+  class OLM,MD ai

@@ -1,0 +1,91 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang TC, Avenir Next, Helvetica Neue, Arial, sans-serif','fontSize':'15px','primaryColor':'#e3eef5','primaryBorderColor':'#5e8ba6','primaryTextColor':'#1f2a36','lineColor':'#5e7183','attributeBackgroundColorOdd':'#ffffff','attributeBackgroundColorEven':'#f2f6f9'},'er':{'layoutDirection':'LR','entityPadding':16,'minEntityWidth':230}}}%%
+erDiagram
+  users ||--o{ drive_items : "owns"
+  users ||--o{ refresh_tokens : "issues"
+  users ||--o{ user_item_preferences : "sets"
+  users ||--o{ shares : "target_user"
+  users ||--o{ activity_logs : "actor"
+  drive_items ||--o{ drive_items : "parent_id"
+  drive_items ||--o{ file_versions : "versions"
+  drive_items ||--o{ user_item_preferences : "starred"
+  drive_items ||--o{ shares : "shared"
+  drive_items ||--o{ share_links : "public link"
+  drive_items ||--o{ activity_logs : "target"
+
+  users {
+    uuid id PK
+    varchar email UK
+    varchar username
+    varchar password_hash "Argon2"
+    text avatar_url
+    bigint quota_bytes "配額上限"
+    bigint used_bytes "已使用"
+    boolean is_active
+    boolean is_admin
+    boolean must_change_password
+  }
+  refresh_tokens {
+    uuid id PK
+    uuid user_id FK
+    varchar token_hash UK "只存 hash"
+    timestamptz expires_at
+    timestamptz revoked_at
+  }
+  drive_items {
+    uuid id PK
+    uuid owner_id FK
+    uuid parent_id FK "自關聯樹"
+    varchar item_type "FILE／FOLDER"
+    varchar name
+    varchar mime_type
+    varchar extension
+    bigint size_bytes
+    text storage_key
+    varchar checksum_sha256
+    boolean is_starred "legacy 非權威"
+    boolean is_deleted "軟刪除"
+    timestamptz deleted_at
+  }
+  user_item_preferences {
+    uuid id PK
+    uuid user_id FK
+    uuid item_id FK
+    boolean is_starred "星號權威來源"
+  }
+  file_versions {
+    uuid id PK
+    uuid file_id FK
+    integer version_no
+    text storage_key
+    bigint size_bytes
+    varchar checksum_sha256 "快照去重鍵"
+  }
+  shares {
+    uuid id PK
+    uuid item_id FK
+    uuid owner_id FK
+    uuid target_user_id FK
+    varchar permission "viewer | downloader | editor"
+  }
+  share_links {
+    uuid id PK
+    uuid item_id FK
+    varchar token_hash UK "查詢用"
+    varchar token_encrypted "擁有者取回網址"
+    varchar permission "viewer | downloader | editor"
+    varchar password_hash
+    timestamptz expires_at
+    boolean is_active
+    timestamptz attempt_window_start "密碼節流"
+    integer attempt_count "密碼節流"
+    timestamptz locked_until "密碼節流"
+  }
+  activity_logs {
+    uuid id PK
+    uuid actor_id FK
+    uuid item_id FK
+    varchar action
+    jsonb metadata
+    varchar ip_address
+    text user_agent
+  }

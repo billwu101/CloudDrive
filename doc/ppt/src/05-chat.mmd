@@ -1,0 +1,48 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang TC, Avenir Next, Helvetica Neue, Arial, sans-serif','fontSize':'19px','primaryColor':'#eef1f5','primaryBorderColor':'#8b98a8','primaryTextColor':'#1f2a36','lineColor':'#5e7183','edgeLabelBackground':'#ffffff','clusterBkg':'#f9fafb','clusterBorder':'#c2ccd8'},'flowchart':{'curve':'basis','nodeSpacing':34,'rankSpacing':52,'padding':14}}}%%
+flowchart TB
+  subgraph MAIN["主流程"]
+    direction LR
+    A["自然語言指令"] --> B["planner<br/>意圖解析"]
+    B --> C["候選 Workflow<br/>結構化步驟"]
+    C --> D["skill registry<br/>技能檢查"]
+    D --> E{"permissions<br/>權限與安全分類"}
+    E -->|"唯讀 · 非破壞"| F["執行 Workflow<br/>一律經 service 層"]
+    E -->|"破壞性"| G["顯示執行計畫<br/>等待使用者確認"]
+    G -->|"確認"| F
+    G -->|"取消"| X["中止<br/>不做任何變更"]
+    F --> I["回填結果<br/>寫入 activity log"]
+  end
+  subgraph FAIL["執行失敗的處理"]
+    direction LR
+    F2{"有步驟失敗？"}
+    R["replan 一次<br/>帶真實執行結果重規劃"]
+    H["誠實報告<br/>由 StepResult 程式組出事實"]
+    F2 -->|"chat 快速路徑"| R
+    R -->|"新計畫全為唯讀才執行"| F
+    R -->|"不符護欄／再失敗"| H
+    F2 -->|"confirm ／ rerun 路徑"| H
+  end
+  subgraph SUP["Harness 支援模組"]
+    direction LR
+    CTX["context<br/>token 預算與裁切"]
+    MEM["memory<br/>多輪歷史回讀"]
+    HK["hooks<br/>治理與稽核攔截點"]
+    SA["subagent<br/>codegen 子代理"]
+    CTX ~~~ MEM ~~~ HK ~~~ SA
+  end
+  F --> F2
+  CTX -.-> B
+  MEM -.-> B
+  HK -.-> E
+  SA -.-> D
+  classDef inp fill:#fdf6e3,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
+  classDef proc fill:#e3eef5,stroke:#5e8ba6,stroke-width:1.8px,color:#1f2a36
+  classDef gate fill:#f7e8e8,stroke:#c07f7f,stroke-width:2px,color:#43221f
+  classDef run fill:#e4f1e8,stroke:#6da583,stroke-width:1.8px,color:#1c3225
+  classDef sup fill:#ece8f5,stroke:#8f7fc0,stroke-width:1.6px,color:#2e2547
+  class A inp
+  class B,C,D proc
+  class E,G,X,F2 gate
+  class F,I,R run
+  class H gate
+  class CTX,MEM,HK,SA sup

@@ -1,0 +1,51 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang TC, Avenir Next, Helvetica Neue, Arial, sans-serif','fontSize':'20px','primaryColor':'#eef1f5','primaryBorderColor':'#8b98a8','primaryTextColor':'#1f2a36','lineColor':'#5e7183','edgeLabelBackground':'#ffffff','clusterBkg':'#f9fafb','clusterBorder':'#9aa6b2'},'flowchart':{'curve':'basis','nodeSpacing':36,'rankSpacing':64,'padding':16}}}%%
+graph LR
+  subgraph N1["節點 1｜使用者裝置"]
+    BR["瀏覽器<br/>Chrome / Safari"]
+  end
+  subgraph N2["節點 2｜Cloudflare 邊緣"]
+    EDGE["Cloudflare Tunnel<br/>TLS 終止 · 隱藏源站 IP"]
+  end
+  subgraph N3["節點 3｜部署主機（自架 Ubuntu · docker compose）"]
+    direction TB
+    CFD["cloudflared 容器<br/>CloudDrive tunnel"]
+    FEC["frontend 容器<br/>nginx:1.29-alpine + React SPA"]
+    BEC["backend 容器<br/>FastAPI · uvicorn :8000<br/>對外僅綁 127.0.0.1:8001"]
+    PGC[("postgres 容器<br/>pgvector/pgvector:pg16<br/>用途：中繼資料 + 向量索引")]
+    V1[/"postgres_data volume"/]
+    V2[/"storage_data volume<br/>用途：檔案本體 blob"/]
+    CFD -->|"轉入內部網路"| FEC
+    FEC -->|"反代 /api"| BEC
+    BEC -->|"asyncpg :5432"| PGC
+    BEC -->|"讀寫 blob"| V2
+    PGC -->|"持久化"| V1
+  end
+  subgraph N4["節點 4｜GPU 主機（Windows + WSL2 · NVIDIA · Gemma4APIServer 專案）"]
+    direction TB
+    CFD2["cloudflared 容器<br/>Gateway tunnel（另一條）"]
+    GWC["gateway 容器<br/>FastAPI · OpenAI／Anthropic 相容<br/>金鑰驗證 + SQLite 用量記錄"]
+    OLC["ollama 容器<br/>gemma4:26b · KEEP_ALIVE=-1"]
+    CFD2 -->|"轉入內部網路"| GWC
+    GWC -->|"原生 API :11434"| OLC
+  end
+  DEVNOTE["本機開發差異：另起 mailpit 容器接管信件\n（缺它則 EMAIL_PROVIDER 退回 console，密碼重設信不會真的送出）\nport 直接映射 8088／8000／5432，不經 tunnel"]
+  N3 -.- DEVNOTE
+  BR -->|"HTTPS 443"| EDGE
+  EDGE -->|"Tunnel 連線"| CFD
+  BEC ==>|"HTTPS · 帶 API 金鑰"| CFD2
+  classDef user fill:#fdf6e3,stroke:#c9a94e,stroke-width:2px,color:#4a3f1d
+  classDef front fill:#e3eef5,stroke:#5e8ba6,stroke-width:2px,color:#1f2a36
+  classDef back fill:#e4f1e8,stroke:#6da583,stroke-width:2px,color:#1c3225
+  classDef db fill:#faf0dc,stroke:#c9a94e,stroke-width:2px,color:#4a3f1d
+  classDef vol fill:#f0f2f5,stroke:#98a3b0,stroke-width:1.6px,color:#3a4450
+  classDef edge fill:#f7e8e8,stroke:#c07f7f,stroke-width:2px,color:#43221f
+  classDef ai fill:#ece8f5,stroke:#8f7fc0,stroke-width:2px,color:#2e2547
+  class BR user
+  class EDGE,CFD,CFD2 edge
+  class FEC front
+  class BEC,GWC back
+  class PGC db
+  class V1,V2 vol
+  class OLC ai
+  style DEVNOTE fill:#fdf6e3,stroke:#c9a94e,stroke-width:1.6px,stroke-dasharray: 5 4,color:#4a3f1d
+  style N4 stroke-dasharray: 6 4,stroke:#8f7fc0,stroke-width:2.4px
