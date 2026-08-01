@@ -65,6 +65,30 @@ M3 實作備註（2026-06-17）：完成 sessions/messages 持久化（`0007`）
 
 ## 測試任務
 
+### 目的地引數的執行期型別守門（2026-08-01）
+
+- [x] 將 `parent_id` 等目的地引數的共用定義放在 workflow 與 planner 都能正向依賴的位置。
+- [x] 步驟引用解析後、技能執行前，對可判定型別的目的地項目進行資料夾檢查。
+- [x] 單值與 `items.*.id` fan-out 的目的地引用都套用同一守門，型別不可知時放行。
+- [x] 補單元測試覆蓋所有驗收條件與執行前失敗不誤寫。
+
+驗收條件：
+
+- [x] `parent_id` 解析到 FILE 時，在寫入技能執行前失敗，訊息包含項目名稱且說明它是檔案。
+- [x] `parent_id` 解析到 FOLDER 時行為不變。
+- [x] 參照元素沒有 `item_type` 時放行。
+- [x] `item_id` 等非目的地引數不受影響。
+- [x] `items.*.id` 目的地 fan-out 的每個元素都會檢查。
+- [ ] 既有 assistant 測試與全量測試無回歸。
+
+實作結果（2026-08-01）：`DESTINATION_ARGS` 放在 `workflow.py`，planner 正向
+import 共用；解析葉節 UUID 時同步解析父層項目，僅在 `item_type` 已知且非
+FOLDER 時拒絕。fan-out 會先解析並檢查全部列後才執行技能，避免部分寫入。
+`test_selection_references.py` 23 例通過；ruff format/check 與 mypy 通過。
+`pytest tests/assistant` 與全量 `pytest` 皆在 `test_codegen_smoke_repair.py` 長時無輸出，
+約 15 分鐘後中斷，因此不勾選全套無回歸。Git metadata 位於只讀的另一工作樹，
+無法建立 card 要求的 local commits。
+
 - [x] `test_router.py` / `test_loop.py` / `test_dispatch.py` / `test_context.py`。
 - [x] `test_model_router.py`：本地連續失敗達上限 → 升級外部；隱私敏感且無法去識別化 → **不**外送、回報失敗；外部停用 → 不升級。
 - [x] `test_skill_authoring.py`：pending manifest proposal、已安裝去重、installed skill execute metadata。
