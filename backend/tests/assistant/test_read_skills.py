@@ -20,6 +20,19 @@ def _read_registry(trash: TrashService) -> SkillRegistry:
     )
 
 
+def test_search_description_admits_it_matches_content_and_orders_by_name() -> None:
+    """It used to say "by name", which is only half of what the repository does
+    (`app/search/repository.py`: name ILIKE, indexed content ILIKE, and the
+    English tsvector) — a description the model can only act on wrongly, since
+    it also orders by name and so hands back an alphabetical first hit."""
+
+    skill = _read_registry(AsyncMock(spec=TrashService)).get("search")
+
+    assert skill is not None
+    assert "content of files" in skill.description
+    assert "find_folder" in skill.description  # points at the exact-name lookup
+
+
 async def test_list_trash_skill_is_registered_and_calls_service() -> None:
     user_id = uuid4()
     trash = AsyncMock(spec=TrashService)
