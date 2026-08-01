@@ -366,28 +366,52 @@ a folder`）。目前 `validate_plan` 只檢查「引用必須指向更早的步
 使用者的，所以錯誤訊息本身就是使用者看到的句子。多筆同名時**不得自行挑一筆**——挑選是
 使用者的決定，技能只負責把候選列出來。
 
-- [ ] `app/assistant/skills/builtin/read_only.py`：新增 `find_folder`（參數 `{"name": string}`、
+- [x] `app/assistant/skills/builtin/read_only.py`：新增 `find_folder`（參數 `{"name": string}`、
       `permission_tier="read"`、`output=SkillOutput.PAGED_ITEMS`）。走既有
       `search_service.search(q=name, item_type="FOLDER", page_size=200)` 取候選，再於技能內做
       **不分大小寫的精確名稱比對**與 `item_type == "FOLDER"` 防禦性過濾。
-- [ ] `read_only.py`：修正 `search` 的 description——現寫 "by name"，實際還會比對**檔案內容**
+- [x] `read_only.py`：修正 `search` 的 description——原寫 "by name"，實際還會比對**檔案內容**
       且結果依名稱排序（第一筆不是最佳匹配）。
-- [ ] `planner.py`：三個範例（`what is in the test folder`／`move the selected files into
+- [x] `planner.py`：三個範例（`what is in the test folder`／`move the selected files into
       test2`／`delete everything in the test folder`）改成先呼叫 `find_folder` 再引用其結果；
-      輸出形狀對照表與 `needs_followup` 的唯讀技能清單同步加入 `find_folder`。
-- [ ] `tests/assistant/test_find_folder.py`：每條驗收條件至少一案。
-- [ ] `tests/assistant/test_planner.py`：提示詞相關斷言同步（範例改用 `find_folder`、
-      形狀對照表含 `find_folder`）。
+      輸出形狀對照表與 `needs_followup` 的唯讀技能清單同步加入 `find_folder`；「只知道名稱時
+      先查再引用」那條規則改成明說資料夾用 `find_folder`、檔案才用 `search`。
+- [x] `tests/assistant/test_find_folder.py`：14 案，每條驗收條件至少一案。
+- [x] `tests/assistant/test_planner.py`：新增 `test_prompt_examples_resolve_a_folder_name_with_find_folder`
+      （三個資料夾範例都用 `find_folder`、都不含 `"skill": "search"`）。既有的形狀對照表
+      drift test（`test_prompt_output_shapes_match_what_the_skills_declare`）自動涵蓋新技能。
+- [x] `tests/assistant/test_read_skills.py`：釘住 `search` 的新 description。
 
-**驗收條件**
+**大小寫語意的刻意分歧**：`DriveRepository.name_exists_in_parent` 比對名稱是**區分大小寫**的
+（`DriveItem.name == name`），所以同一層可以同時存在 `Reports` 與 `reports`；`find_folder`
+刻意採不分大小寫。分歧方向是安全的——兩個大小寫變體會被判為**多筆**而回頭問使用者，
+不會自行挑一筆。已寫進 `_same_name` 的 docstring。
 
-- [ ] 唯一命中 → 回 1 筆，`items.0.id` 指向該資料夾。
-- [ ] 命中 0 筆 → 錯誤訊息是使用者看得懂的句子（「找不到名為 X 的資料夾」），
+**驗收條件**（單元測試層級已驗，見 `tests/assistant/test_find_folder.py`）
+
+- [x] 唯一命中 → 回 1 筆，`items.0.id` 指向該資料夾。
+- [x] 命中 0 筆 → 錯誤訊息是使用者看得懂的句子（「找不到名為 X 的資料夾」），
       **不得**出現 `cannot resolve path` 這類內部字串。
-- [ ] 命中多筆 → 訊息列出候選並請使用者指定，不得自行挑一筆。
-- [ ] 候選總數超過 `page_size`（實測資料庫裡有 266 個同名資料夾）→ 明確回報過多，
+- [x] 命中多筆 → 訊息列出候選（名稱＋最後更新日）並請使用者指定，不得自行挑一筆。
+- [x] 候選總數超過 `page_size`（實測資料庫裡有 266 個同名資料夾）→ 明確回報過多，
       不得截斷後假裝唯一。
-- [ ] 檔案永不出現在結果中，即使檔名完全相同。
-- [ ] 既有 `search` 技能行為完全未變（回歸測試綠）。
-- [ ] eval 基準重跑（**prompt 改動會影響**，不可沿用 2026-07-30 那批數字作比較，需標明
-      改動前／後兩組）。屬 assistant-eval 模組，由使用者決定何時跑。
+- [x] 檔案永不出現在結果中，即使檔名完全相同。
+- [x] 既有 `search` 技能行為完全未變（回歸測試綠）。
+- [ ] **eval 基準重跑（未跑）**：prompt 改動會影響基準，不可沿用 2026-07-30 那批數字作比較，
+      需標明改動前／後兩組。屬 assistant-eval 模組，由使用者決定何時跑。
+- [ ] **真模型／瀏覽器端到端未驗**：本機 `192.168.10.75:11434` 不可達，5 個 `needs_llm`
+      整合測試無法執行（`-m "not needs_llm"` 時 1029 passed）。「模型真的會改用
+      `find_folder`」這件事只有真模型跑得出來，單元測試不能代替。
+
+**已跑的指令與結果（2026-08-01，backend/）**
+
+| 指令 | 結果 |
+|---|---|
+| `uv run ruff format --check app tests` | 276 files already formatted |
+| `uv run ruff check app tests` | All checks passed! |
+| `uv run mypy app tests` | Success: no issues found in 276 source files |
+| `uv run pytest tests/assistant` | 255 passed |
+| `DATABASE_URL=…@localhost:5434/clouddrive_test uv run pytest -m "not needs_llm"` | 1029 passed, 5 deselected |
+
+> 本機 Postgres 在 **5434**；worktree 內沒有 `.env`，不顯式給 `DATABASE_URL` 時
+> `tests/conftest.py` 會退回 5432，71 個整合測試會全數 error（是連線字串問題，不是測試壞了）。
