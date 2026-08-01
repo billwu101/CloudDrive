@@ -374,6 +374,45 @@ def test_planner_prompt_documents_each_step_output_shape() -> None:
     assert '{"parent_id": {"from": 1, "path": "id"}}' in prompt
 
 
+def test_prompt_examples_resolve_a_folder_name_with_find_folder() -> None:
+    """Every worked example that needs "the folder called X" must use
+    find_folder, not search.
+
+    search matches file *contents* as well as names and orders by name, so
+    ``search`` + ``items.0.id`` means "alphabetically first fuzzy hit" — which
+    produced both observed failures: a FILE first (execution: "Destination must
+    be a folder") and no hit at all (execution: "cannot resolve path
+    'items.0.id' from step 0"). The examples are the shape the model copies, so
+    they are the thing that has to change.
+    """
+
+    async def handler(context: object, args: object) -> object:  # pragma: no cover
+        return None
+
+    registry = SkillRegistry()
+    registry.register(
+        RegisteredSkill(
+            name="create_folder",
+            description="Create a folder.",
+            parameters={"type": "object", "properties": {}},
+            permission_tier="write",
+            handler=handler,
+        )
+    )
+    prompt = build_planner_prompt(registry)
+
+    example_lines = [line for line in prompt.splitlines() if "Example — " in line]
+    # The remaining example ("restore from trash") is a list_trash lookup by design.
+    folder_examples = [line for line in example_lines if "list_trash" not in line]
+    assert len(folder_examples) == 3  # what is in / move into / delete everything in
+    for line in folder_examples:
+        assert '{"skill": "find_folder", "arguments": {"name"' in line
+        assert '"skill": "search"' not in line
+    # And the rule above the examples must say which lookup is for which.
+    assert "use find_folder for a FOLDER" in prompt
+    assert "Never use search to get a folder id" in prompt
+
+
 def test_split_plan_rule_is_only_taught_when_a_second_pass_will_run() -> None:
     """Teaching needs_followup with two-phase planning off makes the model return
     read-only lookups and stop — the writes it deferred never get planned. On 20

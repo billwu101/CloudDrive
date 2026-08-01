@@ -65,6 +65,30 @@ M3 實作備註（2026-06-17）：完成 sessions/messages 持久化（`0007`）
 
 ## 測試任務
 
+### 目的地引數的執行期型別守門（2026-08-01）
+
+- [x] 將 `parent_id` 等目的地引數的共用定義放在 workflow 與 planner 都能正向依賴的位置。
+- [x] 步驟引用解析後、技能執行前，對可判定型別的目的地項目進行資料夾檢查。
+- [x] 單值與 `items.*.id` fan-out 的目的地引用都套用同一守門，型別不可知時放行。
+- [x] 補單元測試覆蓋所有驗收條件與執行前失敗不誤寫。
+
+驗收條件：
+
+- [x] `parent_id` 解析到 FILE 時，在寫入技能執行前失敗，訊息包含項目名稱且說明它是檔案。
+- [x] `parent_id` 解析到 FOLDER 時行為不變。
+- [x] 參照元素沒有 `item_type` 時放行。
+- [x] `item_id` 等非目的地引數不受影響。
+- [x] `items.*.id` 目的地 fan-out 的每個元素都會檢查。
+- [ ] 既有 assistant 測試與全量測試無回歸。
+
+實作結果（2026-08-01）：`DESTINATION_ARGS` 放在 `workflow.py`，planner 正向
+import 共用；解析葉節 UUID 時同步解析父層項目，僅在 `item_type` 已知且非
+FOLDER 時拒絕。fan-out 會先解析並檢查全部列後才執行技能，避免部分寫入。
+`test_selection_references.py` 23 例通過；ruff format/check 與 mypy 通過。
+`pytest tests/assistant` 與全量 `pytest` 皆在 `test_codegen_smoke_repair.py` 長時無輸出，
+約 15 分鐘後中斷，因此不勾選全套無回歸。Git metadata 位於只讀的另一工作樹，
+無法建立 card 要求的 local commits。
+
 - [x] `test_router.py` / `test_loop.py` / `test_dispatch.py` / `test_context.py`。
 - [x] `test_model_router.py`：本地連續失敗達上限 → 升級外部；隱私敏感且無法去識別化 → **不**外送、回報失敗；外部停用 → 不升級。
 - [x] `test_skill_authoring.py`：pending manifest proposal、已安裝去重、installed skill execute metadata。
@@ -350,3 +374,68 @@ a folder`）。目前 `validate_plan` 只檢查「引用必須指向更早的步
 - [x] 單元測試 3 案：參數被拒、乾淨參數不受影響、只有 reply 會被清。
 - [x] 真模型驗證：同 20 案 rename 情境（遠端 gateway）**4/20 → 14/20**，`<0xNN>` 寫進資料庫 **10 → 0**。
 - [ ] **仍未解**：殘餘失敗改用合法字元把年份寫壞（`合約_20 .26`、`旅遊_20    6`、`會議記錄_20ASS`），文字本身無從判斷對錯。只能靠換模型——gemma4:12b 同批 298 案例／13,284 個檢查項／325 個名稱掃描，三類損壞皆 0 筆。
+
+## 用名稱指到資料夾：`find_folder` 技能（2026-08-01）
+
+> 背景：規劃器要表達「名為 X 的資料夾」時，手上只有 `search`（名稱子字串 **＋檔案內容**
+> 比對、`ORDER BY name`），而引用語法只有位置索引 `items.0.id`。兩者相接的實際語意是
+> 「按字母序盲抽第一筆」，已實證兩種失敗：第一筆是**檔案** → 執行期
+> `Destination must be a folder`；搜尋 **0 筆** → 執行期
+> `argument 'parent_id': cannot resolve path 'items.0.id' from step 0`。
+> `list_trash` 有 `q` 名稱過濾，活著的硬碟卻沒有等價物——缺的是「名稱→項目」這一層解析。
+
+**設計要點**：0 筆／多筆／候選過多一律**丟出帶人話訊息的 `AppError`**，不是回空清單。
+理由：回空清單只會把失敗往下游推，下游引用 `items.0.id` 時炸出的就是使用者看不懂的
+`cannot resolve path`；而 `_compose_failure_message` 是把 `StepResult.error` 原文轉述給
+使用者的，所以錯誤訊息本身就是使用者看到的句子。多筆同名時**不得自行挑一筆**——挑選是
+使用者的決定，技能只負責把候選列出來。
+
+- [x] `app/assistant/skills/builtin/read_only.py`：新增 `find_folder`（參數 `{"name": string}`、
+      `permission_tier="read"`、`output=SkillOutput.PAGED_ITEMS`）。走既有
+      `search_service.search(q=name, item_type="FOLDER", page_size=200)` 取候選，再於技能內做
+      **不分大小寫的精確名稱比對**與 `item_type == "FOLDER"` 防禦性過濾。
+- [x] `read_only.py`：修正 `search` 的 description——原寫 "by name"，實際還會比對**檔案內容**
+      且結果依名稱排序（第一筆不是最佳匹配）。
+- [x] `planner.py`：三個範例（`what is in the test folder`／`move the selected files into
+      test2`／`delete everything in the test folder`）改成先呼叫 `find_folder` 再引用其結果；
+      輸出形狀對照表與 `needs_followup` 的唯讀技能清單同步加入 `find_folder`；「只知道名稱時
+      先查再引用」那條規則改成明說資料夾用 `find_folder`、檔案才用 `search`。
+- [x] `tests/assistant/test_find_folder.py`：14 案，每條驗收條件至少一案。
+- [x] `tests/assistant/test_planner.py`：新增 `test_prompt_examples_resolve_a_folder_name_with_find_folder`
+      （三個資料夾範例都用 `find_folder`、都不含 `"skill": "search"`）。既有的形狀對照表
+      drift test（`test_prompt_output_shapes_match_what_the_skills_declare`）自動涵蓋新技能。
+- [x] `tests/assistant/test_read_skills.py`：釘住 `search` 的新 description。
+
+**大小寫語意的刻意分歧**：`DriveRepository.name_exists_in_parent` 比對名稱是**區分大小寫**的
+（`DriveItem.name == name`），所以同一層可以同時存在 `Reports` 與 `reports`；`find_folder`
+刻意採不分大小寫。分歧方向是安全的——兩個大小寫變體會被判為**多筆**而回頭問使用者，
+不會自行挑一筆。已寫進 `_same_name` 的 docstring。
+
+**驗收條件**（單元測試層級已驗，見 `tests/assistant/test_find_folder.py`）
+
+- [x] 唯一命中 → 回 1 筆，`items.0.id` 指向該資料夾。
+- [x] 命中 0 筆 → 錯誤訊息是使用者看得懂的句子（「找不到名為 X 的資料夾」），
+      **不得**出現 `cannot resolve path` 這類內部字串。
+- [x] 命中多筆 → 訊息列出候選（名稱＋最後更新日）並請使用者指定，不得自行挑一筆。
+- [x] 候選總數超過 `page_size`（實測資料庫裡有 266 個同名資料夾）→ 明確回報過多，
+      不得截斷後假裝唯一。
+- [x] 檔案永不出現在結果中，即使檔名完全相同。
+- [x] 既有 `search` 技能行為完全未變（回歸測試綠）。
+- [ ] **eval 基準重跑（未跑）**：prompt 改動會影響基準，不可沿用 2026-07-30 那批數字作比較，
+      需標明改動前／後兩組。屬 assistant-eval 模組，由使用者決定何時跑。
+- [ ] **真模型／瀏覽器端到端未驗**：本機 `192.168.10.75:11434` 不可達，5 個 `needs_llm`
+      整合測試無法執行（`-m "not needs_llm"` 時 1029 passed）。「模型真的會改用
+      `find_folder`」這件事只有真模型跑得出來，單元測試不能代替。
+
+**已跑的指令與結果（2026-08-01，backend/）**
+
+| 指令 | 結果 |
+|---|---|
+| `uv run ruff format --check app tests` | 276 files already formatted |
+| `uv run ruff check app tests` | All checks passed! |
+| `uv run mypy app tests` | Success: no issues found in 276 source files |
+| `uv run pytest tests/assistant` | 255 passed |
+| `DATABASE_URL=…@localhost:5434/clouddrive_test uv run pytest -m "not needs_llm"` | 1029 passed, 5 deselected |
+
+> 本機 Postgres 在 **5434**；worktree 內沒有 `.env`，不顯式給 `DATABASE_URL` 時
+> `tests/conftest.py` 會退回 5432，71 個整合測試會全數 error（是連線字串問題，不是測試壞了）。

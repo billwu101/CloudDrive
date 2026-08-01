@@ -12,6 +12,7 @@ from app.assistant.llm.client import LLMMessage, LLMResponse
 from app.assistant.llm.router import ModelRouter
 from app.assistant.skills.registry import RegisteredSkill, SkillOutput, SkillRegistry
 from app.assistant.workflow import (
+    DESTINATION_ARGS,
     PlannedStep,
     is_reference,
     is_step_ref,
@@ -139,8 +140,8 @@ def build_planner_prompt(registry: SkillRegistry, *, two_phase: bool = False) ->
         "- needs_followup: set it to true ONLY when you cannot tell which items to act "
         "on until you have seen a query's result — e.g. the user wants files sorted by "
         "what they are, and you must read their names first. When you set it to true, "
-        "the steps you return must be READ-ONLY lookups (search, list_items, get_info, "
-        "recent, storage_quota, list_trash) and NOTHING else: no creating, renaming, "
+        "the steps you return must be READ-ONLY lookups (search, find_folder, list_items, "
+        "get_info, recent, storage_quota, list_trash) and NOTHING else: no creating, renaming, "
         "moving, starring or deleting, not even preparation like creating the "
         "destination folder. Those come afterwards — you will be asked again with the "
         "actual results and can then plan every remaining step, referencing the lookups "
@@ -164,8 +165,8 @@ def build_planner_prompt(registry: SkillRegistry, *, two_phase: bool = False) ->
         'To act on EVERY item a step returned, put "*" where the list index goes: '
         '{"from": <index>, "path": "items.*.id"} — the step then runs once per item.\n'
         "  The path depends on what that step returns — pick the matching shape:\n"
-        '  - search, list_items, list_trash return {"items": [{"id", "name", "item_type", ...}], '
-        '"total": N} → use "items.0.id" (or "items.*.id").\n'
+        '  - search, find_folder, list_items, list_trash return {"items": [{"id", "name", '
+        '"item_type", ...}], "total": N} → use "items.0.id" (or "items.*.id").\n'
         '  - recent returns a plain list of items → use "0.id" (or "*.id").\n'
         "  - get_info, create_folder, rename_item, move_item, star_item, trash_item, "
         "restore_item return the ITEM ITSELF, "
@@ -174,25 +175,28 @@ def build_planner_prompt(registry: SkillRegistry, *, two_phase: bool = False) ->
         '  (b) the user\'s current file selection: {"from": "selection", "item": <i>} for one '
         'selected file, or {"from": "selection", "each": true} to act on EVERY selected file '
         "(the step runs once per file; the other arguments are copied to each).\n"
-        "- Never guess or write a UUID. To act on something you only know by name (e.g. a "
-        "folder), search for it first, then reference the result. To act on the user's selected "
-        "file(s), use a selection reference — do NOT ask which file.\n"
+        "- Never guess or write a UUID. To act on something you only know by name, look it up "
+        "first and reference the result: use find_folder for a FOLDER (exact name, and it will "
+        "tell the user when there is no such folder or more than one), and search for a file. "
+        "Never use search to get a folder id — it matches file contents too and returns items in "
+        "name order, so its first result is often a file or the wrong folder. To act on the "
+        "user's selected file(s), use a selection reference — do NOT ask which file.\n"
         "- Trashed items are NOT returned by search or list_items. To restore something from the "
         'trash, use list_trash (pass "q" to filter by name) and reference ITS result — never '
         "search for a trashed item. Example — restore the folder named test3 from trash: "
         '[{"skill": "list_trash", "arguments": {"q": "test3"}}, {"skill": "restore_item", '
         '"arguments": {"item_id": {"from": 0, "path": "items.0.id"}}}].\n'
         '  Example — "what is in the test folder": '
-        '[{"skill": "search", "arguments": {"q": "test"}}, {"skill": "list_items", "arguments": '
-        '{"parent_id": {"from": 0, "path": "items.0.id"}}}].\n'
+        '[{"skill": "find_folder", "arguments": {"name": "test"}}, {"skill": "list_items", '
+        '"arguments": {"parent_id": {"from": 0, "path": "items.0.id"}}}].\n'
         '  Example — "move the selected files into test2": '
-        '[{"skill": "search", "arguments": {"q": "test2"}}, {"skill": "move_item", "arguments": '
-        '{"item_id": {"from": "selection", "each": true}, '
+        '[{"skill": "find_folder", "arguments": {"name": "test2"}}, {"skill": "move_item", '
+        '"arguments": {"item_id": {"from": "selection", "each": true}, '
         '"parent_id": {"from": 0, "path": "items.0.id"}}}].\n'
         '  Example — "delete everything in the test folder": '
-        '[{"skill": "search", "arguments": {"q": "test"}}, {"skill": "list_items", "arguments": '
-        '{"parent_id": {"from": 0, "path": "items.0.id"}}}, {"skill": "trash_item", "arguments": '
-        '{"item_id": {"from": 1, "path": "items.*.id"}}}].\n'
+        '[{"skill": "find_folder", "arguments": {"name": "test"}}, {"skill": "list_items", '
+        '"arguments": {"parent_id": {"from": 0, "path": "items.0.id"}}}, {"skill": "trash_item", '
+        '"arguments": {"item_id": {"from": 1, "path": "items.*.id"}}}].\n'
         f"{followup_rule}"
         "- Output JSON only, no prose, no code fences.\n\n"
         "Available skills:\n"
@@ -302,12 +306,6 @@ def _parse(content: str) -> PlanResult | None:
         return None
 
 
-# Arguments that must name a folder to put something *into*. Referencing a step
-# that returns "the item I just changed" here is the mis-numbering signature
-# described in _reference_problems.
-_DESTINATION_ARGS = frozenset({"parent_id"})
-
-
 def _path_head(path: str) -> str:
     """First segment of a reference path (``"items.0.id"`` → ``"items"``)."""
 
@@ -366,7 +364,7 @@ def _reference_problems(
             f"('{source.name}') with path '{path}', but that step returns the item "
             f'itself — use "{field}"'
         )
-    if arg_name in _DESTINATION_ARGS and source.output is SkillOutput.MUTATED_ITEM:
+    if arg_name in DESTINATION_ARGS and source.output is SkillOutput.MUTATED_ITEM:
         problems.append(
             f"step {index}: argument '{arg_name}' must be a folder, but it references "
             f"step {from_step} ('{source.name}'), which returns the item that step "

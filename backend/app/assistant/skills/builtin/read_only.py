@@ -13,7 +13,7 @@ from app.assistant.skills.registry import (
     SkillRegistry,
 )
 from app.core.error_codes import ErrorCode
-from app.core.exceptions import AppError
+from app.core.exceptions import AppError, InvalidOperationError, NotFoundError
 from app.drive.schemas import DriveItemSortField
 from app.drive.service import DriveService
 from app.schemas.common import SortOrder
@@ -57,6 +57,18 @@ def build_read_only_registry(
             page_size=_int_arg(args, "page_size", default=20, min_value=1, max_value=200),
         )
         return _dump(page)
+
+    async def find_folder(context: SkillContext, args: Mapping[str, Any]) -> Any:
+        name = _required_str(args, "name")
+        page = await search_service.search(
+            context.user_id,
+            name,
+            item_type="FOLDER",
+            page=1,
+            page_size=_FIND_FOLDER_PAGE_SIZE,
+        )
+        candidates, total = _paged_items(_dump(page))
+        return _exactly_one_folder(name, candidates, total)
 
     async def recent(context: SkillContext, args: Mapping[str, Any]) -> Any:
         items = await drive_service.get_recent(
@@ -115,7 +127,13 @@ def build_read_only_registry(
     registry.register(
         RegisteredSkill(
             name="search",
-            description="Search the user's drive items by name.",
+            description=(
+                "Fuzzy search: matches a substring of the item's name AND the indexed "
+                "text content of files. Results are ordered by name, so the first one "
+                "is NOT the best match — never assume items.0 is the item the user "
+                "meant. To get a folder's id from its name, use find_folder instead. "
+                "Returns {items:[{id, name, item_type, ...}], total}."
+            ),
             parameters=_object_schema(
                 {
                     "q": {"type": "string"},
@@ -128,6 +146,28 @@ def build_read_only_registry(
             ),
             permission_tier="read",
             handler=search,
+            output=SkillOutput.PAGED_ITEMS,
+        )
+    )
+    registry.register(
+        RegisteredSkill(
+            name="find_folder",
+            description=(
+                "Resolve a FOLDER by its exact name (case-insensitive). Use this — not "
+                "search — whenever you need a folder's id from its name, e.g. to list "
+                "it, to move something into it, or to empty it. Folders only: a file "
+                "with the same name is never returned. It does NOT silently pick one: "
+                "if no folder has that name, or several do, or there are too many "
+                "candidates to compare, the step fails with a message saying so. "
+                "Returns {items:[{id, name, ...}], total: 1} → reference it as "
+                '"items.0.id".'
+            ),
+            parameters=_object_schema(
+                {"name": {"type": "string", "description": "Exact folder name."}},
+                required=["name"],
+            ),
+            permission_tier="read",
+            handler=find_folder,
             output=SkillOutput.PAGED_ITEMS,
         )
     )
@@ -186,6 +226,101 @@ def _object_schema(
         "required": required or [],
         "additionalProperties": False,
     }
+
+
+# The largest page ``search`` accepts. A name lookup that only saw the first 20
+# rows would answer "no such folder" while the folder sat on row 21; the total
+# that comes back with the page is also what makes the "too many candidates to
+# compare" case detectable at all (see _exactly_one_folder).
+_FIND_FOLDER_PAGE_SIZE = 200
+# How many candidate names a failure message lists before it stops.
+_LISTED_CANDIDATES = 5
+
+
+def _paged_items(output: Any) -> tuple[list[dict[str, Any]], int]:
+    """Split a ``{"items": [...], "total": N}`` payload into its two parts.
+
+    Reads the *dumped* payload rather than the ``Page`` model, so it works for
+    any search implementation returning the documented shape — the eval
+    harness substitutes a plain dict for the real service.
+    """
+
+    if not isinstance(output, dict):
+        return [], 0
+    items = [item for item in output.get("items") or [] if isinstance(item, dict)]
+    total = output.get("total")
+    return items, total if isinstance(total, int) else len(items)
+
+
+def _same_name(candidate: Any, name: str) -> bool:
+    """Deliberately *not* the drive's own notion of the same name.
+
+    ``DriveRepository.name_exists_in_parent`` compares case-sensitively
+    (``DriveItem.name == name``), so "Reports" and "reports" can legitimately
+    sit side by side in one folder. A person asking for "reports" means either
+    of them, so the match here is case-insensitive — and the divergence is
+    safe in this direction: two case variants come back as *ambiguous*, which
+    asks the user, rather than as a silent pick.
+    """
+
+    return isinstance(candidate, str) and candidate.strip().casefold() == name.casefold()
+
+
+def _candidate_labels(items: list[dict[str, Any]]) -> str:
+    """Name (and modified date, when known) of each candidate, for a message the
+    user has to choose from. Ids stay out: a UUID tells the user nothing."""
+
+    labels: list[str] = []
+    for item in items[:_LISTED_CANDIDATES]:
+        label = str(item.get("name", ""))
+        updated = item.get("updated_at")
+        if isinstance(updated, str) and updated:
+            label += f"(最後更新 {updated[:10]})"
+        labels.append(label)
+    tail = f" 等 {len(items)} 個" if len(items) > _LISTED_CANDIDATES else ""
+    return "、".join(labels) + tail
+
+
+def _exactly_one_folder(name: str, candidates: list[dict[str, Any]], total: int) -> Any:
+    """The one folder named ``name``, or an AppError the user can act on.
+
+    Every failure is raised rather than returned as an empty page. A step that
+    hands back ``{"items": []}`` merely moves the failure downstream, where a
+    reference to ``items.0.id`` dies with ``cannot resolve path`` — an internal
+    string the user can do nothing with. The wording matters because it *is*
+    what the user reads: the failure report quotes ``StepResult.error``
+    verbatim.
+
+    Several matches are a failure too. Picking one would be picking on the
+    user's behalf, and ``ORDER BY name`` makes "the first one" alphabetical
+    rather than best — precisely the blind ``items.0`` this skill exists to
+    replace.
+    """
+
+    if total > _FIND_FOLDER_PAGE_SIZE:
+        raise InvalidOperationError(
+            f"名稱含有「{name}」的資料夾有 {total} 個,超過一次能比對的上限"
+            f"({_FIND_FOLDER_PAGE_SIZE} 個),無法判斷是哪一個。請給更完整的名稱。"
+        )
+    folders = [item for item in candidates if _is_folder(item)]
+    matches = [item for item in folders if _same_name(item.get("name"), name)]
+    if not matches:
+        hint = f"名稱含有「{name}」的資料夾有:{_candidate_labels(folders)}。" if folders else ""
+        raise NotFoundError(f"找不到名為「{name}」的資料夾。{hint}")
+    if len(matches) > 1:
+        raise InvalidOperationError(
+            f"有 {len(matches)} 個資料夾都叫「{name}」:{_candidate_labels(matches)}。"
+            "請告訴我要用哪一個。"
+        )
+    return {"items": matches, "total": len(matches)}
+
+
+def _is_folder(item: Mapping[str, Any]) -> bool:
+    """Belt and braces: ``search`` was already asked for FOLDER only, but the
+    whole point of this skill is that a file must never be handed back as a
+    destination folder."""
+
+    return str(item.get("item_type", "")).upper() == "FOLDER"
 
 
 def _dump(value: Any) -> Any:
