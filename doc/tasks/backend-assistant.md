@@ -350,3 +350,44 @@ a folder`）。目前 `validate_plan` 只檢查「引用必須指向更早的步
 - [x] 單元測試 3 案：參數被拒、乾淨參數不受影響、只有 reply 會被清。
 - [x] 真模型驗證：同 20 案 rename 情境（遠端 gateway）**4/20 → 14/20**，`<0xNN>` 寫進資料庫 **10 → 0**。
 - [ ] **仍未解**：殘餘失敗改用合法字元把年份寫壞（`合約_20 .26`、`旅遊_20    6`、`會議記錄_20ASS`），文字本身無從判斷對錯。只能靠換模型——gemma4:12b 同批 298 案例／13,284 個檢查項／325 個名稱掃描，三類損壞皆 0 筆。
+
+## 用名稱指到資料夾：`find_folder` 技能（2026-08-01）
+
+> 背景：規劃器要表達「名為 X 的資料夾」時，手上只有 `search`（名稱子字串 **＋檔案內容**
+> 比對、`ORDER BY name`），而引用語法只有位置索引 `items.0.id`。兩者相接的實際語意是
+> 「按字母序盲抽第一筆」，已實證兩種失敗：第一筆是**檔案** → 執行期
+> `Destination must be a folder`；搜尋 **0 筆** → 執行期
+> `argument 'parent_id': cannot resolve path 'items.0.id' from step 0`。
+> `list_trash` 有 `q` 名稱過濾，活著的硬碟卻沒有等價物——缺的是「名稱→項目」這一層解析。
+
+**設計要點**：0 筆／多筆／候選過多一律**丟出帶人話訊息的 `AppError`**，不是回空清單。
+理由：回空清單只會把失敗往下游推，下游引用 `items.0.id` 時炸出的就是使用者看不懂的
+`cannot resolve path`；而 `_compose_failure_message` 是把 `StepResult.error` 原文轉述給
+使用者的，所以錯誤訊息本身就是使用者看到的句子。多筆同名時**不得自行挑一筆**——挑選是
+使用者的決定，技能只負責把候選列出來。
+
+- [ ] `app/assistant/skills/builtin/read_only.py`：新增 `find_folder`（參數 `{"name": string}`、
+      `permission_tier="read"`、`output=SkillOutput.PAGED_ITEMS`）。走既有
+      `search_service.search(q=name, item_type="FOLDER", page_size=200)` 取候選，再於技能內做
+      **不分大小寫的精確名稱比對**與 `item_type == "FOLDER"` 防禦性過濾。
+- [ ] `read_only.py`：修正 `search` 的 description——現寫 "by name"，實際還會比對**檔案內容**
+      且結果依名稱排序（第一筆不是最佳匹配）。
+- [ ] `planner.py`：三個範例（`what is in the test folder`／`move the selected files into
+      test2`／`delete everything in the test folder`）改成先呼叫 `find_folder` 再引用其結果；
+      輸出形狀對照表與 `needs_followup` 的唯讀技能清單同步加入 `find_folder`。
+- [ ] `tests/assistant/test_find_folder.py`：每條驗收條件至少一案。
+- [ ] `tests/assistant/test_planner.py`：提示詞相關斷言同步（範例改用 `find_folder`、
+      形狀對照表含 `find_folder`）。
+
+**驗收條件**
+
+- [ ] 唯一命中 → 回 1 筆，`items.0.id` 指向該資料夾。
+- [ ] 命中 0 筆 → 錯誤訊息是使用者看得懂的句子（「找不到名為 X 的資料夾」），
+      **不得**出現 `cannot resolve path` 這類內部字串。
+- [ ] 命中多筆 → 訊息列出候選並請使用者指定，不得自行挑一筆。
+- [ ] 候選總數超過 `page_size`（實測資料庫裡有 266 個同名資料夾）→ 明確回報過多，
+      不得截斷後假裝唯一。
+- [ ] 檔案永不出現在結果中，即使檔名完全相同。
+- [ ] 既有 `search` 技能行為完全未變（回歸測試綠）。
+- [ ] eval 基準重跑（**prompt 改動會影響**，不可沿用 2026-07-30 那批數字作比較，需標明
+      改動前／後兩組）。屬 assistant-eval 模組，由使用者決定何時跑。
