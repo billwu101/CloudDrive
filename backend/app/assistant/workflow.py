@@ -9,6 +9,7 @@ from app.assistant.hooks import HookContext, HookRegistry
 from app.assistant.skills.registry import SkillContext, SkillRegistry
 
 READ_TIER = "read"
+DESTINATION_ARGS = frozenset({"parent_id"})
 
 
 class PlannedStep(BaseModel):
@@ -238,6 +239,31 @@ def _resolve_path(output: Any, path: str) -> Any:
     return current
 
 
+def _destination_problem(arg_name: str, item: Any) -> str | None:
+    """Describe a known non-folder destination; opaque values pass through."""
+
+    if arg_name not in DESTINATION_ARGS or not isinstance(item, dict):
+        return None
+    item_type = item.get("item_type")
+    if item_type is None:
+        return None
+    type_value = getattr(item_type, "value", item_type)
+    if str(type_value).upper() == "FOLDER":
+        return None
+    name = item.get("name") or "未命名項目"
+    type_label = "檔案" if str(type_value).upper() == "FILE" else str(type_value)
+    return f"目的地「{name}」是{type_label}、不是資料夾。請選擇資料夾作為目的地。"
+
+
+def _reference_parent(output: Any, path: str) -> Any:
+    """Resolve the object containing the referenced leaf value."""
+
+    parts = [part for part in path.split(".") if part]
+    if not parts:
+        return None
+    return _resolve_path(output, ".".join(parts[:-1]))
+
+
 def resolve_arguments(
     arguments: dict[str, Any],
     results_by_index: dict[int, StepResult],
@@ -258,6 +284,9 @@ def resolve_arguments(
             )
         try:
             resolved[key] = _resolve_path(source.output, path)
+            problem = _destination_problem(key, _reference_parent(source.output, path))
+            if problem is not None:
+                raise StepResolutionError(problem)
         except (KeyError, IndexError, ValueError, TypeError) as exc:
             raise StepResolutionError(
                 f"argument '{key}': cannot resolve path '{path}' from step {from_step}"
@@ -341,6 +370,9 @@ def resolve_fanout_arguments(
                 continue
             try:
                 row[key] = _resolve_path(element, post)
+                problem = _destination_problem(key, _reference_parent(element, post))
+                if problem is not None:
+                    raise StepResolutionError(problem)
             except (KeyError, IndexError, ValueError, TypeError) as exc:
                 raise StepResolutionError(
                     f"argument '{key}': cannot resolve '{post}' on element {i}"

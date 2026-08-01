@@ -12,6 +12,7 @@ from app.assistant.llm.client import LLMMessage, LLMResponse
 from app.assistant.llm.router import ModelRouter
 from app.assistant.skills.registry import RegisteredSkill, SkillOutput, SkillRegistry
 from app.assistant.workflow import (
+    DESTINATION_ARGS,
     PlannedStep,
     is_reference,
     is_step_ref,
@@ -305,12 +306,6 @@ def _parse(content: str) -> PlanResult | None:
         return None
 
 
-# Arguments that must name a folder to put something *into*. Referencing a step
-# that returns "the item I just changed" here is the mis-numbering signature
-# described in _reference_problems.
-_DESTINATION_ARGS = frozenset({"parent_id"})
-
-
 def _path_head(path: str) -> str:
     """First segment of a reference path (``"items.0.id"`` → ``"items"``)."""
 
@@ -369,7 +364,7 @@ def _reference_problems(
             f"('{source.name}') with path '{path}', but that step returns the item "
             f'itself — use "{field}"'
         )
-    if arg_name in _DESTINATION_ARGS and source.output is SkillOutput.MUTATED_ITEM:
+    if arg_name in DESTINATION_ARGS and source.output is SkillOutput.MUTATED_ITEM:
         problems.append(
             f"step {index}: argument '{arg_name}' must be a folder, but it references "
             f"step {from_step} ('{source.name}'), which returns the item that step "

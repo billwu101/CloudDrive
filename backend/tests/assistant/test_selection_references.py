@@ -13,6 +13,7 @@ from app.assistant.workflow import (
     PlannedStep,
     StepResolutionError,
     StepResult,
+    WorkflowExecutor,
     apply_selection,
     has_fanout,
     has_selection_reference,
@@ -224,6 +225,65 @@ def test_resolve_arguments_handles_unified_and_legacy_step_refs() -> None:
     assert legacy["parent_id"] == "X"
 
 
+def test_resolve_arguments_rejects_file_destination_with_name() -> None:
+    source = {
+        0: StepResult(
+            index=0,
+            skill="search",
+            ok=True,
+            output={"items": [{"id": "FILE-ID", "name": "budget.xlsx", "item_type": "FILE"}]},
+        )
+    }
+
+    with pytest.raises(StepResolutionError, match=r"budget.xlsx.*檔案"):
+        resolve_arguments({"parent_id": {"from": 0, "path": "items.0.id"}}, source)
+
+
+def test_resolve_arguments_allows_folder_destination() -> None:
+    source = {
+        0: StepResult(
+            index=0,
+            skill="search",
+            ok=True,
+            output={"items": [{"id": "FOLDER-ID", "name": "Archive", "item_type": "FOLDER"}]},
+        )
+    }
+
+    resolved = resolve_arguments({"parent_id": {"from": 0, "path": "items.0.id"}}, source)
+
+    assert resolved["parent_id"] == "FOLDER-ID"
+
+
+def test_resolve_arguments_allows_destination_with_unknown_type() -> None:
+    source = {
+        0: StepResult(
+            index=0,
+            skill="custom_lookup",
+            ok=True,
+            output={"items": [{"id": "OPAQUE-ID", "name": "opaque result"}]},
+        )
+    }
+
+    resolved = resolve_arguments({"parent_id": {"from": 0, "path": "items.0.id"}}, source)
+
+    assert resolved["parent_id"] == "OPAQUE-ID"
+
+
+def test_resolve_arguments_does_not_type_check_non_destination_argument() -> None:
+    source = {
+        0: StepResult(
+            index=0,
+            skill="search",
+            ok=True,
+            output={"items": [{"id": "FILE-ID", "name": "budget.xlsx", "item_type": "FILE"}]},
+        )
+    }
+
+    resolved = resolve_arguments({"item_id": {"from": 0, "path": "items.0.id"}}, source)
+
+    assert resolved["item_id"] == "FILE-ID"
+
+
 # --- validate_plan: selection refs accepted, bad step refs rejected -------
 
 
@@ -308,8 +368,6 @@ def test_resolve_fanout_non_list_raises() -> None:
 
 
 async def test_executor_runs_fanout_skill_once_per_item() -> None:
-    from app.assistant.workflow import WorkflowExecutor
-
     trashed: list[str] = []
     registry = SkillRegistry()
 
@@ -351,6 +409,97 @@ async def test_executor_runs_fanout_skill_once_per_item() -> None:
     assert trashed == ["a", "b"]  # ran once per listed file
     assert results[1].ok is True
     assert results[1].output == {"items": [{"trashed": "a"}, {"trashed": "b"}], "count": 2}
+
+
+async def test_executor_rejects_file_destination_before_write_executes() -> None:
+    writes: list[Mapping[str, Any]] = []
+    registry = SkillRegistry()
+
+    async def _search(ctx: object, args: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "items": [{"id": "FILE-ID", "name": "annual-report.pdf", "item_type": "FILE"}],
+            "total": 1,
+        }
+
+    async def _move(ctx: object, args: Mapping[str, Any]) -> None:
+        writes.append(args)
+
+    registry.register(
+        RegisteredSkill(
+            name="search", description="", parameters={}, permission_tier="read", handler=_search
+        )
+    )
+    registry.register(
+        RegisteredSkill(
+            name="move_item", description="", parameters={}, permission_tier="write", handler=_move
+        )
+    )
+    steps = classify_steps(
+        [
+            PlannedStep(skill="search"),
+            PlannedStep(
+                skill="move_item",
+                arguments={"item_id": "SOURCE-ID", "parent_id": {"from": 0, "path": "items.0.id"}},
+                depends_on=[0],
+            ),
+        ],
+        registry,
+    )
+
+    results = await WorkflowExecutor(registry=registry).execute(user_id=uuid4(), steps=steps)
+
+    assert writes == []
+    assert results[1].ok is False
+    assert "annual-report.pdf" in str(results[1].error)
+    assert "檔案" in str(results[1].error)
+
+
+async def test_fanout_validates_every_destination_before_any_write_executes() -> None:
+    writes: list[Mapping[str, Any]] = []
+    registry = SkillRegistry()
+
+    async def _search(ctx: object, args: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "items": [
+                {"id": "FOLDER-ID", "name": "Archive", "item_type": "FOLDER"},
+                {"id": "FILE-ID", "name": "notes.txt", "item_type": "FILE"},
+            ],
+            "total": 2,
+        }
+
+    async def _move(ctx: object, args: Mapping[str, Any]) -> None:
+        writes.append(args)
+
+    registry.register(
+        RegisteredSkill(
+            name="search", description="", parameters={}, permission_tier="read", handler=_search
+        )
+    )
+    registry.register(
+        RegisteredSkill(
+            name="move_item", description="", parameters={}, permission_tier="write", handler=_move
+        )
+    )
+    steps = classify_steps(
+        [
+            PlannedStep(skill="search"),
+            PlannedStep(
+                skill="move_item",
+                arguments={
+                    "item_id": "SOURCE-ID",
+                    "parent_id": {"from": 0, "path": "items.*.id"},
+                },
+                depends_on=[0],
+            ),
+        ],
+        registry,
+    )
+
+    results = await WorkflowExecutor(registry=registry).execute(user_id=uuid4(), steps=steps)
+
+    assert writes == []
+    assert results[1].ok is False
+    assert "notes.txt" in str(results[1].error)
 
 
 def test_validate_plan_still_rejects_forward_step_reference() -> None:
