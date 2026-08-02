@@ -526,15 +526,15 @@ const S = () => {
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 13, title: "實測結果：規劃可靠度與多輪記憶",
+    sec: "C", no: 13, title: "實測結果：現行基準與多輪記憶",
   });
   statRow(s, {
     x: M, y: y + 0.16, w: CW, h: 1.45,
     stats: [
-      { value: "92.4s → 8.6s", label: "平均規劃延遲\n（關閉 thinking 後）", color: C.BLUE, size: 22 },
-      { value: "400 × 3", label: "E9 全量實測\n逐 run 全過", color: C.MOSS },
-      { value: "15 / 15", label: "多輪記憶\n三案例綜合通過", color: C.VIOLET },
-      { value: "0", label: "修復後\n重複生成樣本數", color: C.AMBER },
+      { value: "387 / 420", label: "現行基準通過率\ngemma4:26b · runs=3", color: C.MOSS },
+      { value: "95 / 120", label: "EC2 最弱一層\n寫入意圖仍是瓶頸", color: C.ROSE },
+      { value: "45", label: "不穩定案例\n三次跑批有對有錯", color: C.AMBER },
+      { value: "92.4s → 8.6s", label: "平均規劃延遲\n（關閉 thinking 後）", color: C.BLUE, size: 20 },
     ],
   });
 
@@ -552,11 +552,11 @@ const S = () => {
       ["multiturn-recall-listed-names", "僅從對話報出全部三個名稱（嚴格回想案例）", "修復前 0 / 5 → 修復後 5 / 5"],
     ],
   });
-  s.addText("早期系統雖把對話寫入資料庫，但規劃器只收到當前訊息，導致多輪指涉失效。修正：載入最近 N 則歷史給規劃器、以助理文字承載工具執行結果、確認執行後把結果摘要寫回對話。", {
-    x: M, y: ty + 2.28, w: CW, h: 0.6,
+  s.addText("「嚴格回想」案例的必要性：間接案例只證明模型用到了歷史中的某個 item_id，無法證明它真的記得內容——嚴格回想才揭露了記憶保真問題。", {
+    x: M, y: ty + 2.3, w: CW, h: 0.42,
     fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.2, valign: "top",
   });
-  footnote(s, "為什麼要有「嚴格回想」案例：間接案例只證明模型用到了歷史中的某個 item_id，無法證明它真的記得內容——嚴格回想才揭露了記憶保真問題。", { accent: C.VIOLET });
+  footnote(s, "基準取捨：2026-07-30 判分語意變更後舊通過率一律作廢，本頁採重建後的 387/420。另一份「400×3 逐 run 全過」的數據在未合併分支 eval/e9-objective-metrics，判分語意較寬，故不採用。", { accent: C.VIOLET });
 }
 
 /* ══════════════ 14 · D Gemma4APIServer（07-gateway）══════════════ */
@@ -686,7 +686,7 @@ const S = () => {
   });
 
   s.addText("LOG   即時連線（2xx 綠 / 4xx 黃 / 5xx 紅）", { x: ix, y: py + 3.54, w: 5.4, h: 0.28, fontFace: MONO, fontSize: FS, bold: true, color: NEON.cyan, valign: "middle" });
-  ["00:33:45", "00:45:55"].forEach((t, i) => {
+  ["10:33:45", "10:45:55"].forEach((t, i) => {
     s.addText(t + "  INFO  POST /v1/chat/completions  200", {
       x: ix, y: py + 3.82 + i * 0.25, w: iw, h: 0.25,
       fontFace: MONO, fontSize: FS, color: NEON.green, valign: "middle",
@@ -786,7 +786,7 @@ const S = () => {
       { value: "28 / 28", label: "核心模組\n前後端與整合驗收", color: C.BLUE },
       { value: "3 / 3", label: "AI 助理\n引擎、面板、評測", color: C.VIOLET },
       { value: "1 / 1", label: "時光機\n資料層到前端五階段", color: C.AMBER },
-      { value: "32 / 33", label: "總計\n外部模型尚有部分待補", color: C.MOSS },
+      { value: "33 / 33", label: "模組總計\n對齊 progress.md", color: C.MOSS },
     ],
   });
   footnote(s, "定位：以隱私與資料主權為前提，把「完整檔案管理」與「可自我擴充的本地 AI 助理」放進同一個可自架的系統。", { y: H - 1.42, h: 0.6, accent: C.MOSS, bold: true });
@@ -919,7 +919,7 @@ const S = () => {
     x: M, y: y + 1.74, w: CW, h: 1.62,
     stats: [
       { value: "39", label: "條 DEC 決策紀錄\n每個決定可追溯、可質疑、可翻案", color: C.BLUE },
-      { value: "618 + 40", label: "單元測試 + 整合測試\n全綠，無隱藏 skip／xfail", color: C.MOSS },
+      { value: "1,389", label: "測試全綠\n後端 955+73 · 前端 361", color: C.MOSS },
       { value: "8", label: "項完成定義\n全數通過才算完成", color: C.VIOLET },
       { value: "18", label: "個 fix（W18 單週）\n全來自實機操作驗證", color: C.AMBER },
     ],
@@ -944,7 +944,7 @@ const S = () => {
     ["摸索", "W4–10", "4/13 – 5/31", "段考 2 週 + 專題方向討論 5 週；釐清前後端與資料庫的關係、整理 AI 輔助開發流程；題目從購物網站換到 CloudDrive", C.MOSS],
     ["起步", "W11–12", "6/1 – 6/14", "Caddy + Cloudflare DNS 憑證，打通 HTTPS 反向代理；6/13 一天建立 28 模組骨架，6/14 認證流程與批次選取", C.VIOLET],
     ["爆發", "W13–14", "6/15 – 6/28", "AI 助理 Harness（6/17 單日 46 commits）、時光機、全文與語意搜尋、外部模型 OpenAI／Codex 接入、文件重構 + CI/CD 落地", C.ROSE],
-    ["收斂", "W16–18", "7/6 – 7/26", "detailed-design 拆模組、需求↔設計對齊；分片續傳上傳、公開分享連結、CD 端加入 Cloudflare Tunnel；W18 單週 66 commits + 簡報製作", C.AMBER],
+    ["收斂", "W15–18", "6/29 – 7/26", "harness 歸類文件與 CLAUDE.md 規則強化；detailed-design 拆模組、需求↔設計對齊；分片續傳、公開分享連結、CD 加 Tunnel；W18 單週 66 commits", C.AMBER],
   ];
   phases.forEach(([t, wk, dt, desc, col], i) => {
     const yy = y + 0.2 + i * 0.8;
@@ -974,7 +974,7 @@ const S = () => {
   statRow(s, {
     x: M, y: y + 4.3, w: CW, h: 1.18,
     stats: [
-      { value: "223", label: "commits / 9 天\n（6/13 – 6/21）", color: C.BLUE },
+      { value: "224", label: "commits / 9 天\n（6/13 – 6/21）", color: C.BLUE },
       { value: "46", label: "單日最高\n（6/17 · AI 助理）", color: C.ROSE },
       { value: "66", label: "W18 單週 commits\n18 feat · 18 fix · 13 docs", color: C.AMBER },
       { value: "28 + 3", label: "核心模組 + 擴充系統\n39 條 DEC 決策", color: C.MOSS },
