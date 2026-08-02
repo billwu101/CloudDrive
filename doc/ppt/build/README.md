@@ -1,10 +1,10 @@
-# 簡報產生器（v2.0）
+# 簡報產生器（v3.0）
 
-`CloudDrive_專題報告_v2.0.pptx` 由本目錄的腳本產生，圖片取自 `doc/ppt/*.png`。
+`CloudDrive_專題報告_v3.0.pptx` 由本目錄的腳本產生，圖片取自 `doc/ppt/*.png`。
 
 ```bash
 npm i pptxgenjs
-node build.js "CloudDrive_專題報告_v2.0.pptx"
+node build.js "CloudDrive_專題報告_v3.0.pptx"
 ```
 
 - `theme.js`　設計 token（配色、字級、版面常數）。內文字級下限 15pt。
@@ -14,6 +14,6 @@ node build.js "CloudDrive_專題報告_v2.0.pptx"
 視覺驗收：
 
 ```bash
-soffice --headless --convert-to pdf --outdir qa "CloudDrive_專題報告_v2.0.pptx"
-pdftoppm -r 90 -png "qa/CloudDrive_專題報告_v2.0.pdf" qa/p
+soffice --headless --convert-to pdf --outdir qa "CloudDrive_專題報告_v3.0.pptx"
+pdftoppm -r 90 -png "qa/CloudDrive_專題報告_v3.0.pdf" qa/p
 ```

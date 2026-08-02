@@ -21,7 +21,7 @@ const pptx = new PptxGenJS();
 pptx.layout = "LAYOUT_WIDE";
 pptx.author = "billwu101";
 pptx.company = "NTUST";
-pptx.title = "CloudDrive 專題報告 v2.0";
+pptx.title = "CloudDrive 專題報告 v3.0";
 
 const S = () => {
   const s = pptx.addSlide();
@@ -71,7 +71,7 @@ const S = () => {
     x: 1.15, y: 5.85, w: 11.0, h: 0.36,
     fontFace: FONT, fontSize: 16, color: C.MUTED, valign: "middle",
   });
-  s.addText("v2.0", {
+  s.addText("v3.0", {
     x: W - M - 1.2, y: 6.55, w: 1.2, h: 0.32,
     fontFace: FONT_NUM, fontSize: 14, color: C.LINE, align: "right", valign: "middle",
   });
@@ -110,10 +110,10 @@ const S = () => {
       ["D", "模型服務層", "14 – 16", "Gemma4APIServer 獨立專案"],
     ]],
     ["3", "交付、方法與回顧", C.AMBER, [
-      ["E", "部署", "17 – 19", "四節點 · Docker/CI-CD · 三環境差異"],
-      ["F", "定位", "20", "競品比較 · 完成度"],
-      ["V", "Vibe Coding", "21 – 23", "兩次事故 · 規則體系 · 驗證"],
-      ["G", "學習歷程", "24 – 25", "18 週軌跡 · 踩坑回顧"],
+      ["E", "部署", "17 – 20", "四節點 · Docker/CI-CD · 環境差異 · 實戰"],
+      ["F", "定位", "21", "競品比較 · 完成度"],
+      ["V", "Vibe Coding", "22 – 24", "兩次事故 · 規則體系 · 驗證"],
+      ["G", "學習歷程", "25 – 26", "18 週軌跡 · 踩坑回顧"],
     ]],
   ];
   const cw = (CW - 0.44) / 3;
@@ -159,7 +159,7 @@ const S = () => {
       ry += 0.86;
     });
   });
-  footnote(s, "時間有限可直接看 P.12–13（穩定性三部曲與實測數據）與 P.21–23（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.26 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
+  footnote(s, "時間有限可直接看 P.12–13（穩定性三部曲與實測數據）與 P.22–24（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.27 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
 }
 
 /* ══════════════ 03 · A 問題與定位 ══════════════ */
@@ -806,11 +806,66 @@ const S = () => {
   footnote(s, "唯一只出現在正式環境的變數是 TUNNEL_TOKEN —— 對外曝露是正式環境獨有的能力，本機與 CI 都不該擁有。", { accent: C.BLUE, h: 0.62 });
 }
 
-/* ══════════════ 20 · F 競品比較與定位 ══════════════ */
+/* ══════════════ 20 · E 部署實戰與安全設計 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "F", no: 20, title: "競品比較與定位",
+    sec: "E", no: 20, title: "部署實戰：自架 runner 與最小權限設計",
+    sub: "2026-07-11 首次上線　·　Ubuntu 24.04　·　CI 與 CD 刻意分離在兩種 runner 上。",
+  });
+
+  statRow(s, {
+    x: M, y: y + 0.14, w: CW, h: 1.12,
+    stats: [
+      { value: "4", label: "正式環境容器", color: C.BLUE },
+      { value: "60s", label: "健康檢查輪詢上限\n逾時自動回滾", color: C.MOSS },
+      { value: "40", label: "字元 SHA 當映像 tag\n不使用 latest", color: C.VIOLET },
+      { value: "1", label: "runner 可用的 sudo 指令\n且該腳本不可寫", color: C.ROSE },
+    ],
+  });
+
+  const yy = y + 1.40;
+  card(s, {
+    x: M, y: yy, w: 7.3, h: 2.78, accent: C.BLUE, title: "deploy-cloud-drive 每次做的事",
+    items: [
+      "驗證參數是 40 字元 SHA，且該 SHA 在 main 歷史上",
+      "自我同步：從 repo@SHA 取最新版腳本，原子替換後由新版接手",
+      "同步 compose.prod.yml，部署拓撲隨程式碼落地",
+      ".env 漂移檢查：只警告主機缺少的鍵，不同步值",
+      "pull → up -d → 輪詢 /health；失敗自動回滾上一版",
+    ],
+  });
+  card(s, {
+    x: M + 7.5, y: yy, w: CW - 7.5, h: 2.78, accent: C.ROSE, title: "最小權限",
+    items: [
+      "專用非 root 帳號 gha-runner",
+      "sudoers 只授權「呼叫」單一腳本",
+      "腳本置於 /usr/local/sbin，runner 不可寫",
+      ".env 為 root:root 600，永不進 Git",
+      "能改 workspace 腳本的 PR ＝ 拿到主機 root",
+    ],
+  });
+
+  const by = yy + 2.92;
+  s.addShape("roundRect", {
+    x: M, y: by, w: CW, h: 1.05, rectRadius: 0.05,
+    fill: { color: C.TINT }, line: { color: C.AMBER, width: 1.2 },
+  });
+  s.addText("踩過的坑：postgres 永遠 unhealthy，但容器內的環境變數其實是好的（PR #8）", {
+    x: M + 0.26, y: by + 0.09, w: CW - 0.52, h: 0.32,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  s.addText("compose 的 --env-file 是「取代」預設插值來源而非疊加。腳本只傳了僅含 IMAGE_TAG 的狀態檔，healthcheck 的 ${POSTGRES_USER} 遂成空字串——容器內部由 env_file 注入的變數其實完全正常。修法：先帶 .env 再帶狀態檔。", {
+    x: M + 0.26, y: by + 0.43, w: CW - 0.52, h: 0.66,
+    fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.16, valign: "top",
+  });
+}
+
+/* ══════════════ 21 · F 競品比較與定位 ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "F", no: 21, title: "競品比較與定位",
   });
   table(s, {
     x: M, y: y + 0.2, w: CW, colW: [2.5, 3.05, 3.25, 3.26], accent: C.MOSS,
@@ -839,11 +894,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 21 · V 為什麼需要規則 ══════════════ */
+/* ══════════════ 22 · V 為什麼需要規則 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 21, title: "為什麼需要開發規則：兩次真實事故",
+    sec: "V", no: 22, title: "為什麼需要開發規則：兩次真實事故",
     sub: "用 AI 開發最常見的兩個失效模式，都不是「程式寫錯」，而是「看起來做完了」。",
   });
   const cw = (CW - 0.3) / 2;
@@ -881,11 +936,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 22 · V 規則體系 ══════════════ */
+/* ══════════════ 23 · V 規則體系 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 22, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
+    sec: "V", no: 23, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
     sub: "核心原則：不猜測意圖、文件先行、任務最小化、結果可驗證。文件沒完成前不大量產生程式碼。",
   });
   const steps = [
@@ -939,11 +994,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 23 · V 規則怎麼被驗證有效 ══════════════ */
+/* ══════════════ 24 · V 規則怎麼被驗證有效 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 23, title: "規則怎麼被驗證有效",
+    sec: "V", no: 24, title: "規則怎麼被驗證有效",
   });
   s.addShape("roundRect", {
     x: M, y: y + 0.16, w: CW, h: 1.34, rectRadius: 0.05,
@@ -975,11 +1030,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 24 · G 18 週訓練期軌跡 ══════════════ */
+/* ══════════════ 25 · G 18 週訓練期軌跡 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 24, title: "18 週訓練期軌跡（3/23 – 7/26）",
+    sec: "G", no: 25, title: "18 週訓練期軌跡（3/23 – 7/26）",
     sub: "前 10 週打底與找題目，後 8 週密集產出。",
   });
   const phases = [
@@ -1025,11 +1080,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 25 · G 踩坑與結語 ══════════════ */
+/* ══════════════ 26 · G 踩坑與結語 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 25, title: "用 AI 開發踩到的坑，與這半年學到的事",
+    sec: "G", no: 26, title: "用 AI 開發踩到的坑，與這半年學到的事",
   });
   const cw = (CW - 0.3) / 2;
   card(s, {
@@ -1082,7 +1137,7 @@ const S = () => {
 {
   const s = S();
   const y = head(s, {
-    sec: "B", no: 26, title: "附錄：完整欄位 ER Diagram",
+    sec: "B", no: 27, title: "附錄：完整欄位 ER Diagram",
     sub: "備 Q&A 使用，不在正式報告時間內。",
   });
   fitImage(s, P("01-erd.png"), R.erdFull, { x: M, y: y + 0.16, w: CW, h: H - y - 0.6 });
