@@ -314,72 +314,87 @@ const S = () => {
   });
 
   s.addShape("roundRect", {
-    x: M, y: y + 0.16, w: CW, h: 0.94, rectRadius: 0.05, fill: { color: C.INK },
+    x: M, y: y + 0.14, w: CW, h: 0.86, rectRadius: 0.05, fill: { color: C.INK },
   });
   s.addText("CORE IDEA", {
-    x: M + 0.3, y: y + 0.26, w: 2.0, h: 0.26,
+    x: M + 0.3, y: y + 0.22, w: 2.0, h: 0.24,
     fontFace: FONT_NUM, fontSize: 13, bold: true, color: C.AMBER, charSpacing: 2, valign: "middle",
   });
   s.addText("先以結構化流程限制模型行為，再以真實模型與確定性驗證器量測可靠度。", {
-    x: M + 0.3, y: y + 0.54, w: CW - 0.6, h: 0.4,
+    x: M + 0.3, y: y + 0.46, w: CW - 0.6, h: 0.38,
     fontFace: FONT, fontSize: 19, bold: true, color: C.WHITE, valign: "middle",
   });
 
-  const fy = y + 1.32;
+  // ── 設計流程：五階段 ──
+  s.addText("設計流程", {
+    x: M, y: y + 1.14, w: 3.0, h: 0.28,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  const fy = y + 1.48;
   const flow = [
-    ["User Request", "自然語言需求", C.AMBER],
-    ["Structured Workflow", "JSON plan · schema · registry", C.BLUE],
-    ["Controlled Execution", "permission · approval · service", C.VIOLET],
-    ["Objective Evaluation", "real model · deterministic verifier", C.MOSS],
+    ["User Request", "自然語言需求", ["需求可能模糊", "不可直接操作資料"], C.AMBER],
+    ["Structured\nWorkflow", "轉成可檢查的計畫", ["JSON plan", "Schema 驗證", "Registry 工具／技能"], C.BLUE],
+    ["Permission\nReview", "權限與風險檢查", ["權限檢查", "高風險操作判定", "是否需要人工核可"], C.ROSE],
+    ["Controlled\nExecution", "受控執行", ["只經授權後執行", "透過 Service Layer"], C.VIOLET],
+    ["Objective\nEvaluation", "客觀量測可靠度", ["真實模型", "正式 API", "確定性 Verifier"], C.MOSS],
   ];
-  const fw = (CW - 3 * 0.42) / 4;
-  flow.forEach(([t, d, col], i) => {
-    const x = M + i * (fw + 0.42);
+  const gap = 0.2;
+  const fw = (CW - 4 * gap) / 5;
+  flow.forEach(([t, d, items, col], i) => {
+    const x = M + i * (fw + gap);
     s.addShape("roundRect", {
-      x, y: fy, w: fw, h: 1.5, rectRadius: 0.05,
-      fill: { color: C.TINT2 }, line: { color: col, width: 1.4 },
+      x, y: fy, w: fw, h: 2.62, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: col, width: 1.3 },
     });
+    s.addShape("rect", { x, y: fy, w: fw, h: 0.05, fill: { color: col } });
     s.addText(t, {
       x: x + 0.1, y: fy + 0.14, w: fw - 0.2, h: 0.56,
-      fontFace: FONT_NUM, fontSize: T.h, bold: true, color: col, align: "center", valign: "middle", lineSpacingMultiple: 1.08,
+      fontFace: FONT_NUM, fontSize: T.body, bold: true, color: col,
+      align: "center", valign: "middle", lineSpacingMultiple: 1.06,
     });
     s.addText(d, {
-      x: x + 0.1, y: fy + 0.74, w: fw - 0.2, h: 0.64,
-      fontFace: FONT, fontSize: T.body, color: C.MUTED, align: "center", valign: "top", lineSpacingMultiple: 1.14,
+      x: x + 0.1, y: fy + 0.72, w: fw - 0.2, h: 0.3,
+      fontFace: FONT, fontSize: T.body, bold: true, color: C.INK,
+      align: "center", valign: "middle",
     });
-    if (i < 3) {
+    s.addText(
+      items.map((t2) => ({ text: t2, options: { bullet: { characterCode: "2022" }, breakLine: true } })),
+      {
+        x: x + 0.14, y: fy + 1.08, w: fw - 0.28, h: 1.44,
+        fontFace: FONT, fontSize: T.body, color: C.MUTED,
+        lineSpacingMultiple: 1.14, valign: "top",
+      }
+    );
+    if (i < 4) {
       s.addText("▶", {
-        x: x + fw + 0.02, y: fy + 0.55, w: 0.38, h: 0.4,
-        fontFace: FONT, fontSize: 16, color: C.LINE, align: "center", valign: "middle",
+        x: x + fw + 0.01, y: fy + 0.98, w: gap - 0.02, h: 0.4,
+        fontFace: FONT, fontSize: 13, color: C.LINE, align: "center", valign: "middle",
       });
     }
   });
 
-  const cy = y + 3.06;
+  // ── 設計原則：三條 ──
+  s.addText("設計原則", {
+    x: M, y: fy + 2.78, w: 3.0, h: 0.28,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  const cy = fy + 3.10;
   const cw = (CW - 0.4) / 3;
   const pts = [
     ["1", "Structure behavior", "限制輸出格式與合法技能，先形成完整計畫。", C.BLUE],
-    ["2", "Govern execution", "唯讀自動；寫入與生成技能必須經權限與人工核可。", C.VIOLET],
+    ["2", "Govern execution", "唯讀自動；寫入與生成技能必須經權限與人工核可。", C.ROSE],
     ["3", "Measure reliability", "以真實模型、真實 fixture 與確定性 verifier 重複量測。", C.MOSS],
   ];
   pts.forEach(([n, t, d, col], i) => {
     const x = M + i * (cw + 0.2);
-    s.addShape("roundRect", {
-      x, y: cy, w: cw, h: 2.34, rectRadius: 0.05,
-      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
-    });
-    s.addShape("rect", { x, y: cy, w: cw, h: 0.05, fill: { color: col } });
-    s.addText(n, {
-      x: x + 0.2, y: cy + 0.16, w: 0.36, h: 0.32,
-      fontFace: FONT_NUM, fontSize: 19, bold: true, color: col, valign: "middle",
-    });
-    s.addText(t, {
-      x: x + 0.58, y: cy + 0.16, w: cw - 0.78, h: 0.32,
+    s.addShape("rect", { x, y: cy, w: cw, h: 0.04, fill: { color: col } });
+    s.addText(n + "　" + t, {
+      x, y: cy + 0.1, w: cw, h: 0.3,
       fontFace: FONT_NUM, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
     });
     s.addText(d, {
-      x: x + 0.2, y: cy + 0.6, w: cw - 0.4, h: 1.6,
-      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.18, valign: "top",
+      x, y: cy + 0.42, w: cw, h: 0.62,
+      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.16, valign: "top",
     });
   });
 }
@@ -604,7 +619,7 @@ const S = () => {
       fontFace: FONT, fontSize: T.body, color: col, lineSpacingMultiple: 1.16, valign: "top",
     });
   });
-  footnote(s, "三道關卡缺一不可：靜態驗證只產生提案、使用者核可才安裝、安裝後才進沙箱。絕不自動執行未審核的程式碼。", { accent: C.AMBER, h: 0.62 });
+  footnote(s, "一些限制：通過靜態驗證後只建立 Pending Proposal、使用者核可後才安裝才可進 Sandbox、核可後執行失敗不會自動重新生成——絕不自動執行未審核的程式碼。", { accent: C.AMBER, h: 0.62 });
 }
 
 /* ══════════════ 12 · C Why Evaluation ══════════════ */
@@ -614,74 +629,96 @@ const S = () => {
     sec: "C", no: 12, title: "Why Evaluation：用真實資料與確定性驗證器量測",
     sub: "Mock LLM 能防止程式管線退化，但不能證明真實模型的規劃與執行正確。",
   });
+
   const cw = (CW - 0.4) / 3;
   const tiers = [
     ["1", "Unit / integration", "Mock LLM；快速、CI 防退化", C.MUTED],
-    ["2", "Production API", "真實產品，走同一條路徑", C.BLUE],
+    ["2", "Production API", "與產品走同一條路徑", C.BLUE],
     ["3", "Deterministic verifier", "相同結果得到相同判定\nLLM judge = qualitative only", C.MOSS],
   ];
   tiers.forEach(([n, t, d, col], i) => {
     const x = M + i * (cw + 0.2);
-    const yy = y + 0.16;
+    const yy = y + 0.14;
     s.addShape("roundRect", {
-      x, y: yy, w: cw, h: 1.4, rectRadius: 0.05,
+      x, y: yy, w: cw, h: 1.14, rectRadius: 0.05,
       fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
     });
     s.addShape("rect", { x, y: yy, w: cw, h: 0.05, fill: { color: col } });
     s.addText(n, {
-      x: x + 0.2, y: yy + 0.14, w: 0.32, h: 0.3,
+      x: x + 0.18, y: yy + 0.12, w: 0.3, h: 0.3,
       fontFace: FONT_NUM, fontSize: 18, bold: true, color: col, valign: "middle",
     });
     s.addText(t, {
-      x: x + 0.54, y: yy + 0.14, w: cw - 0.74, h: 0.3,
+      x: x + 0.5, y: yy + 0.12, w: cw - 0.68, h: 0.3,
       fontFace: FONT_NUM, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
     });
     s.addText(d, {
-      x: x + 0.2, y: yy + 0.52, w: cw - 0.4, h: 0.78,
-      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.16, valign: "top",
+      x: x + 0.18, y: yy + 0.48, w: cw - 0.36, h: 0.66,
+      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.14, valign: "top",
     });
   });
 
-  const py = y + 1.86;
-  s.addText("評測管線", {
-    x: M, y: py, w: 3.0, h: 0.3,
-    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
-  });
-  const chain = ["Case Schema", "Fixture Builder", "Evaluation Runner", "Production API", "Approval Handling", "Result Collector", "Deterministic Verifier", "Scoring", "Run Aggregation", "Evaluation Report"];
-  const perRow = 5;
-  const bw = (CW - (perRow - 1) * 0.16) / perRow;
-  chain.forEach((t, i) => {
-    const r = Math.floor(i / perRow), c = i % perRow;
-    const x = M + c * (bw + 0.16);
-    const yy = py + 0.4 + r * 0.62;
-    const isVerifier = t === "Deterministic Verifier";
-    s.addShape("roundRect", {
-      x, y: yy, w: bw, h: 0.5, rectRadius: 0.04,
-      fill: { color: isVerifier ? C.MOSS : C.TINT2 },
-      line: { color: isVerifier ? C.MOSS : C.LINE, width: isVerifier ? 1.4 : 0.75 },
+  // ── 兩階段九步管線 ──
+  const bw = (CW - 4 * 0.16) / 5;
+  const drawPhase = (yy, label, labelColor, steps, startNo) => {
+    s.addShape("rect", { x: M, y: yy, w: 0.05, h: 0.28, fill: { color: labelColor } });
+    s.addText(label, {
+      x: M + 0.16, y: yy - 0.01, w: 6.0, h: 0.3,
+      fontFace: FONT, fontSize: T.body, bold: true, color: labelColor, valign: "middle",
     });
-    s.addText(t, {
-      x: x + 0.04, y: yy, w: bw - 0.08, h: 0.5,
-      fontFace: FONT_NUM, fontSize: T.body, bold: isVerifier,
-      color: isVerifier ? C.WHITE : C.INK, align: "center", valign: "middle",
+    steps.forEach(([t, d], i) => {
+      const x = M + i * (bw + 0.16);
+      const by = yy + 0.36;
+      const isKey = t === "Deterministic\nVerifier";
+      s.addShape("roundRect", {
+        x, y: by, w: bw, h: 0.92, rectRadius: 0.05,
+        fill: { color: isKey ? C.MOSS : C.TINT2 },
+        line: { color: isKey ? C.MOSS : C.LINE, width: isKey ? 1.3 : 0.75 },
+      });
+      s.addText(String(startNo + i) + "　" + t.replace("\n", " "), {
+        x: x + 0.08, y: by + 0.1, w: bw - 0.16, h: 0.42,
+        fontFace: FONT_NUM, fontSize: T.body, bold: true,
+        color: isKey ? C.WHITE : C.INK, align: "center", valign: "middle", lineSpacingMultiple: 1.05,
+      });
+      s.addText(d, {
+        x: x + 0.08, y: by + 0.54, w: bw - 0.16, h: 0.32,
+        fontFace: FONT, fontSize: T.body,
+        color: isKey ? C.WHITE : C.MUTED, align: "center", valign: "middle",
+      });
     });
-  });
+  };
 
-  const vy = py + 1.76;
+  drawPhase(y + 1.50, "Phase 1｜Run the case　執行測試", C.BLUE, [
+    ["Case\nSchema", "定義測試案例"],
+    ["Fixture\nBuilder", "建立真實資料"],
+    ["Runner", "執行測試流程"],
+    ["Production\nAPI", "正式產品路徑"],
+    ["Approval\nHandling", "核可處理"],
+  ], 1);
+
+  drawPhase(y + 2.94, "Phase 2｜Verify the result　驗證結果", C.MOSS, [
+    ["Result\nCollector", "搜集結果"],
+    ["Deterministic\nVerifier", "固定規則驗證"],
+    ["Scoring", "評分"],
+    ["Report", "評測報告"],
+  ], 6);
+
   s.addShape("roundRect", {
-    x: M, y: vy, w: CW, h: 0.92, rectRadius: 0.05,
+    x: M, y: y + 4.42, w: CW, h: 1.02, rectRadius: 0.05,
     fill: { color: C.TINT }, line: { color: C.MOSS, width: 1.2 },
   });
   s.addText("Verifier 檢查七項", {
-    x: M + 0.26, y: vy + 0.08, w: 3.0, h: 0.3,
+    x: M + 0.26, y: y + 4.48, w: 2.6, h: 0.3,
     fontFace: FONT, fontSize: T.body, bold: true, color: C.INK, valign: "middle",
   });
-  s.addText("fixture/data　·　plan correctness　·　reference grounding　·　execution　·　final state　·　collateral damage　·　generated output", {
-    x: M + 0.26, y: vy + 0.42, w: CW - 0.52, h: 0.42,
+  s.addText("fixture/data · plan correctness · reference grounding · execution · final state · collateral damage · generated output", {
+    x: M + 0.26, y: y + 4.78, w: CW - 0.52, h: 0.3,
     fontFace: FONT_NUM, fontSize: T.body, color: C.MUTED, valign: "middle",
   });
-
-  footnote(s, "EC3 的生成程式碼另外在評測端沙箱實際執行——不只看它「產得出來」，還看它「跑起來對不對」。", { accent: C.MOSS, h: 0.6 });
+  s.addText("EC3 的生成程式碼另外在評測端沙箱實際執行——不只看它「產得出來」，還看它「跑起來對不對」。", {
+    x: M + 0.26, y: y + 5.08, w: CW - 0.52, h: 0.3,
+    fontFace: FONT, fontSize: T.body, bold: true, color: C.INK, valign: "middle",
+  });
 }
 
 /* ══════════════ 13 · C EC1–EC4 案例集 ══════════════ */
@@ -794,22 +831,22 @@ const S = () => {
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 15, title: "Token 與工具呼叫指標",
+    sec: "C", no: 15, title: "Token & Tool Uses：用量與工具呼叫指標",
     sub: "N = 960 runs　·　不依賴人為訂定的「標準步驟」，因此可跨案例與跨模型比較。",
   });
   statRow(s, {
     x: M, y: y + 0.16, w: CW, h: 1.16,
     stats: [
-      { value: "2,043,273", label: "Prompt total", color: C.BLUE, size: 22 },
-      { value: "355,719", label: "Completion total", color: C.MOSS, size: 22 },
+      { value: "2,043,273", label: "Input tokens total", color: C.BLUE, size: 22 },
+      { value: "355,719", label: "Output tokens total", color: C.MOSS, size: 22 },
       { value: "2,398,992", label: "Total tokens", color: C.VIOLET, size: 22 },
-      { value: "1,903.96", label: "Average total / run", color: C.AMBER, size: 22 },
+      { value: "1,903.96", label: "Average tokens / run", color: C.AMBER, size: 22 },
     ],
   });
 
   const ty = y + 1.54;
   const half = (CW - 0.36) / 2;
-  s.addText("各層平均 token", {
+  s.addText("Average tokens by EC tier", {
     x: M, y: ty, w: half, h: 0.3,
     fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
   });
@@ -824,7 +861,7 @@ const S = () => {
   });
 
   const rx = M + half + 0.36;
-  s.addText("各層平均工具步數", {
+  s.addText("Average tool uses（各層平均工具呼叫次數）", {
     x: rx, y: ty, w: half, h: 0.3,
     fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
   });
@@ -843,7 +880,7 @@ const S = () => {
     });
   });
 
-  footnote(s, "EC3 為生成技能測試，不走工具呼叫路徑，故無工具步數；它的 token 也最低（1447），因為輸出是程式碼而非多輪工具規劃。", { accent: C.VIOLET, h: 0.62 });
+  footnote(s, "EC3 為生成技能測試，不走工具呼叫路徑，故無工具次數；它的 token 也最低（1447），因為輸出是程式碼而非多輪工具規劃。", { accent: C.VIOLET, h: 0.62 });
 }
 
 /* ══════════════ 16 · C 缺陷、限制與未來 ══════════════ */
