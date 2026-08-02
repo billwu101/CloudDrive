@@ -1422,7 +1422,7 @@ const S = () => {
     ["打底", "W1–3", "3/23 – 4/12", "VM + Ubuntu + SSH、Docker、Python 虛擬環境比較（conda・venv・pyenv・uv）、Git 與 GitHub；技術棧定案 React + FastAPI + PostgreSQL", C.BLUE],
     ["摸索", "W4–10", "4/13 – 5/31", "段考 2 週 + 專題方向討論 5 週；釐清前後端與資料庫的關係、整理 AI 輔助開發流程；題目從購物網站換到 CloudDrive", C.MOSS],
     ["起步", "W11–12", "6/1 – 6/14", "Caddy + Cloudflare DNS 憑證，打通 HTTPS 反向代理；6/13 一天建立 28 模組骨架，6/14 認證流程與批次選取", C.VIOLET],
-    ["爆發", "W13–14", "6/15 – 6/28", "AI 助理 Harness（6/17 單日 46 commits）、時光機、全文與語意搜尋、外部模型 OpenAI／Codex 接入、文件重構 + CI/CD 落地", C.ROSE],
+    ["爆發", "W13–14", "6/15 – 6/28", "AI 助理 Harness（6/17 單日 46 commits）、時光機、全文與語意搜尋、外部模型接入、文件重構 + CI/CD 落地", C.ROSE],
     ["收斂", "W15–18", "6/29 – 7/26", "harness 歸類文件與 CLAUDE.md 規則強化；detailed-design 拆模組、需求↔設計對齊；分片續傳、公開分享連結、CD 加 Tunnel；W18 單週 66 commits", C.AMBER],
   ];
   phases.forEach(([t, wk, dt, desc, col], i) => {
