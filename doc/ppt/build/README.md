@@ -9,7 +9,7 @@ node build.js "CloudDrive_專題報告_v3.0.pptx"
 
 - `theme.js`　設計 token（配色、字級、版面常數）。內文字級下限 15pt。
 - `helpers.js`　版面元件：頁首／資訊卡／統計格／表格／等比置圖／底部強調條。
-- `build.js`　22 頁正片 + 1 頁附錄的內容與版面。
+- `build.js`　26 頁正片 + 1 頁附錄的內容與版面。
 
 視覺驗收：
 
