@@ -71,6 +71,7 @@
 - [x] 考官與被考者分離（引擎跑 Gemma、考官可為更強模型）。
 - [x] **Codex 考官防呆**：建 codex judge 前讀 `$CODEX_HOME/auth.json` 的 `account_id`，印 `[judge] provider=codex, account=…`；無 token → `JudgeError`「請先 `codex login`」+ CLI 退出 2（顯示用途，非強制隔離）。
 - [x] 測試：provider 切換、verdict 解析、考官維度計入 scoring（`tests/eval/test_judge.py`：codex 回應萃取/非零退出、`account_id` 讀取/fallback/無 token、工廠 gemma/openai/codex 分派與防呆）。
+- [x] **預設考官模型修正（2026-08-02）**：`run.py` 的 gemma provider 預設仍停在過期的 `gemma3:12b`，與 detailed-design §10.10「預設 Gemma 4」及 E3 實測所用的 `gemma4:26b` 不一致。已改為 `gemma4:26b`，同步更新 `tests/eval/test_judge.py::test_build_judge_gemma_defaults_to_local_ollama`。同批把 `.env.example`／`docker-compose.yml` 的 `ASSISTANT_MODEL` 預設一併對齊（`deploy/.env.prod.example` 維持 `gemma4`，該路徑走 gateway 別名而非 Ollama tag）。`--judge-model` 仍可覆寫。
 
 ### 考官憑證模型（Codex provider）
 

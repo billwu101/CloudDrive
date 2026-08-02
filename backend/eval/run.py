@@ -376,7 +376,7 @@ def _build_judge(args: argparse.Namespace) -> JudgeModel | None:
             raise SystemExit(2)
     else:  # gemma (default): a local Ollama OpenAI-compatible endpoint
         base_url = args.judge_base_url or "http://localhost:11434/v1"
-        model = args.judge_model or "gemma3:12b"
+        model = args.judge_model or "gemma4:26b"
 
     return HttpJudgeModel(base_url=base_url, model=model, api_key=args.judge_api_key)
 

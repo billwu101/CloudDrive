@@ -263,7 +263,7 @@ def test_build_judge_disabled_returns_none() -> None:
 def test_build_judge_gemma_defaults_to_local_ollama() -> None:
     judge = _build_judge(_judge_args(judge_provider="gemma"))
     assert isinstance(judge, HttpJudgeModel)
-    assert judge._model == "gemma3:12b"
+    assert judge._model == "gemma4:26b"
     assert "11434" in judge._url
 
 
