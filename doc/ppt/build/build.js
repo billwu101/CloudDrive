@@ -110,10 +110,10 @@ const S = () => {
       ["D", "模型服務層", "14 – 16", "Gemma4APIServer 獨立專案"],
     ]],
     ["3", "交付、方法與回顧", C.AMBER, [
-      ["E", "部署", "17 – 18", "四節點 · Docker 與 CI/CD"],
-      ["F", "定位", "19", "競品比較 · 完成度"],
-      ["V", "Vibe Coding", "20 – 22", "兩次事故 · 規則體系 · 驗證"],
-      ["G", "學習歷程", "23 – 24", "18 週軌跡 · 踩坑回顧"],
+      ["E", "部署", "17 – 19", "四節點 · Docker/CI-CD · 三環境差異"],
+      ["F", "定位", "20", "競品比較 · 完成度"],
+      ["V", "Vibe Coding", "21 – 23", "兩次事故 · 規則體系 · 驗證"],
+      ["G", "學習歷程", "24 – 25", "18 週軌跡 · 踩坑回顧"],
     ]],
   ];
   const cw = (CW - 0.44) / 3;
@@ -159,7 +159,7 @@ const S = () => {
       ry += 0.86;
     });
   });
-  footnote(s, "時間有限可直接看 P.12–13（穩定性三部曲與實測數據）與 P.20–22（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.25 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
+  footnote(s, "時間有限可直接看 P.12–13（穩定性三部曲與實測數據）與 P.21–23（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.26 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
 }
 
 /* ══════════════ 03 · A 問題與定位 ══════════════ */
@@ -763,11 +763,54 @@ const S = () => {
   });
 }
 
-/* ══════════════ 19 · F 競品比較與定位 ══════════════ */
+/* ══════════════ 19 · E 三個環境的差異 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "F", no: 19, title: "競品比較與定位",
+    sec: "E", no: 19, title: "本機 · CI · 正式部署：三個環境差在哪",
+    sub: "差異全部收斂在設定，不在程式碼——三份 .env 範本就是三個環境的規格書。",
+  });
+  table(s, {
+    x: M, y: y + 0.18, w: CW, colW: [2.16, 3.34, 3.16, 3.40], accent: C.BLUE,
+    header: ["", "本機開發", "CI（GitHub Actions）", "正式部署（CD）"],
+    rows: [
+      ["設定來源", "cp .env.example .env", "無 .env，直接寫在 ci.yml", "範本填真值放主機，不進 Git"],
+      ["資料庫", "cloud_drive／弱密碼", "clouddrive_test（服務容器）", "高強度密碼，只走容器網路"],
+      ["JWT 金鑰", "development-only-change-me", "不需要（測試自簽 token）", "openssl rand -hex 32"],
+      ["AI 模型", "ollama → host.docker.internal", "不連模型，eval 走 mock", "openai_compatible → gateway"],
+      ["對外曝露", "port 8088／8000／5432", "無", "Cloudflare Tunnel，零對外埠"],
+      ["映像來源", "docker compose --build 本地建", "建置並推 GHCR（commit SHA）", "只拉 GHCR 的 SHA，不在主機建"],
+    ],
+  });
+
+  const yy = y + 3.42;
+  const pts = [
+    ["範本進版控，真值不進", "範本本身就是可讀的規格；真 .env 只存部署主機（chmod 600），管線只做缺鍵警告。", C.BLUE],
+    ["CI 根本不需要 .env", "它不跑完整系統，只跑測試——env 寫死在 workflow，無密鑰可外洩，也不會因誰的機器設定不同而變綠變紅。", C.MOSS],
+    ["模型接法三邊都不同", "mock ／ 本機 Ollama ／ 遠端 gateway，程式碼一行沒改——這正是 LLMClient 抽象與 DEC-018 的價值。", C.ROSE],
+  ];
+  const cw = (CW - 0.4) / 3;
+  pts.forEach(([t, d, col], i) => {
+    const x = M + i * (cw + 0.2);
+    s.addShape("rect", { x, y: yy, w: cw, h: 0.04, fill: { color: col } });
+    s.addText(t, {
+      x, y: yy + 0.1, w: cw, h: 0.3,
+      fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+    });
+    s.addText(d.replace(/`/g, ""), {
+      x, y: yy + 0.44, w: cw, h: 1.04,
+      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.16, valign: "top",
+    });
+  });
+
+  footnote(s, "唯一只出現在正式環境的變數是 TUNNEL_TOKEN —— 對外曝露是正式環境獨有的能力，本機與 CI 都不該擁有。", { accent: C.BLUE, h: 0.62 });
+}
+
+/* ══════════════ 20 · F 競品比較與定位 ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "F", no: 20, title: "競品比較與定位",
   });
   table(s, {
     x: M, y: y + 0.2, w: CW, colW: [2.5, 3.05, 3.25, 3.26], accent: C.MOSS,
@@ -796,11 +839,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 20 · V 為什麼需要規則 ══════════════ */
+/* ══════════════ 21 · V 為什麼需要規則 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 20, title: "為什麼需要開發規則：兩次真實事故",
+    sec: "V", no: 21, title: "為什麼需要開發規則：兩次真實事故",
     sub: "用 AI 開發最常見的兩個失效模式，都不是「程式寫錯」，而是「看起來做完了」。",
   });
   const cw = (CW - 0.3) / 2;
@@ -838,11 +881,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 21 · V 規則體系 ══════════════ */
+/* ══════════════ 22 · V 規則體系 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 21, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
+    sec: "V", no: 22, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
     sub: "核心原則：不猜測意圖、文件先行、任務最小化、結果可驗證。文件沒完成前不大量產生程式碼。",
   });
   const steps = [
@@ -896,11 +939,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 22 · V 規則怎麼被驗證有效 ══════════════ */
+/* ══════════════ 23 · V 規則怎麼被驗證有效 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 22, title: "規則怎麼被驗證有效",
+    sec: "V", no: 23, title: "規則怎麼被驗證有效",
   });
   s.addShape("roundRect", {
     x: M, y: y + 0.16, w: CW, h: 1.34, rectRadius: 0.05,
@@ -932,11 +975,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 23 · G 18 週訓練期軌跡 ══════════════ */
+/* ══════════════ 24 · G 18 週訓練期軌跡 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 23, title: "18 週訓練期軌跡（3/23 – 7/26）",
+    sec: "G", no: 24, title: "18 週訓練期軌跡（3/23 – 7/26）",
     sub: "前 10 週打底與找題目，後 8 週密集產出。",
   });
   const phases = [
@@ -982,11 +1025,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 24 · G 踩坑與結語 ══════════════ */
+/* ══════════════ 25 · G 踩坑與結語 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 24, title: "用 AI 開發踩到的坑，與這半年學到的事",
+    sec: "G", no: 25, title: "用 AI 開發踩到的坑，與這半年學到的事",
   });
   const cw = (CW - 0.3) / 2;
   card(s, {
@@ -1039,7 +1082,7 @@ const S = () => {
 {
   const s = S();
   const y = head(s, {
-    sec: "B", no: 25, title: "附錄：完整欄位 ER Diagram",
+    sec: "B", no: 26, title: "附錄：完整欄位 ER Diagram",
     sub: "備 Q&A 使用，不在正式報告時間內。",
   });
   fitImage(s, P("01-erd.png"), R.erdFull, { x: M, y: y + 0.16, w: CW, h: H - y - 0.6 });
