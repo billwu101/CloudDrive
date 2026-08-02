@@ -29,7 +29,7 @@ const S = () => {
   return s;
 };
 
-/* ══════════════ 01 · 封面 ══════════════ */
+/* ══════════════ 02 · 封面 ══════════════ */
 {
   const s = S();
   s.addShape("rect", { x: 0, y: 0, w: 0.34, h: H, fill: { color: C.INK } });
@@ -77,11 +77,96 @@ const S = () => {
   });
 }
 
-/* ══════════════ 02 · A 問題與定位 ══════════════ */
+/* ══════════════ 02 · 目錄導引 ══════════════ */
+{
+  const s = S();
+  s.addText("CONTENTS", {
+    x: M, y: 0.34, w: 7.4, h: 0.26,
+    fontFace: FONT_NUM, fontSize: T.kicker, bold: true,
+    color: C.BLUE, charSpacing: 2, valign: "middle",
+  });
+  s.addText("02", {
+    x: W - M - 1.0, y: 0.3, w: 1.0, h: 0.34,
+    fontFace: FONT_NUM, fontSize: T.pageno, color: C.MUTED,
+    align: "right", valign: "middle",
+  });
+  s.addText("這份報告怎麼讀", {
+    x: M, y: 0.6, w: CW - 1.1, h: 0.5,
+    fontFace: FONT, fontSize: T.title, bold: true, color: C.INK, valign: "middle",
+  });
+  s.addText("先看系統如何設計，再看 AI 助理如何被驗證，最後是部署、開發方法與個人回顧。", {
+    x: M, y: 1.12, w: CW, h: 0.34,
+    fontFace: FONT, fontSize: T.subtitle, color: C.MUTED, valign: "top",
+  });
+  s.addShape("rect", { x: M, y: 1.46, w: CW, h: 0.022, fill: { color: C.BLUE } });
+
+  const parts = [
+    ["1", "系統與設計", C.BLUE, [
+      ["A", "專案概覽", "03 – 04", "問題定義 · 系統全貌"],
+      ["B", "設計與資料", "05 – 06", "21 張表 · 後端模組化"],
+    ]],
+    ["2", "核心：AI 助理與驗證", C.VIOLET, [
+      ["C", "AI 助理與驗證", "07 – 13", "六元件 · 安全邊界 · 實測"],
+      ["D", "模型服務層", "14 – 16", "Gemma4APIServer 獨立專案"],
+    ]],
+    ["3", "交付、方法與回顧", C.AMBER, [
+      ["E", "部署", "17 – 18", "四節點 · Docker 與 CI/CD"],
+      ["F", "定位", "19", "競品比較 · 完成度"],
+      ["V", "Vibe Coding", "20 – 22", "兩次事故 · 規則體系 · 驗證"],
+      ["G", "學習歷程", "23 – 24", "18 週軌跡 · 踩坑回顧"],
+    ]],
+  ];
+  const cw = (CW - 0.44) / 3;
+  parts.forEach(([n, t, col, rows], i) => {
+    const x = M + i * (cw + 0.22);
+    const yy = 1.72;
+    s.addShape("roundRect", {
+      x, y: yy, w: cw, h: 4.45, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
+    });
+    s.addShape("rect", { x, y: yy, w: cw, h: 0.05, fill: { color: col } });
+    s.addShape("roundRect", {
+      x: x + 0.2, y: yy + 0.22, w: 0.44, h: 0.44, rectRadius: 0.05, fill: { color: col },
+    });
+    s.addText(n, {
+      x: x + 0.2, y: yy + 0.22, w: 0.44, h: 0.44,
+      fontFace: FONT_NUM, fontSize: 18, bold: true, color: C.WHITE,
+      align: "center", valign: "middle",
+    });
+    s.addText(t, {
+      x: x + 0.76, y: yy + 0.22, w: cw - 0.96, h: 0.44,
+      fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+    });
+    let ry = yy + 0.88;
+    rows.forEach(([k, name, pages, desc]) => {
+      s.addText(k, {
+        x: x + 0.22, y: ry, w: 0.32, h: 0.3,
+        fontFace: FONT_NUM, fontSize: T.body, bold: true, color: col, valign: "middle",
+      });
+      s.addText(name, {
+        x: x + 0.56, y: ry, w: cw - 1.7, h: 0.3,
+        fontFace: FONT, fontSize: T.body, bold: true, color: C.INK, valign: "middle",
+      });
+      s.addText(pages, {
+        x: x + cw - 1.18, y: ry, w: 0.96, h: 0.3,
+        fontFace: FONT_NUM, fontSize: T.body, color: col,
+        align: "right", valign: "middle",
+      });
+      s.addText(desc, {
+        x: x + 0.56, y: ry + 0.3, w: cw - 0.78, h: 0.34,
+        fontFace: FONT, fontSize: T.body, color: C.MUTED, valign: "top",
+      });
+      ry += 0.86;
+    });
+  });
+  footnote(s, "時間有限可直接看 P.12–13（穩定性三部曲與實測數據）與 P.20–22（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.25 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
+}
+
+/* ══════════════ 03 · A 問題與定位 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "A", no: 2, title: "要解決什麼問題",
+    sec: "A", no: 3, title: "要解決什麼問題",
     sub: "通用雲端硬碟把資料放在他人伺服器。要在自己掌控的儲存空間上，用自然語言完成檔案操作，目前沒有現成方案。",
   });
   const cw = (CW - 0.4) / 3;
@@ -100,11 +185,11 @@ const S = () => {
   footnote(s, "三者單獨都有現成產品，但「同時成立、而且能自架」的組合沒有 —— 這就是本專案的切入點。", { bold: true });
 }
 
-/* ══════════════ 03 · A 系統全貌（04-arch）══════════════ */
+/* ══════════════ 04 · A 系統全貌（04-arch）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "A", no: 3, title: "系統全貌",
+    sec: "A", no: 4, title: "系統全貌",
     sub: "nginx 為唯一入口，同源反代 /api；中繼資料進 PostgreSQL，檔案本體交 Storage Provider。",
   });
   fitImage(s, P("04-arch.png"), R.arch, { x: M, y: y + 0.22, w: CW, h: 1.85 });
@@ -126,11 +211,11 @@ const S = () => {
   footnote(s, "28 個核心模組 + 3 個擴充系統（AI 助理 · 時光機 · 外部模型接入）；模組間只透過 service 層互相依賴。", { accent: C.BLUE });
 }
 
-/* ══════════════ 04 · B 資料模型（01-erd-slide）══════════════ */
+/* ══════════════ 05 · B 資料模型（01-erd-slide）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "B", no: 4, title: "資料模型：21 張表、六個子系統",
+    sec: "B", no: 5, title: "資料模型：21 張表、六個子系統",
   });
   fitImage(s, P("01-erd-slide.png"), R.erdSlide, { x: M, y: y + 0.12, w: 6.95, h: 4.95 });
 
@@ -158,11 +243,11 @@ const S = () => {
   footnote(s, "完整欄位版 ER Diagram 見附錄。中文全文搜尋以 ILIKE 子字串比對補足 tsvector 的斷詞限制。", { accent: C.MOSS });
 }
 
-/* ══════════════ 05 · B 後端分層 ══════════════ */
+/* ══════════════ 06 · B 後端分層 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "B", no: 5, title: "後端模組化：每個 domain 是自足套件",
+    sec: "B", no: 6, title: "後端模組化：每個 domain 是自足套件",
   });
   const cw = (CW - 0.3) / 2;
   card(s, {
@@ -208,11 +293,11 @@ const S = () => {
   footnote(s, "依賴方向單向不可逆：Repository 不可呼叫 Service；StorageProvider 不可呼叫 Repository。", { accent: C.MOSS, bold: true });
 }
 
-/* ══════════════ 06 · C 助理能做什麼（05-chat）══════════════ */
+/* ══════════════ 07 · C 助理能做什麼（05-chat）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 6, title: "In-App AI 助理：一次對話怎麼被完成",
+    sec: "C", no: 7, title: "In-App AI 助理：一次對話怎麼被完成",
     sub: "在網頁裡用自然語言操作自己的雲端硬碟；模型跑在本地，破壞性操作一定先出計畫、等使用者確認。",
   });
   fitImage(s, P("05-chat.png"), R.chat, { x: M, y: y + 0.14, w: CW, h: 3.86 });
@@ -239,11 +324,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 07 · C HARNESS 六元件 ══════════════ */
+/* ══════════════ 08 · C HARNESS 六元件 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 7, title: "引擎架構：Agent Harness 六元件",
+    sec: "C", no: 8, title: "引擎架構：Agent Harness 六元件",
     sub: "把助理視為「LLM + 外部 harness」共同構成的系統。程式碼拆成九個實作模組，對外以文獻的六元件框架說明。",
   });
   const six = [
@@ -283,11 +368,11 @@ const S = () => {
   footnote(s, "V 不在使用者請求路徑上 —— 它從外部打 API，如同真實使用者，因此量測的是「模型 + harness 組態」整體。", { accent: C.VIOLET });
 }
 
-/* ══════════════ 08 · C 執行模型 ══════════════ */
+/* ══════════════ 09 · C 執行模型 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 8, title: "執行模型：計畫先行，失敗時誠實報告",
+    sec: "C", no: 9, title: "執行模型：計畫先行，失敗時誠實報告",
   });
   const cw = (CW - 0.4) / 3;
   card(s, {
@@ -305,11 +390,11 @@ const S = () => {
   footnote(s, "DEC-029 · DEC-030　　授權是給規則，不是給那一份計畫。工作流維持串行——共用 AsyncSession 不允許並發，並行只省延遲卻引入配額競賽。", { accent: C.VIOLET });
 }
 
-/* ══════════════ 09 · C 安全邊界（06-boundary）══════════════ */
+/* ══════════════ 10 · C 安全邊界（06-boundary）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 9, title: "安全邊界：唯讀自動執行、寫入必須確認",
+    sec: "C", no: 10, title: "安全邊界：唯讀自動執行、寫入必須確認",
   });
   const cw9 = (CW - 0.4) / 3;
   card(s, {
@@ -360,11 +445,11 @@ const S = () => {
   footnote(s, "DEC-019 · DEC-023　　絕不自動執行未審核程式碼；涉私資料的任務限本地執行，去識別化失敗即禁止外送。", { accent: C.AMBER });
 }
 
-/* ══════════════ 10 · C 為什麼需要真實模型驗證 ══════════════ */
+/* ══════════════ 11 · C 為什麼需要真實模型驗證 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 10, title: "為什麼需要真實模型驗證",
+    sec: "C", no: 11, title: "為什麼需要真實模型驗證",
     sub: "單元測試中的 LLM 是 mock，通過只代表程式控制流程正確，驗不到真實模型在 workflow 規劃上的行為。",
   });
   const cw = (CW - 0.3) / 2;
@@ -395,11 +480,11 @@ const S = () => {
   footnote(s, "DEC-039 代號分離：M 專指助理引擎的開發里程碑，EC 專指評測案例分層；先前共用 M 造成語境混淆。", { accent: C.VIOLET });
 }
 
-/* ══════════════ 11 · C 穩定性三部曲 ══════════════ */
+/* ══════════════ 12 · C 穩定性三部曲 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 11, title: "穩定性三部曲：把「請模型遵守」換成「使其不可違反」",
+    sec: "C", no: 12, title: "穩定性三部曲：把「請模型遵守」換成「使其不可違反」",
   });
   const trio = [
     ["DEC-031", "生成上限 + 非零溫度", "結構化請求把溫度釘 0，貪婪解碼在 thinking 段掉入決定性重複迴圈，吃滿 300 秒逾時。", "一律帶 num_predict 上限；結構化請求改用低而非零的溫度。", "以有界失敗取代長時間停滯，重試真正有效。", C.BLUE],
@@ -437,11 +522,11 @@ const S = () => {
   footnote(s, "共同哲學：能用機制保證的事，就不要依賴模型自覺。三個決策都不是把 prompt 寫得更懇切，而是讓錯誤輸出在取樣層就無法產生、或在有界時間內必然停止。", { accent: C.AMBER });
 }
 
-/* ══════════════ 12 · C 實測結果 ══════════════ */
+/* ══════════════ 13 · C 實測結果 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 12, title: "實測結果：規劃可靠度與多輪記憶",
+    sec: "C", no: 13, title: "實測結果：規劃可靠度與多輪記憶",
   });
   statRow(s, {
     x: M, y: y + 0.16, w: CW, h: 1.45,
@@ -474,11 +559,11 @@ const S = () => {
   footnote(s, "為什麼要有「嚴格回想」案例：間接案例只證明模型用到了歷史中的某個 item_id，無法證明它真的記得內容——嚴格回想才揭露了記憶保真問題。", { accent: C.VIOLET });
 }
 
-/* ══════════════ 13 · D Gemma4APIServer（07-gateway）══════════════ */
+/* ══════════════ 14 · D Gemma4APIServer（07-gateway）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "D", no: 13, title: "模型服務層：Gemma4APIServer",
+    sec: "D", no: 14, title: "模型服務層：Gemma4APIServer",
     sub: "獨立專案，不屬於 CloudDrive　·　github.com/billwu101/Gemma4APIServer",
   });
   fitImage(s, P("07-gateway.png"), R.gateway, { x: M, y: y + 0.2, w: CW, h: 2.35 });
@@ -500,11 +585,11 @@ const S = () => {
   footnote(s, "/v1/* 相容路徑自動注入 think:false（對應 DEC-033）；原生 /api/* 保持透明轉發，不改寫請求。", { accent: C.ROSE });
 }
 
-/* ══════════════ 14 · D 為什麼拆成獨立專案 ══════════════ */
+/* ══════════════ 15 · D 為什麼拆成獨立專案 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "D", no: 14, title: "為什麼把模型服務拆成獨立專案",
+    sec: "D", no: 15, title: "為什麼把模型服務拆成獨立專案",
   });
   fitImage(s, P("06-boundary.png"), R.boundary, { x: M, y: y + 0.14, w: 6.15, h: 3.4 });
 
@@ -539,11 +624,91 @@ const S = () => {
   footnote(s, "抽換成本因此趨近於零 —— 換模型、換供應商、退回本機 Ollama，都只是改這三行。", { y: 6.5, h: 0.6, accent: C.ROSE, bold: true });
 }
 
-/* ══════════════ 15 · E 系統部署（02-deploy）══════════════ */
+/* ══════════════ 16 · D 營運監控儀表板 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 15, title: "系統部署：四個節點",
+    sec: "D", no: 16, title: "營運監控：金鑰用量與即時日誌",
+    sub: "gateway 附帶的終端儀表板，一眼看出 GPU 是否還活著、每把金鑰用了多少、請求是否正常。",
+  });
+
+  const px = M, pw = 8.32, py = y + 0.12, ph = 4.4;
+  const MONO = "Menlo";
+  const FS = 14;
+  const NEON = { magenta: "E06BC0", cyan: "58C4DC", text: "D7DEE4",
+                 dim: "8A97A2", green: "6BCF7F", red: "E0616B" };
+  s.addShape("roundRect", { x: px, y: py, w: pw, h: ph, rectRadius: 0.05, fill: { color: "0F1519" } });
+  const ix = px + 0.28, iw = pw - 0.56;
+
+  s.addText([
+    { text: "GEMMA4 API DASHBOARD", options: { color: NEON.magenta, bold: true } },
+    { text: "    —    2026-08-01 10:50:58", options: { color: NEON.dim } },
+  ], { x: ix, y: py + 0.16, w: iw, h: 0.3, fontFace: MONO, fontSize: FS, valign: "middle" });
+
+  s.addText("SYSTEM", { x: ix, y: py + 0.56, w: 1.6, h: 0.28, fontFace: MONO, fontSize: FS, bold: true, color: NEON.cyan, valign: "middle" });
+  const meters = [
+    ["CPU", 0.099, "9.9%", NEON.green, "RAM", 0.349, "33.4 / 95.7 GB", NEON.green],
+    ["GPU", 0.270, "27.0%", NEON.green, "VRAM", 0.875, "21.0 / 24.0 GB", NEON.red],
+  ];
+  meters.forEach((m, i) => {
+    const ry = py + 0.9 + i * 0.34;
+    s.addText(m[0], { x: ix, y: ry, w: 0.62, h: 0.26, fontFace: MONO, fontSize: FS, color: NEON.text, valign: "middle" });
+    s.addShape("rect", { x: ix + 0.66, y: ry + 0.08, w: 1.3, h: 0.12, fill: { color: "22303A" } });
+    s.addShape("rect", { x: ix + 0.66, y: ry + 0.08, w: 1.3 * m[1], h: 0.12, fill: { color: m[3] } });
+    s.addText(m[2], { x: ix + 2.02, y: ry, w: 0.86, h: 0.26, fontFace: MONO, fontSize: FS, color: NEON.text, align: "right", valign: "middle" });
+    s.addText(m[4], { x: ix + 3.02, y: ry, w: 0.82, h: 0.26, fontFace: MONO, fontSize: FS, color: NEON.text, valign: "middle" });
+    s.addShape("rect", { x: ix + 3.88, y: ry + 0.08, w: 1.3, h: 0.12, fill: { color: "22303A" } });
+    s.addShape("rect", { x: ix + 3.88, y: ry + 0.08, w: 1.3 * m[5], h: 0.12, fill: { color: m[7] } });
+    s.addText(m[6], { x: ix + 5.24, y: ry, w: 2.5, h: 0.26, fontFace: MONO, fontSize: FS, color: NEON.text, align: "right", valign: "middle" });
+  });
+  s.addText("溫度 38°C   功耗 54 W   風扇 33%   模型 gemma4:26b · 100% GPU", {
+    x: ix, y: py + 1.6, w: iw, h: 0.26, fontFace: MONO, fontSize: FS, color: NEON.dim, valign: "middle",
+  });
+
+  s.addText("TOKEN 使用量（每把金鑰）", { x: ix, y: py + 1.98, w: 4.2, h: 0.28, fontFace: MONO, fontSize: FS, bold: true, color: NEON.cyan, valign: "middle" });
+  const cols = [[0, 1.5, "left"], [1.5, 1.35, "right"], [2.9, 1.5, "right"], [4.45, 1.35, "right"], [5.85, 1.9, "right"]];
+  const trows = [
+    [["金鑰", "請求", "prompt", "output", "總 token"], NEON.dim, false],
+    [["alice", "16,598", "159,282", "14,583", "173,865"], NEON.text, false],
+    [["dev_bill", "6", "8,773", "483", "9,256"], NEON.text, false],
+    [["合計", "16,604", "168,055", "15,066", "183,121"], NEON.green, true],
+  ];
+  trows.forEach((r, ri) => {
+    const ry = py + 2.3 + ri * 0.3;
+    r[0].forEach((cell, ci) => {
+      const c = cols[ci];
+      s.addText(cell, {
+        x: ix + c[0], y: ry, w: c[1], h: 0.28,
+        fontFace: MONO, fontSize: FS, color: r[1], bold: r[2],
+        align: c[2], valign: "middle",
+      });
+    });
+  });
+
+  s.addText("LOG   即時連線（2xx 綠 / 4xx 黃 / 5xx 紅）", { x: ix, y: py + 3.54, w: 5.4, h: 0.28, fontFace: MONO, fontSize: FS, bold: true, color: NEON.cyan, valign: "middle" });
+  ["00:33:45", "00:45:55"].forEach((t, i) => {
+    s.addText(t + "  INFO  POST /v1/chat/completions  200", {
+      x: ix, y: py + 3.82 + i * 0.25, w: iw, h: 0.25,
+      fontFace: MONO, fontSize: FS, color: NEON.green, valign: "middle",
+    });
+  });
+
+  const rx = M + 8.56, rw = CW - 8.56;
+  card(s, { x: rx, y: py, w: rw, h: 1.34, accent: C.ROSE, title: "為什麼要有面板",
+    body: "GPU 與 VRAM 一眼可見，模型崩潰時能立刻判斷。" });
+  card(s, { x: rx, y: py + 1.48, w: rw, h: 1.34, accent: C.BLUE, title: "每把金鑰獨立計量",
+    body: "請求數與 token 寫入 SQLite，可追溯誰用了多少。" });
+  card(s, { x: rx, y: py + 2.96, w: rw, h: 1.34, accent: C.MOSS, title: "日誌依狀態碼上色",
+    body: "2xx 綠、4xx 黃、5xx 紅，掃一眼就知道有無異常。" });
+
+  footnote(s, "VRAM 21.0 / 24.0 GB —— gemma4:26b 以 KEEP_ALIVE=-1 常駐，幾乎吃滿單張卡。這是「Ollama 單併發」限制的直接來源，也是 DEC-030 工作流不並行的實務理由之一。", { accent: C.ROSE });
+}
+
+/* ══════════════ 17 · E 系統部署（02-deploy）══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "E", no: 17, title: "系統部署：四個節點",
   });
   fitImage(s, P("02-deploy.png"), R.deploy, { x: M, y: y + 0.12, w: CW, h: 4.62 });
 
@@ -568,11 +733,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 16 · E Docker 與 CI/CD（03-docker-wide）══════════════ */
+/* ══════════════ 18 · E Docker 與 CI/CD（03-docker-wide）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 16, title: "Docker 與 CI/CD：從管線到容器",
+    sec: "E", no: 18, title: "Docker 與 CI/CD：從管線到容器",
   });
   fitImage(s, P("03-docker-wide.png"), R.docker, { x: M, y: y + 0.12, w: CW, h: 4.24 });
 
@@ -598,11 +763,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 17 · F 競品比較與定位 ══════════════ */
+/* ══════════════ 19 · F 競品比較與定位 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "F", no: 17, title: "競品比較與定位",
+    sec: "F", no: 19, title: "競品比較與定位",
   });
   table(s, {
     x: M, y: y + 0.2, w: CW, colW: [2.5, 3.05, 3.25, 3.26], accent: C.MOSS,
@@ -631,11 +796,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 18 · V 為什麼需要規則 ══════════════ */
+/* ══════════════ 20 · V 為什麼需要規則 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 18, title: "為什麼需要開發規則：兩次真實事故",
+    sec: "V", no: 20, title: "為什麼需要開發規則：兩次真實事故",
     sub: "用 AI 開發最常見的兩個失效模式，都不是「程式寫錯」，而是「看起來做完了」。",
   });
   const cw = (CW - 0.3) / 2;
@@ -673,11 +838,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 19 · V 規則體系 ══════════════ */
+/* ══════════════ 21 · V 規則體系 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 19, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
+    sec: "V", no: 21, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
     sub: "核心原則：不猜測意圖、文件先行、任務最小化、結果可驗證。文件沒完成前不大量產生程式碼。",
   });
   const steps = [
@@ -731,11 +896,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 20 · V 規則怎麼被驗證有效 ══════════════ */
+/* ══════════════ 22 · V 規則怎麼被驗證有效 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 20, title: "規則怎麼被驗證有效",
+    sec: "V", no: 22, title: "規則怎麼被驗證有效",
   });
   s.addShape("roundRect", {
     x: M, y: y + 0.16, w: CW, h: 1.34, rectRadius: 0.05,
@@ -767,11 +932,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 21 · G 18 週訓練期軌跡 ══════════════ */
+/* ══════════════ 23 · G 18 週訓練期軌跡 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 21, title: "18 週訓練期軌跡（3/23 – 7/26）",
+    sec: "G", no: 23, title: "18 週訓練期軌跡（3/23 – 7/26）",
     sub: "前 10 週打底與找題目，後 8 週密集產出。",
   });
   const phases = [
@@ -817,11 +982,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 22 · G 踩坑與結語 ══════════════ */
+/* ══════════════ 24 · G 踩坑與結語 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 22, title: "用 AI 開發踩到的坑，與這半年學到的事",
+    sec: "G", no: 24, title: "用 AI 開發踩到的坑，與這半年學到的事",
   });
   const cw = (CW - 0.3) / 2;
   card(s, {
@@ -874,7 +1039,7 @@ const S = () => {
 {
   const s = S();
   const y = head(s, {
-    sec: "B", no: 23, title: "附錄：完整欄位 ER Diagram",
+    sec: "B", no: 25, title: "附錄：完整欄位 ER Diagram",
     sub: "備 Q&A 使用，不在正式報告時間內。",
   });
   fitImage(s, P("01-erd.png"), R.erdFull, { x: M, y: y + 0.16, w: CW, h: H - y - 0.6 });
