@@ -15,7 +15,6 @@ graph LR
     GW["API Gateway<br/>OpenAI／Anthropic 相容"] -->|"轉為原生格式"| OL["Ollama<br/>gemma4:26b"]
   end
   AS ==>|"HTTPS · OpenAI 相容 API<br/>帶金鑰"| GW
-  AS -.->|"條件式外送"| EXM["外部模型<br/>GPT-5.5"]
   classDef user fill:#fdf6e3,stroke:#c9a94e,stroke-width:1.8px,color:#4a3f1d
   classDef front fill:#e3eef5,stroke:#5e8ba6,stroke-width:1.8px,color:#1f2a36
   classDef back fill:#e4f1e8,stroke:#6da583,stroke-width:1.8px,color:#1c3225
@@ -29,5 +28,4 @@ graph LR
   class PG db
   class AS ai
   class GW,OL edge
-  class EXM ai
   style EXT stroke-dasharray: 6 4,stroke:#c07f7f,stroke-width:2px
