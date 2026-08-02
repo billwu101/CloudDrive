@@ -115,14 +115,14 @@ const S = () => {
       ["B", "設計與資料", "05 – 06", "21 張表 · 後端模組化"],
     ]],
     ["2", "核心：AI 助理與驗證", C.VIOLET, "沈威廷", [
-      ["C", "AI 助理與驗證", "07 – 13", "六元件 · 安全邊界 · 實測"],
-      ["D", "模型服務層", "14 – 16", "Gemma4APIServer 獨立專案"],
+      ["C", "AI 助理與驗證", "07 – 16", "架構 · 受控流程 · 客觀評測"],
+      ["D", "模型服務層", "17 – 19", "Gemma4APIServer 獨立專案"],
     ]],
     ["3", "交付、方法與回顧", C.AMBER, "吳晉緯", [
-      ["E", "部署", "17 – 20", "四節點 · CI-CD · 環境與實戰"],
-      ["F", "定位", "21", "競品比較 · 完成度"],
-      ["G", "Vibe Coding", "22 – 24", "兩次事故 · 規則體系 · 驗證"],
-      ["H", "學習歷程", "25 – 26", "18 週軌跡 · 踩坑回顧"],
+      ["E", "部署", "20 – 23", "四節點 · CI-CD · 環境與實戰"],
+      ["F", "定位", "24", "競品比較 · 完成度"],
+      ["G", "Vibe Coding", "25 – 27", "兩次事故 · 規則體系 · 驗證"],
+      ["H", "學習歷程", "28 – 29", "18 週軌跡 · 踩坑回顧"],
     ]],
   ];
   const cw = (CW - 0.44) / 3;
@@ -306,277 +306,608 @@ const S = () => {
   footnote(s, "依賴方向單向不可逆：Repository 不可呼叫 Service；StorageProvider 不可呼叫 Repository。", { accent: C.MOSS, bold: true });
 }
 
-/* ══════════════ 07 · C 助理能做什麼（05-chat）══════════════ */
+/* ══════════════ 07 · C Why Harness ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 7, title: "In-App AI 助理：一次對話怎麼被完成",
-    sub: "在網頁裡用自然語言操作自己的雲端硬碟；模型跑在本地，破壞性操作一定先出計畫、等使用者確認。",
+    sec: "C", no: 7, title: "Why Harness：讓 AI 操作可控、可量測",
   });
-  fitImage(s, P("05-chat.png"), R.chat, { x: M, y: y + 0.14, w: CW, h: 3.86 });
 
-  const yy = y + 4.14;
-  const cw = (CW - 0.6) / 4;
-  const four = [
-    ["對話操作檔案", "一律經既有 service 層，天然沿用配額與權限", C.BLUE],
-    ["計畫先行", "唯讀可自動執行，破壞性一定要確認", C.VIOLET],
-    ["現場生成技能", "產碼 → 靜態檢查 → 核可 → 沙箱執行", C.ROSE],
-    ["多輪記憶", "載入最近 N 則歷史，支援「第二個」這類指涉", C.MOSS],
+  s.addShape("roundRect", {
+    x: M, y: y + 0.16, w: CW, h: 0.94, rectRadius: 0.05, fill: { color: C.INK },
+  });
+  s.addText("CORE IDEA", {
+    x: M + 0.3, y: y + 0.26, w: 2.0, h: 0.26,
+    fontFace: FONT_NUM, fontSize: 13, bold: true, color: C.AMBER, charSpacing: 2, valign: "middle",
+  });
+  s.addText("先以結構化流程限制模型行為，再以真實模型與確定性驗證器量測可靠度。", {
+    x: M + 0.3, y: y + 0.54, w: CW - 0.6, h: 0.4,
+    fontFace: FONT, fontSize: 19, bold: true, color: C.WHITE, valign: "middle",
+  });
+
+  const fy = y + 1.32;
+  const flow = [
+    ["User Request", "自然語言需求", C.AMBER],
+    ["Structured Workflow", "JSON plan · schema · registry", C.BLUE],
+    ["Controlled Execution", "permission · approval · service", C.VIOLET],
+    ["Objective Evaluation", "real model · deterministic verifier", C.MOSS],
   ];
-  four.forEach(([t, d, col], i) => {
-    const x = M + i * (cw + 0.2);
-    s.addShape("rect", { x, y: yy, w: cw, h: 0.04, fill: { color: col } });
+  const fw = (CW - 3 * 0.42) / 4;
+  flow.forEach(([t, d, col], i) => {
+    const x = M + i * (fw + 0.42);
+    s.addShape("roundRect", {
+      x, y: fy, w: fw, h: 1.5, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: col, width: 1.4 },
+    });
     s.addText(t, {
-      x, y: yy + 0.1, w: cw, h: 0.32,
-      fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+      x: x + 0.1, y: fy + 0.14, w: fw - 0.2, h: 0.56,
+      fontFace: FONT_NUM, fontSize: T.h, bold: true, color: col, align: "center", valign: "middle", lineSpacingMultiple: 1.08,
     });
     s.addText(d, {
-      x, y: yy + 0.44, w: cw, h: 0.72,
-      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.2, valign: "top",
+      x: x + 0.1, y: fy + 0.74, w: fw - 0.2, h: 0.64,
+      fontFace: FONT, fontSize: T.body, color: C.MUTED, align: "center", valign: "top", lineSpacingMultiple: 1.14,
+    });
+    if (i < 3) {
+      s.addText("▶", {
+        x: x + fw + 0.02, y: fy + 0.55, w: 0.38, h: 0.4,
+        fontFace: FONT, fontSize: 16, color: C.LINE, align: "center", valign: "middle",
+      });
+    }
+  });
+
+  const cy = y + 3.06;
+  const cw = (CW - 0.4) / 3;
+  const pts = [
+    ["1", "Structure behavior", "限制輸出格式與合法技能，先形成完整計畫。", C.BLUE],
+    ["2", "Govern execution", "唯讀自動；寫入與生成技能必須經權限與人工核可。", C.VIOLET],
+    ["3", "Measure reliability", "以真實模型、真實 fixture 與確定性 verifier 重複量測。", C.MOSS],
+  ];
+  pts.forEach(([n, t, d, col], i) => {
+    const x = M + i * (cw + 0.2);
+    s.addShape("roundRect", {
+      x, y: cy, w: cw, h: 2.34, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
+    });
+    s.addShape("rect", { x, y: cy, w: cw, h: 0.05, fill: { color: col } });
+    s.addText(n, {
+      x: x + 0.2, y: cy + 0.16, w: 0.36, h: 0.32,
+      fontFace: FONT_NUM, fontSize: 19, bold: true, color: col, valign: "middle",
+    });
+    s.addText(t, {
+      x: x + 0.58, y: cy + 0.16, w: cw - 0.78, h: 0.32,
+      fontFace: FONT_NUM, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+    });
+    s.addText(d, {
+      x: x + 0.2, y: cy + 0.6, w: cw - 0.4, h: 1.6,
+      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.18, valign: "top",
     });
   });
 }
 
-/* ══════════════ 08 · C HARNESS 六元件 ══════════════ */
+/* ══════════════ 08 · C Harness 四層架構 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 8, title: "引擎架構：Agent Harness 六元件",
-    sub: "把助理視為「LLM + 外部 harness」共同構成的系統。程式碼拆成九個實作模組，對外以文獻的六元件框架說明。",
+    sec: "C", no: 8, title: "Harness 架構：四層分工與離線評測",
+    sub: "Workflow Pipeline 定義要做什麼；Runtime 確保可靠執行；Service Layer 才真正操作資料。",
   });
-  const six = [
-    ["E", "Execution Loop", "主迴圈驅動「送訊息 → 解析 → 執行 → 回填」；workflow 執行器處理步驟相依與錯誤策略", C.BLUE],
-    ["T", "Tool / Skill Registry", "內建、自訂與現場生成的技能都是 registry 的來源；manifest 定義參數 schema 與權限標記", C.MOSS],
-    ["C", "Context Manager", "token 預算、歷史裁切與摘要、工具輸出瘦身、技能清單注入與 prompt 組裝", C.VIOLET],
-    ["S", "State Store", "sessions／messages／skills／workflows 全部持久化到資料庫，並一律依 user_id 隔離", C.ROSE],
-    ["L", "Lifecycle Hooks", "治理層：權限分類、使用者核可、程式碼靜態檢查、沙箱與稽核，含對外傳送的隱私閘", C.AMBER],
-    ["V", "Evaluation Interface", "離線開發者工具，從外部呼叫 /assistant/chat；確定性斷言為主、LLM judge 為輔", C.MUTED],
+
+  const lw = CW - 4.0;
+  const layers = [
+    ["1", "Workflow Pipeline", ["Parse", "Plan", "Validate", "Review", "Execute", "Log"], C.BLUE],
+    ["2", "Agent Harness Runtime", ["Execution Loop", "Registry", "Context", "State", "Lifecycle"], C.VIOLET],
+    ["3", "CloudDrive Service Layer", ["Drive Service", "Upload Service", "Assistant Skill Service"], C.MOSS],
+    ["4", "DATA", ["PostgreSQL", "Object Storage"], C.MUTED],
   ];
-  const cw = (CW - 0.34) / 2;
-  six.forEach(([k, t, d, col], i) => {
-    const x = M + (i % 2) * (cw + 0.34);
-    const yy = y + 0.18 + Math.floor(i / 2) * 1.58;
+  let ly = y + 0.18;
+  layers.forEach(([n, t, chips, col]) => {
+    s.addShape("roundRect", {
+      x: M, y: ly, w: lw, h: 1.08, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
+    });
+    s.addShape("rect", { x: M, y: ly, w: 0.055, h: 1.08, fill: { color: col } });
+    s.addText(n + "　" + t, {
+      x: M + 0.22, y: ly + 0.1, w: lw - 0.44, h: 0.3,
+      fontFace: FONT_NUM, fontSize: T.h, bold: true, color: col, valign: "middle",
+    });
+    const cwid = (lw - 0.44 - (chips.length - 1) * 0.12) / chips.length;
+    chips.forEach((c, i) => {
+      const cx = M + 0.22 + i * (cwid + 0.12);
+      s.addShape("roundRect", {
+        x: cx, y: ly + 0.44, w: cwid, h: 0.5, rectRadius: 0.04,
+        fill: { color: C.WHITE }, line: { color: C.LINE, width: 0.7 },
+      });
+      s.addText(c, {
+        x: cx + 0.04, y: ly + 0.44, w: cwid - 0.08, h: 0.5,
+        fontFace: FONT_NUM, fontSize: T.body, color: C.INK, align: "center", valign: "middle",
+      });
+    });
+    ly += 1.18;
+  });
+
+  const ex = M + lw + 0.28;
+  const ew = CW - lw - 0.28;
+  s.addShape("roundRect", {
+    x: ex, y: y + 0.18, w: ew, h: 3.54, rectRadius: 0.05,
+    fill: { color: C.TINT }, line: { color: C.AMBER, width: 1.4, dashType: "dash" },
+  });
+  s.addText("Evaluation Interface", {
+    x: ex + 0.2, y: y + 0.32, w: ew - 0.4, h: 0.32,
+    fontFace: FONT_NUM, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  s.addText("OFFLINE", {
+    x: ex + 0.2, y: y + 0.66, w: ew - 0.4, h: 0.26,
+    fontFace: FONT_NUM, fontSize: 13, bold: true, color: C.AMBER, charSpacing: 2, valign: "middle",
+  });
+  ["Case Schema", "Runner", "Verifier", "Scoring"].forEach((t, i) => {
+    s.addShape("roundRect", {
+      x: ex + 0.2, y: y + 1.02 + i * 0.5, w: ew - 0.4, h: 0.4, rectRadius: 0.04,
+      fill: { color: C.WHITE }, line: { color: C.LINE, width: 0.7 },
+    });
+    s.addText(t, {
+      x: ex + 0.24, y: y + 1.02 + i * 0.5, w: ew - 0.48, h: 0.4,
+      fontFace: FONT_NUM, fontSize: T.body, color: C.INK, align: "center", valign: "middle",
+    });
+  });
+  s.addText("not in request path", {
+    x: ex + 0.2, y: y + 3.22, w: ew - 0.4, h: 0.3,
+    fontFace: FONT, fontSize: T.body, bold: true, color: C.ROSE, align: "center", valign: "middle",
+  });
+
+  footnote(s, "評測介面刻意不在使用者請求路徑上——它從外部呼叫 Production API，如同真實使用者，因此量測的是「模型 + harness 組態」整體。", { accent: C.VIOLET, h: 0.62 });
+}
+
+/* ══════════════ 09 · C 六元件 × 九模組 ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "C", no: 9, title: "六核心元件 × 九實作模組",
+    sub: "報告用的六元件框架，對應到程式碼裡實際存在的九個模組。",
+  });
+  table(s, {
+    x: M, y: y + 0.18, w: CW, colW: [2.72, 3.1, 6.24], accent: C.VIOLET,
+    header: ["核心元件", "實作模組", "職責"],
+    rows: [
+      ["E　Execution Loop", "Main Loop · Sub-agent", "控制任務執行流程；分派步驟給對應程序；處理每一步的結果回傳"],
+      ["T　Tool / Skill Registry", "Registry · Built-in Skills", "管理可用工具與技能；提供名稱、功能與參數；內建與自建分開管理"],
+      ["C　Context Manager", "Context Mgmt · Prompt Assembly", "整理需求、對話紀錄與任務；組成 system prompt；控制上下文長短與內容"],
+      ["S　State Store", "Session Persistence", "保存 session／訊息／狀態；紀錄執行節點與結果；任務在多次請求間可延續"],
+      ["L　Lifecycle Hooks", "Governance · Permissions & Safety", "執行前後做權限安全檢查；高風險操作要求確認；管理錯誤處理與執行紀錄"],
+      ["V　Evaluation Interface", "Offline Evaluation", "建立測試案例；驗證規劃、執行結果與狀態；統計錯誤類型以分析"],
+    ],
+  });
+  footnote(s, "六元件是文獻框架、九模組是可測試的實作切分——兩套命名並存是刻意的，報告講前者，程式碼與測試對後者。", { accent: C.VIOLET, h: 0.62 });
+}
+
+/* ══════════════ 10 · C Workflow Pipeline ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "C", no: 10, title: "Workflow Pipeline：先形成完整計畫，再依權限分流",
+  });
+
+  const sy = y + 0.24;
+  const steps = [
+    ["Requirement\nParsing", C.BLUE],
+    ["Structured\nPlanning", C.BLUE],
+    ["Skill\nValidation", C.VIOLET],
+    ["Permission &\nSafety Review", C.AMBER],
+  ];
+  const sw = 2.52;
+  steps.forEach(([t, col], i) => {
+    const x = M + i * (sw + 0.42);
+    s.addShape("roundRect", {
+      x, y: sy, w: sw, h: 0.92, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: col, width: 1.4 },
+    });
+    s.addText(t, {
+      x: x + 0.08, y: sy, w: sw - 0.16, h: 0.92,
+      fontFace: FONT_NUM, fontSize: T.body, bold: true, color: C.INK,
+      align: "center", valign: "middle", lineSpacingMultiple: 1.1,
+    });
+    if (i < 3) {
+      s.addText("▶", {
+        x: x + sw + 0.02, y: sy + 0.26, w: 0.38, h: 0.4,
+        fontFace: FONT, fontSize: 15, color: C.LINE, align: "center", valign: "middle",
+      });
+    }
+  });
+
+  const by = sy + 1.24;
+  const half = (CW - 0.36) / 2;
+  s.addShape("roundRect", {
+    x: M, y: by, w: half, h: 1.58, rectRadius: 0.05,
+    fill: { color: C.TINT2 }, line: { color: C.MOSS, width: 1.4 },
+  });
+  s.addText("read-only", {
+    x: M + 0.22, y: by + 0.14, w: half - 0.44, h: 0.3,
+    fontFace: FONT_NUM, fontSize: T.h, bold: true, color: C.MOSS, valign: "middle",
+  });
+  s.addText("直接進入 Workflow Execution，不打斷使用者。", {
+    x: M + 0.22, y: by + 0.5, w: half - 0.44, h: 0.9,
+    fontFace: FONT, fontSize: T.body, color: C.MUTED, valign: "top", lineSpacingMultiple: 1.18,
+  });
+
+  s.addShape("roundRect", {
+    x: M + half + 0.36, y: by, w: half, h: 1.58, rectRadius: 0.05,
+    fill: { color: C.TINT2 }, line: { color: C.ROSE, width: 1.4 },
+  });
+  s.addText("write", {
+    x: M + half + 0.58, y: by + 0.14, w: half - 0.44, h: 0.3,
+    fontFace: FONT_NUM, fontSize: T.h, bold: true, color: C.ROSE, valign: "middle",
+  });
+  s.addText("Plan Presentation → 使用者 approve 才執行；reject 即 Cancelled。", {
+    x: M + half + 0.58, y: by + 0.5, w: half - 0.44, h: 0.9,
+    fontFace: FONT, fontSize: T.body, color: C.MUTED, valign: "top", lineSpacingMultiple: 1.18,
+  });
+
+  const ly = by + 1.82;
+  s.addShape("roundRect", {
+    x: M, y: ly, w: CW, h: 0.72, rectRadius: 0.05,
+    fill: { color: C.INK },
+  });
+  s.addText("Execution Logging　·　Persistence + Governance Hooks　—　兩條路徑最後都寫進同一份稽核紀錄", {
+    x: M + 0.3, y: ly, w: CW - 0.6, h: 0.72,
+    fontFace: FONT, fontSize: T.body, bold: true, color: C.WHITE, valign: "middle",
+  });
+
+  footnote(s, "自我撰寫技能（skill-authoring）不走這條管線，另有獨立的 proposal 流程——見下一頁。", { accent: C.VIOLET, h: 0.6 });
+}
+
+/* ══════════════ 11 · C Generated Skill Lifecycle ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "C", no: 11, title: "Generated Skill Lifecycle：核可後才執行",
+  });
+  const cw = (CW - 0.4) / 3;
+  const phases = [
+    ["1", "Generate & repair", ["Skill Requirement", "Codegen Sub-agent", "JSON / Manifest Validation", "CodeGuard"], "錯誤回饋給 codegen，最多 3 輪修復（共 4 次嘗試）", C.BLUE],
+    ["2", "Human gate", ["Pending Proposal", "User Approval", "Approved？", "reject → Rejected / Cancelled"], "通過靜態驗證只建立 Pending Proposal，不會自動安裝", C.AMBER],
+    ["3", "Execute after approval", ["Installed Skill", "Sandbox Execution", "Output Ingestion"], "核可後執行失敗不會自動重新生成", C.MOSS],
+  ];
+  phases.forEach(([n, t, chain, note, col], i) => {
+    const x = M + i * (cw + 0.2);
+    const yy = y + 0.18;
+    s.addShape("roundRect", {
+      x, y: yy, w: cw, h: 4.34, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
+    });
+    s.addShape("rect", { x, y: yy, w: cw, h: 0.05, fill: { color: col } });
+    s.addText(n, {
+      x: x + 0.2, y: yy + 0.16, w: 0.34, h: 0.32,
+      fontFace: FONT_NUM, fontSize: 19, bold: true, color: col, valign: "middle",
+    });
+    s.addText(t, {
+      x: x + 0.56, y: yy + 0.16, w: cw - 0.76, h: 0.32,
+      fontFace: FONT_NUM, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+    });
+    chain.forEach((c, j) => {
+      const cy2 = yy + 0.62 + j * 0.62;
+      s.addShape("roundRect", {
+        x: x + 0.2, y: cy2, w: cw - 0.4, h: 0.44, rectRadius: 0.04,
+        fill: { color: C.WHITE }, line: { color: C.LINE, width: 0.7 },
+      });
+      s.addText(c, {
+        x: x + 0.24, y: cy2, w: cw - 0.48, h: 0.44,
+        fontFace: FONT_NUM, fontSize: T.body, color: C.INK, align: "center", valign: "middle",
+      });
+      if (j < chain.length - 1) {
+        s.addText("▼", {
+          x: x + 0.2, y: cy2 + 0.44, w: cw - 0.4, h: 0.18,
+          fontFace: FONT, fontSize: 9, color: C.LINE, align: "center", valign: "middle",
+        });
+      }
+    });
+    s.addText(note, {
+      x: x + 0.2, y: yy + 3.52, w: cw - 0.4, h: 0.72,
+      fontFace: FONT, fontSize: T.body, color: col, lineSpacingMultiple: 1.16, valign: "top",
+    });
+  });
+  footnote(s, "三道關卡缺一不可：靜態驗證只產生提案、使用者核可才安裝、安裝後才進沙箱。絕不自動執行未審核的程式碼。", { accent: C.AMBER, h: 0.62 });
+}
+
+/* ══════════════ 12 · C Why Evaluation ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "C", no: 12, title: "Why Evaluation：用真實資料與確定性驗證器量測",
+    sub: "Mock LLM 能防止程式管線退化，但不能證明真實模型的規劃與執行正確。",
+  });
+  const cw = (CW - 0.4) / 3;
+  const tiers = [
+    ["1", "Unit / integration", "Mock LLM；快速、CI 防退化", C.MUTED],
+    ["2", "Production API", "真實產品，走同一條路徑", C.BLUE],
+    ["3", "Deterministic verifier", "相同結果得到相同判定\nLLM judge = qualitative only", C.MOSS],
+  ];
+  tiers.forEach(([n, t, d, col], i) => {
+    const x = M + i * (cw + 0.2);
+    const yy = y + 0.16;
     s.addShape("roundRect", {
       x, y: yy, w: cw, h: 1.4, rectRadius: 0.05,
       fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
     });
-    s.addShape("roundRect", {
-      x: x + 0.14, y: yy + 0.22, w: 0.54, h: 0.54, rectRadius: 0.06,
-      fill: { color: col },
-    });
-    s.addText(k, {
-      x: x + 0.14, y: yy + 0.22, w: 0.54, h: 0.54,
-      fontFace: FONT_NUM, fontSize: 21, bold: true, color: C.WHITE,
-      align: "center", valign: "middle",
+    s.addShape("rect", { x, y: yy, w: cw, h: 0.05, fill: { color: col } });
+    s.addText(n, {
+      x: x + 0.2, y: yy + 0.14, w: 0.32, h: 0.3,
+      fontFace: FONT_NUM, fontSize: 18, bold: true, color: col, valign: "middle",
     });
     s.addText(t, {
-      x: x + 0.8, y: yy + 0.14, w: cw - 0.96, h: 0.32,
+      x: x + 0.54, y: yy + 0.14, w: cw - 0.74, h: 0.3,
       fontFace: FONT_NUM, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
     });
     s.addText(d, {
-      x: x + 0.8, y: yy + 0.48, w: cw - 0.96, h: 0.84,
-      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.18, valign: "top",
-    });
-  });
-  footnote(s, "V 不在使用者請求路徑上 —— 它從外部打 API，如同真實使用者，因此量測的是「模型 + harness 組態」整體。", { accent: C.VIOLET });
-}
-
-/* ══════════════ 09 · C 執行模型 ══════════════ */
-{
-  const s = S();
-  const y = head(s, {
-    sec: "C", no: 9, title: "執行模型：計畫先行，失敗時誠實報告",
-  });
-  const cw = (CW - 0.4) / 3;
-  card(s, {
-    x: M, y: y + 0.16, w: cw, h: 4.3, vcenter: true, accent: C.VIOLET, title: "為什麼不用自由 tool 迴圈",
-    items: ["權限模型依賴「完整計畫先行」", "逐步決策會讓「使用者核可了什麼」失去邊界", "本地小模型跑長程多輪容易漂移", "一次規劃 + 約束解碼 + 驗證，把弱模型鎖在能力範圍內"],
-  });
-  card(s, {
-    x: M + cw + 0.2, y: y + 0.16, w: cw, h: 4.3, vcenter: true, accent: C.ROSE, title: "失敗時誠實報告",
-    items: ["規劃時寫的回覆不能當執行結果用", "任何步驟失敗 → 改用程式組合的事實報告", "說明哪一步失敗、已完成哪些、其後未執行", "不經 LLM 潤飾，杜絕「沒做完卻說做完」"],
-  });
-  card(s, {
-    x: M + (cw + 0.2) * 2, y: y + 0.16, w: cw, h: 4.3, vcenter: true, accent: C.MOSS, title: "有限度的重新規劃",
-    items: ["僅 chat 快速路徑允許失敗後重規劃一次", "重規劃結果必須全為唯讀且可自動確認", "confirm／rerun 路徑只誠實回報，不偷換步驟"],
-  });
-  footnote(s, "DEC-029 · DEC-030　　授權是給規則，不是給那一份計畫。工作流維持串行——共用 AsyncSession 不允許並發，並行只省延遲卻引入配額競賽。", { accent: C.VIOLET });
-}
-
-/* ══════════════ 10 · C 安全邊界（06-boundary）══════════════ */
-{
-  const s = S();
-  const y = head(s, {
-    sec: "C", no: 10, title: "安全邊界：唯讀自動執行、寫入必須確認",
-  });
-  const cw9 = (CW - 0.4) / 3;
-  card(s, {
-    x: M, y: y + 0.16, w: cw9, h: 2.62, accent: C.AMBER, num: 1, title: "自我撰寫技能三道關卡",
-    items: ["子代理產生程式碼，狀態停在 pending_approval", "使用者明確核可後才可執行", "受限子行程沙箱：限 CPU／記憶體／逾時，無對外網路"],
-  });
-  card(s, {
-    x: M + cw9 + 0.2, y: y + 0.16, w: cw9, h: 2.62, accent: C.BLUE, num: 2, title: "零信任：不採信前端",
-    items: ["user_id 一律從 JWT 取，不讀請求參數", "前端擋住不算數，端點本身必須擋", "四級權限全收斂在 PermissionService"],
-  });
-  card(s, {
-    x: M + (cw9 + 0.2) * 2, y: y + 0.16, w: cw9, h: 2.62, accent: C.VIOLET, num: 3, title: "寫入前自動拍快照",
-    items: ["hooks 掛在執行器的 before_execution", "助理的破壞性操作一律先建快照", "出錯可用時光機整碟倒帶回操作前"],
-  });
-
-  const ty9 = y + 3.02;
-  s.addText("可驗證的隔離 —— 用測試證明，不用嘴巴保證", {
-    x: M, y: ty9, w: CW, h: 0.32,
-    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
-  });
-  const steps9 = [
-    ["1", "用 A 的 token 呼叫 API", "取得合法的 access token"],
-    ["2", "指定 B 的資源 ID", "A 對該資源沒有任何權限"],
-    ["3", "預期回傳 403 或 404", "且不透露該資源是否存在"],
-    ["4", "納入自動化測試", "每次 CI 重跑，避免無聲回歸"],
-  ];
-  const sw9 = (CW - 0.6) / 4;
-  steps9.forEach(([n, t, d], i) => {
-    const x = M + i * (sw9 + 0.2);
-    const yy = ty9 + 0.42;
-    s.addShape("roundRect", {
-      x, y: yy, w: sw9, h: 1.32, rectRadius: 0.05,
-      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
-    });
-    s.addText(n, {
-      x: x + 0.14, y: yy + 0.1, w: 0.34, h: 0.3,
-      fontFace: FONT_NUM, fontSize: 18, bold: true, color: C.BLUE, valign: "middle",
-    });
-    s.addText(t, {
-      x: x + 0.5, y: yy + 0.1, w: sw9 - 0.66, h: 0.3,
-      fontFace: FONT, fontSize: T.body, bold: true, color: C.INK, valign: "middle",
-    });
-    s.addText(d, {
-      x: x + 0.14, y: yy + 0.46, w: sw9 - 0.28, h: 0.66,
+      x: x + 0.2, y: yy + 0.52, w: cw - 0.4, h: 0.78,
       fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.16, valign: "top",
     });
   });
-  footnote(s, "DEC-019 · DEC-023　　絕不自動執行未審核程式碼；涉私資料的任務限本地執行，去識別化失敗即禁止外送。", { accent: C.AMBER });
-}
 
-/* ══════════════ 11 · C 為什麼需要真實模型驗證 ══════════════ */
-{
-  const s = S();
-  const y = head(s, {
-    sec: "C", no: 11, title: "為什麼需要真實模型驗證",
-    sub: "單元測試中的 LLM 是 mock，通過只代表程式控制流程正確，驗不到真實模型在 workflow 規劃上的行為。",
-  });
-  const cw = (CW - 0.3) / 2;
-  card(s, {
-    x: M, y: y + 0.16, w: cw, h: 1.95, accent: C.MUTED, title: "單元測試驗不到的部分",
-    items: ["真實模型的工具選擇是否穩定", "權限判定與多輪指涉是否正確", "規劃品質（寫入意圖是否遺漏）"],
-  });
-  card(s, {
-    x: M + cw + 0.3, y: y + 0.16, w: cw, h: 1.95, accent: C.VIOLET, title: "因此建立獨立 eval harness",
-    items: ["自外部呼叫 /assistant/chat，如同真實使用者", "確定性驗證器判定通過率，LLM judge 僅為輔", "相同回應必得相同判定，通過率可重現"],
-  });
-
-  const ty = y + 2.32;
-  s.addText("量產案例分層：EC1 – EC4（依「任務複雜度 × 是否涉及寫入」遞增，各層為獨立案例集）", {
-    x: M, y: ty, w: CW, h: 0.32,
+  const py = y + 1.86;
+  s.addText("評測管線", {
+    x: M, y: py, w: 3.0, h: 0.3,
     fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
   });
+  const chain = ["Case Schema", "Fixture Builder", "Evaluation Runner", "Production API", "Approval Handling", "Result Collector", "Deterministic Verifier", "Scoring", "Run Aggregation", "Evaluation Report"];
+  const perRow = 5;
+  const bw = (CW - (perRow - 1) * 0.16) / perRow;
+  chain.forEach((t, i) => {
+    const r = Math.floor(i / perRow), c = i % perRow;
+    const x = M + c * (bw + 0.16);
+    const yy = py + 0.4 + r * 0.62;
+    const isVerifier = t === "Deterministic Verifier";
+    s.addShape("roundRect", {
+      x, y: yy, w: bw, h: 0.5, rectRadius: 0.04,
+      fill: { color: isVerifier ? C.MOSS : C.TINT2 },
+      line: { color: isVerifier ? C.MOSS : C.LINE, width: isVerifier ? 1.4 : 0.75 },
+    });
+    s.addText(t, {
+      x: x + 0.04, y: yy, w: bw - 0.08, h: 0.5,
+      fontFace: FONT_NUM, fontSize: T.body, bold: isVerifier,
+      color: isVerifier ? C.WHITE : C.INK, align: "center", valign: "middle",
+    });
+  });
+
+  const vy = py + 1.76;
+  s.addShape("roundRect", {
+    x: M, y: vy, w: CW, h: 0.92, rectRadius: 0.05,
+    fill: { color: C.TINT }, line: { color: C.MOSS, width: 1.2 },
+  });
+  s.addText("Verifier 檢查七項", {
+    x: M + 0.26, y: vy + 0.08, w: 3.0, h: 0.3,
+    fontFace: FONT, fontSize: T.body, bold: true, color: C.INK, valign: "middle",
+  });
+  s.addText("fixture/data　·　plan correctness　·　reference grounding　·　execution　·　final state　·　collateral damage　·　generated output", {
+    x: M + 0.26, y: vy + 0.42, w: CW - 0.52, h: 0.42,
+    fontFace: FONT_NUM, fontSize: T.body, color: C.MUTED, valign: "middle",
+  });
+
+  footnote(s, "EC3 的生成程式碼另外在評測端沙箱實際執行——不只看它「產得出來」，還看它「跑起來對不對」。", { accent: C.MOSS, h: 0.6 });
+}
+
+/* ══════════════ 13 · C EC1–EC4 案例集 ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "C", no: 13, title: "EC1–EC4：四個獨立案例集",
+    sub: "依「任務複雜度 × 是否涉及寫入」遞增；各層是獨立案例集，不是同一任務的四個階段。",
+  });
   table(s, {
-    x: M, y: ty + 0.38, w: CW, colW: [1.35, 6.6, 2.15, 1.96], accent: C.VIOLET,
-    header: ["層級", "案例內容", "執行方式", "案例數"],
+    x: M, y: y + 0.18, w: CW, colW: [1.5, 1.7, 5.5, 3.36], accent: C.VIOLET,
+    header: ["層級", "案例數", "內容", "執行方式"],
     rows: [
-      ["EC1", "唯讀多工具（3 個以上查詢工具組合）", "自動執行", "100"],
-      ["EC2", "查詢當脈絡 + 寫入／批次技能", "需確認", "120"],
-      ["EC3", "自我撰寫生成（100 種不同技能）", "需核可", "100"],
-      ["EC4", "多步驟 + 跨步驟引用前一步輸出 + 寫入", "需確認", "100"],
+      ["EC1", "100 cases", "唯讀多工具查詢", "自動執行"],
+      ["EC2", "120 cases", "查詢作為脈絡 ＋ 寫入", "需使用者確認"],
+      ["EC3", "100 cases", "生成技能 ＋ 執行側驗證", "需使用者核可"],
+      ["EC4", "100 cases", "多步驟、跨步驟引用 ＋ 寫入", "需使用者確認"],
     ],
   });
-  footnote(s, "DEC-039 代號分離：M 專指助理引擎的開發里程碑，EC 專指評測案例分層；先前共用 M 造成語境混淆。", { accent: C.VIOLET });
+
+  const gy = y + 2.4;
+  s.addText("案例產生器：5 情境 × 20 主題 = 100 案，不是手工湊的", {
+    x: M, y: gy, w: CW, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  fitImage(s, P("08-ec1-scenarios.png"), 1170 / 594, { x: M, y: gy + 0.38, w: 7.3, h: 2.42 });
+  fitImage(s, P("09-ec1-topics.png"), 804 / 370, { x: M + 7.5, y: gy + 0.38, w: CW - 7.5, h: 2.42 });
 }
 
-/* ══════════════ 12 · C 穩定性三部曲 ══════════════ */
+/* ══════════════ 14 · C 實測結果 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "C", no: 12, title: "穩定性三部曲：把「請模型遵守」換成「使其不可違反」",
-  });
-  const trio = [
-    ["DEC-031", "生成上限 + 非零溫度", "結構化請求把溫度釘 0，貪婪解碼在 thinking 段掉入決定性重複迴圈，吃滿 300 秒逾時。", "一律帶 num_predict 上限；結構化請求改用低而非零的溫度。", "以有界失敗取代長時間停滯，重試真正有效。", C.BLUE],
-    ["DEC-032", "技能名以 enum 枚舉", "模型會捏造不存在的技能名，prompt 要求「只用清單內技能」沒有強制力。", "每次依當下 registry 動態組 schema，技能欄位以真實技能名做 enum。", "約束解碼在取樣時直接遮蔽，幻覺技能變成不可生成。", C.MOSS],
-    ["DEC-033", "規劃預設關閉 thinking", "前兩道防線後，重複生成仍以約一至二成殘存，且只發生在 thinking 段。", "planner 呼叫預設 think:false，可用環境變數關回。", "重複生成歸零、延遲下降一個數量級。", C.AMBER],
-  ];
-  const cw = (CW - 0.4) / 3;
-  trio.forEach(([code, name, prob, dec, eff, col], i) => {
-    const x = M + i * (cw + 0.2);
-    const yy = y + 0.16;
-    s.addShape("roundRect", {
-      x, y: yy, w: cw, h: 4.32, rectRadius: 0.05,
-      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
-    });
-    s.addShape("rect", { x, y: yy, w: cw, h: 0.05, fill: { color: col } });
-    s.addText(code, {
-      x: x + 0.18, y: yy + 0.14, w: cw - 0.36, h: 0.3,
-      fontFace: FONT_NUM, fontSize: T.h, bold: true, color: col, valign: "middle",
-    });
-    s.addText(name, {
-      x: x + 0.18, y: yy + 0.44, w: cw - 0.36, h: 0.32,
-      fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
-    });
-    // 單一富文字塊：標籤與內文同流，不會互相疊字
-    const lab = (t) => ({ text: t, options: { bold: true, color: col, breakLine: true } });
-    const txt = (t, last) => ({ text: t, options: { color: C.MUTED, breakLine: true, paraSpaceAfter: last ? 0 : 8 } });
-    s.addText(
-      [lab("問題"), txt(prob), lab("決策"), txt(dec), lab("效果"), txt(eff, true)],
-      {
-        x: x + 0.18, y: yy + 0.86, w: cw - 0.36, h: 3.3,
-        fontFace: FONT, fontSize: T.body, lineSpacingMultiple: 1.18, valign: "top",
-      }
-    );
-  });
-  footnote(s, "共同哲學：能用機制保證的事，就不要依賴模型自覺。三個決策都不是把 prompt 寫得更懇切，而是讓錯誤輸出在取樣層就無法產生、或在有界時間內必然停止。", { accent: C.AMBER });
-}
-
-/* ══════════════ 13 · C 實測結果 ══════════════ */
-{
-  const s = S();
-  const y = head(s, {
-    sec: "C", no: 13, title: "實測結果：現行基準與多輪記憶",
+    sec: "C", no: 14, title: "實測結果：EC1–EC4 通過率",
+    sub: "每個 case 跑 3 次；case-level 以至少 2/3 通過為門檻。",
   });
   statRow(s, {
-    x: M, y: y + 0.16, w: CW, h: 1.45,
+    x: M, y: y + 0.16, w: CW, h: 1.24,
     stats: [
-      { value: "387 / 420", label: "現行基準通過率\ngemma4:26b · runs=3", color: C.MOSS },
-      { value: "95 / 120", label: "EC2 最弱一層\n寫入意圖仍是瓶頸", color: C.ROSE },
-      { value: "45", label: "不穩定案例\n三次跑批有對有錯", color: C.AMBER },
-      { value: "92.4s → 8.6s", label: "平均規劃延遲\n（關閉 thinking 後）", color: C.BLUE, size: 20 },
+      { value: "389 / 420", label: "92.62% · Case threshold\ncase 以 ≥2/3 通過計", color: C.MOSS },
+      { value: "1128 / 1260", label: "89.52%\nRun pass（全 run 計）", color: C.BLUE, size: 22 },
+      { value: "337", label: "3/3 全過的案例\n佔 80.2%", color: C.VIOLET },
+      { value: "65", label: "不穩定案例\n2/3：52　1/3：13", color: C.AMBER },
     ],
   });
 
-  const ty = y + 1.9;
-  s.addText("多輪記憶的可量測化", {
-    x: M, y: ty, w: CW, h: 0.32,
+  const ty = y + 1.62;
+  const half = (CW - 0.36) / 2;
+  s.addText("分層通過率", {
+    x: M, y: ty, w: half, h: 0.3,
     fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
   });
-  table(s, {
-    x: M, y: ty + 0.4, w: CW, colW: [4.0, 5.4, 2.66], accent: C.VIOLET,
-    header: ["案例 ID", "驗證內容", "結果"],
-    rows: [
-      ["multiturn-create-second", "從對話文字解析「第二個 = 2023」", "5 / 5"],
-      ["multiturn-rename-first", "從結果摘要取得 item_id 執行改名（間接案例）", "5 / 5"],
-      ["multiturn-recall-listed-names", "僅從對話報出全部三個名稱（嚴格回想案例）", "修復前 0 / 5 → 修復後 5 / 5"],
-    ],
+  const tiers = [["EC1", 94, 92], ["EC2", 90, 88], ["EC3", 87, 79], ["EC4", 100, 99.7]];
+  tiers.forEach(([t, a, b], i) => {
+    const yy = ty + 0.42 + i * 0.62;
+    s.addText(t, {
+      x: M, y: yy, w: 0.7, h: 0.5,
+      fontFace: FONT_NUM, fontSize: T.body, bold: true, color: C.INK, valign: "middle",
+    });
+    const track = half - 2.35;
+    [[a, C.MOSS, 0], [b, C.BLUE, 0.24]].forEach(([v, col, dy]) => {
+      s.addShape("rect", { x: M + 0.72, y: yy + 0.06 + dy, w: track, h: 0.18, fill: { color: C.TINT } });
+      s.addShape("rect", { x: M + 0.72, y: yy + 0.06 + dy, w: track * v / 100, h: 0.18, fill: { color: col } });
+    });
+    s.addText(a + "% / " + b + "%", {
+      x: M + 0.8 + track, y: yy, w: 1.55, h: 0.5,
+      fontFace: FONT_NUM, fontSize: T.body, color: C.MUTED, valign: "middle",
+    });
   });
-  s.addText("「嚴格回想」案例的必要性：間接案例只證明模型用到了歷史中的某個 item_id，無法證明它真的記得內容——嚴格回想才揭露了記憶保真問題。", {
-    x: M, y: ty + 2.3, w: CW, h: 0.42,
-    fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.2, valign: "top",
+  s.addText([
+    { text: "■ ", options: { color: C.MOSS } },
+    { text: "Case threshold　", options: { color: C.MUTED } },
+    { text: "■ ", options: { color: C.BLUE } },
+    { text: "Run pass", options: { color: C.MUTED } },
+  ], {
+    x: M, y: ty + 2.96, w: half, h: 0.3,
+    fontFace: FONT, fontSize: T.body, valign: "middle",
   });
-  footnote(s, "基準取捨：2026-07-30 判分語意變更後舊通過率一律作廢，本頁採重建後的 387/420。另一份「400×3 逐 run 全過」的數據在未合併分支 eval/e9-objective-metrics，判分語意較寬，故不採用。", { accent: C.VIOLET });
+
+  const rx = M + half + 0.36;
+  s.addText("三次跑批的穩定性分佈", {
+    x: rx, y: ty, w: half, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  const dist = [["3/3", 337, C.MOSS], ["2/3", 52, C.AMBER], ["1/3", 13, C.ROSE], ["0/3", 18, C.MUTED]];
+  dist.forEach(([t, v, col], i) => {
+    const yy = ty + 0.42 + i * 0.62;
+    s.addShape("roundRect", {
+      x: rx, y: yy, w: half, h: 0.5, rectRadius: 0.04,
+      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.7 },
+    });
+    s.addShape("rect", { x: rx, y: yy, w: 0.05, h: 0.5, fill: { color: col } });
+    s.addText(t, {
+      x: rx + 0.2, y: yy, w: 0.9, h: 0.5,
+      fontFace: FONT_NUM, fontSize: T.body, bold: true, color: col, valign: "middle",
+    });
+    s.addShape("rect", { x: rx + 1.1, y: yy + 0.17, w: (half - 2.3) * v / 337, h: 0.16, fill: { color: col } });
+    s.addText(String(v), {
+      x: rx + half - 1.1, y: yy, w: 0.9, h: 0.5,
+      fontFace: FONT_NUM, fontSize: T.body, bold: true, color: C.INK, align: "right", valign: "middle",
+    });
+  });
+  s.addText("337 + 52 = 389 通過門檻；18 個三次全敗。", {
+    x: rx, y: ty + 2.96, w: half, h: 0.3,
+    fontFace: FONT, fontSize: T.body, color: C.MUTED, valign: "middle",
+  });
 }
 
-/* ══════════════ 14 · D Gemma4APIServer（07-gateway）══════════════ */
+/* ══════════════ 15 · C Token 與工具指標 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "D", no: 14, title: "模型服務層：Gemma4APIServer",
+    sec: "C", no: 15, title: "Token 與工具呼叫指標",
+    sub: "N = 960 runs　·　不依賴人為訂定的「標準步驟」，因此可跨案例與跨模型比較。",
+  });
+  statRow(s, {
+    x: M, y: y + 0.16, w: CW, h: 1.16,
+    stats: [
+      { value: "2,043,273", label: "Prompt total", color: C.BLUE, size: 22 },
+      { value: "355,719", label: "Completion total", color: C.MOSS, size: 22 },
+      { value: "2,398,992", label: "Total tokens", color: C.VIOLET, size: 22 },
+      { value: "1,903.96", label: "Average total / run", color: C.AMBER, size: 22 },
+    ],
+  });
+
+  const ty = y + 1.54;
+  const half = (CW - 0.36) / 2;
+  s.addText("各層平均 token", {
+    x: M, y: ty, w: half, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  const toks = [["EC1", 1987], ["EC2", 2087], ["EC3", 1447], ["EC4", 2058]];
+  toks.forEach(([t, v], i) => {
+    const yy = ty + 0.42 + i * 0.6;
+    s.addText(t, { x: M, y: yy, w: 0.7, h: 0.46, fontFace: FONT_NUM, fontSize: T.body, bold: true, color: C.INK, valign: "middle" });
+    const track = half - 2.0;
+    s.addShape("rect", { x: M + 0.72, y: yy + 0.13, w: track, h: 0.2, fill: { color: C.TINT } });
+    s.addShape("rect", { x: M + 0.72, y: yy + 0.13, w: track * v / 2087, h: 0.2, fill: { color: C.BLUE } });
+    s.addText(String(v), { x: M + 0.76 + track, y: yy, w: 1.2, h: 0.46, fontFace: FONT_NUM, fontSize: T.body, color: C.MUTED, valign: "middle" });
+  });
+
+  const rx = M + half + 0.36;
+  s.addText("各層平均工具步數", {
+    x: rx, y: ty, w: half, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  const tools = [["EC1", 4.92], ["EC2", 4.65], ["EC3", null], ["EC4", 4.14]];
+  tools.forEach(([t, v], i) => {
+    const yy = ty + 0.42 + i * 0.6;
+    s.addText(t, { x: rx, y: yy, w: 0.7, h: 0.46, fontFace: FONT_NUM, fontSize: T.body, bold: true, color: C.INK, valign: "middle" });
+    const track = half - 2.0;
+    s.addShape("rect", { x: rx + 0.72, y: yy + 0.13, w: track, h: 0.2, fill: { color: C.TINT } });
+    if (v !== null) {
+      s.addShape("rect", { x: rx + 0.72, y: yy + 0.13, w: track * v / 4.92, h: 0.2, fill: { color: C.MOSS } });
+    }
+    s.addText(v === null ? "不適用" : String(v), {
+      x: rx + 0.76 + track, y: yy, w: 1.2, h: 0.46,
+      fontFace: FONT_NUM, fontSize: T.body, color: C.MUTED, valign: "middle",
+    });
+  });
+
+  footnote(s, "EC3 為生成技能測試，不走工具呼叫路徑，故無工具步數；它的 token 也最低（1447），因為輸出是程式碼而非多輪工具規劃。", { accent: C.VIOLET, h: 0.62 });
+}
+
+/* ══════════════ 16 · C 缺陷、限制與未來 ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "C", no: 16, title: "評測本身的缺陷、現行限制與未來工作",
+  });
+
+  s.addShape("roundRect", {
+    x: M, y: y + 0.16, w: CW, h: 1.5, rectRadius: 0.05,
+    fill: { color: C.TINT }, line: { color: C.ROSE, width: 1.2 },
+  });
+  s.addText("評測深度：舊案例可能用空帳號、假 ID、根本沒真正執行就通過——只檢查了流程對不對", {
+    x: M + 0.26, y: y + 0.26, w: CW - 0.52, h: 0.32,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  const checks = ["fixture/data", "reference grounding", "plan correctness", "execution result", "final state", "collateral damage", "generated code output"];
+  const cwid = (CW - 0.52 - 6 * 0.1) / 7;
+  checks.forEach((t, i) => {
+    const x = M + 0.26 + i * (cwid + 0.1);
+    s.addShape("roundRect", {
+      x, y: y + 0.68, w: cwid, h: 0.4, rectRadius: 0.04,
+      fill: { color: C.MOSS }, line: { color: C.MOSS, width: 1 },
+    });
+    s.addText(t, {
+      x: x + 0.03, y: y + 0.68, w: cwid - 0.06, h: 0.4,
+      fontFace: FONT_NUM, fontSize: 12, color: C.WHITE, align: "center", valign: "middle",
+    });
+  });
+  s.addText("新增的確定性檢查：確認資料真實有效 · 檢查計畫正確性 · 執行過程是否安全 · 驗證結果符合預期", {
+    x: M + 0.26, y: y + 1.14, w: CW - 0.52, h: 0.32,
+    fontFace: FONT, fontSize: T.body, color: C.MUTED, valign: "middle",
+  });
+
+  const cy = y + 1.86;
+  const half = (CW - 0.3) / 2;
+  card(s, {
+    x: M, y: cy, w: half, h: 2.6, accent: C.ROSE, title: "現行限制（誠實列出）",
+    items: [
+      "未真實對生成技能的執行效果做測試",
+      "測試案例無紀錄 latency 資料",
+      "記憶與長對話追蹤能力有限",
+      "執行流程以串行為主",
+      "LLM 生成計畫缺乏動態調整能力",
+    ],
+  });
+  card(s, {
+    x: M + half + 0.3, y: cy, w: half, h: 2.6, accent: C.MOSS, title: "未來工作",
+    items: [
+      "測試案例更多元化",
+      "擴充 Playwright E2E 測試",
+      "多元測試 generated skill runtime cases",
+      "做不同模型的受控 A/B",
+      "增加 tool-call effectiveness 指標",
+    ],
+  });
+}
+
+/* ══════════════ 17 · D Gemma4APIServer（07-gateway）══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "D", no: 17, title: "模型服務層：Gemma4APIServer",
     sub: "獨立專案，不屬於 CloudDrive　·　github.com/billwu101/Gemma4APIServer",
   });
   fitImage(s, P("07-gateway.png"), R.gateway, { x: M, y: y + 0.2, w: CW, h: 2.35 });
@@ -598,11 +929,11 @@ const S = () => {
   footnote(s, "/v1/* 相容路徑自動注入 think:false（對應 DEC-033）；原生 /api/* 保持透明轉發，不改寫請求。", { accent: C.ROSE });
 }
 
-/* ══════════════ 15 · D 為什麼拆成獨立專案 ══════════════ */
+/* ══════════════ 18 · D 為什麼拆成獨立專案 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "D", no: 15, title: "為什麼把模型服務拆成獨立專案",
+    sec: "D", no: 18, title: "為什麼把模型服務拆成獨立專案",
   });
   fitImage(s, P("06-boundary.png"), R.boundary, { x: M, y: y + 0.14, w: 6.15, h: 3.4 });
 
@@ -637,11 +968,11 @@ const S = () => {
   footnote(s, "抽換成本因此趨近於零 —— 換模型、換供應商、退回本機 Ollama，都只是改這三行。", { y: 6.5, h: 0.6, accent: C.ROSE, bold: true });
 }
 
-/* ══════════════ 16 · D 營運監控儀表板 ══════════════ */
+/* ══════════════ 19 · D 營運監控儀表板 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "D", no: 16, title: "營運監控：金鑰用量與即時日誌",
+    sec: "D", no: 19, title: "營運監控：金鑰用量與即時日誌",
     sub: "gateway 附帶的終端儀表板，一眼看出 GPU 是否還活著、每把金鑰用了多少、請求是否正常。",
   });
 
@@ -717,11 +1048,11 @@ const S = () => {
   footnote(s, "VRAM 21.0 / 24.0 GB —— gemma4:26b 以 KEEP_ALIVE=-1 常駐，幾乎吃滿單張卡。這是「Ollama 單併發」限制的直接來源，也是 DEC-030 工作流不並行的實務理由之一。", { accent: C.ROSE });
 }
 
-/* ══════════════ 17 · E 系統部署（02-deploy）══════════════ */
+/* ══════════════ 20 · E 系統部署（02-deploy）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 17, title: "系統部署：四個節點",
+    sec: "E", no: 20, title: "系統部署：四個節點",
   });
   fitImage(s, P("02-deploy.png"), R.deploy, { x: M, y: y + 0.12, w: CW, h: 4.62 });
 
@@ -746,11 +1077,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 18 · E Docker 與 CI/CD（03-docker-wide）══════════════ */
+/* ══════════════ 21 · E Docker 與 CI/CD（03-docker-wide）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 18, title: "Docker 與 CI/CD：從管線到容器",
+    sec: "E", no: 21, title: "Docker 與 CI/CD：從管線到容器",
   });
   fitImage(s, P("03-docker-wide.png"), R.docker, { x: M, y: y + 0.12, w: CW, h: 4.24 });
 
@@ -776,11 +1107,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 19 · E 三個環境的差異 ══════════════ */
+/* ══════════════ 22 · E 三個環境的差異 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 19, title: "本機 · CI · 正式部署：三個環境差在哪",
+    sec: "E", no: 22, title: "本機 · CI · 正式部署：三個環境差在哪",
     sub: "差異全部收斂在設定，不在程式碼——三份 .env 範本就是三個環境的規格書。",
   });
   table(s, {
@@ -819,11 +1150,11 @@ const S = () => {
   footnote(s, "唯一只出現在正式環境的變數是 TUNNEL_TOKEN —— 對外曝露是正式環境獨有的能力，本機與 CI 都不該擁有。", { accent: C.BLUE, h: 0.62 });
 }
 
-/* ══════════════ 20 · E 部署實戰與安全設計 ══════════════ */
+/* ══════════════ 23 · E 部署實戰與安全設計 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 20, title: "部署實戰：自架 runner 與最小權限設計",
+    sec: "E", no: 23, title: "部署實戰：自架 runner 與最小權限設計",
     sub: "2026-07-11 首次上線　·　Ubuntu 24.04　·　CI 與 CD 刻意分離在兩種 runner 上。",
   });
 
@@ -874,11 +1205,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 21 · F 競品比較與定位 ══════════════ */
+/* ══════════════ 24 · F 競品比較與定位 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "F", no: 21, title: "競品比較與定位",
+    sec: "F", no: 24, title: "競品比較與定位",
   });
   table(s, {
     x: M, y: y + 0.2, w: CW, colW: [2.5, 3.05, 3.25, 3.26], accent: C.MOSS,
@@ -907,11 +1238,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 22 · V 為什麼需要規則 ══════════════ */
+/* ══════════════ 25 · V 為什麼需要規則 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 22, title: "為什麼需要開發規則：兩次真實事故",
+    sec: "V", no: 25, title: "為什麼需要開發規則：兩次真實事故",
     sub: "用 AI 開發最常見的兩個失效模式，都不是「程式寫錯」，而是「看起來做完了」。",
   });
   const cw = (CW - 0.3) / 2;
@@ -949,11 +1280,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 23 · V 規則體系 ══════════════ */
+/* ══════════════ 26 · V 規則體系 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 23, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
+    sec: "V", no: 26, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
     sub: "核心原則：不猜測意圖、文件先行、任務最小化、結果可驗證。文件沒完成前不大量產生程式碼。",
   });
   const steps = [
@@ -1007,11 +1338,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 24 · V 規則怎麼被驗證有效 ══════════════ */
+/* ══════════════ 27 · V 規則怎麼被驗證有效 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 24, title: "規則怎麼被驗證有效",
+    sec: "V", no: 27, title: "規則怎麼被驗證有效",
   });
   s.addShape("roundRect", {
     x: M, y: y + 0.16, w: CW, h: 1.34, rectRadius: 0.05,
@@ -1043,11 +1374,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 25 · G 18 週訓練期軌跡 ══════════════ */
+/* ══════════════ 28 · G 18 週訓練期軌跡 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 25, title: "18 週訓練期軌跡（3/23 – 7/26）",
+    sec: "G", no: 28, title: "18 週訓練期軌跡（3/23 – 7/26）",
     sub: "前 10 週打底與找題目，後 8 週密集產出。",
   });
   const phases = [
@@ -1093,11 +1424,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 26 · G 踩坑與結語 ══════════════ */
+/* ══════════════ 29 · G 踩坑與結語 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 26, title: "用 AI 開發踩到的坑，與這半年學到的事",
+    sec: "G", no: 29, title: "用 AI 開發踩到的坑，與這半年學到的事",
   });
   const cw = (CW - 0.3) / 2;
   card(s, {
@@ -1150,7 +1481,7 @@ const S = () => {
 {
   const s = S();
   const y = head(s, {
-    sec: "B", no: 27, title: "附錄：完整欄位 ER Diagram",
+    sec: "B", no: 30, title: "附錄：完整欄位 ER Diagram",
     sub: "備 Q&A 使用，不在正式報告時間內。",
   });
   fitImage(s, P("01-erd.png"), R.erdFull, { x: M, y: y + 0.16, w: CW, h: H - y - 0.6 });
