@@ -10,7 +10,7 @@ const R = {
   erdFull: 2352 / 1629,
   deploy: 2352 / 1215,
   docker: 2352 / 1092,
-  arch: 2352 / 327,
+  arch: 2352 / 351,
   chat: 2352 / 1032,
   boundary: 2352 / 1281,
   gateway: 2352 / 510,
@@ -119,10 +119,10 @@ const S = () => {
       ["D", "模型服務層", "17 – 19", "Gemma4APIServer 獨立專案"],
     ]],
     ["3", "交付、方法與回顧", C.AMBER, "吳晉緯", [
-      ["E", "部署", "20 – 23", "四節點 · CI-CD · 環境與實戰"],
-      ["F", "定位", "24", "競品比較 · 完成度"],
-      ["G", "Vibe Coding", "25 – 27", "兩次事故 · 規則體系 · 驗證"],
-      ["H", "學習歷程", "28 – 29", "18 週軌跡 · 踩坑回顧"],
+      ["E", "部署", "20 – 24", "四節點 · 儲存 · CI-CD · 環境與實戰"],
+      ["F", "定位", "25", "競品比較 · 完成度"],
+      ["G", "Vibe Coding", "26 – 28", "兩次事故 · 規則體系 · 驗證"],
+      ["H", "學習歷程", "29 – 30", "18 週軌跡 · 踩坑回顧"],
     ]],
   ];
   const cw = (CW - 0.44) / 3;
@@ -172,7 +172,7 @@ const S = () => {
       ry += 0.86;
     });
   });
-  footnote(s, "時間有限可直接看 P.12–13（穩定性三部曲與實測數據）與 P.22–24（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.27 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
+  footnote(s, "時間有限可直接看 P.14–16（實測結果、效率指標與已知限制）與 P.26–28（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.31 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
 }
 
 /* ══════════════ 03 · A 問題與定位 ══════════════ */
@@ -215,7 +215,7 @@ const S = () => {
   });
   card(s, {
     x: M + cw + 0.2, y: yy, w: cw, h: 2.42, accent: C.MOSS, title: "儲存層可抽換",
-    body: "StorageProvider 為 Protocol 介面，本機實作可替換為物件儲存。\n\n中繼資料與檔案本體以 storage_key 關聯。",
+    body: "程式只認相對 key，根目錄由 LOCAL_STORAGE_PATH 決定——「寫到哪」是部署決定的。\n\n未來換 S3 只要換一個 StorageProvider 實作。",
   });
   card(s, {
     x: M + (cw + 0.2) * 2, y: yy, w: cw, h: 2.42, accent: C.VIOLET, title: "推論預設本地",
@@ -1114,11 +1114,91 @@ const S = () => {
   });
 }
 
-/* ══════════════ 21 · E Docker 與 CI/CD（03-docker-wide）══════════════ */
+/* ══════════════ 21 · E 檔案實際落在哪裡 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 21, title: "Docker 與 CI/CD：從管線到容器",
+    sec: "E", no: 21, title: "檔案實際落在哪裡",
+    sub: "程式碼裡一行絕對路徑都沒有——根目錄由 LOCAL_STORAGE_PATH 決定，「寫到哪」是部署決定的。",
+  });
+
+  const cw = (CW - 0.4) / 3;
+  const cases = [
+    ["1", "Docker（正常跑法）", "寫進 Docker volume", [
+      "容器內 /app/storage，被 named volume 蓋住",
+      "實際在 /var/lib/docker/volumes/…",
+      "不在專案目錄與家目錄，macOS 還隔層 VM",
+    ], C.BLUE],
+    ["2", "直接跑 uvicorn", "落在 /tmp", [
+      "未設環境變數時用 config.py 預設值",
+      "/tmp/cloud-drive-storage",
+      "開機會被清掉，只適合臨時試跑",
+    ], C.AMBER],
+    ["3", "從來不會寫到家目錄", "沒有任何路徑通到 ~", [
+      "設成家目錄也一樣跳不出去",
+      "key 帶 .. 或開頭 / → PathTraversalError",
+      "resolve() 後再過 relative_to(root)",
+    ], C.MOSS],
+  ];
+  cases.forEach(([n, t, sub2, items, col], i) => {
+    const x = M + i * (cw + 0.2);
+    const yy = y + 0.16;
+    s.addShape("roundRect", {
+      x, y: yy, w: cw, h: 2.82, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
+    });
+    s.addShape("rect", { x, y: yy, w: cw, h: 0.05, fill: { color: col } });
+    s.addText(n, {
+      x: x + 0.2, y: yy + 0.16, w: 0.32, h: 0.3,
+      fontFace: FONT_NUM, fontSize: 19, bold: true, color: col, valign: "middle",
+    });
+    s.addText(t, {
+      x: x + 0.54, y: yy + 0.16, w: cw - 0.74, h: 0.3,
+      fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+    });
+    s.addText("→　" + sub2, {
+      x: x + 0.2, y: yy + 0.5, w: cw - 0.4, h: 0.3,
+      fontFace: FONT, fontSize: T.body, bold: true, color: col, valign: "middle",
+    });
+    bullets(s, {
+      x: x + 0.2, y: yy + 0.86, w: cw - 0.4, h: 1.84, items, color: C.MUTED,
+    });
+  });
+
+  const vy = y + 3.16;
+  const half = (CW - 0.3) / 2;
+  s.addText("這台機器上真的存在的兩個 volume", {
+    x: M, y: vy, w: half, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  s.addShape("roundRect", {
+    x: M, y: vy + 0.36, w: half, h: 1.0, rectRadius: 0.05, fill: { color: C.INK },
+  });
+  s.addText("clouddrive_storage_data     ← 本機開發\ncloud-drive_storage_data    ← 正式環境", {
+    x: M + 0.26, y: vy + 0.44, w: half - 0.52, h: 0.84,
+    fontFace: "Menlo", fontSize: T.body, color: "9FE8C0", lineSpacingMultiple: 1.24, valign: "top",
+  });
+
+  s.addText("要看內容只能穿進容器", {
+    x: M + half + 0.3, y: vy, w: half, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  s.addShape("roundRect", {
+    x: M + half + 0.3, y: vy + 0.36, w: half, h: 1.0, rectRadius: 0.05, fill: { color: C.INK },
+  });
+  s.addText("docker compose exec backend \\\n  ls -R /app/storage/users", {
+    x: M + half + 0.56, y: vy + 0.44, w: half - 0.52, h: 0.84,
+    fontFace: "Menlo", fontSize: T.body, color: "9FE8C0", lineSpacingMultiple: 1.24, valign: "top",
+  });
+
+  footnote(s, "volume 生命週期與容器分開：rebuild、換映像 tag、docker compose down 都不掉檔案，只有 docker volume rm 或 down -v 才會消失。路徑寫在 compose 而非程式裡，換 S3 只要換一個 StorageProvider 實作。", { accent: C.BLUE });
+}
+
+/* ══════════════ 22 · E Docker 與 CI/CD（03-docker-wide）══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "E", no: 22, title: "Docker 與 CI/CD：從管線到容器",
   });
   fitImage(s, P("03-docker-wide.png"), R.docker, { x: M, y: y + 0.12, w: CW, h: 4.24 });
 
@@ -1144,11 +1224,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 22 · E 三個環境的差異 ══════════════ */
+/* ══════════════ 23 · E 三個環境的差異 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 22, title: "本機 · CI · 正式部署：三個環境差在哪",
+    sec: "E", no: 23, title: "本機 · CI · 正式部署：三個環境差在哪",
     sub: "差異全部收斂在設定，不在程式碼——三份 .env 範本就是三個環境的規格書。",
   });
   table(s, {
@@ -1187,11 +1267,11 @@ const S = () => {
   footnote(s, "唯一只出現在正式環境的變數是 TUNNEL_TOKEN —— 對外曝露是正式環境獨有的能力，本機與 CI 都不該擁有。", { accent: C.BLUE, h: 0.62 });
 }
 
-/* ══════════════ 23 · E 部署實戰與安全設計 ══════════════ */
+/* ══════════════ 24 · E 部署實戰與安全設計 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 23, title: "部署實戰：自架 runner 與最小權限設計",
+    sec: "E", no: 24, title: "部署實戰：自架 runner 與最小權限設計",
     sub: "2026-07-11 首次上線　·　Ubuntu 24.04　·　CI 與 CD 刻意分離在兩種 runner 上。",
   });
 
@@ -1242,11 +1322,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 24 · F 競品比較與定位 ══════════════ */
+/* ══════════════ 25 · F 競品比較與定位 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "F", no: 24, title: "競品比較與定位",
+    sec: "F", no: 25, title: "競品比較與定位",
   });
   table(s, {
     x: M, y: y + 0.2, w: CW, colW: [2.5, 3.05, 3.25, 3.26], accent: C.MOSS,
@@ -1275,11 +1355,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 25 · V 為什麼需要規則 ══════════════ */
+/* ══════════════ 26 · V 為什麼需要規則 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 25, title: "為什麼需要開發規則：兩次真實事故",
+    sec: "V", no: 26, title: "為什麼需要開發規則：兩次真實事故",
     sub: "用 AI 開發最常見的兩個失效模式，都不是「程式寫錯」，而是「看起來做完了」。",
   });
   const cw = (CW - 0.3) / 2;
@@ -1317,11 +1397,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 26 · V 規則體系 ══════════════ */
+/* ══════════════ 27 · V 規則體系 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 26, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
+    sec: "V", no: 27, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
     sub: "核心原則：不猜測意圖、文件先行、任務最小化、結果可驗證。文件沒完成前不大量產生程式碼。",
   });
   const steps = [
@@ -1375,11 +1455,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 27 · V 規則怎麼被驗證有效 ══════════════ */
+/* ══════════════ 28 · V 規則怎麼被驗證有效 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 27, title: "規則怎麼被驗證有效",
+    sec: "V", no: 28, title: "規則怎麼被驗證有效",
   });
   s.addShape("roundRect", {
     x: M, y: y + 0.16, w: CW, h: 1.34, rectRadius: 0.05,
@@ -1411,11 +1491,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 28 · G 18 週訓練期軌跡 ══════════════ */
+/* ══════════════ 29 · G 18 週訓練期軌跡 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 28, title: "18 週訓練期軌跡（3/23 – 7/26）",
+    sec: "G", no: 29, title: "18 週訓練期軌跡（3/23 – 7/26）",
     sub: "前 10 週打底與找題目，後 8 週密集產出。",
   });
   const phases = [
@@ -1461,11 +1541,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 29 · G 踩坑與結語 ══════════════ */
+/* ══════════════ 30 · G 踩坑與結語 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 29, title: "用 AI 開發踩到的坑，與這半年學到的事",
+    sec: "G", no: 30, title: "用 AI 開發踩到的坑，與這半年學到的事",
   });
   const cw = (CW - 0.3) / 2;
   card(s, {
@@ -1518,7 +1598,7 @@ const S = () => {
 {
   const s = S();
   const y = head(s, {
-    sec: "B", no: 30, title: "附錄：完整欄位 ER Diagram",
+    sec: "B", no: 31, title: "附錄：完整欄位 ER Diagram",
     sub: "備 Q&A 使用，不在正式報告時間內。",
   });
   fitImage(s, P("01-erd.png"), R.erdFull, { x: M, y: y + 0.16, w: CW, h: H - y - 0.6 });

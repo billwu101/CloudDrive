@@ -6,8 +6,8 @@ graph LR
     NX -->|"回傳 SPA 靜態資源"| U
     NX -->|"轉發 /api/v1"| BE["FastAPI 後端<br/>uvicorn :8000"]
     BE -->|"查詢／寫入 metadata"| PG[("pgvector/pgvector:pg16<br/>中繼資料 + 向量索引")]
-    BE -->|"存取檔案本體"| SP2["Storage Provider"]
-    SP2 -->|"讀寫 blob"| FS["本機檔案系統"]
+    BE -->|"存取檔案本體"| SP2["Storage Provider<br/>只認相對 key，不含根目錄<br/>users/&lt;uid&gt;/files/&lt;uuid&gt;/v&lt;n&gt;"]
+    SP2 -->|"讀寫 blob"| FS["storage_data volume<br/>Docker 代管<br/>容器內掛在 /app/storage"]
     BE -->|"轉交自然語言任務"| AS["AI 助理引擎"]
   end
   subgraph EXT["Gemma4APIServer（獨立專案 · 另一台主機）"]
@@ -24,7 +24,8 @@ graph LR
   classDef edge fill:#f7e8e8,stroke:#c07f7f,stroke-width:1.8px,color:#43221f
   class U user
   class NX front
-  class BE,SP2,FS back
+  class BE,SP2 back
+  class FS vol
   class PG db
   class AS ai
   class GW,OL edge
