@@ -110,27 +110,27 @@ const S = () => {
   s.addShape("rect", { x: M, y: 1.46, w: CW, h: 0.022, fill: { color: C.BLUE } });
 
   const parts = [
-    ["1", "系統與設計", C.BLUE, [
+    ["1", "系統與設計", C.BLUE, "吳晉緯", [
       ["A", "專案概覽", "03 – 04", "問題定義 · 系統全貌"],
       ["B", "設計與資料", "05 – 06", "21 張表 · 後端模組化"],
     ]],
-    ["2", "核心：AI 助理與驗證", C.VIOLET, [
+    ["2", "核心：AI 助理與驗證", C.VIOLET, "沈威廷", [
       ["C", "AI 助理與驗證", "07 – 13", "六元件 · 安全邊界 · 實測"],
       ["D", "模型服務層", "14 – 16", "Gemma4APIServer 獨立專案"],
     ]],
-    ["3", "交付、方法與回顧", C.AMBER, [
-      ["E", "部署", "17 – 20", "四節點 · Docker/CI-CD · 環境差異 · 實戰"],
+    ["3", "交付、方法與回顧", C.AMBER, "吳晉緯", [
+      ["E", "部署", "17 – 20", "四節點 · CI-CD · 環境與實戰"],
       ["F", "定位", "21", "競品比較 · 完成度"],
       ["V", "Vibe Coding", "22 – 24", "兩次事故 · 規則體系 · 驗證"],
       ["G", "學習歷程", "25 – 26", "18 週軌跡 · 踩坑回顧"],
     ]],
   ];
   const cw = (CW - 0.44) / 3;
-  parts.forEach(([n, t, col, rows], i) => {
+  parts.forEach(([n, t, col, who, rows], i) => {
     const x = M + i * (cw + 0.22);
     const yy = 1.72;
     s.addShape("roundRect", {
-      x, y: yy, w: cw, h: 4.45, rectRadius: 0.05,
+      x, y: yy, w: cw, h: 4.62, rectRadius: 0.05,
       fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
     });
     s.addShape("rect", { x, y: yy, w: cw, h: 0.05, fill: { color: col } });
@@ -146,7 +146,11 @@ const S = () => {
       x: x + 0.76, y: yy + 0.22, w: cw - 0.96, h: 0.44,
       fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
     });
-    let ry = yy + 0.88;
+    s.addText("報告　" + who, {
+      x: x + 0.22, y: yy + 0.68, w: cw - 0.44, h: 0.3,
+      fontFace: FONT, fontSize: T.body, color: col, valign: "middle",
+    });
+    let ry = yy + 1.06;
     rows.forEach(([k, name, pages, desc]) => {
       s.addText(k, {
         x: x + 0.22, y: ry, w: 0.32, h: 0.3,
