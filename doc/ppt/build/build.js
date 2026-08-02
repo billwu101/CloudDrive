@@ -56,20 +56,29 @@ const S = () => {
 
   const tags = ["React 19 + FastAPI", "PostgreSQL + pgvector", "本地 Gemma 4 26B", "Docker + CI/CD"];
   tags.forEach((t, i) => {
-    const x = 1.15 + i * 2.72;
+    const x = 1.15 + i * 2.80;
     s.addShape("roundRect", {
-      x, y: 4.66, w: 2.55, h: 0.46, rectRadius: 0.05,
+      x, y: 4.66, w: 2.64, h: 0.46, rectRadius: 0.05,
       fill: { color: C.TINT }, line: { color: C.LINE, width: 0.75 },
     });
     s.addText(t, {
-      x: x + 0.06, y: 4.66, w: 2.43, h: 0.46,
+      x: x + 0.06, y: 4.66, w: 2.52, h: 0.46,
       fontFace: FONT, fontSize: T.body, color: C.INK, align: "center", valign: "middle",
     });
   });
 
-  s.addText("報告人：＿＿＿＿＿　·　指導教授：呂＿＿　·　2026 年 8 月", {
-    x: 1.15, y: 5.85, w: 11.0, h: 0.36,
-    fontFace: FONT, fontSize: 16, color: C.MUTED, valign: "middle",
+  s.addText([
+    { text: "報告人　", options: { color: C.MUTED } },
+    { text: "吳晉緯　·　沈威廷", options: { color: C.INK, bold: true } },
+    { text: "　　　指導教授　", options: { color: C.MUTED } },
+    { text: "呂政修 教授", options: { color: C.INK, bold: true } },
+  ], {
+    x: 1.15, y: 5.78, w: 11.0, h: 0.36,
+    fontFace: FONT, fontSize: 17, valign: "middle",
+  });
+  s.addText("國立臺灣科技大學　·　2026 年 8 月", {
+    x: 1.15, y: 6.2, w: 11.0, h: 0.32,
+    fontFace: FONT, fontSize: 15, color: C.MUTED, valign: "middle",
   });
   s.addText("v3.0", {
     x: W - M - 1.2, y: 6.55, w: 1.2, h: 0.32,
