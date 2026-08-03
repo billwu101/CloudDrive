@@ -119,10 +119,10 @@ const S = () => {
       ["D", "模型服務層", "17 – 19", "Gemma4APIServer 獨立專案"],
     ]],
     ["3", "交付、方法與回顧", C.AMBER, "吳晉緯", [
-      ["E", "部署", "20 – 24", "四節點 · 儲存 · CI-CD · 環境與實戰"],
-      ["F", "定位", "25", "競品比較 · 完成度"],
-      ["G", "Vibe Coding", "26 – 28", "兩次事故 · 規則體系 · 驗證"],
-      ["H", "學習歷程", "29 – 30", "18 週軌跡 · 踩坑回顧"],
+      ["E", "部署", "20 – 25", "四節點 · 儲存 · CI-CD · 環境與實戰"],
+      ["F", "定位", "26", "競品比較 · 完成度"],
+      ["G", "Vibe Coding", "27 – 29", "兩次事故 · 規則體系 · 驗證"],
+      ["H", "學習歷程", "30 – 31", "18 週軌跡 · 踩坑回顧"],
     ]],
   ];
   const cw = (CW - 0.44) / 3;
@@ -172,7 +172,7 @@ const S = () => {
       ry += 0.86;
     });
   });
-  footnote(s, "時間有限可直接看 P.14–16（實測結果、效率指標與已知限制）與 P.26–28（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.31 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
+  footnote(s, "時間有限可直接看 P.14–16（實測結果、效率指標與已知限制）與 P.27–29（Vibe Coding 開發方法）—— 這兩段是報告重心。附錄 P.34 為完整欄位 ERD，備 Q&A 使用。", { accent: C.BLUE, h: 0.66 });
 }
 
 /* ══════════════ 03 · A 問題與定位 ══════════════ */
@@ -1114,11 +1114,105 @@ const S = () => {
   });
 }
 
-/* ══════════════ 21 · E 檔案實際落在哪裡 ══════════════ */
+/* ══════════════ 21 · E metadata 與 blob 分離 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 21, title: "檔案實際落在哪裡",
+    sec: "E", no: 21, title: "metadata 與 blob：分開存，用 storage_key 接起來",
+    sub: "中繼資料進 PostgreSQL、檔案本體交 StorageProvider——各自放在擅長的地方，一根字串接起來。",
+  });
+
+  const half = (CW - 0.34) / 2;
+  const yy = y + 0.16;
+
+  // ── metadata ──
+  s.addShape("roundRect", {
+    x: M, y: yy, w: half, h: 2.4, rectRadius: 0.05,
+    fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
+  });
+  s.addShape("rect", { x: M, y: yy, w: half, h: 0.05, fill: { color: C.BLUE } });
+  s.addText("Metadata（中繼資料）", {
+    x: M + 0.22, y: yy + 0.14, w: half - 0.44, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  s.addText("→　PostgreSQL 的 drive_items（16 欄）", {
+    x: M + 0.22, y: yy + 0.46, w: half - 0.44, h: 0.3,
+    fontFace: FONT_NUM, fontSize: T.body, bold: true, color: C.BLUE, valign: "middle",
+  });
+  s.addShape("roundRect", {
+    x: M + 0.22, y: yy + 0.78, w: half - 0.44, h: 1.02, rectRadius: 0.04, fill: { color: C.INK },
+  });
+  s.addText("name「期末報告.pdf」   parent_id 樹狀結構\nowner_id   size_bytes   mime_type   is_deleted\nstorage_key  users/xxx/files/yyy/v1", {
+    x: M + 0.34, y: yy + 0.84, w: half - 0.68, h: 0.92,
+    fontFace: "Menlo", fontSize: 12.5, color: "9FE8C0", lineSpacingMultiple: 1.2, valign: "top",
+  });
+  s.addText("小、結構化、要被查詢——列資料夾、搜尋檔名、算容量都只碰這張表，一次 SQL 就回來。", {
+    x: M + 0.22, y: yy + 1.86, w: half - 0.44, h: 0.44,
+    fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.16, valign: "top",
+  });
+
+  // ── blob ──
+  const bx = M + half + 0.34;
+  s.addShape("roundRect", {
+    x: bx, y: yy, w: half, h: 2.4, rectRadius: 0.05,
+    fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
+  });
+  s.addShape("rect", { x: bx, y: yy, w: half, h: 0.05, fill: { color: C.MOSS } });
+  s.addText("Blob（Binary Large Object）", {
+    x: bx + 0.22, y: yy + 0.14, w: half - 0.44, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  s.addText("→　檔案系統，經 StorageProvider 存取", {
+    x: bx + 0.22, y: yy + 0.46, w: half - 0.44, h: 0.3,
+    fontFace: FONT_NUM, fontSize: T.body, bold: true, color: C.MOSS, valign: "middle",
+  });
+  s.addShape("roundRect", {
+    x: bx + 0.22, y: yy + 0.78, w: half - 0.44, h: 1.02, rectRadius: 0.04, fill: { color: C.INK },
+  });
+  s.addText("那個 PDF 真正的 12 MB 位元組\n\nDB 唯一知道的事：它在 storage_key 那個位置", {
+    x: bx + 0.34, y: yy + 0.84, w: half - 0.68, h: 0.92,
+    fontFace: "Menlo", fontSize: 12.5, color: "9FE8C0", lineSpacingMultiple: 1.2, valign: "top",
+  });
+  s.addText("大、無結構、只會整份讀寫——資料庫從來沒看過它的內容。", {
+    x: bx + 0.22, y: yy + 1.86, w: half - 0.44, h: 0.44,
+    fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.16, valign: "top",
+  });
+
+  // ── 分開之後的四個後果 ──
+  const cy = yy + 2.6;
+  s.addText("分開之後的四個實際後果", {
+    x: M, y: cy, w: 4.0, h: 0.3,
+    fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+  });
+  const outs = [
+    ["1", "改名／搬移零成本", "檔名只是 metadata。改名就是 UPDATE，磁碟上那個檔動都不用動。", C.BLUE],
+    ["2", "blob 可被多筆指向", "版本與快照各自存 storage_key + checksum，做快照不複製任何位元組。", C.MOSS],
+    ["3", "不在同一個交易裡", "上傳先寫 blob 再寫 DB，失敗即補刪；刪除先清 metadata，blob 交 GC。", C.ROSE],
+    ["4", "blob 層可整個換掉", "上層只認 storage_key 與 StorageProvider，換 S3 metadata 一欄不改。", C.VIOLET],
+  ];
+  const ow = (CW - 0.6) / 4;
+  outs.forEach(([n, t, d, col], i) => {
+    const x = M + i * (ow + 0.2);
+    const oy = cy + 0.36;
+    s.addShape("rect", { x, y: oy, w: ow, h: 0.04, fill: { color: col } });
+    s.addText(n + "　" + t, {
+      x, y: oy + 0.1, w: ow, h: 0.3,
+      fontFace: FONT, fontSize: T.body, bold: true, color: C.INK, valign: "middle",
+    });
+    s.addText(d, {
+      x, y: oy + 0.42, w: ow, h: 1.06,
+      fontFace: FONT, fontSize: T.body, color: C.MUTED, lineSpacingMultiple: 1.16, valign: "top",
+    });
+  });
+
+  footnote(s, "「寧可多一個孤兒，也不要少一個本體」—— 上傳若先寫 DB，失敗會留下點開就壞的檔案；反過來最多留下沒人指向的 blob，只是浪費空間，功能仍正確，由 GC 算出全域被引用的 key 集合、60 分鐘寬限期後掃掉。", { accent: C.ROSE });
+}
+
+/* ══════════════ 22 · E 檔案實際落在哪裡 ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "E", no: 22, title: "檔案實際落在哪裡",
     sub: "程式碼裡一行絕對路徑都沒有——根目錄由 LOCAL_STORAGE_PATH 決定，「寫到哪」是部署決定的。",
   });
 
@@ -1194,11 +1288,11 @@ const S = () => {
   footnote(s, "volume 生命週期與容器分開：rebuild、換映像 tag、docker compose down 都不掉檔案，只有 docker volume rm 或 down -v 才會消失。路徑寫在 compose 而非程式裡，換 S3 只要換一個 StorageProvider 實作。", { accent: C.BLUE });
 }
 
-/* ══════════════ 22 · E Docker 與 CI/CD（03-docker-wide）══════════════ */
+/* ══════════════ 23 · E Docker 與 CI/CD（03-docker-wide）══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 22, title: "Docker 與 CI/CD：從管線到容器",
+    sec: "E", no: 23, title: "Docker 與 CI/CD：從管線到容器",
   });
   fitImage(s, P("03-docker-wide.png"), R.docker, { x: M, y: y + 0.12, w: CW, h: 4.24 });
 
@@ -1224,11 +1318,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 23 · E 三個環境的差異 ══════════════ */
+/* ══════════════ 24 · E 三個環境的差異 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 23, title: "本機 · CI · 正式部署：三個環境差在哪",
+    sec: "E", no: 24, title: "本機 · CI · 正式部署：三個環境差在哪",
     sub: "差異全部收斂在設定，不在程式碼——三份 .env 範本就是三個環境的規格書。",
   });
   table(s, {
@@ -1267,11 +1361,11 @@ const S = () => {
   footnote(s, "唯一只出現在正式環境的變數是 TUNNEL_TOKEN —— 對外曝露是正式環境獨有的能力，本機與 CI 都不該擁有。", { accent: C.BLUE, h: 0.62 });
 }
 
-/* ══════════════ 24 · E 部署實戰與安全設計 ══════════════ */
+/* ══════════════ 25 · E 部署實戰與安全設計 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "E", no: 24, title: "部署實戰：自架 runner 與最小權限設計",
+    sec: "E", no: 25, title: "部署實戰：自架 runner 與最小權限設計",
     sub: "2026-07-11 首次上線　·　Ubuntu 24.04　·　CI 與 CD 刻意分離在兩種 runner 上。",
   });
 
@@ -1322,11 +1416,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 25 · F 競品比較與定位 ══════════════ */
+/* ══════════════ 26 · F 競品比較與定位 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "F", no: 25, title: "競品比較與定位",
+    sec: "F", no: 26, title: "競品比較與定位",
   });
   table(s, {
     x: M, y: y + 0.2, w: CW, colW: [2.5, 3.05, 3.25, 3.26], accent: C.MOSS,
@@ -1355,11 +1449,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 26 · V 為什麼需要規則 ══════════════ */
+/* ══════════════ 27 · V 為什麼需要規則 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 26, title: "為什麼需要開發規則：兩次真實事故",
+    sec: "V", no: 27, title: "為什麼需要開發規則：兩次真實事故",
     sub: "用 AI 開發最常見的兩個失效模式，都不是「程式寫錯」，而是「看起來做完了」。",
   });
   const cw = (CW - 0.3) / 2;
@@ -1397,11 +1491,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 27 · V 規則體系 ══════════════ */
+/* ══════════════ 28 · V 規則體系 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 27, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
+    sec: "V", no: 28, title: "Vibe Coding：用 AI 協助，但不讓 AI 發散",
     sub: "核心原則：不猜測意圖、文件先行、任務最小化、結果可驗證。文件沒完成前不大量產生程式碼。",
   });
   const steps = [
@@ -1455,11 +1549,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 28 · V 規則怎麼被驗證有效 ══════════════ */
+/* ══════════════ 29 · V 規則怎麼被驗證有效 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "V", no: 28, title: "規則怎麼被驗證有效",
+    sec: "V", no: 29, title: "規則怎麼被驗證有效",
   });
   s.addShape("roundRect", {
     x: M, y: y + 0.16, w: CW, h: 1.34, rectRadius: 0.05,
@@ -1491,11 +1585,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 29 · G 18 週訓練期軌跡 ══════════════ */
+/* ══════════════ 30 · G 18 週訓練期軌跡 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 29, title: "18 週訓練期軌跡（3/23 – 7/26）",
+    sec: "G", no: 30, title: "18 週訓練期軌跡（3/23 – 7/26）",
     sub: "前 10 週打底與找題目，後 8 週密集產出。",
   });
   const phases = [
@@ -1541,11 +1635,11 @@ const S = () => {
   });
 }
 
-/* ══════════════ 30 · G 踩坑與結語 ══════════════ */
+/* ══════════════ 31 · G 踩坑與結語 ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "G", no: 30, title: "用 AI 開發踩到的坑，與這半年學到的事",
+    sec: "G", no: 31, title: "用 AI 開發踩到的坑，與這半年學到的事",
   });
   const cw = (CW - 0.3) / 2;
   card(s, {
@@ -1594,11 +1688,103 @@ const S = () => {
   });
 }
 
+/* ══════════════ 32 · DEMO ══════════════ */
+{
+  const s = S();
+  const y = head(s, {
+    sec: "H", no: 32, title: "Demo：現場操作",
+    sub: "全部在自架環境上跑，模型是本機 gemma4:26b，沒有任何雲端 API。",
+  });
+
+  const cw = (CW - 0.6) / 4;
+  const steps = [
+    ["1", "檔案管理", ["登入 → 我的硬碟", "上傳、拖放、批次選取", "圖片／PDF／Office 預覽", "分享連結與權限"], C.BLUE],
+    ["2", "搜尋", ["檔名搜尋", "全文內容搜尋", "語意搜尋（pgvector）"], C.MOSS],
+    ["3", "AI 助理", ["一句話下多步驟指令", "先出計畫 → 使用者確認", "唯讀操作自動執行", "現場生成一個新技能"], C.VIOLET],
+    ["4", "時光機", ["時間軸挑一個快照", "整碟倒帶還原", "還原前自動建保命快照"], C.AMBER],
+  ];
+  steps.forEach(([n, t, items, col], i) => {
+    const x = M + i * (cw + 0.2);
+    const yy = y + 0.18;
+    s.addShape("roundRect", {
+      x, y: yy, w: cw, h: 3.2, rectRadius: 0.05,
+      fill: { color: C.TINT2 }, line: { color: C.LINE, width: 0.75 },
+    });
+    s.addShape("rect", { x, y: yy, w: cw, h: 0.05, fill: { color: col } });
+    s.addShape("roundRect", {
+      x: x + 0.2, y: yy + 0.22, w: 0.46, h: 0.46, rectRadius: 0.06, fill: { color: col },
+    });
+    s.addText(n, {
+      x: x + 0.2, y: yy + 0.22, w: 0.46, h: 0.46,
+      fontFace: FONT_NUM, fontSize: 19, bold: true, color: C.WHITE, align: "center", valign: "middle",
+    });
+    s.addText(t, {
+      x: x + 0.78, y: yy + 0.22, w: cw - 0.98, h: 0.46,
+      fontFace: FONT, fontSize: T.h, bold: true, color: C.INK, valign: "middle",
+    });
+    bullets(s, {
+      x: x + 0.2, y: yy + 0.86, w: cw - 0.4, h: 2.2, items, color: C.MUTED,
+    });
+  });
+
+  footnote(s, "備援：模型伺服器若當下不可用，助理段改播事先錄好的操作影片；其餘功能不依賴模型，照常現場操作。", { accent: C.AMBER, h: 0.64 });
+}
+
+/* ══════════════ 33 · 感謝聆聽 ══════════════ */
+{
+  const s = S();
+  s.background = { color: C.INK };
+  s.addShape("rect", { x: 0, y: 0, w: 0.34, h: H, fill: { color: C.AMBER } });
+
+  s.addText("THANK YOU", {
+    x: 1.3, y: 1.9, w: 10.5, h: 0.36,
+    fontFace: FONT_NUM, fontSize: 16, bold: true, color: C.AMBER, charSpacing: 3, valign: "middle",
+  });
+  s.addText("感謝聆聽", {
+    x: 1.3, y: 2.4, w: 11.0, h: 1.0,
+    fontFace: FONT, fontSize: 54, bold: true, color: C.WHITE, valign: "middle",
+  });
+  s.addShape("rect", { x: 1.3, y: 3.56, w: 2.5, h: 0.05, fill: { color: C.AMBER } });
+  s.addText("Q & A", {
+    x: 1.3, y: 3.86, w: 11.0, h: 0.44,
+    fontFace: FONT_NUM, fontSize: 24, bold: true, color: "8FA6B8", valign: "middle",
+  });
+  s.addText("完整欄位 ER Diagram 與各模組設計文件備於附錄，歡迎指教。", {
+    x: 1.3, y: 4.4, w: 11.0, h: 0.36,
+    fontFace: FONT, fontSize: 17, color: "8FA6B8", valign: "middle",
+  });
+
+  const links = [
+    ["CloudDrive", "github.com/billwu101/CloudDrive"],
+    ["Gemma4APIServer", "github.com/billwu101/Gemma4APIServer"],
+  ];
+  links.forEach(([t, u], i) => {
+    const x = 1.3 + i * 5.4;
+    s.addShape("roundRect", {
+      x, y: 5.16, w: 5.1, h: 0.86, rectRadius: 0.05,
+      fill: { color: "1C2B36" }, line: { color: "35495A", width: 1 },
+    });
+    s.addText(t, {
+      x: x + 0.24, y: 5.24, w: 4.6, h: 0.3,
+      fontFace: FONT, fontSize: T.body, bold: true, color: C.AMBER, valign: "middle",
+    });
+    s.addText(u, {
+      x: x + 0.24, y: 5.54, w: 4.6, h: 0.3,
+      fontFace: FONT_NUM, fontSize: T.body, color: "8FA6B8", valign: "middle",
+    });
+  });
+
+  s.addText("吳晉緯　·　沈威廷　　|　　指導教授　呂政修 教授　　|　　國立臺灣科技大學　2026 年 8 月", {
+    x: 1.3, y: 6.36, w: 11.0, h: 0.36,
+    fontFace: FONT, fontSize: 15, color: "6B7F8F", valign: "middle",
+  });
+}
+
 /* ══════════════ 附錄 · 完整 ERD ══════════════ */
 {
   const s = S();
   const y = head(s, {
-    sec: "B", no: 31, title: "附錄：完整欄位 ER Diagram",
+    sec: "B", no: 34, title: "附錄：完整欄位 ER Diagram",
     sub: "備 Q&A 使用，不在正式報告時間內。",
   });
   fitImage(s, P("01-erd.png"), R.erdFull, { x: M, y: y + 0.16, w: CW, h: H - y - 0.6 });
