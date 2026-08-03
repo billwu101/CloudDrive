@@ -21,7 +21,7 @@ const pptx = new PptxGenJS();
 pptx.layout = "LAYOUT_WIDE";
 pptx.author = "billwu101";
 pptx.company = "NTUST";
-pptx.title = "CloudDrive 專題報告 v3.0";
+pptx.title = "CloudDrive 專題報告 v3.1";
 
 const S = () => {
   const s = pptx.addSlide();
@@ -80,7 +80,7 @@ const S = () => {
     x: 1.15, y: 6.2, w: 11.0, h: 0.32,
     fontFace: FONT, fontSize: 15, color: C.MUTED, valign: "middle",
   });
-  s.addText("v3.0", {
+  s.addText("v3.1", {
     x: W - M - 1.2, y: 6.55, w: 1.2, h: 0.32,
     fontFace: FONT_NUM, fontSize: 14, color: C.LINE, align: "right", valign: "middle",
   });
