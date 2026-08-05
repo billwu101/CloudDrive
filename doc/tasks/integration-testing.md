@@ -44,6 +44,9 @@
 ## Playwright E2E
 
 - [x] 建立 E2E 測試環境啟動指令。
+- [x] 補 headed／UI 執行方式（`test:e2e:headed`、`test:e2e:ui`，`SLOWMO` 可調節奏）。
+      實測：headed 的 chromium 行程參數無 `--headless`，確認開出視窗；對照組
+      `test:e2e` 仍為 `--headless=old`，CI 不受影響。
 - [x] 測試使用者註冊。
 - [x] 測試使用者登入。
 - [x] 測試建立資料夾。

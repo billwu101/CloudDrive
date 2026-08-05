@@ -8,6 +8,11 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:5173',
     trace: 'on-first-retry',
+    // Headed runs go too fast to follow; SLOWMO=<ms> paces every action.
+    // Unset (the default) means no delay, so CI and headless runs are unaffected.
+    launchOptions: {
+      slowMo: process.env.SLOWMO ? Number(process.env.SLOWMO) : undefined,
+    },
     // E2E tests hit the real FastAPI backend; credentials needed for cookies
     extraHTTPHeaders: {
       Origin: 'http://127.0.0.1:5173',
