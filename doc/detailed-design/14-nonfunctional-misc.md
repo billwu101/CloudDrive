@@ -32,24 +32,38 @@
 
 | 錯誤碼 | HTTP 狀態 | 說明 |
 | --- | --- | --- |
-| `UNAUTHORIZED` | 401 | 未登入或 token 無效 |
-| `FORBIDDEN` | 403 | 權限不足 |
-| `EMAIL_ALREADY_EXISTS` | 409 | email 已存在 |
-| `INVALID_CREDENTIALS` | 401 | 帳號或密碼錯誤 |
-| `USER_INACTIVE` | 403 | 使用者停用 |
-| `ITEM_NOT_FOUND` | 404 | item 不存在 |
-| `ITEM_CONTENT_NOT_FOUND` | 404 | 檔案本體不存在 |
-| `DUPLICATE_NAME` | 409 | 同層名稱重複 |
-| `INVALID_ITEM_TYPE` | 400 | item type 不符合操作 |
-| `INVALID_PARENT` | 400 | parent 不存在或不是 folder |
-| `CANNOT_MOVE_TO_DESCENDANT` | 400 | 不可移動到自己的子孫資料夾 |
-| `QUOTA_EXCEEDED` | 409 | 容量不足 |
-| `FILE_TOO_LARGE` | 413 | 檔案過大 |
-| `INVALID_FILE_NAME` | 400 | 檔名不合法 |
-| `SHARE_TARGET_NOT_FOUND` | 404 | 分享對象不存在 |
-| `SHARE_LINK_EXPIRED` | 410 | 分享連結過期 |
-| `SHARE_LINK_DISABLED` | 410 | 分享連結停用 |
-| `INVALID_SHARE_PASSWORD` | 403 | 分享密碼錯誤 |
+> **本表為 `app/core/error_codes.py` 的 `ErrorCode` 實際成員**（2026-08-05 校正）。
+> 原表列的 `ITEM_NOT_FOUND`／`DUPLICATE_NAME`／`INVALID_ITEM_TYPE`／`INVALID_PARENT`／
+> `CANNOT_MOVE_TO_DESCENDANT`／`INVALID_FILE_NAME`／`SHARE_TARGET_NOT_FOUND`／
+> `SHARE_LINK_EXPIRED`／`SHARE_LINK_DISABLED`／`INVALID_SHARE_PASSWORD` **在程式中並不存在**，
+> 是設計階段的草稿；實作把它們分別收斂成 `NOT_FOUND`、`NAME_CONFLICT`、`INVALID_OPERATION`
+> 與 `SHARE_LINK_INVALID`。狀態碼由 `app/core/exceptions.py` 的例外子類別決定。
+
+| Code | HTTP | 情境 | 拋出方式 |
+| --- | --- | --- | --- |
+| `UNAUTHORIZED` | 401 | 未登入或 token 無效 | `UnauthorizedError` |
+| `INVALID_CREDENTIALS` | 401 | 帳號或密碼錯誤 | `AppError(status_code=401)` |
+| `REFRESH_TOKEN_REVOKED` | 401 | refresh token 已撤銷或過期 | `AppError(status_code=401)` |
+| `SHARE_LINK_INVALID` | 401 | 分享連結 token 不存在／密碼錯誤／停用／過期（**刻意合併，見下**） | `AppError(status_code=401)` |
+| `SHARE_LINK_PASSWORD_REQUIRED` | 401 | 有密碼的連結未帶密碼（正常流程的第一次請求） | `AppError(status_code=401)` |
+| `FORBIDDEN` | 403 | 權限不足 | `ForbiddenError` |
+| `USER_INACTIVE` | 403 | 帳號停用 | `AppError(status_code=403)` |
+| `NOT_FOUND` | 404 | item 或資源不存在 | `NotFoundError` |
+| `ITEM_CONTENT_NOT_FOUND` | 404 | 檔案本體不存在（中繼資料還在） | `AppError(status_code=404)` |
+| `NAME_CONFLICT` | 409 | 同層名稱重複 | `NameConflictError` |
+| `EMAIL_ALREADY_EXISTS` | 409 | email 已存在 | `AppError(status_code=409)` |
+| `QUOTA_EXCEEDED` | **413** | 容量不足 | `QuotaExceededError` |
+| `FILE_TOO_LARGE` | 413 | 單檔超過上限 | `FileTooLargeError` |
+| `INVALID_OPERATION` | **400 或 422** | 操作不合法（**兩種狀態碼並存，見下**） | `AppError`（400）／`InvalidOperationError`（422） |
+| `ASSISTANT_UNAVAILABLE` | 503 | 助理的模型連線不可用 | `AppError(status_code=503)` |
+| `VALIDATION_ERROR` | — | **目前無任何 raise 點**（enum 成員未使用） | — |
+| `INTERNAL_ERROR` | — | **目前無任何 raise 點**（enum 成員未使用） | — |
+
+**`QUOTA_EXCEEDED` 為何是 413 而非 409**：與 `FILE_TOO_LARGE` 同碼，讓「送太多位元組上來」的兩種原因共用一個狀態類別。代價是前端無法只看狀態碼分辨兩者，因此 §27.2 第 6 點要求的錯誤分類**以 `code` 優先於狀態碼**（`frontend/src/lib/uploadLimits.ts`）；僅在無可辨識 `code` 時（例如被 nginx 直接擋下）才以 413 判為檔案過大。
+
+**`SHARE_LINK_INVALID` 為何不分 expired／disabled／wrong-password**：§28.3 第 1 點要求驗證失敗不可區分，否則回應差異本身就能用來確認某個 token 曾經存在。原表的 410／403 分流會洩漏這件事，故合併為單一碼與單一狀態碼。
+
+**`INVALID_OPERATION` 的 400／422 並存**：以 `AppError(ErrorCode.INVALID_OPERATION, ...)` 直接拋出者取 `AppError` 預設的 400（58 處，含上傳檔名驗證與助理技能路徑）；以 `InvalidOperationError` 拋出者為 422（5 處，含 §6.10 分片上傳的缺片與終態情境）。同一個 `code` 對外呈現兩種狀態碼是**實作不一致，待決定統一方向**——前端目前依 `code` 分支，故此不一致尚未造成可見錯誤。
 
 ## 16. 模組獨立測試策略
 
