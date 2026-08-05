@@ -328,10 +328,10 @@
 > | 指令 | 用途 |
 > |---|---|
 > | `npm run test:e2e` | headless，CI 與例行回歸用 |
-> | `npm run test:e2e:headed` | **實際開瀏覽器視窗**看它跑，動作間隔 250ms |
+> | `npm run test:e2e:headed` | **實際開瀏覽器視窗**看它跑，動作間隔 50ms |
 > | `npm run test:e2e:ui` | Playwright UI 模式：可挑 case、逐步重播、看每步 DOM 快照 |
 >
-> 調整節奏：`SLOWMO=500 npm run test:e2e:headed`（未設即無延遲，故 headless 與 CI 不受影響）。
+> 調整節奏：`SLOWMO=300 npm run test:e2e:headed`（未設即無延遲，故 headless 與 CI 不受影響）。
 > 單一檔案：`npm run test:e2e:headed -- e2e/share.spec.ts`。
 
 ## 6. Playwright 的驗證層級
