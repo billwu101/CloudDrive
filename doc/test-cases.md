@@ -39,6 +39,13 @@
 > 執行：`cd backend && uv run pytest tests/integration -v`（需 Postgres）
 > 位置：`backend/tests/integration/`
 > 取得 token：`register_and_login(client)` helper
+>
+> **實作狀態（2026-08-05）**：142 條，`141 passed, 1 failed`。唯一失敗需連得到本機 Ollama，
+> 屬環境限制。逐檔對應與過程中確認的既有行為見 `doc/tasks/integration-testing.md`。
+>
+> 三處**文件與程式不一致**已在測試中標註並照實際行為斷言，待確認以何者為準：
+> 容量不足實際回 **413**（§19 寫 409）、不合法操作實際回 **422/400**（§19 寫 400）、
+> 匿名存取一致回 **401**（與 §19 相符，但既有測試名稱誤寫為 403）。
 
 ## 1. API 測試的驗證層級
 
