@@ -1,5 +1,8 @@
 # Integration、E2E 與驗收任務
 
+> **測試案例總表在 `doc/test-cases.md`**——跑 API 測試與 Playwright 時以該文件為依據，
+> 內含驗證強度分級（L0–L4）與各模組的判定準則。本文件只管任務進度，不重複列案例。
+
 ## 完成定義
 
 - 關鍵使用者流程具備後端整合測試與 Playwright E2E。
