@@ -49,4 +49,4 @@ def test_invalid_operation_error() -> None:
     from app.core.exceptions import InvalidOperationError
 
     err = InvalidOperationError()
-    assert err.status_code == 422
+    assert err.status_code == 400

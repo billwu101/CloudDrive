@@ -669,8 +669,8 @@ class UploadSessionService:
 | 檔案超過單檔上限（5 GB） | `FILE_TOO_LARGE` | 413 |
 | 配額不足 | `QUOTA_EXCEEDED` | 413 |
 | 工作階段不存在／非本人 | `NOT_FOUND` | 404 |
-| 對終態工作階段送分片 | `INVALID_OPERATION` | 422 |
-| 完成時分片缺漏 | `INVALID_OPERATION` | 422 |
+| 對終態工作階段送分片 | `INVALID_OPERATION` | 400 |
+| 完成時分片缺漏 | `INVALID_OPERATION` | 400 |
 
 ### 6.7.9 可獨立測試項
 

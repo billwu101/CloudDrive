@@ -243,13 +243,13 @@ class ShareLinkService:
                 raise AppError(
                     ErrorCode.INVALID_OPERATION,
                     "An editor link must have an expiry date",
-                    status_code=422,
+                    status_code=400,
                 )
             if not password:
                 raise AppError(
                     ErrorCode.INVALID_OPERATION,
                     "An editor link must have a password",
-                    status_code=422,
+                    status_code=400,
                 )
 
         token = secrets.token_urlsafe(32)

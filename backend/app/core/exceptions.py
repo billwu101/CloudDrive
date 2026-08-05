@@ -48,5 +48,15 @@ class NameConflictError(AppError):
 
 
 class InvalidOperationError(AppError):
+    """A semantically invalid operation on an otherwise well-formed request.
+
+    Answers **400**, matching the 58 call sites that raise
+    `AppError(ErrorCode.INVALID_OPERATION, ...)` directly — one error code must
+    not arrive under two statuses. 422 is deliberately left to FastAPI's own
+    request-validation failures, which carry Pydantic's `{"detail": [...]}`
+    body rather than this app's `{"error": {...}}` envelope; sharing the status
+    would leave the frontend unable to tell the two shapes apart.
+    """
+
     def __init__(self, message: str = "Invalid operation") -> None:
-        super().__init__(ErrorCode.INVALID_OPERATION, message, status_code=422)
+        super().__init__(ErrorCode.INVALID_OPERATION, message, status_code=400)

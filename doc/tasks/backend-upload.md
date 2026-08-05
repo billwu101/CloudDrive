@@ -74,7 +74,7 @@
 - [x] `PUT /upload/sessions/{id}/chunks/{index}`
 - [x] `POST /upload/sessions/{id}/complete`
 - [x] `DELETE /upload/sessions/{id}`
-- [x] 錯誤碼對應（§6.7.8）：`FILE_TOO_LARGE`／`QUOTA_EXCEEDED` 413、`NOT_FOUND` 404、`INVALID_OPERATION` 422。
+- [x] 錯誤碼對應（§6.7.8）：`FILE_TOO_LARGE`／`QUOTA_EXCEEDED` 413、`NOT_FOUND` 404、`INVALID_OPERATION` 400（2026-08-05 由 422 統一為 400，見 detailed-design §15）。
 - [x] 測試：各端點成功路徑 + 上述錯誤碼；未登入 401。
 
 ### 清理排程與設定

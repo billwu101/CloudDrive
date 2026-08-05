@@ -684,11 +684,11 @@ async def test_an_editor_link_needs_a_password_as_well_as_an_expiry() -> None:
 
     with pytest.raises(AppError) as no_password:
         await svc.create_link(owner_id, item.id, LinkPermission.EDITOR, expires_at=later)
-    assert no_password.value.status_code == 422
+    assert no_password.value.status_code == 400
 
     with pytest.raises(AppError) as no_expiry:
         await svc.create_link(owner_id, item.id, LinkPermission.EDITOR, password="s3cret")
-    assert no_expiry.value.status_code == 422
+    assert no_expiry.value.status_code == 400
 
     ok = await svc.create_link(
         owner_id, item.id, LinkPermission.EDITOR, password="s3cret", expires_at=later

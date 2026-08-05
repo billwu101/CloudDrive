@@ -254,9 +254,9 @@ async def test_an_editor_link_must_carry_an_expiry_and_a_password(client: AsyncC
 
     # A link that lets strangers write and never dies is not something to create
     # by omission, and the URL alone must not be enough (proposal §33.3 rule 4).
-    assert await _create() == 422
-    assert await _create(expires_at="2027-01-01T00:00:00Z") == 422
-    assert await _create(password="s3cret") == 422
+    assert await _create() == 400
+    assert await _create(expires_at="2027-01-01T00:00:00Z") == 400
+    assert await _create(password="s3cret") == 400
     assert await _create(expires_at="2027-01-01T00:00:00Z", password="s3cret") == 201
 
 

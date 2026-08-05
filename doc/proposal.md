@@ -786,13 +786,13 @@ Permanent delete
 | 404 | 找不到：item、檔案本體或分享對象不存在 |
 | 409 | 衝突：同層名稱重複、email 已存在 |
 | 413 | 檔案過大、**容量不足** |
-| 422 | 部分操作不合法的情境（與 400 並存，見註記 2） |
+| 422 | **僅** FastAPI 的請求格式驗證（缺必填欄位、enum 值不合法等），回應為 Pydantic 的 `detail` 格式而非本系統的錯誤信封 |
 | 503 | AI 助理的模型連線不可用 |
 
 **校正註記**（原表與實作不符之處，已於 `backend/tests/integration/test_api_contract_flow.py` 釘住）：
 
 1. **容量不足是 413 不是 409**。`QUOTA_EXCEEDED` 與 `FILE_TOO_LARGE` 同為 413，前端因此**以 `code` 優先於狀態碼**做上傳錯誤分類（§27.2 第 6 點的三類訊息靠此區分），見 `frontend/src/lib/uploadLimits.ts`。
-2. **`INVALID_OPERATION` 目前同時對應 400 與 422**：以 `AppError(...)` 直接拋出者為 400（58 處），以 `InvalidOperationError` 拋出者為 422（5 處）。同一個 `code` 兩種狀態碼是實作不一致，**待確認統一為何者**。
+2. **`INVALID_OPERATION` 一律為 400**（2026-08-05 統一）。原本 `InvalidOperationError` 回 422、直接拋 `AppError` 回 400，同一個 `code` 兩種狀態碼。統一取 400 的理由：422 要留給 FastAPI 自己的請求驗證失敗——它的回應是 Pydantic 的 `{"detail": [...]}`，與本系統的 `{"error": {...}}` 信封形狀完全不同，共用狀態碼會讓前端無法只憑狀態碼分辨兩者。
 3. **公開分享連結失效一律回 401，不是 410**。§28.3 第 1 點要求 token 不存在、密碼錯誤、停用、過期**不可區分**，因此合併為單一 `SHARE_LINK_INVALID`；用 410 會讓「連結曾經存在」變成可探測的訊息。分享密碼錯誤同理歸 401，不歸 403。
 
 > 錯誤格式見 [detailed-design/](./detailed-design/01-overview.md) §14.1；完整錯誤碼表（`code` ↔ HTTP 狀態）見 [detailed-design/](./detailed-design/01-overview.md) §16。

@@ -54,7 +54,7 @@
 | `EMAIL_ALREADY_EXISTS` | 409 | email 已存在 | `AppError(status_code=409)` |
 | `QUOTA_EXCEEDED` | **413** | 容量不足 | `QuotaExceededError` |
 | `FILE_TOO_LARGE` | 413 | 單檔超過上限 | `FileTooLargeError` |
-| `INVALID_OPERATION` | **400 或 422** | 操作不合法（**兩種狀態碼並存，見下**） | `AppError`（400）／`InvalidOperationError`（422） |
+| `INVALID_OPERATION` | 400 | 操作不合法（請求格式正確但語意不成立） | `InvalidOperationError` 或 `AppError`，**兩者皆 400** |
 | `ASSISTANT_UNAVAILABLE` | 503 | 助理的模型連線不可用 | `AppError(status_code=503)` |
 | `VALIDATION_ERROR` | — | **目前無任何 raise 點**（enum 成員未使用） | — |
 | `INTERNAL_ERROR` | — | **目前無任何 raise 點**（enum 成員未使用） | — |
@@ -63,7 +63,9 @@
 
 **`SHARE_LINK_INVALID` 為何不分 expired／disabled／wrong-password**：§28.3 第 1 點要求驗證失敗不可區分，否則回應差異本身就能用來確認某個 token 曾經存在。原表的 410／403 分流會洩漏這件事，故合併為單一碼與單一狀態碼。
 
-**`INVALID_OPERATION` 的 400／422 並存**：以 `AppError(ErrorCode.INVALID_OPERATION, ...)` 直接拋出者取 `AppError` 預設的 400（58 處，含上傳檔名驗證與助理技能路徑）；以 `InvalidOperationError` 拋出者為 422（5 處，含 §6.10 分片上傳的缺片與終態情境）。同一個 `code` 對外呈現兩種狀態碼是**實作不一致，待決定統一方向**——前端目前依 `code` 分支，故此不一致尚未造成可見錯誤。
+**`INVALID_OPERATION` 統一為 400**（2026-08-05）：原本 `InvalidOperationError` 回 422、直接拋 `AppError(ErrorCode.INVALID_OPERATION, ...)` 回 400，同一個 `code` 對外呈現兩種狀態碼。統一取 400 而非 422 的理由是**把 422 完整讓給 FastAPI 自己的請求驗證**：Pydantic 驗證失敗回的是 `{"detail": [...]}`，與本系統的 `{"error": { code, message, details }}` 是兩種不同形狀的 body，若共用 422，前端就必須先試著解析才知道拿到的是哪一種。
+
+改動範圍：`InvalidOperationError` 的 `status_code` 422→400，以及 `app/share/service.py` 中 editor 連結必填到期／密碼的兩處明寫 422。**FastAPI 自身的 422 未受影響**（缺必填欄位、enum 值不合法、email 格式錯誤等）。
 
 ## 16. 模組獨立測試策略
 

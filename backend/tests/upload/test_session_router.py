@@ -184,7 +184,7 @@ async def test_upload_chunk_returns_204_and_passes_index(
     assert args.args[2] == 2
 
 
-async def test_upload_chunk_on_terminal_session_returns_422(
+async def test_upload_chunk_on_terminal_session_returns_400(
     user_id: UUID, headers: dict[str, str]
 ) -> None:
     svc = AsyncMock(spec=UploadSessionService)
@@ -192,7 +192,7 @@ async def test_upload_chunk_on_terminal_session_returns_422(
     async with await _client(_make_app(svc, user_id)) as c:
         resp = await c.put(f"/upload/sessions/{uuid4()}/chunks/0", headers=headers, content=b"x")
 
-    assert resp.status_code == 422
+    assert resp.status_code == 400
     assert resp.json()["code"] == ErrorCode.INVALID_OPERATION
 
 
@@ -218,7 +218,7 @@ async def test_complete_returns_201_with_the_created_item(
     assert resp.json()["name"] == "movie.mp4"
 
 
-async def test_complete_with_missing_chunks_returns_422(
+async def test_complete_with_missing_chunks_returns_400(
     user_id: UUID, headers: dict[str, str]
 ) -> None:
     svc = AsyncMock(spec=UploadSessionService)
@@ -228,7 +228,7 @@ async def test_complete_with_missing_chunks_returns_422(
     async with await _client(_make_app(svc, user_id)) as c:
         resp = await c.post(f"/upload/sessions/{uuid4()}/complete", headers=headers)
 
-    assert resp.status_code == 422
+    assert resp.status_code == 400
     assert resp.json()["code"] == ErrorCode.INVALID_OPERATION
 
 

@@ -90,7 +90,7 @@ async def test_resume_sends_only_the_missing_chunk(client: AsyncClient) -> None:
 
     # Completing now must fail without destroying the session.
     early = await client.post(f"/api/v1/upload/sessions/{session['id']}/complete", headers=h)
-    assert early.status_code == 422
+    assert early.status_code == 400
     assert early.json()["error"]["code"] == "INVALID_OPERATION"
 
     # Resuming tells the client exactly which chunk is missing.
@@ -169,7 +169,7 @@ async def test_cancel_frees_nothing_and_blocks_further_chunks(client: AsyncClien
     late = await client.put(
         f"/api/v1/upload/sessions/{session['id']}/chunks/0", headers=h, content=content
     )
-    assert late.status_code == 422
+    assert late.status_code == 400
     after = (await client.get("/api/v1/users/me/quota", headers=h)).json()["used_bytes"]
     assert after == before
 
