@@ -39,18 +39,62 @@
 - [x] `test_account_flow.py`（15）— API-USER-01~08、API-AUTH-05~08。含 refresh 續期、登出後重放 refresh token、密碼雜湊（直接查表）。
 - [x] `test_hierarchy_flow.py`（11）— API-MV／REN／DIR／LIST／DL。移動兩端都驗、不可移入自身子樹、分頁無重複無遺漏、zip 只含選取項。
 
-**執行結果**：`uv run pytest tests/integration` → **141 passed, 1 failed**。
-唯一失敗為 `test_assistant_flow.py::test_chat_second_turn_carries_history_and_result_summary`，
-需連得到本機 Ollama（未啟動時回 503），屬環境限制；此條在補測試前的基準即已失敗，非本次造成。
-`ruff check` / `ruff format --check` / `mypy` 全通過。
+### 第二輪：補齊零覆蓋頁面（2026-08-28）
+
+盤點發現 74 個端點中仍有 6 塊完全沒被整合測試碰過，補上 **88 條**，整合測試共 230 條。
+
+- [x] `test_assistant_skills_flow.py`（17）— Skills 頁原本**整頁零覆蓋**。技能清單多租戶隔離、
+      核可狀態機、**codeguard 擋下 `import subprocess`／`eval`／dunder／缺 `run()`** 四種情形
+      且不覆寫既有程式碼、未核可不得執行（且不留檔案、不建快照）、manifest 型別閘、
+      chat_enabled 開關持久化、非擁有者不得編輯／核可／執行／刪除。
+- [x] `test_snapshot_usage_flow.py`（15）— §30 快照用量整章。含 `d69851c` 回歸點：
+      **可回收空間 != 涵蓋量**（造出兩快照共用內容的情境驗證），以及 §30.4-3 的
+      **以 storage_key 而非 checksum 計算共用**（上傳兩份位元組相同但 key 不同的檔案，
+      可回收為 8192 而非 4096，直接把兩種去重鍵釘死）。
+- [x] `test_model_connection_flow.py`（14）— 外部模型連線。憑證只回遮罩、
+      **DB 內為 Fernet 密文（直接查表驗證）**、多租戶隔離、更新與刪除後重新查詢確認。
+- [x] `test_semantic_search_flow.py`（13）— 語意搜尋。重點是 **`EMBEDDING_ENABLED` 關閉時
+      優雅降級不炸**（那才是 CI 與多數環境的實際狀態）；需要真模型的部分 skip 並說明。
+- [x] `test_auth_gaps_flow.py`（15）— 認證缺口。**帳號停用 → 403 `USER_INACTIVE`**（原本零測試）、
+      `GET /auth/me` 與 `GET /users/me` 不漂移、忘記密碼對未知與已知 email 回應不可區分。
+- [x] `test_public_session_refresh_flow.py`（14）— 公開連結短效憑證續發（§28.7）。
+      連結移除／過期後續發必須失敗（§28.3-5 每次存取都重新驗證）、續發不得提升權限。
+
+**執行結果（2026-08-28）**：`225 passed, 5 skipped, 0 failed`（整合）／
+`1180 passed, 5 skipped`（後端全套）。`ruff check`／`ruff format --check`／`mypy` 全通過。
+
+**過程中修正的問題**：
+
+1. **`backend/.env` 與根目錄 `.env` 是兩份不同的檔案**，且 `config.py` 的 `env_file=".env"`
+   相對於行程工作目錄——Docker 讀根目錄那份，pytest 讀 `backend/` 那份。`backend/.env`
+   殘留舊的 LLM token，導致 5 條 assistant 測試以 `ExternalAuthError` 失敗。同步後全過。
+   **先前把這條失敗歸因為「需要本機 Ollama 的環境限制」是錯的。**
+2. 移除 4 處**恆為真的無效斷言**（型別檢查、schema 保證的欄位存在、已被前一行釘死的 `!=`），
+   改為對實際數值斷言。
+3. 強化 `conftest.register_and_login`：原本**完全不檢查註冊回應**，若 username 撞唯一鍵而
+   靜默 409，呼叫端會拿到前一個使用者的 token 並以錯誤的方式通過。現在檢查註冊狀態碼，
+   並以 `GET /users/me` 確認 token 確實屬於所要求的 email。
+
+**發現但未處理（待決定）**：
+
+| 項目 | 說明 |
+|---|---|
+| `GET /assistant/skills` 無法查詢全部狀態 | 參數為 `status: str \| None = "installed"`，HTTP 上永遠送不出 `None`；`?status=` 會過濾 `== ""` 回空陣列。repository 的 `status is None` 分支從 API 無法到達，且 `?status=bogus` 回空陣列而非 400 |
+| 型別閘不對稱 | `_execute_generated` 檢查 manifest 的 `item_types`（DEC-035），`_execute_inspect` 完全不檢查。目前無害（內建 manifest 兩種型別都宣告），但兩條執行路徑只有一條有閘 |
+| `update_skill` 依名稱跳過 codeguard | `inspect_item_details` 這個名字會跳過靜態掃描（存的是虛擬碼非沙箱碼，屬刻意）。目前無改名端點所以不可達，若日後新增改名功能會成為破口 |
+| 登入頻率限制（§17.4-2） | **後端完全沒有實作**，不是沒測 |
+
+**第一輪執行結果**：`141 passed, 1 failed`。當時把唯一失敗歸因為「需連得到本機 Ollama 的
+環境限制」——**這個判斷是錯的**，真正原因是 `backend/.env` 的舊 LLM token（見第二輪第 1 點），
+同步後該條即通過。
 
 **過程中確認的既有行為（非本次改動，測試已釘住）**：
 
 | 項目 | 實際行為 | 說明 |
 |---|---|---|
 | 匿名存取受保護端點 | 全端點一致 **401** | 與 §19 相符；既有 `test_unauthenticated_endpoint_returns_403` 寫成 `in (401, 403)`，名稱誤導 |
-| 容量不足 | **413** `QUOTA_EXCEEDED` | §19 對照表寫 409，**文件與程式不一致**，待確認以何者為準 |
-| 不合法操作 | **422**（`InvalidOperationError`）或 400（直接 `AppError`） | §19 寫 400，同上待確認 |
+| 容量不足 | **413** `QUOTA_EXCEEDED` | §19 原寫 409；已於 `e462fc1` 依實作校正文件 |
+| 不合法操作 | **400** | 原本 400／422 並存；已於 `4fcb7f4` 統一為 400，422 讓給 FastAPI 自身的請求驗證 |
 | 星號清單 | 只列 `owner_id == 自己` 的項目 | 被分享項目加星後不出現在任何人清單；per-user 隔離本身正確 |
 | editor 分享的上傳 | 新項目 `owner_id` 為上傳者 | 資料夾擁有者的清單看不到（`list_children` 依 owner 過濾）；與 §33.3-6 公開連結 editor 的歸屬決策相反 |
 | editor 權限範圍 | 不含丟垃圾桶 | 與 §14.1 相符（只有改名／移動／上傳新版本） |

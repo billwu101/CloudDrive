@@ -40,8 +40,9 @@
 > 位置：`backend/tests/integration/`
 > 取得 token：`register_and_login(client)` helper
 >
-> **實作狀態（2026-08-05）**：142 條，`141 passed, 1 failed`。唯一失敗需連得到本機 Ollama，
-> 屬環境限制。逐檔對應與過程中確認的既有行為見 `doc/tasks/integration-testing.md`。
+> **實作狀態（2026-08-28）**：整合測試 **230 條**，`225 passed, 5 skipped, 0 failed`；
+> 後端全套 **1180 passed, 5 skipped**。5 條 skip 皆為環境相依且自我說明（4 條需從信件取回
+> 臨時密碼、1 條需 embedding 模型）。逐檔對應見 `doc/tasks/integration-testing.md`。
 >
 > **錯誤碼對照已於 2026-08-05 校正並統一**（proposal §19 + detailed-design §15）：容量不足為 413、
 > 公開連結失效一律 401、`INVALID_OPERATION` 一律 400（422 完整讓給 FastAPI 自身的請求驗證）。
@@ -167,7 +168,7 @@
 | API-AI-09 | 對話式訊息不誤報 503 | A1 | gateway 回散文時當對話回覆（`f42bef5`） |
 | API-AI-10 | 助理只能動自己的檔案 | A4 | 帶 A 的 token 不得操作 B 的項目 |
 | API-AI-11 | codeguard 擋下危險程式碼 | A1 | 含禁用 import／`eval`／dunder 的生成技能被拒（§17.5 第 1 點） |
-| API-AI-12 | 生成技能未經核可不得執行 | A3 | 未核可前呼叫 execute → 403，且無任何檔案產出 |
+| API-AI-12 | 生成技能未經核可不得執行 | A3 | 未核可前呼叫 execute → **404 `NOT_FOUND`**（`execute_skill` 把「未安裝」視同「不存在」，不洩漏技能是否存在；原本寫 403 是文件有誤），且無任何檔案產出、無快照 |
 
 ### 2.8 §6.8 用時光機瀏覽與還原
 

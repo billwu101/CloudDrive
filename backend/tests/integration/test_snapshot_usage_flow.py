@@ -276,7 +276,6 @@ async def test_reclaimable_bytes_is_what_deleting_frees_not_what_it_covers(
     assert newer["total_bytes"] == 10000
 
     assert newer["reclaimable_bytes"] == 7000, "only the purged file's blob is exclusive"
-    assert newer["reclaimable_bytes"] != newer["total_bytes"], "cost must not equal coverage"
     assert older["reclaimable_bytes"] == 0, "its only blob is still held elsewhere"
 
     # The keeper is genuinely still there -- the zero above is a real shared
@@ -351,13 +350,13 @@ async def test_every_snapshot_row_reports_both_coverage_and_reclaimable(
 
     snaps = await _list_snapshots(client, h)
     assert len(snaps) == 2
-    for snap in snaps:
-        assert "total_bytes" in snap and "reclaimable_bytes" in snap
-        assert isinstance(snap["total_bytes"], int)
-        assert isinstance(snap["reclaimable_bytes"], int)
-        assert 0 <= snap["reclaimable_bytes"] <= snap["total_bytes"]
-        assert snap["trigger"] == "manual"
-        assert snap["pinned"] is False
+    # Assert the actual numbers, not their types: the response schema already
+    # guarantees both keys exist and are ints, so a shape check here could
+    # never fail and would prove nothing about the accounting.
+    by_label = {s["label"]: (s["total_bytes"], s["reclaimable_bytes"]) for s in snaps}
+    assert by_label == {"only-keeper": (3000, 0), "keeper-and-doomed": (10000, 7000)}
+    assert [s["trigger"] for s in snaps] == ["manual", "manual"]
+    assert [s["pinned"] for s in snaps] == [False, False]
 
 
 # ---------------------------------------------------------------------------
@@ -402,8 +401,9 @@ async def test_sharing_is_computed_per_storage_key_not_per_checksum(
 
     after = await _list_snapshots(client, h)
     assert len(after) == 1
+    # 8192, not 4096: the two uploads are byte-identical (same checksum) but land
+    # on two storage_keys, and it is keys that occupy the disk (§30.4 decision 3).
     assert after[0]["reclaimable_bytes"] == 8192, "two distinct storage_keys are freed"
-    assert after[0]["reclaimable_bytes"] != 4096, "not deduped by checksum"
 
     still = await _get_settings(client, h)
     assert still["used_bytes"] == 4096, "checksum dedupe is unchanged by the purge"

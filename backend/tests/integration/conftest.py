@@ -91,17 +91,34 @@ async def register_and_login(
     username: str = "alice",
     password: str = "Password123!",
 ) -> str:
-    """Register a user and return a valid access token."""
-    await client.post(
+    """Register a user and return a valid access token.
+
+    The registration response is checked, and the token is confirmed to belong
+    to the requested email. Without that, a registration that silently 409s on
+    the *username* unique key would leave the caller holding a token for some
+    earlier user, and the test would go on to pass while exercising the wrong
+    account entirely.
+    """
+    registered = await client.post(
         "/api/v1/auth/register",
         json={"email": email, "username": username, "password": password},
     )
+    assert registered.status_code in (200, 201, 409), registered.text
+
     resp = await client.post(
         "/api/v1/auth/login",
         json={"email": email, "password": password},
     )
     assert resp.status_code == 200, resp.text
-    return str(resp.json()["access_token"])
+    token = str(resp.json()["access_token"])
+
+    me = await client.get("/api/v1/users/me", headers=auth_headers(token))
+    assert me.status_code == 200, me.text
+    assert me.json()["email"] == email, (
+        f"token belongs to {me.json()['email']!r}, not the requested {email!r} "
+        "— the registration probably collided on the username"
+    )
+    return token
 
 
 def auth_headers(token: str) -> dict[str, str]:

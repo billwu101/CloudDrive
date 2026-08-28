@@ -177,7 +177,6 @@ async def test_short_secret_is_masked_down_to_two_characters(client: AsyncClient
     rows = await _list(client, h)
 
     assert rows[0]["masked_hint"] == f"{_ELLIPSIS}45"
-    assert secret not in rows[0]["masked_hint"]
     stored = str((await _db_row(created["id"]))["secret_encrypted"])
     assert CredentialCipher(_ENCRYPTION_KEY).decrypt(stored) == secret
 

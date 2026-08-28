@@ -67,7 +67,7 @@ app/
 
 **Auth flow:** `get_current_user_id` (in `core/dependencies.py`) extracts a UUID from the JWT Bearer token. Every protected router depends on `CurrentUserId = Annotated[UUID, Depends(get_current_user_id)]`.
 
-**Error handling:** Raise typed subclasses of `AppError` — `NotFoundError` (404), `ForbiddenError` (403), `QuotaExceededError` (413), `NameConflictError` (409), `InvalidOperationError` (422). The global handler in `main.py` converts them to `{ "error": { "code": "...", "message": "...", "details": {} } }`.
+**Error handling:** Raise typed subclasses of `AppError` — `NotFoundError` (404), `ForbiddenError` (403), `QuotaExceededError` (413), `NameConflictError` (409), `InvalidOperationError` (400). The global handler in `main.py` converts them to `{ "error": { "code": "...", "message": "...", "details": {} } }`.
 
 **Migrations:** `backend/alembic/` — run `uv run alembic upgrade head` to apply.
 
