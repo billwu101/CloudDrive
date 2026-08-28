@@ -67,3 +67,6 @@ temp/
 *.pdf
 *.docx
 backend/eval/out/
+
+# Office lock files (created while a .pptx/.docx is open)
+~$*
