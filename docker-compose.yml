@@ -60,8 +60,19 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-ollama-local}
       ASSISTANT_MODEL: ${ASSISTANT_MODEL:-gemma4:26b}
       LLM_NUM_CTX: ${LLM_NUM_CTX:-65536}
+      # Cap on tokens the model may *generate* (not the context window). A
+      # reasoning model spends this budget on its reasoning trace before the
+      # answer, so a tight cap can return an empty `content`.
+      LLM_NUM_PREDICT: ${LLM_NUM_PREDICT:-2048}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
       LLM_KEEP_ALIVE: ${LLM_KEEP_ALIVE:-15m}
+      # Whether the assistant may send message content to a *named model
+      # connection* (any picker entry other than the built-in `local`).
+      # "sensitive" (the code default) refuses every one of them, which is right
+      # for third-party APIs but also blocks a self-hosted gateway — leaving the
+      # model picker populated but unusable. "non_sensitive" allows them and
+      # redacts emails and UUIDs on the way out.
+      PRIVACY_DEFAULT: ${PRIVACY_DEFAULT:-sensitive}
       # Semantic search (optional). Needs an embedding model on the Ollama above.
       EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-false}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}

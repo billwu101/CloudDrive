@@ -131,6 +131,24 @@
 - [x] 測試刪除與還原。
 - [x] 測試登出。
 
+### 助理模型切換 E2E（2026-08-30）
+
+- [x] `frontend/e2e/assistant-model-switch.spec.ts`（4 條，全通過）
+      —— 清單內容、移除連線後消失、**選定後送出訊息帶回工具結果**、中途換模型。
+      需要模型的兩條以 `E2E_LLM_BASE_URL` / `E2E_LLM_API_KEY` 控制，未設定即 skip。
+      預設打 Docker 堆疊（8088 / 8001），可用 `E2E_BASE` / `E2E_API` 覆寫。
+      實測：`4 passed (1.1m)`，其中真實模型呼叫 19.4s 與 43.4s。
+
+**過程中修掉四個「測試綠燈但功能不能用」的設定缺口**（全都是同一個模式：
+設定散在多處，而缺漏的那處不會產生任何可辨識的錯誤）：
+
+| 缺口 | 症狀 | 修法 |
+|---|---|---|
+| `CREDENTIAL_ENCRYPTION_KEY` 只在 `backend/.env`，根目錄 `.env` 沒有 | pytest 的模型連線測試全過，但**執行中的 app 建不了任何連線**（500） | 同步到根目錄 `.env` |
+| `docker-compose.yml` 未傳遞 `PRIVACY_DEFAULT` | 改 `.env` 對 Docker 完全無效 | compose 補上該變數 |
+| `privacy_default` 預設 `"sensitive"` | **所有具名連線一律拒送**，下拉列得出來但每個都回「連不上模型」 | 本專案的連線指向自架 gateway，設為 `non_sensitive` |
+| `docker-compose.yml` 未傳遞 `LLM_NUM_PREDICT` | 輸出上限只能用程式預設，無法調整 | compose 補上該變數 |
+
 ## 驗收
 
 - [x] 對照 proposal.md MVP 驗收標準逐項檢查。
