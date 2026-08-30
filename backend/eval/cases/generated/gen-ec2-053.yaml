@@ -67,6 +67,7 @@ mock_llm:
     - skill: search
       arguments:
         q: 專案計畫封存
+        item_type: FOLDER
     - skill: move_item
       arguments:
         item_id:

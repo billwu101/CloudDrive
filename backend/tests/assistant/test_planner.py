@@ -549,6 +549,60 @@ def test_a_destination_may_not_be_the_item_another_step_just_moved() -> None:
     assert "created or found the destination folder" in problems[0]
 
 
+def test_a_destination_may_not_be_an_unfiltered_search_hit() -> None:
+    """Observed on a real run: "move these files to the scripts folder".
+
+    The planner searched for "scripts" and pointed parent_id at items.0.id.
+    Search ranks by name, not by type, and the drive also held
+    CreateUSBKeyMacOS.sh — so hit 0 was a file and every move failed with
+    "Destination must be a folder". Eight of them, after the plan was approved.
+
+    `search` already takes item_type; the model just did not use it. Catching
+    this as a plan problem lets the repair loop add the filter while nothing has
+    run, instead of the user approving a plan that cannot work.
+    """
+
+    steps = [
+        PlannedStep(skill="search", arguments={"q": "scripts"}, depends_on=[]),
+        PlannedStep(
+            skill="move_item",
+            arguments={
+                "item_id": "169a05af-bcee-471d-bd0f-2cc88cebe1cc",
+                "parent_id": {"from": 0, "path": "items.0.id"},
+            },
+            depends_on=[0],
+        ),
+    ]
+
+    problems = validate_plan(steps, _shape_registry())
+
+    assert len(problems) == 1
+    assert "item_type" in problems[0]
+    assert "FOLDER" in problems[0]
+
+
+def test_a_destination_from_a_folder_only_search_is_accepted() -> None:
+    """The same plan is fine once the lookup is constrained to folders."""
+
+    steps = [
+        PlannedStep(
+            skill="search",
+            arguments={"q": "scripts", "item_type": "FOLDER"},
+            depends_on=[],
+        ),
+        PlannedStep(
+            skill="move_item",
+            arguments={
+                "item_id": "169a05af-bcee-471d-bd0f-2cc88cebe1cc",
+                "parent_id": {"from": 0, "path": "items.0.id"},
+            },
+            depends_on=[0],
+        ),
+    ]
+
+    assert validate_plan(steps, _shape_registry()) == []
+
+
 def test_self_built_skills_declare_no_shape_and_are_not_second_guessed() -> None:
     steps = [
         PlannedStep(skill="my_own_skill", arguments={}, depends_on=[]),

@@ -306,6 +306,9 @@ def _parse(content: str) -> PlanResult | None:
 # that returns "the item I just changed" here is the mis-numbering signature
 # described in _reference_problems.
 _DESTINATION_ARGS = frozenset({"parent_id"})
+# Outputs that are a *lookup* result: a list whose order comes from
+# relevance, not from type. Safe to move things *from*, not *into*.
+_LOOKUP_OUTPUTS = frozenset({SkillOutput.PAGED_ITEMS, SkillOutput.ITEM_LIST})
 
 
 def _path_head(path: str) -> str:
@@ -320,6 +323,7 @@ def _reference_problems(
     arg_name: str,
     path: str,
     source: RegisteredSkill | None,
+    source_arguments: dict[str, object],
     from_step: int,
 ) -> list[str]:
     """Check a step reference against what the referenced skill actually returns.
@@ -365,6 +369,24 @@ def _reference_problems(
             f"step {index}: argument '{arg_name}' references step {from_step} "
             f"('{source.name}') with path '{path}', but that step returns the item "
             f'itself — use "{field}"'
+        )
+    unfiltered_lookup = (
+        arg_name in _DESTINATION_ARGS
+        and source.output in _LOOKUP_OUTPUTS
+        and str(source_arguments.get("item_type", "")).upper() != "FOLDER"
+    )
+    if unfiltered_lookup:
+        # A lookup ranks by name, not by type, so hit 0 is whatever matched
+        # best — on a real run "move these to the scripts folder" searched
+        # "scripts", got CreateUSBKeyMacOS.sh first, and every move died on
+        # "Destination must be a folder" after the plan had been approved.
+        # `search` already takes item_type; require it to be pinned when the
+        # result is going to be used as a destination.
+        problems.append(
+            f"step {index}: argument '{arg_name}' must be a folder, but it references "
+            f"step {from_step} ('{source.name}'), which returns items of any type "
+            f'ranked by name. Add "item_type": "FOLDER" to step {from_step} so '
+            "the lookup can only return folders."
         )
     if arg_name in _DESTINATION_ARGS and source.output is SkillOutput.MUTATED_ITEM:
         problems.append(
@@ -467,6 +489,7 @@ def validate_plan(
                         arg_name=arg_name,
                         path=str(arg_value.get("path", "")),
                         source=registry.get(all_steps[from_step].skill),
+                        source_arguments=all_steps[from_step].arguments,
                         from_step=from_step,
                     )
                 )

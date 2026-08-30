@@ -353,7 +353,7 @@ EC2_SCENARIOS: list[dict[str, Any]] = [
             {"skill": "search", "arguments": {"q": t}},
             {"skill": "list_items", "arguments": {}},
             {"skill": "get_info", "arguments": {"item_id": {"from_step": 0, "path": "items.0.id"}}},
-            {"skill": "search", "arguments": {"q": f"{t}封存"}},
+            {"skill": "search", "arguments": {"q": f"{t}封存", "item_type": "FOLDER"}},
             {
                 "skill": "move_item",
                 "arguments": {
@@ -391,7 +391,7 @@ EC2_SCENARIOS: list[dict[str, Any]] = [
         "steps": lambda t: [
             {"skill": "storage_quota", "arguments": {}},
             {"skill": "list_items", "arguments": {}},
-            {"skill": "search", "arguments": {"q": f"{t}總表"}},
+            {"skill": "search", "arguments": {"q": f"{t}總表", "item_type": "FOLDER"}},
             {
                 "skill": "create_folder",
                 "arguments": {
@@ -731,7 +731,7 @@ EC4_SCENARIOS: list[dict[str, Any]] = [
             {"skill": "search", "arguments": {"q": t}},
             {"skill": "get_info", "arguments": {"item_id": {"from_step": 0, "path": "items.0.id"}}},
             {"skill": "list_items", "arguments": {}},
-            {"skill": "search", "arguments": {"q": f"{t}封存"}},
+            {"skill": "search", "arguments": {"q": f"{t}封存", "item_type": "FOLDER"}},
             {
                 "skill": "move_item",
                 "arguments": {

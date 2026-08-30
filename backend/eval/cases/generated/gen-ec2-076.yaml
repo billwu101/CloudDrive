@@ -60,6 +60,7 @@ mock_llm:
     - skill: search
       arguments:
         q: 設計稿總表
+        item_type: FOLDER
     - skill: create_folder
       arguments:
         name: 設計稿_2026

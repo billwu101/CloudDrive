@@ -60,6 +60,7 @@ mock_llm:
     - skill: search
       arguments:
         q: 預算總表
+        item_type: FOLDER
     - skill: create_folder
       arguments:
         name: 預算_2026

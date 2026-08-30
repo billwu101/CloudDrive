@@ -60,6 +60,7 @@ mock_llm:
     - skill: search
       arguments:
         q: 履歷總表
+        item_type: FOLDER
     - skill: create_folder
       arguments:
         name: 履歷_2026

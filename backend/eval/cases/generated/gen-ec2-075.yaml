@@ -60,6 +60,7 @@ mock_llm:
     - skill: search
       arguments:
         q: 使用手冊總表
+        item_type: FOLDER
     - skill: create_folder
       arguments:
         name: 使用手冊_2026

@@ -21,6 +21,8 @@ class ModelRouter:
     # an external provider name (e.g. ``"openai"``/``"codex"``) uses only that
     # external client. ``None`` keeps the default local→external fallback (DEC-023).
     LOCAL_TARGET = "local"
+    # Targets naming another server-provided model, e.g. "local:gemma4:31b".
+    LOCAL_PREFIX = "local:"
 
     def __init__(
         self,
@@ -31,8 +33,14 @@ class ModelRouter:
         max_local_attempts: int,
         privacy_default: PrivacyDefault,
         external_clients: dict[str, LLMClient] | None = None,
+        local_clients: dict[str, LLMClient] | None = None,
     ) -> None:
         self._local = local_client
+        # Extra locally-served models, keyed by their "local:<model>" target
+        # (proposal §12 "本機模型清單"). Server-provided, so unlike the external
+        # connections these are not gated on the privacy default: the content
+        # does not leave the deployment.
+        self._local_clients = local_clients or {}
         self._external = external_client
         self._external_enabled = external_enabled
         self._max_local_attempts = max(1, max_local_attempts)
@@ -53,6 +61,18 @@ class ModelRouter:
         temperature: float | None = None,
         disable_thinking: bool | None = None,
     ) -> LLMResponse:
+        # A "local:<model>" target names another server-provided model. Route it
+        # down the local path (retries, validator, no privacy gate) with that
+        # model's client — the prefix is what lets this be told from a
+        # connection UUID without a database lookup.
+        local_client = self._local
+        if target is not None and target.startswith(self.LOCAL_PREFIX):
+            picked = self._local_clients.get(target)
+            if picked is None:
+                raise LLMUnavailableError(f"Local model '{target}' is not configured")
+            local_client = picked
+            target = self.LOCAL_TARGET
+
         # Explicit external provider: use only that client — no local attempt and
         # no fallback. Selecting it is itself the user's opt-in to externalize.
         if target is not None and target != self.LOCAL_TARGET:
@@ -74,7 +94,7 @@ class ModelRouter:
         last_unvalidated: LLMResponse | None = None
         for _ in range(self._max_local_attempts):
             try:
-                response = await self._local.chat(
+                response = await local_client.chat(
                     messages,
                     tools,
                     num_ctx=num_ctx,

@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     llm_fallback_base_url: str = ""
     llm_api_key: str = "ollama-local"
     assistant_model: str = "gemma4:26b"
+    # Extra locally-served models offered to every user, comma separated
+    # (proposal §12 "本機模型清單" / detailed-design §11.10.5). They share
+    # llm_base_url / llm_api_key / llm_provider with `assistant_model`, so this
+    # is for one endpoint serving several models — a gateway or Ollama. Models
+    # needing a different endpoint or credential belong to a user's own
+    # connection instead. Empty keeps the picker exactly as it was: one entry.
+    assistant_models: str = ""
     llm_num_ctx: int = 65536
     llm_timeout_seconds: float = 300
     llm_keep_alive: str = "15m"
@@ -147,6 +154,26 @@ class Settings(BaseSettings):
     # limit by the worker count.
     share_link_attempt_limit: int = 5  # per minute, per link
     share_link_lockout_minutes: int = 5
+
+    @property
+    def local_model_ids(self) -> list[str]:
+        """Locally-served models offered to every user, default first.
+
+        `assistant_model` always leads: it is what an unspecified target
+        resolves to, so the picker's first entry and the fallback path must
+        agree. Duplicates are dropped so listing the default in
+        `assistant_models` too is harmless rather than producing two identical
+        entries.
+        """
+        ids = [self.assistant_model.strip()]
+        ids += [m.strip() for m in self.assistant_models.split(",")]
+        seen: set[str] = set()
+        out: list[str] = []
+        for model in ids:
+            if model and model not in seen:
+                seen.add(model)
+                out.append(model)
+        return out
 
 
 @lru_cache

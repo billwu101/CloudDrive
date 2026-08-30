@@ -67,6 +67,7 @@ mock_llm:
     - skill: search
       arguments:
         q: 收據封存
+        item_type: FOLDER
     - skill: move_item
       arguments:
         item_id:

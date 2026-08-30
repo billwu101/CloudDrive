@@ -60,6 +60,7 @@ mock_llm:
     - skill: search
       arguments:
         q: 合約總表
+        item_type: FOLDER
     - skill: create_folder
       arguments:
         name: 合約_2026

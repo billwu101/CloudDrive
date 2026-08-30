@@ -190,17 +190,24 @@ def _named(items: list[dict[str, Any]], name: str) -> dict[str, Any]:
 
 
 async def test_models_lists_local_plus_own_connections_only(client: AsyncClient) -> None:
-    """The model picker always offers the local model, adds each of the user's
-    own connections, and never leaks another user's connection (A4).
+    """The model picker offers every server-provided model, adds each of the
+    user's own connections, and never leaks another user's connection (A4).
+
+    The server-side list is deployment configuration (`ASSISTANT_MODELS`), so
+    this asserts the shape rather than a fixed length: the first entry is always
+    the bare `local` default, any further server models carry the `local:`
+    prefix, and everything after those belongs to this user alone.
     """
     a = auth_headers(await register_and_login(client, email="mdl-a@test.com", username="mdla"))
     b = auth_headers(await register_and_login(client, email="mdl-b@test.com", username="mdlb"))
 
     before = await client.get(MODELS, headers=a)
     assert before.status_code == 200, before.text
-    assert [opt["id"] for opt in before.json()] == ["local"]
-    assert before.json()[0]["available"] is True
-    assert before.json()[0]["label"].startswith("Local (")
+    server_ids = [opt["id"] for opt in before.json()]
+    assert server_ids[0] == "local"
+    assert all(i.startswith("local:") for i in server_ids[1:])
+    assert all(opt["available"] for opt in before.json())
+    assert all(opt["label"].startswith("Local (") for opt in before.json())
 
     created = await client.post(
         CONNECTIONS,
@@ -220,16 +227,17 @@ async def test_models_lists_local_plus_own_connections_only(client: AsyncClient)
     after = await client.get(MODELS, headers=a)
     assert after.status_code == 200, after.text
     options = after.json()
-    assert [opt["id"] for opt in options] == ["local", connection_id]
-    picked = options[1]
+    assert [opt["id"] for opt in options] == [*server_ids, connection_id]
+    picked = options[-1]
     assert picked["available"] is True  # status "active" on create
     assert picked["label"].startswith("My Gateway")
     assert "gpt-test" in picked["label"]
 
-    # A4: user B's picker still has only the local option.
+    # A4: user B sees the same server models and none of A's connections.
     other = await client.get(MODELS, headers=b)
     assert other.status_code == 200, other.text
-    assert [opt["id"] for opt in other.json()] == ["local"]
+    assert [opt["id"] for opt in other.json()] == server_ids
+    assert connection_id not in [opt["id"] for opt in other.json()]
 
 
 # -- GET /assistant/skills ----------------------------------------------------

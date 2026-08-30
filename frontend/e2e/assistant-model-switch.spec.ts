@@ -109,8 +109,10 @@ test.describe('Assistant model switching', () => {
   test('the picker lists the local target plus every registered connection', async ({ page }) => {
     const acct = await register()
 
-    const before = await api('/assistant/models', {}, acct.token)
-    expect((await before.json()).length).toBe(1) // just `local`
+    // The server-provided entries are deployment config, so count them rather
+    // than assuming a number: the user's own connections are what this asserts.
+    const serverCount = (await (await api('/assistant/models', {}, acct.token)).json()).length
+    expect(serverCount).toBeGreaterThanOrEqual(1) // at least the bare `local`
 
     const labelA = await addConnection(acct, `Alpha ${rand()}`, 'gemma4:31b')
     const labelB = await addConnection(acct, `Beta ${rand()}`, 'qwen3.8:27b')
@@ -121,10 +123,53 @@ test.describe('Assistant model switching', () => {
     const picker = page.getByRole('combobox')
     const options = await picker.locator('option').allTextContents()
 
-    expect(options).toHaveLength(3)
+    expect(options).toHaveLength(serverCount + 2)
     expect(options[0]).toMatch(/^Local \(/)
     expect(options).toContain(labelA)
     expect(options).toContain(labelB)
+  })
+
+  test('a brand-new account sees the server models with no setup', async ({ page }) => {
+    // The point of the server-side list (proposal §12): a user who has never
+    // opened Settings, and owns no connection, still gets every model the
+    // deployment offers. A per-user mechanism would show them nothing.
+    const acct = await register()
+
+    const listed = await (await api('/assistant/models', {}, acct.token)).json()
+    const conns = await (await api('/users/me/model-connections', {}, acct.token)).json()
+    expect(conns).toEqual([])
+
+    await signIn(page, acct)
+    await openAssistant(page)
+
+    const options = await page.getByRole('combobox').locator('option').allTextContents()
+    expect(options).toHaveLength(listed.length)
+    expect(options[0]).toMatch(/^Local \(/)
+    // Anything beyond the default is another server model, not a connection.
+    for (const o of options.slice(1)) expect(o).toMatch(/^Local \(/)
+  })
+
+  test('a server model answers when picked, without any connection', async ({ page }) => {
+    test.skip(
+      !process.env.E2E_LLM_BASE_URL || !process.env.E2E_LLM_API_KEY,
+      'needs a reachable model gateway: set E2E_LLM_BASE_URL and E2E_LLM_API_KEY',
+    )
+    test.setTimeout(MODEL_TIMEOUT * 2)
+
+    const acct = await register()
+    const listed = await (await api('/assistant/models', {}, acct.token)).json()
+    const extra = listed.filter((o: { id: string }) => o.id.startsWith('local:'))
+    test.skip(extra.length === 0, 'ASSISTANT_MODELS is not configured on this deployment')
+
+    await signIn(page, acct)
+    await openAssistant(page)
+
+    const picker = page.getByRole('combobox')
+    await picker.selectOption(extra[0].id)
+    await ask(page, 'How much storage space do I have left?')
+
+    await expect(page.getByText(/storage_quota/i)).toBeVisible({ timeout: MODEL_TIMEOUT })
+    await expect(page.getByText(/could not connect/i)).toBeHidden()
   })
 
   test('a removed connection disappears from the picker on reload', async ({ page }) => {

@@ -189,7 +189,7 @@ def _assistant_skill_service(session: DbSession) -> AssistantSkillService:
     )
 
 
-def _build_local_client(settings: Settings) -> LLMClient:
+def _build_local_client(settings: Settings, model: str | None = None) -> LLMClient:
     """Build the local assistant executor from `llm_provider`.
 
     "ollama" (default) uses the native Ollama client (/api/chat); "openai_compatible"
@@ -199,7 +199,7 @@ def _build_local_client(settings: Settings) -> LLMClient:
     if settings.llm_provider == "openai_compatible":
         return ExternalLLMClient(
             base_url=settings.llm_base_url,
-            model=settings.assistant_model,
+            model=model or settings.assistant_model,
             api_key=settings.llm_api_key,
             timeout=settings.llm_timeout_seconds,
             num_predict=settings.llm_num_predict,
@@ -207,7 +207,7 @@ def _build_local_client(settings: Settings) -> LLMClient:
         )
     return OllamaLLMClient(
         base_url=settings.llm_base_url,
-        model=settings.assistant_model,
+        model=model or settings.assistant_model,
         timeout=settings.llm_timeout_seconds,
         api_key=settings.llm_api_key,
         keep_alive=settings.llm_keep_alive,
@@ -218,6 +218,19 @@ def _build_local_client(settings: Settings) -> LLMClient:
         structured_temperature=settings.llm_structured_temperature,
         disable_thinking=settings.llm_disable_thinking,
     )
+
+
+def _build_local_clients(settings: Settings) -> dict[str, LLMClient]:
+    """One client per server-provided model, keyed by its `local:<model>` target.
+
+    Only the extra models get an entry; the default already has a client of its
+    own and answers to the bare `local` target, which must keep working for
+    clients that predate this list.
+    """
+    return {
+        f"{ModelRouter.LOCAL_PREFIX}{model}": _build_local_client(settings, model)
+        for model in settings.local_model_ids[1:]
+    }
 
 
 async def _assistant_service(session: DbSession, current_user_id: CurrentUserId) -> WorkflowService:
@@ -274,6 +287,7 @@ async def _assistant_service(session: DbSession, current_user_id: CurrentUserId)
         max_local_attempts=settings.max_local_attempts,
         privacy_default=privacy_default,
         external_clients=external_clients,
+        local_clients=_build_local_clients(settings),
     )
     context = ContextManager(num_ctx=settings.llm_num_ctx)
     planner = WorkflowPlanner(
@@ -329,10 +343,18 @@ async def list_models(
 ) -> list[AssistantModelOption]:
     settings = get_settings()
     conns = await build_connection_service(session, settings).list_masked(current_user_id)
-    options = [
+    # Every server-provided model, for every user, with no per-user setup: the
+    # credential belongs to the deployment, so it is not copied into a row per
+    # account (proposal §12 "本機模型清單"). The first entry keeps the bare
+    # `local` id and its existing label so clients written before the list
+    # existed keep working unchanged.
+    local_ids = settings.local_model_ids
+    options = [AssistantModelOption(id="local", label=f"Local ({local_ids[0]})", available=True)]
+    options += [
         AssistantModelOption(
-            id="local", label=f"Local ({settings.assistant_model})", available=True
+            id=f"{ModelRouter.LOCAL_PREFIX}{model}", label=f"Local ({model})", available=True
         )
+        for model in local_ids[1:]
     ]
     for conn in conns:
         label = conn.label + (f" · {conn.model}" if conn.model else "")

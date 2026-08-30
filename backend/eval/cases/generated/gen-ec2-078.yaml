@@ -60,6 +60,7 @@ mock_llm:
     - skill: search
       arguments:
         q: 訂單總表
+        item_type: FOLDER
     - skill: create_folder
       arguments:
         name: 訂單_2026

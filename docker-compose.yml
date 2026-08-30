@@ -59,6 +59,9 @@ services:
       LLM_FALLBACK_BASE_URL: ${LLM_FALLBACK_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-ollama-local}
       ASSISTANT_MODEL: ${ASSISTANT_MODEL:-gemma4:26b}
+      # Extra server-provided models, comma separated. Every user sees them
+      # with no per-account setup; empty keeps the picker to one entry.
+      ASSISTANT_MODELS: ${ASSISTANT_MODELS:-}
       LLM_NUM_CTX: ${LLM_NUM_CTX:-65536}
       # Cap on tokens the model may *generate* (not the context window). A
       # reasoning model spends this budget on its reasoning trace before the

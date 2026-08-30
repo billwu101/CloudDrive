@@ -56,18 +56,29 @@
 **同一把伺服器金鑰被複製進每位使用者的資料列**（輪換要更新 N 筆），而且**新使用者
 預設什麼都看不到**。這是拿使用者層機制去補伺服器層的缺口。
 
-- [ ] `Settings.assistant_models: str`（逗號分隔）+ `local_model_ids` 屬性（解析、去重、
+- [x] `Settings.assistant_models: str`（逗號分隔）+ `local_model_ids` 屬性（解析、去重、
       第一項恆為 `assistant_model`）。空值時清單為單一項，**行為與現況完全相同**。
-- [ ] `docker-compose.yml` 傳遞 `ASSISTANT_MODELS`；`.env.example` 補上並註明用途。
-- [ ] `_build_local_client` → `_build_local_clients`，回 `dict[str, LLMClient]`，
+- [x] `docker-compose.yml` 傳遞 `ASSISTANT_MODELS`；`.env.example` 補上並註明用途。
+- [x] `_build_local_client` → `_build_local_clients`，回 `dict[str, LLMClient]`，
       keyed by `"local:<model>"`。
-- [ ] `list_models` 對每個本機模型各回一項；第一項維持 `id="local"` 與現有標籤不變。
-- [ ] `ModelRouter` 認得 `"local:"` 前綴，走與 `local` 相同路徑（含重試與 validator），
+- [x] `list_models` 對每個本機模型各回一項；第一項維持 `id="local"` 與現有標籤不變。
+- [x] `ModelRouter` 認得 `"local:"` 前綴，走與 `local` 相同路徑（含重試與 validator），
       **不套用外部連線的隱私閘外送限制**。
-- [ ] 測試：清單內容與順序、`local:` target 真的路由到該模型、未設定時行為不變、
+- [x] 測試：清單內容與順序、`local:` target 真的路由到該模型、未設定時行為不變、
       未知的 `local:` 值回明確錯誤、與使用者外部連線並存不互相干擾。
-- [ ] E2E：`assistant-model-switch.spec.ts` 補「未建任何連線的新使用者也看得到多個選項」。
-- [ ] 實測：瀏覽器切換各模型並確認回覆帶回工具結果。
+- [x] E2E：`assistant-model-switch.spec.ts` 補「未建任何連線的新使用者也看得到多個選項」。
+- [x] 實測：瀏覽器切換各模型並確認回覆帶回工具結果。
+
+**執行結果（2026-08-30）**：後端全套 `1193 passed, 5 skipped`；
+E2E `assistant-model-switch.spec.ts` **6 passed**（含真實模型呼叫 36.1s / 19.5s / 44.0s）；
+`ruff check`／`ruff format --check`／`mypy` 全通過。
+實測：全新帳號零設定即看到 5 個本機模型，選 `local:gemma4:31b` 送出後回傳
+`storage_quota` 真實數據。
+
+**連帶修正**：`test_assistant_skills_flow.py::test_models_lists_local_plus_own_connections_only`
+原本斷言清單恰為 `["local"]`，寫死了伺服器清單長度。改為驗**形狀與隔離**
+（第一項為 `local`、其餘伺服器項帶 `local:` 前綴、B 看不到 A 的連線），
+不再綁定部署設定。
 
 ## 文件同步
 
