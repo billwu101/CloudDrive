@@ -102,12 +102,60 @@ npm run playwright:install
 
 **部署到正式環境時務必覆寫**：`JWT_SECRET_KEY`（用 `openssl rand -hex 32`）、`POSTGRES_PASSWORD`；Compose 內的預設值只供本機使用。
 
+## 助理模型設定
+
+助理可接兩種後端：本機 Ollama（`LLM_PROVIDER=ollama`，預設），或任何 OpenAI 相容的
+`/v1/chat/completions` 端點（`LLM_PROVIDER=openai_compatible`，例如自架 gateway）。
+
+### 切換模型或輪換 token
+
+用 [`scripts/set-llm.sh`](scripts/set-llm.sh)，不要手動改 `.env`：
+
+```bash
+./scripts/set-llm.sh                       # 互動式輸入新 token（隱藏輸入）
+./scripts/set-llm.sh --model qwen3.6:35b   # 只換模型，token 不動
+./scripts/set-llm.sh --list                # 列出端點目前服務的模型
+./scripts/set-llm.sh --token-stdin < key.txt
+```
+
+腳本會寫入設定、驗證、然後重啟 backend。**手動改檔容易踩到下面兩個坑，這正是它存在的理由**：
+
+- **設定有兩份 `.env`，由不同行程讀取。** Docker Compose 讀根目錄的 `.env`，
+  pytest 讀 `backend/.env`——因為 `Settings` 的 `env_file=".env"` 是相對於行程的工作目錄。
+  只改一份的症狀是「瀏覽器裡好好的，整合測試卻以憑證錯誤失敗」，而且兩者看不出關聯。
+  腳本一律同時寫入兩份並在寫完後比對。
+- **模型 id 打錯不會有明確錯誤。** 設成端點沒有服務的 id，對話時只會回
+  「Could not connect to the local model」，把人引導去查網路而不是查模型名稱。
+  腳本套用後會對 `/v1/models` 檢查該 id 是否真的存在，不存在就中止並列出可用的。
+
+token 全程不回顯、不經命令列參數（不進 shell history 與 process list）；兩份 `.env` 都在 `.gitignore` 內。
+
+### 讓使用者在對話中切換多個模型
+
+上面設定的是**預設模型**（助理面板中的 `Local (...)`）。若要讓下拉選單出現更多選項，
+在「設定 → 模型連線」新增具名連線，或呼叫 API：
+
+```bash
+curl -X POST http://localhost:8088/api/v1/users/me/model-connections \
+  -H "Authorization: Bearer <access-token>" -H 'Content-Type: application/json' \
+  -d '{"label":"Qwen3.6 35B","kind":"openai_compatible",
+       "base_url":"https://<你的-gateway>/v1","model":"qwen3.6:35b","secret":"<api-key>"}'
+```
+
+每筆連線各自帶 base_url、model 與憑證，因此同一個 gateway 的不同模型各建一筆即可。
+`GET /api/v1/assistant/models` 會回傳 `local` 加上所有連線，即為面板下拉的內容。
+憑證以 Fernet 加密存放（需設 `CREDENTIAL_ENCRYPTION_KEY`），API 只回遮罩值、永不回明文。
+
+> **模型相容性**：助理的 planner 會送出**連續兩則 system 訊息**加 JSON schema 的
+> `response_format`。部分模型的 chat template 不接受連續 system 訊息，會在上游回 5xx，
+> 而使用者只會看到「連不上模型」。換用不熟悉的模型後，請實際對話一次確認。
+
 ## 部署與設定須知
 
 除了上面的 `JWT_SECRET_KEY`／`POSTGRES_PASSWORD`，正式部署還有幾個不知道容易設定錯的地方：
 
 - **選用功能可關** — 沒有 Ollama 時設 `ASSISTANT_ENABLED=false`；不需語意搜尋設 `EMBEDDING_ENABLED=false`，核心（檔案／分享／搜尋／時光機）照常運作。
-- **要用 AI／語意搜尋** — 需可連的 Ollama；compose 預設連主機 `host.docker.internal:11434`，語意搜尋另需 `ollama pull nomic-embed-text`。
+- **要用 AI／語意搜尋** — 需可連的模型端點（Ollama 或 OpenAI 相容 gateway，見上方「助理模型設定」）；compose 預設連主機 `host.docker.internal:11434`，語意搜尋另需 `ollama pull nomic-embed-text`。
 - **多 worker／多副本** — in-process 的時光機排程器假設單一程序，水平擴展時設 `SNAPSHOT_SCHEDULER_ENABLED=false` 並改用外部 cron。
 - **換嵌入模型** — `file_embeddings.embedding` 為 `vector(768)`，維度須與 `EMBEDDING_MODEL` 一致，否則要改對應 migration 與 `Settings.embedding_dim`。
 - **調上傳上限** — nginx `client_max_body_size` 與後端 `MAX_UPLOAD_SIZE_BYTES` 必須一起調整。
