@@ -41,6 +41,34 @@
 - [x] 驗證 backend `/health` 可存取。
 - [x] 驗證 backend 可連接 PostgreSQL。
 
+## 助理模型與憑證切換腳本（2026-08-30）
+
+`scripts/set-llm.sh` —— 輪換 LLM token、切換模型 id，並在套用後**實地驗證**。
+
+- [x] 同時寫入 `.env` 與 `backend/.env`，並在寫入後比對兩者是否一致。
+      兩份檔案由不同行程讀取（Compose 讀根目錄、pytest 讀 `backend/`，因為
+      `Settings` 的 `env_file=".env"` 相對於工作目錄），只改一份會造成
+      「瀏覽器正常但測試失敗」且兩者看不出關聯——此坑已實際發生過一次。
+- [x] 對 `/v1/models` 驗證 token，並檢查 `ASSISTANT_MODEL` 是否在 gateway 的
+      服務清單內。清單外的 model id 會在對話時變成
+      「Could not connect to the local model」，把人引導去查網路而非模型名稱。
+- [x] token 不經命令列參數（避免進入 shell history 與 process list）、
+      不回顯、不寫入 repo（兩份 `.env` 皆在 `.gitignore` 內）。
+- [x] 驗證請求帶瀏覽器 User-Agent：gateway 前面的 Cloudflare 會以 1010 拒絕
+      預設的 `Python-urllib` 簽章，那個 403 看起來會像是 key 有問題。
+- [x] 套用後自動重啟 backend 容器並印出容器內實際生效的 `ASSISTANT_MODEL`。
+- [x] 實測：故意讓兩份 `.env` 漂移後執行，腳本正確修復並回報一致；
+      token 失效時以離開碼 1 中止並印出 gateway 的原始訊息。
+
+用法：
+
+```bash
+./scripts/set-llm.sh                       # 互動式輸入新 token（隱藏輸入）
+./scripts/set-llm.sh --model qwen3.6:35b   # 只換模型
+./scripts/set-llm.sh --list                # 只列出 gateway 目前服務的模型
+./scripts/set-llm.sh --token-stdin < key.txt
+```
+
 ## Cloudflare Tunnel（僅 CD 端；proposal §26.6 / detailed-design §21.9）
 
 > 對外曝露正式站台，dev 不動。網域待使用者提供（proposal §26.6 待確認①）。
