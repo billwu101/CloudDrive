@@ -46,6 +46,29 @@
 
 > **EM3 端到端注意**：`codex exec` 輸出解析（`_extract_response`）依實際 CLI 輸出框架；單元層以注入 runner 覆蓋，真實訂閱 + 已安裝 CLI 的端到端跑需在部署環境驗證／微調。
 
+## 本機模型清單（伺服器提供，2026-08-30）
+
+需求 proposal §12「本機模型清單」／設計 detailed-design §11.10.5。
+讓部署方在一處列出多個本機模型，**所有使用者不需任何個人設定就能選用**。
+
+**為什麼需要**：現行只有兩種概念——單一 `local` 模型，以及使用者自己的外部連線。
+自架 gateway 提供多個模型時，唯一的辦法是把它們當成「外部連線」逐一註冊，代價是
+**同一把伺服器金鑰被複製進每位使用者的資料列**（輪換要更新 N 筆），而且**新使用者
+預設什麼都看不到**。這是拿使用者層機制去補伺服器層的缺口。
+
+- [ ] `Settings.assistant_models: str`（逗號分隔）+ `local_model_ids` 屬性（解析、去重、
+      第一項恆為 `assistant_model`）。空值時清單為單一項，**行為與現況完全相同**。
+- [ ] `docker-compose.yml` 傳遞 `ASSISTANT_MODELS`；`.env.example` 補上並註明用途。
+- [ ] `_build_local_client` → `_build_local_clients`，回 `dict[str, LLMClient]`，
+      keyed by `"local:<model>"`。
+- [ ] `list_models` 對每個本機模型各回一項；第一項維持 `id="local"` 與現有標籤不變。
+- [ ] `ModelRouter` 認得 `"local:"` 前綴，走與 `local` 相同路徑（含重試與 validator），
+      **不套用外部連線的隱私閘外送限制**。
+- [ ] 測試：清單內容與順序、`local:` target 真的路由到該模型、未設定時行為不變、
+      未知的 `local:` 值回明確錯誤、與使用者外部連線並存不互相干擾。
+- [ ] E2E：`assistant-model-switch.spec.ts` 補「未建任何連線的新使用者也看得到多個選項」。
+- [ ] 實測：瀏覽器切換各模型並確認回覆帶回工具結果。
+
 ## 文件同步
 
 - [ ] 實作後更新 `prompt.md`、`detailed-design/`、本檔與 `progress.md`。

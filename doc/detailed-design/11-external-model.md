@@ -241,8 +241,50 @@ EM1~EM3 的 `user_external_credentials` 是 `(user_id, provider)` 單筆，痛�
   - 失敗（`ExternalAuthError`）→ `_CredentialTrackingClient` 標記該連線 `invalid`；Codex token refresh 回寫（by `user_id` + `connection_id`）。
 - `external_model/schemas.py`：`ConnectionCreate/Update/View`（只回遮罩，永不回明文）。
 - `external_model/router.py`：`GET/POST/PUT/DELETE /users/me/model-connections`（取代舊 `/external-credentials`）。
-- `assistant/router.py`：`external_clients = build_connection_service(...).build_clients(user)`；`GET /assistant/models` 回 local + 每筆連線（`id=str(id)`、`label="{label} · {model}"`、`available=status=="active"`）；chat 的 `target` = 連線 id（或 `"local"`）。
+- `assistant/router.py`：`external_clients = build_connection_service(...).build_clients(user)`；`GET /assistant/models` 回**本機模型清單**（見 §11.10.5）+ 每筆連線（`id=str(id)`、`label="{label} · {model}"`、`available=status=="active"`）；chat 的 `target` = 連線 id、`"local"`、或 `"local:<model>"`。
 - `AssistantChatRequest.model: str | None`（連線 id 或 `"local"`）。
+
+#### 11.10.5 本機模型清單（伺服器提供，2026-08-30）
+
+對應 proposal §12「本機模型清單」。部署方在**一個**設定裡列出多個本機模型，
+所有使用者都看得到，**不需要任何個人設定、不寫入資料庫**。
+
+**設定**
+
+| 變數 | 預設 | 說明 |
+| --- | --- | --- |
+| `ASSISTANT_MODEL` | `gemma4:26b` | 預設模型；未指定 target 時走它 |
+| `ASSISTANT_MODELS` | 空 | 逗號分隔的額外本機模型 id。空值時清單即 `[ASSISTANT_MODEL]`，**行為與現況完全相同** |
+
+三者共用 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_PROVIDER`——本機清單的前提是
+**同一個端點服務多個模型**（自架 gateway 或 Ollama）。需要不同端點或不同憑證的，
+屬於使用者自己的外部連線，走 §11.10.1–11.10.3 那條路。
+
+**target 命名**
+
+- `"local"`（或 `None`）→ `ASSISTANT_MODEL`，維持既有語意，舊 client 不受影響。
+- `"local:<model-id>"` → 本機清單中的該模型。用前綴而非裸 model id，是為了讓
+  `ModelRouter` 能**只靠字串就分辨** target 是本機模型還是連線 UUID，不必先查資料庫。
+- 連線 UUID → 不變。
+
+**實作點**
+
+- `Settings.assistant_models: str`；`Settings.local_model_ids -> list[str]` 解析並去重，
+  第一項恆為 `assistant_model`。
+- `assistant/router.py::_build_local_client` 改為 `_build_local_clients(settings) ->
+  dict[str, LLMClient]`，keyed by `"local:<model>"`；每個 model 一個 client 實例
+  （client 本身無狀態，每次呼叫才開 `httpx.AsyncClient`，成本可忽略）。
+- `assistant/router.py::list_models` 對每個本機模型各回一個 option：
+  第一項 `id="local"`、`label="Local ({assistant_model})"`（**維持現有標籤不變**，
+  舊測試與使用者習慣不受影響），其餘 `id="local:{m}"`、`label="Local ({m})"`。
+- `ModelRouter`：`target.startswith("local:")` 時取 `_local_clients[target]`，
+  **走與 `local` 相同的路徑**（含重試與 validator），**不經隱私閘的外送限制**——
+  它與既有單一本機模型同類，資料未離開部署方掌控範圍。
+
+**與隱私閘的關係**：`PRIVACY_DEFAULT` 的外送限制只作用於**使用者的外部連線**。
+本機清單不受其限制。這一點很重要——先前把伺服器模型當成連線註冊時，
+`PRIVACY_DEFAULT=sensitive` 會讓每一個選項都回「連不上模型」，而 UI 完全正常，
+是典型的「選得到但用不了」。
 
 #### 11.10.4 模型可選 + 無自動 fallback（取代 §11.4 的自動升級路徑）
 
