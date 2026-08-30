@@ -150,6 +150,26 @@ curl -X POST http://localhost:8088/api/v1/users/me/model-connections \
 > `response_format`。部分模型的 chat template 不接受連續 system 訊息，會在上游回 5xx，
 > 而使用者只會看到「連不上模型」。換用不熟悉的模型後，請實際對話一次確認。
 
+實測結果（2026-08-30，對自架 gateway；「完整 planner」欄是把攔截到的真實請求原樣重送）：
+
+| 模型 | 單一 system | 連續兩則 system | 完整 planner | planner 耗時 |
+| --- | --- | --- | --- | --- |
+| `nemotron-3-nano:30b` | ✅ | ✅ | ✅ | **10.4s**（最快） |
+| `qwen3.8:27b` | ✅ | ✅ | ✅ | 19.5s |
+| `gemma4:31b` | ✅ | ✅ | ✅ | 23.3s |
+| `qwen3.6:35b` | ✅ | ✅ | ⚠️ 偶發空白 | 20–46s |
+| `nemotron-3-super:120b` | ✅ | ✅ | ✅ | 53.5s |
+| `muse-glimmer:30b` | ❌ | ❌ | ❌ | — |
+
+- **`muse-glimmer:30b` 不可用**：任何請求都回 HTTP 200 但 `content` 為空字串，
+  `finish_reason: stop`、`completion_tokens: 3`——模型產出的 token 被 chat template
+  當成特殊標記剝除。屬 gateway 上該模型的設定問題，不是本專案的問題。
+- **`qwen3.6:35b` 偶發空白**：完整 planner 請求曾出現一次 `content` 為空
+  （其餘各次正常）。原因未確認；`max_tokens` 不是主因——實測 2048 的預算下
+  reasoning 僅用約 500 token，四次連續請求皆正常。
+- 連續兩則 system 訊息在這批模型上都能通過，但這是 gateway 端修過 chat template
+  之後的結果；先前 `qwen3.6:35b` 曾因此對每個請求回 502。
+
 ## 部署與設定須知
 
 除了上面的 `JWT_SECRET_KEY`／`POSTGRES_PASSWORD`，正式部署還有幾個不知道容易設定錯的地方：
